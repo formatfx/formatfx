@@ -43,6 +43,10 @@ function nodeChips(el: SPElement): HTMLElement[] {
 }
 
 export function mountTree(host: HTMLElement): void {
+  // rename-in-progress, by path — part of render state (not a DOM patch),
+  // because selecting a row re-renders the whole tree mid-double-click
+  let renamePath: NodePath | null = null;
+
   const render = () => {
     host.innerHTML = '';
     const referenced = state.referencedColumns();
@@ -82,6 +86,9 @@ export function mountTree(host: HTMLElement): void {
         host.appendChild(miss);
       }
     }
+    // focus after attach — the rename input is created during the tree walk
+    const renameInp = host.querySelector<HTMLInputElement>('.wb-tree-rename');
+    if (renameInp) { renameInp.focus(); renameInp.select(); }
   };
 
   const docHeader = (key: string, label: string, active: boolean, badge: string): HTMLElement => {
@@ -120,11 +127,20 @@ export function mountTree(host: HTMLElement): void {
     label.style.paddingLeft = `${path.length * 12}px`;
     const typeIcon = document.createElement('i');
     typeIcon.className = `ms-Icon ms-Icon--${ELM_ICONS[el.elmType] ?? 'CubeShape'} wb-tree-elmicon`;
+    label.appendChild(typeIcon);
+    // _elmName (the throwaway-name convention SP ignores) is the primary
+    // label when present; the elmType steps back to a dim suffix
+    if (el._elmName) {
+      const nm = document.createElement('span');
+      nm.className = 'wb-tree-name';
+      nm.textContent = el._elmName;
+      label.appendChild(nm);
+    }
     const typeName = document.createElement('span');
-    typeName.className = 'wb-tree-elmtype';
+    typeName.className = 'wb-tree-elmtype' + (el._elmName ? ' wb-tree-elmtype-dim' : '');
     typeName.textContent = el.elmType ?? '?';
-    label.append(typeIcon, typeName, ...nodeChips(el));
-    const hint = nodeHint(el);
+    label.append(typeName, ...nodeChips(el));
+    const hint = el._elmName ? '' : nodeHint(el);
     if (hint) {
       const h = document.createElement('span');
       h.className = 'wb-tree-hint';
@@ -132,6 +148,36 @@ export function mountTree(host: HTMLElement): void {
       label.appendChild(h);
     }
     row.appendChild(label);
+
+    // inline rename — double-click or the ✎ action; Enter/blur commits,
+    // Esc cancels, empty clears the name. Cosmetic only: can't break the
+    // formatter, so it works in basic mode too.
+    if (renamePath && samePath(renamePath, path)) {
+      const inp = document.createElement('input');
+      inp.className = 'wb-tree-rename';
+      inp.value = el._elmName ?? '';
+      inp.placeholder = 'name this element…';
+      label.replaceChildren(typeIcon, inp);
+      row.draggable = false;
+      let cancelled = false;
+      inp.addEventListener('click', (e) => e.stopPropagation());
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') inp.blur();
+        if (e.key === 'Escape') { cancelled = true; inp.blur(); }
+      });
+      inp.addEventListener('blur', () => {
+        renamePath = null;
+        if (cancelled) { render(); return; }
+        const v = inp.value.trim();
+        state.mutateDocument(() => {
+          if (v) el._elmName = v; else delete el._elmName;
+        });
+      });
+    }
+    const startRename = () => { renamePath = path; render(); };
+    row.addEventListener('dblclick', (e) => { e.stopPropagation(); startRename(); });
+    row.title = 'Double-click to rename';
 
     const actions = document.createElement('span');
     actions.className = 'wb-tree-actions';
@@ -142,6 +188,7 @@ export function mountTree(host: HTMLElement): void {
       b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
       actions.appendChild(b);
     };
+    mk('Rename', 'Name this element — shows in this tree, exported JSON stays clean (or double-click the row)', startRename);
     mk('GroupObject', 'Wrap in a new container (adds a parent — works on the root too)', () => state.wrapNode(path));
     if (path.length > 0 && path[path.length - 1] !== CARD_SEGMENT) {
       mk('Up', 'Move up', () => state.moveNode(path, -1));

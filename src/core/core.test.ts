@@ -290,6 +290,19 @@ describe('serializer', () => {
     expect(csom).not.toMatch(/[&<]/);
     expect(csom).toContain('\\u0026\\u0026');
   });
+
+  it('_elmName survives import, is stripped from export by default, kept with keepMeta', () => {
+    const doc = importJson(JSON.stringify({
+      elmType: 'div', _elmName: 'Card',
+      children: [{ elmType: 'span', _elmName: 'Label', txtContent: '[$Title]' }],
+    }));
+    expect(doc.root._elmName).toBe('Card');
+    expect(doc.root.children?.[0]._elmName).toBe('Label');
+    expect(exportJson(doc)).not.toContain('_elmName');
+    const kept = JSON.parse(exportJson(doc, { keepMeta: true }));
+    expect(kept._elmName).toBe('Card');
+    expect(kept.children[0]._elmName).toBe('Label');
+  });
 });
 
 describe('schema import', () => {

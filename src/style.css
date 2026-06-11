@@ -141,6 +141,14 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
 .wb-tree-elmicon { font-size: 11px; color: var(--wb-text-2); }
 .wb-tree-row.selected .wb-tree-elmicon { color: inherit; }
 .wb-tree-elmtype { font-weight: 600; }
+.wb-tree-name { font-weight: 600; }
+.wb-tree-elmtype-dim { font-weight: 400; color: var(--wb-text-2); font-size: 10px; }
+.wb-tree-row.selected .wb-tree-elmtype-dim { color: inherit; opacity: .85; }
+.wb-tree-rename {
+  font: 11px Consolas, monospace; padding: 1px 4px; width: 130px;
+  border: 1px solid var(--wb-accent); border-radius: 2px;
+  background: var(--wb-surface); color: var(--wb-text);
+}
 .wb-tree-hint { color: var(--wb-text-2); }
 .wb-tree-row.selected .wb-tree-hint { color: inherit; opacity: .85; }
 .wb-chip {

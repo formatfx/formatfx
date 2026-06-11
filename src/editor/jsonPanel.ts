@@ -20,6 +20,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
   host.innerHTML = `
     <div class="wb-json-toolbar">
       <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
+      <label class="wb-check" title="Include the Structure pane's _elmName labels in copied/downloaded JSON. SharePoint ignores them; default output is schema-clean. (The editor view below always shows them so Apply round-trips losslessly.)"><input type="checkbox" id="wb-json-names"> ship names</label>
       <button id="wb-json-copy" title="Copy to clipboard">Copy</button>
       <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
       <button id="wb-json-download" title="Download .json">Download</button>
@@ -31,27 +32,29 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
 
   const textEl = host.querySelector('#wb-json-text') as HTMLTextAreaElement;
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
+  const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
   let dirty = false;
 
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
-    textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked });
+    // the editor view keeps _elmName so "Apply to canvas" never loses names
+    textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
   };
 
   textEl.addEventListener('input', () => { dirty = true; });
   sanitizeEl.addEventListener('change', () => { dirty = false; regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked }));
+    await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }));
     onToast('Formatter JSON copied');
   });
   host.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, csomSafe: true }));
+    await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked, csomSafe: true }));
     onToast('CSOM-safe JSON copied (& and < escaped)');
   });
   host.querySelector('#wb-json-download')!.addEventListener('click', () => {
-    const blob = new Blob([exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked })], { type: 'application/json' });
+    const blob = new Blob([exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked })], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `${state.doc.kind}-formatter.json`;

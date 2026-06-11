@@ -84,6 +84,10 @@ export function mountInspector(host: HTMLElement): void {
     host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
 
     host.appendChild(section('Element', [
+      labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
+        const t = v.trim();
+        if (t === '') delete n._elmName; else n._elmName = t;
+      }), 'Label shown in the Structure pane — stripped from shipped JSON')),
       labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
       labeled('txtContent', textarea(
         node.txtContent === undefined ? ''

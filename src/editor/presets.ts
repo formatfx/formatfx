@@ -559,5 +559,8 @@ export function bindFragmentToSchema(fragment: SPElement, fields: MockField[]): 
 
 /** Create a palette fragment bound to the given schema. */
 export function instantiate(item: PaletteItem, fields: MockField[]): SPElement {
-  return bindFragmentToSchema(item.create(), fields);
+  const el = bindFragmentToSchema(item.create(), fields);
+  // arrive named — the Structure pane reads "Status pill", not "div"
+  el._elmName = el._elmName ?? item.label;
+  return el;
 }

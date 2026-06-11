@@ -45,6 +45,27 @@ test('one-click topbar copy puts the active formatter JSON on the clipboard', as
   expect(text).toContain('columnFormatterReference');
 });
 
+test('element naming: showcase and presets arrive named, double-click renames, shipped JSON stays clean', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // the showcase tree reads as names, not anonymous divs
+  await expect(page.locator('.wb-tree-name', { hasText: 'Row card' })).toBeVisible();
+  await expect(page.locator('.wb-tree-name', { hasText: 'Title block' })).toBeVisible();
+  // a fresh preset arrives named after its palette label
+  await page.selectOption('#wb-example', 'status-pill');
+  await expect(page.locator('.wb-tree-name', { hasText: 'Status pill' })).toBeVisible();
+  // double-click renames inline
+  await page.locator('.wb-tree-row').first().dblclick();
+  await page.locator('.wb-tree-rename').fill('My pill');
+  await page.locator('.wb-tree-rename').press('Enter');
+  await expect(page.locator('.wb-tree-name', { hasText: 'My pill' })).toBeVisible();
+  // the JSON tab keeps names so Apply round-trips losslessly…
+  await openTab(page, 'json');
+  expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "My pill"');
+  // …but copied (shipped) JSON is schema-clean by default
+  await page.click('#wb-json-copy');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).not.toContain('_elmName');
+});
+
 test('wrap-in-parent works on the root', async ({ page }) => {
   const rootRow = page.locator('.wb-tree-row').first();
   await rootRow.hover();

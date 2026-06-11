@@ -89,6 +89,14 @@ Key structural invariants:
 - **Autosave**: debounced 400ms to localStorage + `flushAutosave()` on
   `beforeunload` (a real bug once: a theme toggle right before reload was
   lost to the debounce).
+- **Element names**: `SPElement._elmName` (a pre-existing TwFw provenance
+  field) is the user-facing naming mechanism — tree shows it as the primary
+  label (dblclick / ✎ renames), `instantiate()` stamps the palette label on
+  inserted presets, and the showcase workspace ships named. Export contract:
+  `exportJson` strips it unless `keepMeta` (the JSON tab's textarea always
+  passes `keepMeta: true` so Apply-to-canvas round-trips losslessly; the
+  copy/download buttons honor the "ship names" checkbox, default off).
+  Project save/autosave keep names (raw stringify).
 - **Basic/advanced mode**: `uiPrefs.mode` in `wb-ui-prefs`, **default
   `basic`** — that's the landing experience, deliberately. The mechanism is
   CSS-only: `body.wb-basic` hides every `.wb-adv` element *unless* it also
