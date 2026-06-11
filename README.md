@@ -67,7 +67,11 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   Advanced adds a devtools-style **box model** (per-side margin/padding with
   ↑/↓ stepping) and full property editing with per-key value suggestions
   (theme class tokens, Fluent icon names, style values), row actions, hover
-  cards, inline edit and CFRs.
+  cards, inline edit and CFRs. Every style property and attribute carries an
+  ⓘ **doc card**: an SVG concept diagram (the box, the flex shelf, paint
+  layers…), a no-jargon explanation, «syntax shapes», clickable examples
+  that apply themselves, longhand groups (one card serves `padding` and all
+  its sides) and a full flex glossary.
 - **customCardProps are first-class** — card formatters appear nested in the
   structure tree, are click-selectable inside the live flyout, and edit with
   the same palette/inspector as everything else.

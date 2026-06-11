@@ -81,13 +81,38 @@ test('style editor explains properties: ⓘ opens a doc card with clickable exam
   const card = row.locator('.wb-doccard');
   await expect(card).toBeVisible();
   await expect(card.locator('.wb-doccard-prop')).toHaveText('flex-flow');
-  await expect(card).toContainText('flex-direction + flex-wrap');
+  // the mental model: family diagram + plain-language story + flex glossary
+  await expect(card.locator('.wb-doccard-figure svg')).toBeVisible();
+  await expect(card.locator('.wb-doccard-plain')).toContainText('shelf');
+  await expect(card.locator('.wb-doccard-gloss')).toContainText('justify-content');
   // examples render as chips — clicking one applies it as the value
   await card.locator('.wb-doccard-ex', { hasText: 'row wrap' }).click();
   await expect(row.locator('.wb-kv-val')).toHaveValue('row wrap');
+  // glossary terms switch the card without closing it
+  await card.locator('.wb-doccard-gloss .wb-doccard-rel', { hasText: 'align-items' }).click();
+  await expect(card.locator('.wb-doccard-prop')).toHaveText('align-items');
   // clicking elsewhere closes the card
   await page.locator('.wb-pane-canvas h2').click();
   await expect(card).toBeHidden();
+});
+
+test('doc card groups longhands: padding-left gets the padding card, variants switch the row', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click();
+  const styleSection = page.locator('details.wb-inspector-section')
+    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+  await styleSection.locator('.wb-kv-add').click();
+  const row = styleSection.locator('.wb-kv-row').last();
+  await row.locator('.wb-kv-key').fill('padding-left');
+  await row.locator('.wb-kv-info').click();
+  const card = row.locator('.wb-doccard');
+  // one card serves the whole group — variants row lists the siblings
+  const variants = card.locator('.wb-doccard-related');
+  await expect(variants).toContainText('padding-top');
+  await expect(variants.locator('.wb-doccard-rel.active')).toHaveText('padding-left');
+  // «syntax» chips render distinctly (box-shadow style notation, not clickable values)
+  await variants.locator('.wb-doccard-rel', { hasText: /^padding$/ }).click();
+  await expect(row.locator('.wb-kv-key')).toHaveValue('padding');
+  await expect(card.locator('.wb-doccard-syntax')).toContainText('top right bottom left');
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {

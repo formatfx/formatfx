@@ -128,15 +128,15 @@ export const STYLE_PROP_DOCS: Record<string, string> = {
   'fill': "SVG shape fill color — '#0078d4'",
   'stroke': "SVG line/outline color — '#605e5c'",
   'stroke-width': "SVG line thickness — '2'",
-  'stroke-dasharray': "SVG dash pattern — '4 2' = 4 on, 2 off. Progress donuts drive the first number with an =expression",
-  'border': "All four borders at once — width style color: '1px solid #e1dfdd'",
+  'stroke-dasharray': "SVG dash pattern — «drawn skipped»: '4 2' = 4 on, 2 off. Progress donuts drive the first number with an =expression",
+  'border': "All four borders at once — «width style color»: '1px solid #e1dfdd'",
   'border-color': "Color of all four borders — '#e1dfdd'",
   'border-style': "'solid', 'dashed', 'dotted', 'none' — all four sides",
   'border-width': "Thickness of all four borders — '1px'",
   'border-radius': "Rounded corners — '4px'; pill = half the height ('12px'); circle = '50%'",
-  'outline': "Like border but drawn OUTSIDE the box, takes no space — '2px dashed #0078d4'",
+  'outline': "Like border but drawn OUTSIDE the box, takes no space — «width style color»: '2px dashed #0078d4'",
   'outline-color': "Outline color", 'outline-style': "'solid', 'dashed', 'dotted'", 'outline-width': "Outline thickness — '2px'",
-  'box-shadow': "Drop shadow — x y blur color: '0 2px 4px rgba(0,0,0,.2)'. Card feel: '0 1.6px 3.6px rgba(0,0,0,.1)'",
+  'box-shadow': "The box's shadow on the page — «x y blur color»: '0 2px 4px rgba(0,0,0,.2)'. Card feel: '0 1.6px 3.6px rgba(0,0,0,.1)'",
   'box-sizing': "'border-box' = width/height INCLUDE padding+border (almost always what you want)",
   'color': "Text color — '#323130', 'white', or conditional =if(…)",
   'opacity': "0 (invisible) → 1 (solid) — '0.6' = 60% visible; dims the whole element incl. children",
@@ -158,9 +158,9 @@ export const STYLE_PROP_DOCS: Record<string, string> = {
   'min-height': "Never shorter than this — '32px'",
   'max-width': "Never wider than this — '200px' (pair with ellipsis)",
   'max-height': "Never taller than this — '60px'",
-  'margin': "Space OUTSIDE the border — '4px' all · '2px 8px' vert/horiz · '0 8px 0 0' top right bottom left. Always give units",
-  'padding': "Space INSIDE, around content — '2px 10px' is the classic pill padding. Always give units",
-  'flex': "This CHILD's share of space — '1' = fill an equal share, '0 0 auto' = natural size, '2' = double share",
+  'margin': "Space OUTSIDE the border — '4px' all · '2px 8px' vert/horiz · «top right bottom left»: '0 8px 0 0'. Always give units",
+  'padding': "Space INSIDE, around content — '2px 10px' is the classic pill padding · «top right bottom left»: '0 8px 4px 8px'. Always give units",
+  'flex': "This CHILD's share of space — «grow shrink basis»: '1' = fill an equal share, '0 0 auto' = natural size, '2' = double share",
   'flex-basis': "Child's starting size before grow/shrink — '120px', 'auto'",
   'flex-direction': "'row' = children side by side, 'column' = stacked (the Alignment section sets this visually)",
   'flex-flow': "Shorthand for flex-direction + flex-wrap in one — 'row wrap', 'column nowrap'",
@@ -188,7 +188,7 @@ export const STYLE_PROP_DOCS: Record<string, string> = {
   'text-decoration': "'none' removes a link's underline; 'line-through' strikes out done items",
   'text-indent': "First-line indent — '12px'",
   'text-overflow': "'ellipsis' shows … when clipped — needs overflow 'hidden' + white-space 'nowrap' too",
-  'text-shadow': "x y blur color — '0 1px 2px rgba(0,0,0,.4)' lifts text off photos",
+  'text-shadow': "Shadow behind the letters — «x y blur color»: '0 1px 2px rgba(0,0,0,.4)' lifts text off photos",
   'text-transform': "'uppercase', 'capitalize', 'lowercase'",
   'vertical-align': "Aligns inline elements to the text line — 'middle', 'text-bottom'",
   'direction': "'rtl' for right-to-left languages",
@@ -213,7 +213,7 @@ export const STYLE_PROP_DOCS: Record<string, string> = {
 };
 // the per-side / per-corner families, generated to stay in sync
 for (const side of ['top', 'right', 'bottom', 'left']) {
-  STYLE_PROP_DOCS[`border-${side}`] = `Border on the ${side} side only — '1px solid #e1dfdd'. Left accent stripe: '3px solid #0078d4'`;
+  STYLE_PROP_DOCS[`border-${side}`] = `Border on the ${side} side only — «width style color»: '1px solid #e1dfdd'. Left accent stripe: '3px solid #0078d4'`;
   STYLE_PROP_DOCS[`border-${side}-color`] = `Color of the ${side} border`;
   STYLE_PROP_DOCS[`border-${side}-style`] = `'solid', 'dashed', 'dotted' — ${side} side`;
   STYLE_PROP_DOCS[`border-${side}-width`] = `Thickness of the ${side} border — '1px'`;
@@ -243,6 +243,111 @@ export const ATTRIBUTE_DOCS: Record<string, string> = {
   'draggable': "'false' stops image ghost-dragging",
   'id': "Element id — rarely needed; prefer classes",
 };
+
+/**
+ * Concept families for the style allow-list — the mental-model layer of the
+ * inspector's doc cards. `plain` is written for someone who can't spell CSS;
+ * the per-property one-liners in STYLE_PROP_DOCS stay the specific layer.
+ */
+export type StyleFamily =
+  | 'box' | 'flex-container' | 'flex-child' | 'type' | 'paint'
+  | 'place' | 'fit' | 'table' | 'svg' | 'misc';
+
+const FLEX_GLOSSARY: Array<[string, string]> = [
+  ['display', "'flex' switches the shelf on — children start lining up"],
+  ['flex-direction', 'which way the shelf runs — row (→) or column (↓)'],
+  ['flex-wrap', 'may children flow onto a new line when they run out of room?'],
+  ['flex-flow', 'direction + wrap written as one'],
+  ['justify-content', 'slide children ALONG the shelf — start, center, spread'],
+  ['align-items', 'line children up ACROSS the shelf — top, middle, stretch'],
+  ['gap', 'empty space between children'],
+  ['flex', "on a CHILD: its share of the space — '1' = equal share"],
+  ['flex-grow', 'on a CHILD: how eagerly it takes leftover room'],
+  ['flex-shrink', 'on a CHILD: is it willing to squish?'],
+  ['flex-basis', 'on a CHILD: its starting size'],
+];
+
+export const STYLE_FAMILY_EXPLAINS: Record<StyleFamily, { name: string; plain: string; glossary?: Array<[string, string]> }> = {
+  box: {
+    name: 'The box',
+    plain: 'Every element is a box inside a box. The content sits in the middle. Padding is breathing room INSIDE the walls. The border is the wall itself (border-radius rounds its corners). Margin pushes the neighbors away OUTSIDE the wall. Width and height measure the box.',
+  },
+  'flex-container': {
+    name: 'Arranging children',
+    glossary: FLEX_GLOSSARY,
+    plain: "Put display 'flex' on a parent and it becomes a shelf that lines up its children. flex-direction turns the shelf sideways or upright. justify-content slides children ALONG the shelf; align-items lines them up ACROSS it. gap leaves space between them. The Alignment section above does all of this with buttons.",
+  },
+  'flex-child': {
+    name: "A child's appetite",
+    glossary: FLEX_GLOSSARY,
+    plain: "These go on a CHILD that sits inside a flex parent. They set how hungry it is for space: grow = take leftover room, shrink = willing to squish, basis = its starting size. 'flex: 1' simply means “share the space evenly with my siblings”.",
+  },
+  type: {
+    name: 'Text & type',
+    plain: 'Knobs for the letters themselves: font-size is how tall they are, font-weight is how thick the strokes are, line-height is how tall each LINE of text stands, letter-spacing nudges letters apart. The text-* properties dress the words up — underline them, center them, SHOUT them.',
+  },
+  paint: {
+    name: 'Paint & ink',
+    plain: 'Think in layers: color inks the TEXT. background-color paints the box BEHIND the text. box-shadow throws the box\u2019s shadow onto the page below. opacity fades the whole stack — 0 is invisible, 1 is solid.',
+  },
+  place: {
+    name: 'Breaking out',
+    plain: "Boxes normally stack like words on a page. position lets one break ranks: 'relative' nudges it from its natural spot (and becomes the anchor for children); 'absolute' pins it to a corner of that anchor — then you aim it with top/left. When boxes overlap, z-index decides who's on top. transform moves or spins the painted picture without disturbing the neighbors.",
+  },
+  fit: {
+    name: "When it doesn't fit",
+    plain: "What happens when the content is bigger than the box? overflow 'hidden' clips it; 'auto' adds scrollbars. For text: white-space 'nowrap' forbids wrapping, text-overflow 'ellipsis' ends the line with …, word-break splits stubborn long IDs, and line-clamp caps the number of lines.",
+  },
+  table: {
+    name: 'Tables & lists',
+    plain: "Fine print for real tables and lists: border-collapse merges neighboring cell walls into one line, table-layout 'fixed' makes columns obey the widths you set instead of their contents, list-style controls the bullets.",
+  },
+  svg: {
+    name: 'SVG drawing',
+    plain: 'For shapes drawn with svg/path elements: fill is the paint INSIDE the shape, stroke is the pen line around its edge, and stroke-dasharray turns that pen line into dashes — which is exactly how progress rings are drawn.',
+  },
+  misc: {
+    name: 'Special purpose',
+    plain: 'Specialist switches, each for one specific trick — the example below shows the typical use.',
+  },
+};
+
+/** Longhand groups: the same doc card serves the whole group. */
+export const STYLE_GROUPS: string[][] = [
+  ['padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left'],
+  ['margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left'],
+  ['border', 'border-width', 'border-style', 'border-color', 'border-top', 'border-right', 'border-bottom', 'border-left'],
+  ['border-radius', 'border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius'],
+  ['outline', 'outline-width', 'outline-style', 'outline-color'],
+  ['overflow', 'overflow-x', 'overflow-y'],
+  ['gap', 'row-gap', 'column-gap'],
+  ['background-color', 'background-image', 'background-position', 'background-repeat', 'background-size'],
+];
+
+export function styleGroupOf(prop: string): string[] | null {
+  // per-side border longhands (border-top-color …) fold into the border group
+  const m = prop.match(/^border-(top|right|bottom|left)-(color|style|width)$/);
+  if (m) return STYLE_GROUPS[2];
+  return STYLE_GROUPS.find((g) => g.includes(prop)) ?? null;
+}
+
+const PLACE_SIDES = new Set(['top', 'right', 'bottom', 'left']);
+
+/** Which concept family a style property belongs to (drives the doc card). */
+export function styleFamilyOf(prop: string): StyleFamily {
+  if (PLACE_SIDES.has(prop) || ['position', 'z-index', 'float', 'clear', 'transform'].includes(prop)) return 'place';
+  if (['border-collapse', 'border-spacing', 'table-layout', 'caption-side', 'empty-cells'].includes(prop) || prop.startsWith('list-style')) return 'table';
+  if (prop === 'fill' || prop.startsWith('stroke')) return 'svg';
+  if (['flex', 'flex-grow', 'flex-shrink', 'flex-basis'].includes(prop)) return 'flex-child';
+  if (['display', 'flex-direction', 'flex-flow', 'flex-wrap', 'align-items', 'justify-content', 'gap', 'row-gap', 'column-gap'].includes(prop)) return 'flex-container';
+  if (prop.startsWith('overflow') || prop === 'object-fit' || prop === 'visibility'
+    || ['text-overflow', 'white-space', 'word-break', 'word-wrap', '-webkit-line-clamp', '-webkit-box-orient'].includes(prop)) return 'fit';
+  if (prop.startsWith('font') || prop.startsWith('text-') || ['line-height', 'letter-spacing', 'word-spacing', 'vertical-align', 'direction', 'unicode-bidi'].includes(prop)) return 'type';
+  if (prop === 'color' || prop.startsWith('background') || prop === 'opacity' || prop === 'box-shadow') return 'paint';
+  if (prop.startsWith('margin') || prop.startsWith('padding') || prop.startsWith('border') || prop.startsWith('outline')
+    || prop === 'box-sizing' || /^(min-|max-)?(width|height)$/.test(prop)) return 'box';
+  return 'misc';
+}
 
 export const STYLE_VALUE_SUGGESTIONS: Record<string, string[]> = {
   'display': ['flex', 'inline-flex', 'block', 'inline-block', 'none', 'table', 'table-row', 'table-cell', "=if([$Field]=='','none','flex')"],
