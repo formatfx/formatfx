@@ -8,7 +8,11 @@ import { test, expect, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   // a fresh run each time — clear the autosaved project
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    // most specs exercise the full surface — run them in advanced mode
+    localStorage.setItem('wb-ui-prefs', JSON.stringify({ mode: 'advanced' }));
+  });
   await page.reload();
 });
 
@@ -96,6 +100,30 @@ test('dark mode keeps the row card readable (theme classes, not hex)', async ({ 
 test('outlines toggle draws element boxes', async ({ page }) => {
   await page.check('#wb-outlines');
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
+});
+
+test('basic mode (the default) trims the surface; in-use features stay editable', async ({ page }) => {
+  // fresh prefs → basic mode is the landing default
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator('#wb-mode button', { hasText: 'Basic' })).toHaveClass(/active/);
+  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
+  await expect(page.locator('#wb-outlines')).toBeHidden();
+  await expect(page.locator('#wb-activedoc')).toBeHidden();
+
+  // a preset that uses an advanced feature (facepile → forEach) reveals it
+  await page.selectOption('#wb-example', 'facepile');
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-chip-loop') }).first().click();
+  const inspector = page.locator('#wb-tab-inspector');
+  await expect(inspector.locator('label.wb-adv.wb-adv-active')).toBeVisible();
+  // …while unused advanced sections (row action etc.) stay hidden
+  await expect(inspector.locator('details.wb-adv:not(.wb-adv-active)').first()).toBeHidden();
+
+  // switching to advanced restores the full surface, and it persists
+  await page.locator('#wb-mode button', { hasText: 'Advanced' }).click();
+  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#wb-mode button', { hasText: 'Advanced' })).toHaveClass(/active/);
 });
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {

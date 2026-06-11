@@ -70,7 +70,8 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
 src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
                inspector/jsonPanel/dataPanel
-src/main.ts    app shell: panes (resize/peek/max), doc switcher, copy, theme
+src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
+               doc switcher, copy, theme
 ```
 
 Key structural invariants:
@@ -88,6 +89,18 @@ Key structural invariants:
 - **Autosave**: debounced 400ms to localStorage + `flushAutosave()` on
   `beforeunload` (a real bug once: a theme toggle right before reload was
   lost to the debounce).
+- **Basic/advanced mode**: `uiPrefs.mode` in `wb-ui-prefs`, **default
+  `basic`** — that's the landing experience, deliberately. The mechanism is
+  CSS-only: `body.wb-basic` hides every `.wb-adv` element *unless* it also
+  has `.wb-adv-active`. Panels set `.wb-adv-active` at render time when the
+  selected element / workspace already uses the feature (forEach, row
+  action, card, CFR, custom theme, unresolved references) — the contract is
+  that nothing a user's design depends on may ever be hidden. Mode is a UI
+  pref, not project state: it never touches the document or autosave.
+  Advanced-only surface: JSON tab, topbar doc switcher + outlines,
+  inspector forEach/row-action/card/Advanced sections, Data-tab CFR
+  registry + tenant theme. E2E specs seed `{ mode: 'advanced' }` in
+  `beforeEach` because they exercise the full surface.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -136,11 +149,12 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 - **`.github/workflows/ci.yml`**: `test-build` (vitest 64 tests + vite
   build, uploads `dist/` as the Pages artifact) → `deploy-pages` (main
-  only); `e2e` runs the 22 Playwright specs with `PW_CHANNEL=bundled`
+  only); `e2e` runs the 23 Playwright specs with `PW_CHANNEL=bundled`
   (Playwright's chromium). Locally, `npm run test:ui` defaults to the
   **installed Edge** (`channel: msedge`) because the original dev machine
   sat behind a corporate proxy that blocked Playwright's browser CDN —
-  override with `PW_CHANNEL=chrome`, or `bundled` for CI parity.
+  override with `PW_CHANNEL=chrome`, `bundled` for CI parity, or
+  `PW_EXECUTABLE=/path/to/chromium` for containers that can't download.
 - **Branch protection on `main`**: `test-build` and `e2e` checks required.
 - **GitHub Pages is the canonical host** (build_type=workflow). Custom
   domain `formatfx.dev`; `https_enforced=true`; cert covers apex + www,

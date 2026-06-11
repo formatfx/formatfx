@@ -31,6 +31,14 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 
 ## Editor features
 
+- **Basic & Advanced modes** — the app lands in **Basic**: presets, the
+  canvas, the structure tree, the visual inspector (text, flex, box model,
+  style, attributes) and your data. **Advanced** (topbar toggle, remembered
+  per browser) adds the raw JSON tab with lint diagnostics, `forEach` loops,
+  row actions, hover cards, inline edit, the CFR registry, tenant themes and
+  the outlines/debug tools. Anything advanced your design *already uses*
+  (a facepile's `forEach`, a Flow button's action) stays visible and
+  editable in Basic, so presets never become black boxes.
 - **Element palette** — schema primitives plus ~25 ready-made components
   distilled from years of community samples: status pills, traffic lights,
   severity classes, tag pills, due-date badges, day counters, personas,

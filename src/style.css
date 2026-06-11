@@ -49,6 +49,14 @@ body {
 }
 .wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
+/* ── basic / advanced mode ───────────────────────────────── */
+.wb-mode { display: flex; border: 1px solid var(--wb-border); border-radius: 3px; overflow: hidden; }
+.wb-topbar-controls .wb-mode button { border: 0; border-radius: 0; padding: 4px 10px; color: var(--wb-text-2); }
+.wb-topbar-controls .wb-mode button.active { background: var(--wb-accent); color: #fff; cursor: default; }
+.wb-topbar-controls .wb-mode button.active:hover { color: #fff; }
+/* basic hides the power-user surface — except where the design already uses it */
+body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
+
 /* ── layout ──────────────────────────────────────────────── */
 .wb-layout {
   display: grid;

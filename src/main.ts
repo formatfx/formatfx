@@ -28,7 +28,11 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
-      <label title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
+      <div class="wb-mode" id="wb-mode" title="Basic shows the everyday tools — presets, visual editing, your data. Advanced adds the raw JSON tab, loops, row actions, hover cards, CFRs and tenant themes.">
+        <button data-mode="basic">Basic</button>
+        <button data-mode="advanced">Advanced</button>
+      </div>
+      <label class="wb-adv" title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
         <select id="wb-activedoc"><option value="main">Main formatter</option></select>
       </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
@@ -55,7 +59,7 @@ app.innerHTML = `
       <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i></button>
       <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i></button>
       <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i></button>
-      <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> outlines</label>
+      <label class="wb-check wb-adv" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> outlines</label>
     </div>
   </header>
   <main class="wb-layout" id="wb-layout">
@@ -80,7 +84,7 @@ app.innerHTML = `
       <div class="wb-side-rail" title="Hover to open the panel — it stays open until you click somewhere else">◧<span>panel</span></div>
       <nav class="wb-tabs">
         <button data-tab="inspector" class="active">Inspector</button>
-        <button data-tab="json">JSON</button>
+        <button data-tab="json" class="wb-adv">JSON</button>
         <button data-tab="data">Data</button>
         <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close">📌</button>
         <button id="wb-side-max" title="Maximize this pane — room for editing data and JSON">⛶</button>
@@ -99,11 +103,13 @@ interface UiPrefs {
   cols: { palette: number; tree: number; side: number };
   paletteCollapsed: boolean;
   sideMode: 'normal' | 'peek' | 'max';
+  mode: 'basic' | 'advanced';
 }
 const uiPrefs: UiPrefs = {
   cols: { palette: 220, tree: 250, side: 360 },
   paletteCollapsed: false,
   sideMode: 'normal',
+  mode: 'basic',
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
@@ -175,6 +181,35 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
   });
 }
 applyLayout();
+
+// ─── basic / advanced mode ──────────────────────────────────────────────────
+// Basic (the default) hides the power-user surface: the raw JSON tab, the
+// doc switcher, outlines, and the inspector/data sections marked `.wb-adv`.
+// Sections that are marked `.wb-adv-active` (the element already uses the
+// feature) stay visible in basic so nothing becomes uneditable.
+const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#wb-mode button')];
+const applyMode = () => {
+  const basic = uiPrefs.mode === 'basic';
+  document.body.classList.toggle('wb-basic', basic);
+  for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === uiPrefs.mode);
+  // never leave a hidden tab active — fall back to the inspector
+  const activeTab = app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab].active');
+  if (basic && activeTab?.classList.contains('wb-adv')) {
+    app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab="inspector"]')!.click();
+  }
+};
+for (const b of modeButtons) {
+  b.addEventListener('click', () => {
+    if (uiPrefs.mode === b.dataset.mode) return;
+    uiPrefs.mode = b.dataset.mode as UiPrefs['mode'];
+    applyMode();
+    saveUiPrefs();
+    toast(uiPrefs.mode === 'basic'
+      ? 'Basic mode — the everyday tools. Anything advanced your design already uses stays editable.'
+      : 'Advanced mode — full surface: JSON tab, forEach loops, row actions, hover cards, CFRs, tenant theme.');
+  });
+}
+applyMode();
 
 // toast
 let toastTimer = 0;
@@ -347,5 +382,6 @@ state.subscribe((reason) => {
 });
 jsonPanel.refreshLint(canvas.getRuntimeIssues());
 refreshActiveDocSel();
+kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 
 if (restored) toast('Restored your autosaved project');

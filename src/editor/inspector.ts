@@ -81,6 +81,12 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section(`Document — ${doc.kind} formatter`, kids));
     }
 
+    const forEachField = labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
+      if (v === '') delete n.forEach; else n.forEach = v;
+    }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach'));
+    forEachField.classList.add('wb-adv');
+    if (node.forEach) forEachField.classList.add('wb-adv-active');
+
     host.appendChild(section('Element', [
       labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
       labeled('txtContent', textarea(
@@ -95,9 +101,7 @@ export function mountInspector(host: HTMLElement): void {
           }
           n.txtContent = v;
         }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}")),
-      labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
-        if (v === '') delete n.forEach; else n.forEach = v;
-      }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
+      forEachField,
     ]));
 
     host.appendChild(section('Layout (flex) — visual', [flexEditor(node, commit)]));
@@ -135,7 +139,7 @@ export function mountInspector(host: HTMLElement): void {
           if (v === '') delete n.customRowAction.actionParams; else n.customRowAction.actionParams = v;
         }), 'executeFlow: {"id":"flow-guid"}')),
       ] : []),
-    ]));
+    ], true, !!cra));
 
     // customCardProps
     const card = node.customCardProps;
@@ -179,7 +183,7 @@ export function mountInspector(host: HTMLElement): void {
         }, undefined, 10)),
       );
     }
-    host.appendChild(section('Hover/click card (customCardProps)', cardKids));
+    host.appendChild(section('Hover/click card (customCardProps)', cardKids, true, !!card));
 
     host.appendChild(section('Advanced', [
       labeled('inlineEditField', input(node.inlineEditField ?? '', (v) => commit((n) => {
@@ -191,7 +195,7 @@ export function mountInspector(host: HTMLElement): void {
       labeled('defaultHoverField', input(node.defaultHoverField ?? '', (v) => commit((n) => {
         if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
       }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),
-    ]));
+    ], true, !!(node.inlineEditField || node.columnFormatterReference || node.defaultHoverField)));
   };
 
   state.subscribe((reason) => {
@@ -207,9 +211,14 @@ let selfCommit = false;
 
 // ─── tiny form helpers ───────────────────────────────────────────────────────
 
-function section(title: string, children: HTMLElement[]): HTMLElement {
+/**
+ * `adv` sections are hidden in basic mode — unless `inUse` (the selected
+ * element already carries the feature), so presets like facepiles or Flow
+ * buttons stay fully editable for basic users.
+ */
+function section(title: string, children: HTMLElement[], adv = false, inUse = false): HTMLElement {
   const s = document.createElement('details');
-  s.className = 'wb-inspector-section';
+  s.className = 'wb-inspector-section' + (adv ? ' wb-adv' : '') + (inUse ? ' wb-adv-active' : '');
   s.open = true;
   const h = document.createElement('summary');
   h.textContent = title;

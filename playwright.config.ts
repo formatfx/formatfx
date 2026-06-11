@@ -15,8 +15,11 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     // PW_CHANNEL=bundled uses Playwright's own chromium (CI runners);
+    // PW_EXECUTABLE points at any chromium binary (containers with no download);
     // default is the locally installed Edge so corporate machines need no download
-    ...(channel === 'bundled' ? {} : { channel }),
+    ...(process.env.PW_EXECUTABLE
+      ? { launchOptions: { executablePath: process.env.PW_EXECUTABLE } }
+      : channel === 'bundled' ? {} : { channel }),
     viewport: { width: 1440, height: 900 },
     screenshot: 'on',
   },
