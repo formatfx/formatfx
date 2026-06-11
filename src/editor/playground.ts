@@ -1,17 +1,25 @@
 /**
  * editor/playground.ts — the consequence-free style playground.
  *
- * An overlay with sample elements (a flex "shelf" with three chips) where
- * every allow-listed style property is a row of clickable value chips applied
- * live — nothing touches the user's formatter unless they press "Apply to
- * selected element" (which goes through the undoable state store).
+ * Two modes, one overlay:
+ *  - SAMPLE mode (☰ menu, doc-card links): a synthetic flex "shelf" with
+ *    three chips — pure concept learning.
+ *  - ELEMENT mode (inspector "⚗ Restyle in playground"): the stage renders
+ *    the REAL selected element via the real renderer — its parent for
+ *    context (siblings dimmed), its children masked with name overlays so
+ *    you can watch them move without restyling below this level. Click a
+ *    child (overlay or nav chip) to descend; your picks stash per element
+ *    and resume when you come back. Nothing touches the formatter until
+ *    "Apply" (undoable via the state store).
  */
 
 import {
   ALLOWED_STYLES, STYLE_PROP_DOCS, STYLE_FAMILY_EXPLAINS, STYLE_VALUE_SUGGESTIONS,
   styleFamilyOf, type StyleFamily,
 } from '../core/schema';
-import { state } from './state';
+import { renderElement } from '../core/renderer';
+import type { SPElement, NodePath } from '../core/types';
+import { state, CARD_SEGMENT } from './state';
 
 const FAMILY_ORDER: StyleFamily[] = [
   'box', 'flex-container', 'flex-child', 'paint', 'type', 'place', 'fit', 'svg', 'table', 'misc',
@@ -52,6 +60,11 @@ function familyProps(family: StyleFamily): string[] {
     && (!noisy.test(p) || family === 'place'));
 }
 
+const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
+
+/** Unapplied picks, per real document node — survive close/reopen ("stash"). */
+const stashes = new WeakMap<SPElement, Record<string, string>>();
+
 let overlay: HTMLElement | null = null;
 let escHandler: ((e: KeyboardEvent) => void) | null = null;
 
@@ -62,13 +75,42 @@ export function closePlayground(): void {
 }
 
 export function openPlayground(initialProp = 'padding'): void {
+  mount({ mode: 'sample', prop: initialProp });
+}
+
+export function openElementPlayground(path: NodePath): void {
+  mount({ mode: 'element', prop: 'padding', path: [...path] });
+}
+
+interface Opts { mode: 'sample' | 'element'; prop: string; path?: NodePath }
+
+function mount(opts: Opts): void {
   closePlayground();
 
-  // what the user has dialed in, per stage target
+  let family: StyleFamily = styleFamilyOf(opts.prop);
+  let prop = opts.prop;
+
+  // sample-mode state
   const shelfStyle: Record<string, string> = {};
   const chipStyle: Record<string, string> = {};
-  let family: StyleFamily = styleFamilyOf(initialProp);
-  let prop = initialProp;
+
+  // element-mode state
+  let targetPath: NodePath = opts.path ?? [];
+  let pending: Record<string, string> =
+    opts.mode === 'element' ? { ...(stashes.get(state.nodeAt(targetPath)!) ?? {}) } : {};
+
+  const stashCurrent = () => {
+    const node = state.nodeAt(targetPath);
+    if (!node) return;
+    if (Object.keys(pending).length) stashes.set(node, { ...pending });
+    else stashes.delete(node);
+  };
+  const switchTarget = (path: NodePath) => {
+    stashCurrent();
+    targetPath = path;
+    pending = { ...(stashes.get(state.nodeAt(targetPath)!) ?? {}) };
+    render();
+  };
 
   overlay = document.createElement('div');
   overlay.className = 'wb-pg-overlay';
@@ -80,23 +122,91 @@ export function openPlayground(initialProp = 'padding'): void {
   panel.className = 'wb-pg';
   overlay.appendChild(panel);
 
-  const render = () => {
-    panel.innerHTML = '';
+  // ── element-mode stage: the real subtree, really rendered ──────────────────
+  const elementStage = (): HTMLElement => {
+    const stage = document.createElement('div');
+    stage.className = 'wb-pg-stage';
 
-    // ── header ──
-    const head = document.createElement('div');
-    head.className = 'wb-pg-head';
-    head.innerHTML = `<span class="wb-pg-title">⚗ Style playground</span>
-      <span class="wb-pg-sub">consequence-free — nothing touches your formatter unless you apply it</span>`;
-    const close = document.createElement('button');
-    close.className = 'wb-pg-close';
-    close.textContent = '✕';
-    close.title = 'Close (Esc)';
-    close.addEventListener('click', closePlayground);
-    head.appendChild(close);
-    panel.appendChild(head);
+    const targetNode = state.nodeAt(targetPath);
+    if (!targetNode) {
+      stage.textContent = 'The element is gone (undone or removed) — close and reselect.';
+      return stage;
+    }
+    // render the parent for context; the root renders alone
+    const renderRootPath = targetPath.slice(0, -1);
+    const renderRoot = targetPath.length ? state.nodeAt(renderRootPath) : targetNode;
+    const clone = structuredClone(targetPath.length ? renderRoot! : targetNode);
+    const rel = targetPath.slice(renderRootPath.length);
+    let t = clone;
+    for (const i of rel) t = (i === CARD_SEGMENT ? t.customCardProps!.formatter : t.children![i])!;
+    t.style = { ...(t.style ?? {}), ...pending };
 
-    // ── the stage: a flex shelf with three chips; the middle one is "yours" ──
+    let dom: HTMLElement | SVGElement;
+    try {
+      dom = renderElement(clone, {
+        row: state.rows[0] ?? {},
+        rowIndex: 0,
+        currentFieldName: state.currentFieldName,
+        me: state.me,
+        iterators: {},
+        iteratorIndex: {},
+        displayNames: Object.fromEntries(state.fields.map((f) => [f.name, f.displayName ?? f.name])),
+        now: new Date(),
+      }, {
+        issues: [],
+        tagPaths: true,
+        resolveColumnRef: (ref: string) => {
+          const n = ref.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+          return state.columnRefs[n] ?? null;
+        },
+        onAction: () => { /* inert in the playground */ },
+      });
+    } catch (e) {
+      stage.textContent = `⚠ ${(e as Error).message}`;
+      return stage;
+    }
+
+    const relAttr = rel.join('.');
+    const find = (p: string) => [...dom.querySelectorAll<HTMLElement>(`[data-sp-path="${p}"]`),
+      ...(dom.getAttribute('data-sp-path') === p ? [dom] : [])];
+    // spotlight the target…
+    for (const el of find(relAttr)) el.classList.add('wb-pgx-target');
+    // …mask its children with name overlays (click to descend & restyle THAT)…
+    (targetNode.children ?? []).forEach((child, i) => {
+      const childRel = rel.length ? `${relAttr}.${i}` : String(i);
+      for (const el of find(childRel)) {
+        el.classList.add('wb-pgx-child');
+        el.setAttribute('data-pgx-name', nameOf(child));
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          switchTarget([...targetPath, i]);
+        });
+      }
+    });
+    // …and dim the out-of-scope siblings
+    if (rel.length) {
+      (renderRoot!.children ?? []).forEach((_s, i) => {
+        if (i === rel[0]) return;
+        for (const el of find(String(i))) el.classList.add('wb-pgx-sibling');
+      });
+    }
+
+    const frame = document.createElement('div');
+    frame.className = 'wb-pgx-frame';
+    frame.appendChild(dom);
+    stage.appendChild(frame);
+
+    const lab = document.createElement('div');
+    lab.className = 'wb-pg-stagelab';
+    lab.textContent = (targetNode.children?.length
+      ? 'children are masked with their names — click one to restyle it instead · '
+      : '') + 'rendered with row 1 of your data';
+    stage.appendChild(lab);
+    return stage;
+  };
+
+  // ── sample-mode stage: the synthetic shelf ──────────────────────────────────
+  const sampleStage = (): HTMLElement => {
     const stage = document.createElement('div');
     stage.className = 'wb-pg-stage';
     const shelf = document.createElement('div');
@@ -119,7 +229,60 @@ export function openPlayground(initialProp = 'padding'): void {
       ? 'styling the SHELF (the parent container)'
       : 'styling the middle chip';
     stage.appendChild(stageLab);
-    panel.appendChild(stage);
+    return stage;
+  };
+
+  const render = () => {
+    panel.innerHTML = '';
+    const targetNode = opts.mode === 'element' ? state.nodeAt(targetPath) : null;
+
+    // ── header ──
+    const head = document.createElement('div');
+    head.className = 'wb-pg-head';
+    head.innerHTML = `<span class="wb-pg-title">⚗ Style playground</span>
+      <span class="wb-pg-sub">${opts.mode === 'element' && targetNode
+        ? `restyling <b>${nameOf(targetNode)}</b> — nothing is saved until you apply`
+        : 'consequence-free — nothing touches your formatter unless you apply it'}</span>`;
+    const close = document.createElement('button');
+    close.className = 'wb-pg-close';
+    close.textContent = '✕';
+    close.title = 'Close (Esc) — unapplied picks on this element are kept for next time';
+    close.addEventListener('click', () => { stashCurrent(); closePlayground(); });
+    head.appendChild(close);
+    panel.appendChild(head);
+
+    // ── element-mode navigation: up to the parent, down into children ──
+    if (opts.mode === 'element' && targetNode) {
+      const nav = document.createElement('div');
+      nav.className = 'wb-pg-row wb-pg-nav';
+      if (targetPath.length) {
+        const parent = state.nodeAt(targetPath.slice(0, -1));
+        if (parent) {
+          const up = document.createElement('button');
+          up.className = 'wb-pg-navbtn';
+          up.textContent = `▲ ${nameOf(parent)}`;
+          up.title = 'Restyle the parent instead (your picks here are stashed)';
+          up.addEventListener('click', () => switchTarget(targetPath.slice(0, -1)));
+          nav.appendChild(up);
+        }
+      }
+      const here = document.createElement('span');
+      here.className = 'wb-pg-navhere';
+      here.textContent = nameOf(targetNode);
+      nav.appendChild(here);
+      (targetNode.children ?? []).forEach((child, i) => {
+        const down = document.createElement('button');
+        down.className = 'wb-pg-navbtn';
+        down.textContent = `▼ ${nameOf(child)}`;
+        down.title = 'Restyle this child instead (your picks here are stashed)';
+        down.addEventListener('click', () => switchTarget([...targetPath, i]));
+        if (stashes.has(child)) down.classList.add('wb-pg-navstash');
+        nav.appendChild(down);
+      });
+      panel.appendChild(nav);
+    }
+
+    panel.appendChild(opts.mode === 'element' ? elementStage() : sampleStage());
 
     // ── family chips ──
     const famRow = document.createElement('div');
@@ -157,7 +320,8 @@ export function openPlayground(initialProp = 'padding'): void {
     panel.appendChild(propRow);
 
     // ── value chips: click to see it happen ──
-    const styleMap = family === 'flex-container' ? shelfStyle : chipStyle;
+    const styleMap = opts.mode === 'element' ? pending
+      : family === 'flex-container' ? shelfStyle : chipStyle;
     const valRow = document.createElement('div');
     valRow.className = 'wb-pg-row wb-pg-vals';
     const current = styleMap[prop];
@@ -168,7 +332,9 @@ export function openPlayground(initialProp = 'padding'): void {
       b.addEventListener('click', () => {
         if (styleMap[prop] === v) delete styleMap[prop]; // click again to remove
         else styleMap[prop] = v;
-        if (family === 'flex-container' && !('display' in shelfStyle)) shelfStyle['display'] = 'flex';
+        if (opts.mode === 'sample' && family === 'flex-container' && !('display' in shelfStyle)) {
+          shelfStyle['display'] = 'flex';
+        }
         render();
       });
       valRow.appendChild(b);
@@ -182,8 +348,10 @@ export function openPlayground(initialProp = 'padding'): void {
     panel.appendChild(valRow);
 
     // ── what you've dialed in ──
-    const picked = [...Object.entries(shelfStyle).map(([k, v]) => ['shelf', k, v]),
-      ...Object.entries(chipStyle).map(([k, v]) => ['chip', k, v])];
+    const picked = opts.mode === 'element'
+      ? Object.entries(pending).map(([k, v]) => ['pick', k, v])
+      : [...Object.entries(shelfStyle).map(([k, v]) => ['shelf', k, v]),
+        ...Object.entries(chipStyle).map(([k, v]) => ['chip', k, v])];
     const out = document.createElement('div');
     out.className = 'wb-pg-out';
     if (picked.length) {
@@ -195,7 +363,8 @@ export function openPlayground(initialProp = 'padding'): void {
         del.textContent = '✕';
         del.title = 'Remove';
         del.addEventListener('click', () => {
-          delete (where === 'shelf' ? shelfStyle : chipStyle)[k];
+          if (opts.mode === 'element') delete pending[k];
+          else delete (where === 'shelf' ? shelfStyle : chipStyle)[k];
           render();
         });
         rowEl.appendChild(del);
@@ -206,34 +375,70 @@ export function openPlayground(initialProp = 'padding'): void {
     }
     panel.appendChild(out);
 
-    // ── footer: reset / apply ──
+    // ── footer: reset / stash / apply ──
     const foot = document.createElement('div');
     foot.className = 'wb-pg-foot';
     const reset = document.createElement('button');
     reset.textContent = 'Reset';
+    reset.title = opts.mode === 'element' ? 'Discard the unapplied picks for this element (stash included)' : 'Start over';
     reset.addEventListener('click', () => {
-      for (const k of Object.keys(shelfStyle)) delete shelfStyle[k];
-      for (const k of Object.keys(chipStyle)) delete chipStyle[k];
+      if (opts.mode === 'element') {
+        pending = {};
+        const node = state.nodeAt(targetPath);
+        if (node) stashes.delete(node);
+      } else {
+        for (const k of Object.keys(shelfStyle)) delete shelfStyle[k];
+        for (const k of Object.keys(chipStyle)) delete chipStyle[k];
+      }
       render();
     });
-    const apply = document.createElement('button');
-    apply.className = 'wb-pg-apply';
-    const hasSelection = !!state.selection;
-    apply.textContent = 'Apply to selected element';
-    apply.title = hasSelection
-      ? 'Merge everything above into the selected element\'s style (undoable with Ctrl+Z)'
-      : 'Select an element on the canvas or tree first';
-    apply.disabled = !hasSelection || !picked.length;
-    apply.addEventListener('click', () => {
-      const node = state.selectedNode;
-      if (!node) return;
-      state.mutateDocument(() => {
-        node.style = { ...(node.style ?? {}), ...shelfStyle, ...chipStyle };
+    foot.appendChild(reset);
+
+    if (opts.mode === 'element') {
+      const stashBtn = document.createElement('button');
+      stashBtn.textContent = 'Stash & close';
+      stashBtn.title = 'Keep these picks (unapplied) — reopening the playground on this element resumes them';
+      stashBtn.disabled = !picked.length;
+      stashBtn.addEventListener('click', () => { stashCurrent(); closePlayground(); });
+      foot.appendChild(stashBtn);
+
+      const apply = document.createElement('button');
+      apply.className = 'wb-pg-apply';
+      apply.textContent = `Apply to ${targetNode ? nameOf(targetNode) : 'element'}`;
+      apply.title = 'Merge the picks into this element\'s style (undoable with Ctrl+Z)';
+      apply.disabled = !picked.length || !targetNode;
+      apply.addEventListener('click', () => {
+        const node = state.nodeAt(targetPath);
+        if (!node) return;
+        const picks = { ...pending };
+        pending = {};
+        stashes.delete(node);
+        state.mutateDocument(() => { node.style = { ...(node.style ?? {}), ...picks }; });
+        render();
+        const fb = panel.querySelector('.wb-pg-apply') as HTMLButtonElement | null;
+        if (fb) fb.textContent = 'Applied ✓ (Ctrl+Z undoes)';
       });
-      apply.textContent = 'Applied ✓ (Ctrl+Z undoes)';
-      window.setTimeout(() => { if (overlay) apply.textContent = 'Apply to selected element'; }, 1600);
-    });
-    foot.append(reset, apply);
+      foot.appendChild(apply);
+    } else {
+      const apply = document.createElement('button');
+      apply.className = 'wb-pg-apply';
+      const hasSelection = !!state.selection;
+      apply.textContent = 'Apply to selected element';
+      apply.title = hasSelection
+        ? 'Merge everything above into the selected element\'s style (undoable with Ctrl+Z)'
+        : 'Select an element on the canvas or tree first';
+      apply.disabled = !hasSelection || !picked.length;
+      apply.addEventListener('click', () => {
+        const node = state.selectedNode;
+        if (!node) return;
+        state.mutateDocument(() => {
+          node.style = { ...(node.style ?? {}), ...shelfStyle, ...chipStyle };
+        });
+        apply.textContent = 'Applied ✓ (Ctrl+Z undoes)';
+        window.setTimeout(() => { if (overlay) apply.textContent = 'Apply to selected element'; }, 1600);
+      });
+      foot.appendChild(apply);
+    }
     panel.appendChild(foot);
   };
 

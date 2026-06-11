@@ -158,6 +158,39 @@ test('doc card links into the playground with the property preselected', async (
   await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('SHELF');
 });
 
+test('element playground: real subtree, masked children, stash & resume, apply', async ({ page }) => {
+  // open the playground ON the Title block (a real element with children)
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Title block' }) }).click();
+  await page.locator('.wb-inspector-play').click();
+  const pg = page.locator('.wb-pg');
+  await expect(pg).toBeVisible();
+  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title block');
+  // children render for real but are masked with their names (click-to-descend)
+  await expect(pg.locator('.wb-pgx-child[data-pgx-name="Title"]')).toBeVisible();
+  // dial in a pick (padding family is the default)
+  await pg.locator('.wb-pg-val', { hasText: /^8px$/ }).click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
+  // stash & close — consequence-free, the document is untouched
+  await pg.locator('button', { hasText: 'Stash & close' }).click();
+  await expect(pg).toBeHidden();
+  await openTab(page, 'json');
+  expect(await page.inputValue('#wb-json-text')).not.toContain('"padding": "8px"');
+  // reopen → the stash resumes
+  await openTab(page, 'inspector');
+  await page.locator('.wb-inspector-play').click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
+  // descend into a child and come back — picks survive the round trip
+  await pg.locator('.wb-pg-navbtn', { hasText: 'Title' }).first().click();
+  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title');
+  await pg.locator('.wb-pg-navbtn', { hasText: '▲ Title block' }).click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
+  // apply for real this time
+  await pg.locator('.wb-pg-apply').click();
+  await page.keyboard.press('Escape');
+  await openTab(page, 'json');
+  expect(await page.inputValue('#wb-json-text')).toContain('"padding": "8px"');
+});
+
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
   await page.selectOption('#wb-example', 'status-pill');
   await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();

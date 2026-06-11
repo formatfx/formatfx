@@ -197,6 +197,26 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 1. **Node 20 runner deprecation — DEADLINE 2026-06-16**: GitHub forces
    actions to Node 24; either bump action versions in ci.yml or set
    `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env. Do this first.
+1.5. **Grid-first workspace (the big basic-mode bet — designed 2026-06-11,
+   owner's vision, not yet built).** Reframe the preview pane as the
+   WORKSPACE: it starts as a plain Microsoft-Lists-style grid — one column
+   per view column, each rendered with its current formatter (pills etc.
+   from import), real column headers. Header menus = per-column actions
+   (format this column, hide, copy JSON). The on-ramp to row formatting:
+   the user DRAGS a column header left/right to reorder — or drops one
+   column ONTO another, which generates the row-formatter scaffolding
+   (outer flex div + the two columns as children, named after the
+   columns). That moment converts "I know grids" people into row-formatter
+   users without them ever seeing JSON: from there groups can be
+   repositioned, wrapped, bordered, shadowed via the existing click-only
+   tools (alignment editor, element playground). Constraints to respect:
+   keep the grid metaphor as long as possible (columns stay column-ish
+   until grouped); generated structure must arrive fully _elmName'd
+   ("Status + DueDate group"); each grid mutation maps to ONE undoable
+   document mutation. Advanced mode later adds hover-card creation etc.
+   from the same surface. Build it as a fourth canvas context (kind-aware
+   like list/row/tile today) rather than a separate page, so the
+   palette/tree/inspector keep working against it.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class

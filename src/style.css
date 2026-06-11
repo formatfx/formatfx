@@ -615,3 +615,36 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
   color: var(--wb-accent); font-size: 11px; font-style: normal;
 }
 .wb-doccard-play:hover { text-decoration: underline; }
+
+/* ── element-mode playground ─────────────────────────────── */
+.wb-inspector-play {
+  display: block; width: 100%; margin: 0 0 8px; padding: 6px 10px;
+  border: 1px dashed var(--wb-accent); border-radius: 4px;
+  background: transparent; color: var(--wb-accent); cursor: pointer; font-size: 12px;
+}
+.wb-inspector-play:hover { background: rgba(0, 120, 212, .08); }
+.wb-pg-nav { align-items: center; }
+.wb-pg-navbtn {
+  padding: 2px 9px; font-size: 11px; border-radius: 4px; cursor: pointer;
+  background: var(--wb-surface); color: var(--wb-text-2); border: 1px solid var(--wb-border);
+}
+.wb-pg-navbtn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-pg-navbtn.wb-pg-navstash { border-style: dashed; border-color: var(--wb-accent); }
+.wb-pg-navhere {
+  font: 600 12px "Segoe UI", sans-serif; color: var(--wb-accent);
+  padding: 2px 6px;
+}
+.wb-pgx-frame { background: var(--wb-surface); border-radius: 4px; padding: 14px; overflow: auto; }
+.wb-pgx-target { outline: 1.5px dashed var(--wb-accent); outline-offset: 2px; }
+.wb-pgx-sibling { opacity: .3; }
+.wb-pgx-child { position: relative; cursor: pointer; }
+.wb-pgx-child::after {
+  content: attr(data-pgx-name);
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(40, 40, 40, .55); border-radius: 2px;
+  font: 600 9px "Segoe UI", sans-serif; letter-spacing: .03em;
+  color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
+  overflow: hidden; white-space: nowrap;
+}
+.wb-pgx-child:hover::after { background: rgba(0, 120, 212, .55); }

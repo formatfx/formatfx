@@ -14,7 +14,7 @@ import {
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
-import { openPlayground } from './playground';
+import { openPlayground, openElementPlayground } from './playground';
 
 export function mountInspector(host: HTMLElement): void {
   const render = () => {
@@ -83,6 +83,14 @@ export function mountInspector(host: HTMLElement): void {
       }
       host.appendChild(section(`Document — ${doc.kind} formatter`, kids, true));
     }
+
+    // ⚗ playground on the real element — click-only, so basic keeps it
+    const playBtn = document.createElement('button');
+    playBtn.className = 'wb-inspector-play';
+    playBtn.textContent = `⚗ Restyle ${node._elmName ?? 'this element'} in the playground`;
+    playBtn.title = 'Open this element — with its parent, children and live data — in the consequence-free playground';
+    playBtn.addEventListener('click', () => { if (state.selection) openElementPlayground(state.selection); });
+    host.appendChild(playBtn);
 
     host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
 

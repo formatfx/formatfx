@@ -317,6 +317,12 @@ describe('schema docs', () => {
       expect(ATTRIBUTE_DOCS[attr], `missing ATTRIBUTE_DOCS entry for "${attr}"`).toBeTruthy();
     }
   });
+
+  it("doc prose never contains word-internal apostrophes (they desync the 'example' chip parser)", () => {
+    for (const [prop, doc] of [...Object.entries(STYLE_PROP_DOCS), ...Object.entries(ATTRIBUTE_DOCS)]) {
+      expect(/[A-Za-z]'[A-Za-z]/.test(doc), `"${prop}" doc has a prose apostrophe: ${doc}`).toBe(false);
+    }
+  });
 });
 
 describe('schema import', () => {
