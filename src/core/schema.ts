@@ -270,45 +270,45 @@ const FLEX_GLOSSARY: Array<[string, string]> = [
 export const STYLE_FAMILY_EXPLAINS: Record<StyleFamily, { name: string; plain: string; glossary?: Array<[string, string]> }> = {
   box: {
     name: 'The box',
-    plain: 'Every element is a box inside a box. The content sits in the middle. Padding is breathing room INSIDE the walls. The border is the wall itself (border-radius rounds its corners). Margin pushes the neighbors away OUTSIDE the wall. Width and height measure the box.',
+    plain: 'A box in a box: content in the middle, padding is the air INSIDE the walls, the border IS the wall, margin pushes neighbors away OUTSIDE.',
   },
   'flex-container': {
     name: 'Arranging children',
     glossary: FLEX_GLOSSARY,
-    plain: "Put display 'flex' on a parent and it becomes a shelf that lines up its children. flex-direction turns the shelf sideways or upright. justify-content slides children ALONG the shelf; align-items lines them up ACROSS it. gap leaves space between them. The Alignment section above does all of this with buttons.",
+    plain: "display 'flex' turns a parent into a shelf: direction picks which way it runs, justify slides children ALONG it, align lines them up ACROSS it, gap spaces them.",
   },
   'flex-child': {
     name: "A child's appetite",
     glossary: FLEX_GLOSSARY,
-    plain: "These go on a CHILD that sits inside a flex parent. They set how hungry it is for space: grow = take leftover room, shrink = willing to squish, basis = its starting size. 'flex: 1' simply means “share the space evenly with my siblings”.",
+    plain: "On a CHILD inside a flex parent: grow = take leftover room, shrink = willing to squish, basis = starting size. 'flex: 1' = equal shares.",
   },
   type: {
     name: 'Text & type',
-    plain: 'Knobs for the letters themselves: font-size is how tall they are, font-weight is how thick the strokes are, line-height is how tall each LINE of text stands, letter-spacing nudges letters apart. The text-* properties dress the words up — underline them, center them, SHOUT them.',
+    plain: 'size = letter height, weight = stroke thickness, line-height = how tall each LINE stands, letter-spacing = air between letters; text-* dresses the words.',
   },
   paint: {
     name: 'Paint & ink',
-    plain: 'Think in layers: color inks the TEXT. background-color paints the box BEHIND the text. box-shadow throws the box\u2019s shadow onto the page below. opacity fades the whole stack — 0 is invisible, 1 is solid.',
+    plain: 'Layers: color inks the TEXT, background paints the box BEHIND it, box-shadow falls on the page below, opacity fades the whole stack.',
   },
   place: {
     name: 'Breaking out',
-    plain: "Boxes normally stack like words on a page. position lets one break ranks: 'relative' nudges it from its natural spot (and becomes the anchor for children); 'absolute' pins it to a corner of that anchor — then you aim it with top/left. When boxes overlap, z-index decides who's on top. transform moves or spins the painted picture without disturbing the neighbors.",
+    plain: "position 'relative' nudges a box (and anchors its children); 'absolute' pins it to that anchor — aim with top/left. z-index settles overlaps; transform moves the painted result without disturbing neighbors.",
   },
   fit: {
     name: "When it doesn't fit",
-    plain: "What happens when the content is bigger than the box? overflow 'hidden' clips it; 'auto' adds scrollbars. For text: white-space 'nowrap' forbids wrapping, text-overflow 'ellipsis' ends the line with …, word-break splits stubborn long IDs, and line-clamp caps the number of lines.",
+    plain: "Too big for its box? overflow 'hidden' clips, 'auto' scrolls; nowrap + ellipsis politely ends text with …; line-clamp caps the lines.",
   },
   table: {
     name: 'Tables & lists',
-    plain: "Fine print for real tables and lists: border-collapse merges neighboring cell walls into one line, table-layout 'fixed' makes columns obey the widths you set instead of their contents, list-style controls the bullets.",
+    plain: "Real-table fine print: collapse merges cell walls, table-layout 'fixed' makes columns obey your widths, list-style does the bullets.",
   },
   svg: {
     name: 'SVG drawing',
-    plain: 'For shapes drawn with svg/path elements: fill is the paint INSIDE the shape, stroke is the pen line around its edge, and stroke-dasharray turns that pen line into dashes — which is exactly how progress rings are drawn.',
+    plain: 'fill paints INSIDE the shape, stroke is the pen line around its edge, dasharray makes that line dashed — exactly how progress rings work.',
   },
   misc: {
     name: 'Special purpose',
-    plain: 'Specialist switches, each for one specific trick — the example below shows the typical use.',
+    plain: 'Specialist switches — the examples show the typical trick.',
   },
 };
 

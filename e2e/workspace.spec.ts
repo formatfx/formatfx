@@ -115,6 +115,49 @@ test('doc card groups longhands: padding-left gets the padding card, variants sw
   await expect(card.locator('.wb-doccard-syntax')).toContainText('top right bottom left');
 });
 
+test('style playground: value chips style the sample live, apply merges into selection', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click(); // select the root to apply onto
+  // entry via ☰ menu — consequence-free overlay
+  await page.click('#wb-menu-btn');
+  await page.click('#wb-playground');
+  const pg = page.locator('.wb-pg');
+  await expect(pg).toBeVisible();
+  // default prop is padding (box family); click a value → the sample chip wears it
+  await pg.locator('.wb-pg-val', { hasText: /^16px$/ }).click();
+  await expect(page.locator('.wb-pg-target')).toHaveCSS('padding', '16px');
+  // it stacks in the readout
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 16px');
+  // switch family to paint, pick a background color
+  await pg.locator('.wb-pg-fam', { hasText: 'Paint & ink' }).click();
+  await pg.locator('.wb-pg-prop', { hasText: /^background-color$/ }).click();
+  await pg.locator('.wb-pg-val', { hasText: '#107c10' }).click();
+  await expect(page.locator('.wb-pg-target')).toHaveCSS('background-color', 'rgb(16, 124, 16)');
+  // apply to the selected element (root) — merges via the undoable store
+  await pg.locator('.wb-pg-apply').click();
+  await expect(pg.locator('.wb-pg-apply')).toContainText('Applied');
+  await page.keyboard.press('Escape');
+  await expect(pg).toBeHidden();
+  const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
+  await expect(target).toHaveCSS('padding', '16px');
+  await expect(target).toHaveCSS('background-color', 'rgb(16, 124, 16)');
+});
+
+test('doc card links into the playground with the property preselected', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click();
+  const styleSection = page.locator('details.wb-inspector-section')
+    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+  await styleSection.locator('.wb-kv-add').click();
+  const row = styleSection.locator('.wb-kv-row').last();
+  await row.locator('.wb-kv-key').fill('justify-content');
+  await row.locator('.wb-kv-info').click();
+  await row.locator('.wb-doccard .wb-doccard-play').click();
+  const pg = page.locator('.wb-pg');
+  await expect(pg).toBeVisible();
+  await expect(pg.locator('.wb-pg-fam.active')).toHaveText('Arranging children');
+  await expect(pg.locator('.wb-pg-prop.active')).toHaveText('justify-content');
+  await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('SHELF');
+});
+
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
   await page.selectOption('#wb-example', 'status-pill');
   await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();

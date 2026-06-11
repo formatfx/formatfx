@@ -14,6 +14,7 @@ import {
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
+import { openPlayground } from './playground';
 
 export function mountInspector(host: HTMLElement): void {
   const render = () => {
@@ -583,19 +584,33 @@ let datalistSeq = 0;
 // clickable chip that applies itself as the value, and a live demo chip
 // actually wearing the property where that reads visually.
 
+let openCardAnchor: { card: HTMLElement; anchor: HTMLElement } | null = null;
+
 const closeDocCards = () => {
   document.querySelectorAll<HTMLElement>('.wb-doccard').forEach((c) => { c.hidden = true; });
+  openCardAnchor = null;
+};
+
+/** The card is position:fixed (it escapes the pane's clip and opens leftwards
+ *  over the canvas) — keep it glued to its ⓘ anchor while the world scrolls,
+ *  and close it only when the anchor itself scrolls out of sight. */
+const positionDocCard = () => {
+  if (!openCardAnchor) return;
+  const { card, anchor } = openCardAnchor;
+  const r = anchor.getBoundingClientRect();
+  if (r.bottom < 0 || r.top > window.innerHeight) { closeDocCards(); return; }
+  card.style.left = `${Math.max(8, r.right - card.offsetWidth)}px`;
+  card.style.top = `${Math.min(r.bottom + 6, Math.max(8, window.innerHeight - card.offsetHeight - 10))}px`;
 };
 document.addEventListener('pointerdown', (e) => {
   const t = e.target as HTMLElement;
   if (!t.closest('.wb-doccard') && !t.closest('.wb-kv-info')) closeDocCards();
 });
-// the card is position:fixed (so it can escape the pane) — close it when the
-// world scrolls under it, but let the card's own content scroll freely
 document.addEventListener('scroll', (e) => {
   if (e.target instanceof Element && e.target.closest('.wb-doccard')) return;
-  closeDocCards();
+  positionDocCard();
 }, true);
+window.addEventListener('resize', positionDocCard);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeDocCards();
 });
@@ -899,6 +914,15 @@ function buildDocCard(
     const hint = document.createElement('div');
     hint.className = 'wb-doccard-hint';
     hint.textContent = 'click an example to apply it · click a property name to read about it';
+    if (familyOf) {
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'wb-doccard-play';
+      play.textContent = '⚗ try it in the playground';
+      play.title = 'Open the consequence-free playground with this property selected';
+      play.addEventListener('click', () => { closeDocCards(); openPlayground(prop); });
+      hint.appendChild(play);
+    }
     card.appendChild(hint);
   };
   show(rowProp);
@@ -1005,12 +1029,9 @@ function kvEditor(
       const willShow = card.hidden;
       closeDocCards();
       if (!willShow) return;
-      // fixed positioning escapes the side pane's scroll clip; anchor the
-      // card's RIGHT edge to the icon so it opens leftwards over the canvas
       card.hidden = false;
-      const r = info.getBoundingClientRect();
-      card.style.left = `${Math.max(8, r.right - card.offsetWidth)}px`;
-      card.style.top = `${Math.min(r.bottom + 6, Math.max(8, window.innerHeight - card.offsetHeight - 10))}px`;
+      openCardAnchor = { card, anchor: info };
+      positionDocCard();
     });
     const del = document.createElement('button');
     del.innerHTML = '<i class="ms-Icon ms-Icon--Cancel"></i>';

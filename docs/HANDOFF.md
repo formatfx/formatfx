@@ -69,7 +69,9 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
                incl. live CustomFormatters), PS-script JSON, hand CSV
 src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
-               inspector/jsonPanel/dataPanel
+               inspector/jsonPanel/dataPanel, playground.ts (the
+               consequence-free style playground overlay; doc-card data —
+               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema)
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```

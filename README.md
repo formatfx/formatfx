@@ -71,7 +71,11 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   ⓘ **doc card**: an SVG concept diagram (the box, the flex shelf, paint
   layers…), a no-jargon explanation, «syntax shapes», clickable examples
   that apply themselves, longhand groups (one card serves `padding` and all
-  its sides) and a full flex glossary.
+  its sides) and a full flex glossary — plus a one-click jump into the
+  **⚗ Style playground** (also in the ☰ menu): a consequence-free overlay
+  where every property is a row of clickable value chips applied live to
+  sample elements, with an explicit "apply to selected element" (undoable)
+  when you've dialed in something you like.
 - **customCardProps are first-class** — card formatters appear nested in the
   structure tree, are click-selectable inside the live flyout, and edit with
   the same palette/inspector as everything else.

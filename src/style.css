@@ -529,3 +529,89 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
 
 /* Fluent icon fallback if the CDN font is unavailable */
 .ms-Icon { font-style: normal; display: inline-block; min-width: 1em; line-height: 1; }
+
+/* ── style playground ────────────────────────────────────── */
+.wb-pg-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+}
+.wb-pg {
+  width: 760px; max-width: 94vw; max-height: 88vh; overflow-y: auto;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-top: 3px solid var(--wb-accent);
+  border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  padding: 14px 18px; font-size: 12px;
+}
+.wb-pg-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.wb-pg-title { font-size: 15px; font-weight: 600; }
+.wb-pg-sub { color: var(--wb-text-2); font-size: 11px; }
+.wb-pg-close {
+  margin-left: auto; border: none; background: transparent; color: var(--wb-text-2);
+  font-size: 14px; cursor: pointer; padding: 2px 6px;
+}
+.wb-pg-close:hover { color: var(--wb-accent); }
+.wb-pg-stage {
+  background: var(--wb-canvas-bg); border-radius: 8px;
+  padding: 18px; margin-bottom: 10px;
+}
+.wb-pg-shelf {
+  display: flex; align-items: center; gap: 8px; min-height: 84px;
+  border: 1.5px dashed var(--wb-border); border-radius: 6px; padding: 10px;
+  position: relative; background: var(--wb-bg);
+}
+.wb-pg-chip {
+  padding: 6px 14px; border-radius: 4px; font-size: 13px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  max-width: 240px;
+}
+.wb-pg-target { border-color: var(--wb-accent); }
+.wb-pg-stagelab { font-size: 10px; color: var(--wb-text-2); margin-top: 6px; font-style: italic; }
+.wb-pg-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.wb-pg-fam {
+  padding: 3px 10px; font-size: 11px; border-radius: 11px; cursor: pointer;
+  background: var(--wb-bg); color: var(--wb-text-2); border: 1px solid var(--wb-border);
+}
+.wb-pg-fam:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-pg-fam.active { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
+.wb-pg-story { color: var(--wb-text-2); margin: 2px 0 6px; line-height: 1.5; }
+.wb-pg-prop {
+  padding: 1px 8px; font: 11px Consolas, monospace; border-radius: 4px; cursor: pointer;
+  background: transparent; color: var(--wb-text-2); border: 1px solid var(--wb-border);
+}
+.wb-pg-prop:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-pg-prop.active { border-color: var(--wb-accent); color: var(--wb-accent); background: rgba(0, 120, 212, .1); }
+.wb-pg-vals { padding: 8px; background: var(--wb-bg); border-radius: 6px; }
+.wb-pg-val {
+  padding: 2px 9px; font: 11px Consolas, monospace; border-radius: 4px; cursor: pointer;
+  background: var(--wb-surface); color: var(--wb-text); border: 1px solid var(--wb-border);
+}
+.wb-pg-val:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-pg-val.active { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
+.wb-pg-out { margin: 8px 0; display: flex; flex-direction: column; gap: 3px; }
+.wb-pg-out-row {
+  display: flex; align-items: center; gap: 8px;
+  font: 11px Consolas, monospace;
+}
+.wb-pg-out-where {
+  font: 600 9px "Segoe UI", sans-serif; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); width: 38px; flex-shrink: 0; text-align: right;
+}
+.wb-pg-out-row button {
+  border: none; background: transparent; color: var(--wb-text-2); cursor: pointer; font-size: 10px;
+}
+.wb-pg-out-row button:hover { color: #d13438; }
+.wb-pg-foot { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--wb-border); padding-top: 10px; }
+.wb-pg-foot button {
+  padding: 5px 14px; border-radius: 4px; cursor: pointer;
+  background: var(--wb-surface); color: var(--wb-text); border: 1px solid var(--wb-border);
+}
+.wb-pg-foot button:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-pg-apply:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
+.wb-pg-foot button:disabled { opacity: .45; cursor: default; }
+.wb-doccard-play {
+  display: block; margin-top: 4px; padding: 0;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--wb-accent); font-size: 11px; font-style: normal;
+}
+.wb-doccard-play:hover { text-decoration: underline; }

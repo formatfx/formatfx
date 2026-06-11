@@ -17,6 +17,7 @@ import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel } from './editor/dataPanel';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
+import { openPlayground } from './editor/playground';
 import type { DocumentKind, FormatterDocument } from './core/types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -62,6 +63,7 @@ app.innerHTML = `
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
           <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i> <span id="wb-theme-label">Switch to light mode</span></button>
           <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
+          <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
           <hr>
           <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i> Reset to default example</button>
         </div>
@@ -234,6 +236,7 @@ menuPanel.addEventListener('click', (e) => {
   // button actions close the menu; the outlines checkbox keeps it open
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
 });
+document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
 
 // toast
 let toastTimer = 0;
