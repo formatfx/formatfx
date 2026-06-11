@@ -64,15 +64,24 @@ test('box-model editor writes per-side padding to the selected element', async (
   await expect(page.locator('.wb-mock-viewrow [data-sp-path]').first()).toHaveCSS('padding-top', '33px');
 });
 
-test('visual flex editor: a preset writes the layout styles', async ({ page }) => {
+test('alignment editor: summary chip opens picker, position grid writes layout styles', async ({ page }) => {
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row').first().click();
-  await page.locator('.wb-flex-presets button', { hasText: 'Row · spread' }).click();
-  await expect(target).toHaveCSS('justify-content', 'space-between');
-  await expect(target).toHaveCSS('align-items', 'center');
-  // segmented control reflects + changes it
-  await page.locator('.wb-flexbtn[title*="Pack in the middle"]').click();
+  // summary chip shows a plain-language readout and opens the picker
+  const summary = page.locator('.wb-align-summary');
+  await expect(summary).toContainText('Side by side');
+  await summary.click();
+  // 3×3 position grid: click "center · middle" — buttons sit where the result puts content
+  await page.locator('.wb-align-cell[title="center · middle"]').click();
   await expect(target).toHaveCSS('justify-content', 'center');
+  await expect(target).toHaveCSS('align-items', 'center');
+  await expect(summary).toContainText('centered · middle');
+  // spread chip switches the main axis to space-between
+  await page.locator('.wb-align-chip', { hasText: 'To the edges' }).click();
+  await expect(target).toHaveCSS('justify-content', 'space-between');
+  // spacing chips are click-only — no typing anywhere in this editor
+  await page.locator('.wb-align-chip', { hasText: '8px' }).click();
+  await expect(target).toHaveCSS('gap', '8px');
 });
 
 test('box model: arrow-stepping adjusts padding live without losing focus', async ({ page }) => {

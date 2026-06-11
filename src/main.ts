@@ -205,8 +205,8 @@ for (const b of modeButtons) {
     applyMode();
     saveUiPrefs();
     toast(uiPrefs.mode === 'basic'
-      ? 'Basic mode — the everyday tools. Anything advanced your design already uses stays editable.'
-      : 'Advanced mode — full surface: JSON tab, forEach loops, row actions, hover cards, CFRs, tenant theme.');
+      ? 'Basic mode — drop in ready-made pieces and arrange them. Everything is click-only and undoable.'
+      : 'Advanced mode — full surface: every preset, all properties, JSON tab, loops, actions, cards, CFRs, tenant theme.');
   });
 }
 applyMode();

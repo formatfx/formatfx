@@ -78,14 +78,10 @@ export function mountInspector(host: HTMLElement): void {
           })),
         );
       }
-      host.appendChild(section(`Document — ${doc.kind} formatter`, kids));
+      host.appendChild(section(`Document — ${doc.kind} formatter`, kids, true));
     }
 
-    const forEachField = labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
-      if (v === '') delete n.forEach; else n.forEach = v;
-    }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach'));
-    forEachField.classList.add('wb-adv');
-    if (node.forEach) forEachField.classList.add('wb-adv-active');
+    host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
 
     host.appendChild(section('Element', [
       labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
@@ -101,23 +97,24 @@ export function mountInspector(host: HTMLElement): void {
           }
           n.txtContent = v;
         }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}")),
-      forEachField,
-    ]));
+      labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
+        if (v === '') delete n.forEach; else n.forEach = v;
+      }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
+    ], true));
 
-    host.appendChild(section('Layout (flex) — visual', [flexEditor(node, commit)]));
-    host.appendChild(section('Box model', [boxModelEditor(node, commit)]));
+    host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
 
     host.appendChild(section('Style', [
       kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
       })),
-    ]));
+    ], true));
 
     host.appendChild(section('Attributes', [
       kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.attributes; else n.attributes = obj;
       })),
-    ]));
+    ], true));
 
     // customRowAction
     const cra = node.customRowAction;
@@ -139,7 +136,7 @@ export function mountInspector(host: HTMLElement): void {
           if (v === '') delete n.customRowAction.actionParams; else n.customRowAction.actionParams = v;
         }), 'executeFlow: {"id":"flow-guid"}')),
       ] : []),
-    ], true, !!cra));
+    ], true));
 
     // customCardProps
     const card = node.customCardProps;
@@ -183,7 +180,7 @@ export function mountInspector(host: HTMLElement): void {
         }, undefined, 10)),
       );
     }
-    host.appendChild(section('Hover/click card (customCardProps)', cardKids, true, !!card));
+    host.appendChild(section('Hover/click card (customCardProps)', cardKids, true));
 
     host.appendChild(section('Advanced', [
       labeled('inlineEditField', input(node.inlineEditField ?? '', (v) => commit((n) => {
@@ -195,7 +192,7 @@ export function mountInspector(host: HTMLElement): void {
       labeled('defaultHoverField', input(node.defaultHoverField ?? '', (v) => commit((n) => {
         if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
       }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),
-    ], true, !!(node.inlineEditField || node.columnFormatterReference || node.defaultHoverField)));
+    ], true));
   };
 
   state.subscribe((reason) => {
@@ -212,13 +209,13 @@ let selfCommit = false;
 // ─── tiny form helpers ───────────────────────────────────────────────────────
 
 /**
- * `adv` sections are hidden in basic mode — unless `inUse` (the selected
- * element already carries the feature), so presets like facepiles or Flow
- * buttons stay fully editable for basic users.
+ * `adv` sections are hidden in basic mode. Basic deliberately keeps ONLY
+ * click-driven controls (the Alignment section) — no free-text property
+ * editing — so a misclick can't corrupt the formatter.
  */
-function section(title: string, children: HTMLElement[], adv = false, inUse = false): HTMLElement {
+function section(title: string, children: HTMLElement[], adv = false): HTMLElement {
   const s = document.createElement('details');
-  s.className = 'wb-inspector-section' + (adv ? ' wb-adv' : '') + (inUse ? ' wb-adv-active' : '');
+  s.className = 'wb-inspector-section' + (adv ? ' wb-adv' : '');
   s.open = true;
   const h = document.createElement('summary');
   h.textContent = title;
@@ -287,21 +284,17 @@ function checkbox(value: boolean, onChange: (v: boolean) => void): HTMLInputElem
   return el;
 }
 
-// ─── visual flex editor ──────────────────────────────────────────────────────
-// Buttons contain live miniature flex containers demonstrating their own
-// property — no need to remember what justify-content vs align-items does.
+// ─── alignment editor ────────────────────────────────────────────────────────
+// One summary chip describing the current arrangement in plain language;
+// clicking it opens a picker whose buttons sit WHERE their result puts the
+// content (a 3×3 position grid). Click-only — nothing to type, nothing to
+// break — so it is the one inspector section basic mode keeps.
 
-const FLEX_PRESETS: Array<[label: string, why: string, props: Record<string, string>]> = [
-  ['Row · centered', 'Items side by side, vertically centered — the everyday layout', { 'flex-direction': 'row', 'align-items': 'center', 'justify-content': 'flex-start' }],
-  ['Row · spread', 'First item left, last item right — titles with actions on the far edge', { 'flex-direction': 'row', 'align-items': 'center', 'justify-content': 'space-between' }],
-  ['Center both', 'One thing dead-center — badges, lone icons', { 'flex-direction': 'row', 'align-items': 'center', 'justify-content': 'center' }],
-  ['Stack', 'Items top-to-bottom — label above value', { 'flex-direction': 'column', 'align-items': 'stretch', 'justify-content': 'flex-start' }],
-  ['Stack · centered', 'Top-to-bottom, centered horizontally', { 'flex-direction': 'column', 'align-items': 'center', 'justify-content': 'flex-start' }],
-  ['Chip wrap', 'Pills and tags flowing onto new lines with a small gap', { 'flex-direction': 'row', 'flex-wrap': 'wrap', 'align-items': 'center', 'gap': '4px' }],
-];
+let alignOpen = false; // picker stays open across self-commits within a selection
 
-function flexEditor(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+function alignmentEditor(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
   const wrap = document.createElement('div');
+  wrap.className = 'wb-align';
 
   const get = (k: string, dflt: string): string => {
     const v = node.style?.[k];
@@ -312,7 +305,9 @@ function flexEditor(node: SPElement, commit: (fn: (n: SPElement) => void) => voi
       n.style = n.style ?? {};
       const d = n.style['display'];
       if (typeof d !== 'string' || !d.includes('flex')) n.style['display'] = 'flex';
-      Object.assign(n.style, props);
+      for (const [k, v] of Object.entries(props)) {
+        if (v === '') delete n.style[k]; else n.style[k] = v;
+      }
     });
     render(); // re-read node.style for active states (inspector skips self-commits)
   };
@@ -321,7 +316,7 @@ function flexEditor(node: SPElement, commit: (fn: (n: SPElement) => void) => voi
   const mini = (props: Record<string, string>): HTMLElement => {
     const m = document.createElement('span');
     m.className = 'wb-flexmini';
-    Object.assign(m.style, { display: 'flex', ...props });
+    Object.assign(m.style, { display: 'flex', gap: '1px', ...props });
     for (const h of ['60%', '100%', '45%']) {
       const bar = document.createElement('i');
       bar.style.height = props['flex-direction'] === 'column' ? '3px' : h;
@@ -331,84 +326,140 @@ function flexEditor(node: SPElement, commit: (fn: (n: SPElement) => void) => voi
     return m;
   };
 
-  const segment = (
-    title: string, prop: string, dflt: string,
-    options: Array<[value: string, plain: string]>,
-  ): HTMLElement => {
-    const row = document.createElement('div');
-    row.className = 'wb-flexrow';
-    const lab = document.createElement('span');
-    lab.className = 'wb-flexrow-label';
-    lab.textContent = title;
-    row.appendChild(lab);
-    const cur = get(prop, dflt);
-    for (const [value, plain] of options) {
-      const b = document.createElement('button');
-      b.className = 'wb-flexbtn' + (cur === value ? ' active' : '');
-      b.title = `${plain}  (${prop}: ${value})`;
-      b.appendChild(mini({
-        'flex-direction': prop === 'flex-direction' ? value : get('flex-direction', 'row'),
-        [prop]: value,
-      }));
-      b.addEventListener('click', () => setProps({ [prop]: value }));
-      row.appendChild(b);
-    }
-    return row;
-  };
-
   const render = () => {
     wrap.innerHTML = '';
+    const dir = get('flex-direction', 'row') === 'column' ? 'column' : 'row';
+    const justify = get('justify-content', 'flex-start');
+    const align = get('align-items', 'stretch');
+    const gap = get('gap', '');
+    const wrapping = get('flex-wrap', 'nowrap') === 'wrap';
 
-    const presets = document.createElement('div');
-    presets.className = 'wb-flex-presets';
-    for (const [label, why, props] of FLEX_PRESETS) {
+    // plain-language readout, phrased by what the user SEES (left/right vs top/bottom)
+    const horiz = dir === 'row' ? justify : align;
+    const vert = dir === 'row' ? align : justify;
+    const H: Record<string, string> = {
+      'flex-start': 'packed left', 'center': 'centered', 'flex-end': 'packed right',
+      'space-between': 'spread to the edges', 'space-around': 'evenly spaced', 'stretch': 'stretched wide',
+    };
+    const V: Record<string, string> = {
+      'flex-start': 'at the top', 'center': 'middle', 'flex-end': 'at the bottom',
+      'space-between': 'spread to the edges', 'space-around': 'evenly spaced', 'stretch': 'stretched tall',
+    };
+    const phrase = [
+      dir === 'row' ? 'Side by side' : 'Stacked',
+      H[horiz] ?? horiz,
+      V[vert] ?? vert,
+      ...(wrapping ? ['wrapping'] : []),
+      ...(gap ? [`gap ${gap}`] : []),
+    ].join(' · ');
+
+    // ── the summary chip: current state at a glance, click to change ──
+    const summary = document.createElement('button');
+    summary.className = 'wb-align-summary' + (alignOpen ? ' open' : '');
+    summary.title = 'How items inside this element are arranged — click to change';
+    const preview = mini({
+      'flex-direction': dir, 'justify-content': justify, 'align-items': align,
+      ...(wrapping ? { 'flex-wrap': 'wrap' } : {}),
+    });
+    const text = document.createElement('span');
+    text.className = 'wb-align-phrase';
+    text.textContent = phrase;
+    const caret = document.createElement('span');
+    caret.className = 'wb-align-caret';
+    caret.textContent = alignOpen ? '▴' : '▾';
+    summary.append(preview, text, caret);
+    summary.addEventListener('click', () => { alignOpen = !alignOpen; render(); });
+    wrap.appendChild(summary);
+    if (!alignOpen) return;
+
+    const panel = document.createElement('div');
+    panel.className = 'wb-align-panel';
+
+    const chipRow = (label: string): HTMLElement => {
+      const row = document.createElement('div');
+      row.className = 'wb-align-row';
+      const lab = document.createElement('span');
+      lab.className = 'wb-align-label';
+      lab.textContent = label;
+      row.appendChild(lab);
+      return row;
+    };
+    const chip = (row: HTMLElement, label: string, title: string, active: boolean, props: Record<string, string>, demo?: HTMLElement) => {
       const b = document.createElement('button');
-      b.title = why;
-      b.appendChild(mini(props));
+      b.className = 'wb-align-chip' + (active ? ' active' : '');
+      b.title = title;
+      if (demo) b.appendChild(demo);
       const t = document.createElement('span');
       t.textContent = label;
       b.appendChild(t);
       b.addEventListener('click', () => setProps(props));
-      presets.appendChild(b);
+      row.appendChild(b);
+    };
+
+    // direction
+    const dirRow = chipRow('Direction');
+    chip(dirRow, 'Side by side', 'Items flow left → right (flex-direction: row)', dir === 'row',
+      { 'flex-direction': 'row' }, mini({ 'flex-direction': 'row', 'align-items': 'center' }));
+    chip(dirRow, 'Stacked', 'Items flow top → bottom (flex-direction: column)', dir === 'column',
+      { 'flex-direction': 'column' }, mini({ 'flex-direction': 'column' }));
+    panel.appendChild(dirRow);
+
+    // ── 3×3 position grid: each button sits where it puts the content ──
+    const gridWrap = chipRow('Position');
+    const grid = document.createElement('div');
+    grid.className = 'wb-align-grid';
+    const POS = ['flex-start', 'center', 'flex-end'] as const;
+    const PLAIN: Record<string, [h: string, v: string]> = {
+      'flex-start': ['left', 'top'], 'center': ['center', 'middle'], 'flex-end': ['right', 'bottom'],
+    };
+    for (const v of POS) {
+      for (const h of POS) {
+        // grid position == visual result; CSS props depend on direction
+        const props = dir === 'row'
+          ? { 'justify-content': h, 'align-items': v }
+          : { 'justify-content': v, 'align-items': h };
+        const cell = document.createElement('button');
+        cell.className = 'wb-align-cell'
+          + (justify === props['justify-content'] && align === props['align-items'] ? ' active' : '');
+        cell.title = `${PLAIN[h][0]} · ${PLAIN[v][1]}`;
+        cell.style.justifyContent = h;
+        cell.style.alignItems = v;
+        const dots = document.createElement('span');
+        dots.className = 'wb-align-dots';
+        dots.style.flexDirection = dir;
+        for (let i = 0; i < 3; i++) dots.appendChild(document.createElement('i'));
+        cell.appendChild(dots);
+        cell.addEventListener('click', () => setProps(props));
+        grid.appendChild(cell);
+      }
     }
-    wrap.appendChild(presets);
+    gridWrap.appendChild(grid);
+    panel.appendChild(gridWrap);
 
-    wrap.appendChild(segment('Direction', 'flex-direction', 'row', [
-      ['row', 'Side by side'], ['column', 'Stacked top-to-bottom'],
-    ]));
-    wrap.appendChild(segment('Along', 'justify-content', 'flex-start', [
-      ['flex-start', 'Pack at the start'], ['center', 'Pack in the middle'],
-      ['flex-end', 'Pack at the end'], ['space-between', 'Push to the edges'],
-      ['space-around', 'Spread out evenly'],
-    ]));
-    wrap.appendChild(segment('Across', 'align-items', 'stretch', [
-      ['flex-start', 'Tops aligned'], ['center', 'Middles aligned'],
-      ['flex-end', 'Bottoms aligned'], ['stretch', 'Stretch to fill'],
-    ]));
+    // spreading along the main axis + stretching across
+    const spreadRow = chipRow('Spread');
+    chip(spreadRow, 'To the edges', 'First item at one edge, last at the other (space-between)',
+      justify === 'space-between', { 'justify-content': 'space-between' },
+      mini({ 'flex-direction': dir, 'justify-content': 'space-between', 'align-items': 'center' }));
+    chip(spreadRow, 'Evenly', 'Equal breathing room around every item (space-around)',
+      justify === 'space-around', { 'justify-content': 'space-around' },
+      mini({ 'flex-direction': dir, 'justify-content': 'space-around', 'align-items': 'center' }));
+    chip(spreadRow, dir === 'row' ? 'Fill height' : 'Fill width', 'Items stretch to fill the other direction (align-items: stretch)',
+      align === 'stretch', { 'align-items': 'stretch' },
+      mini({ 'flex-direction': dir, 'align-items': 'stretch' }));
+    panel.appendChild(spreadRow);
 
-    const extras = document.createElement('div');
-    extras.className = 'wb-flexrow';
-    const wrapLab = document.createElement('label');
-    wrapLab.className = 'wb-check';
-    const wrapCb = document.createElement('input');
-    wrapCb.type = 'checkbox';
-    wrapCb.checked = get('flex-wrap', 'nowrap') === 'wrap';
-    wrapCb.addEventListener('change', () => setProps({ 'flex-wrap': wrapCb.checked ? 'wrap' : 'nowrap' }));
-    wrapLab.append(wrapCb, document.createTextNode(' wrap onto new lines'));
-    const gapLab = document.createElement('label');
-    gapLab.className = 'wb-check';
-    gapLab.title = 'Space between items (gap)';
-    const gap = document.createElement('input');
-    gap.className = 'wb-flexgap';
-    gap.value = get('gap', '');
-    gap.placeholder = 'gap';
-    gap.addEventListener('change', () => {
-      const v = gap.value.trim();
-      setProps({ gap: /^\d+(\.\d+)?$/.test(v) ? `${v}px` : v });
-    });
-    gapLab.append(document.createTextNode('gap '), gap);
-    extras.append(wrapLab, gapLab);
-    wrap.appendChild(extras);
+    // spacing & wrapping — click-only, no typing
+    const gapRow = chipRow('Spacing');
+    chip(gapRow, 'none', 'No gap between items', gap === '', { gap: '' });
+    for (const px of ['4px', '8px', '12px']) {
+      chip(gapRow, px, `${px} between items (gap)`, gap === px, { gap: px });
+    }
+    chip(gapRow, wrapping ? 'wrap ✓' : 'wrap', 'Let items flow onto new lines (flex-wrap) — pills, tags, chips',
+      wrapping, { 'flex-wrap': wrapping ? 'nowrap' : 'wrap' });
+    panel.appendChild(gapRow);
+
+    wrap.appendChild(panel);
   };
   render();
   return wrap;

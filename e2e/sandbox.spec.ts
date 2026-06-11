@@ -102,7 +102,7 @@ test('outlines toggle draws element boxes', async ({ page }) => {
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('basic mode (the default) trims the surface; in-use features stay editable', async ({ page }) => {
+test('basic mode (the default) trims the surface to click-only controls', async ({ page }) => {
   // fresh prefs → basic mode is the landing default
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -111,17 +111,22 @@ test('basic mode (the default) trims the surface; in-use features stay editable'
   await expect(page.locator('#wb-outlines')).toBeHidden();
   await expect(page.locator('#wb-activedoc')).toBeHidden();
 
-  // a preset that uses an advanced feature (facepile → forEach) reveals it
-  await page.selectOption('#wb-example', 'facepile');
-  await page.locator('.wb-tree-row', { has: page.locator('.wb-chip-loop') }).first().click();
+  // palette: only the curated basic tier — no actions, no shells, no forEach presets
+  await expect(page.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
+  await expect(page.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeHidden();
+  await expect(page.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeHidden();
+  await expect(page.locator('.wb-palette-group', { hasText: 'Actions' })).toBeHidden();
+
+  // inspector: ONLY the alignment editor — nothing hand-editable in basic
+  await page.locator('.wb-tree-row').first().click();
   const inspector = page.locator('#wb-tab-inspector');
-  await expect(inspector.locator('label.wb-adv.wb-adv-active')).toBeVisible();
-  // …while unused advanced sections (row action etc.) stay hidden
-  await expect(inspector.locator('details.wb-adv:not(.wb-adv-active)').first()).toBeHidden();
+  await expect(inspector.locator('.wb-align-summary')).toBeVisible();
+  await expect(inspector.locator('input:visible, textarea:visible')).toHaveCount(0);
 
   // switching to advanced restores the full surface, and it persists
   await page.locator('#wb-mode button', { hasText: 'Advanced' }).click();
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
+  await expect(inspector.locator('textarea').first()).toBeVisible();
   await page.reload();
   await expect(page.locator('#wb-mode button', { hasText: 'Advanced' })).toHaveClass(/active/);
 });

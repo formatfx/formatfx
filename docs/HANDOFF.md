@@ -92,15 +92,18 @@ Key structural invariants:
 - **Basic/advanced mode**: `uiPrefs.mode` in `wb-ui-prefs`, **default
   `basic`** — that's the landing experience, deliberately. The mechanism is
   CSS-only: `body.wb-basic` hides every `.wb-adv` element *unless* it also
-  has `.wb-adv-active`. Panels set `.wb-adv-active` at render time when the
-  selected element / workspace already uses the feature (forEach, row
-  action, card, CFR, custom theme, unresolved references) — the contract is
-  that nothing a user's design depends on may ever be hidden. Mode is a UI
-  pref, not project state: it never touches the document or autosave.
-  Advanced-only surface: JSON tab, topbar doc switcher + outlines,
-  inspector forEach/row-action/card/Advanced sections, Data-tab CFR
-  registry + tenant theme. E2E specs seed `{ mode: 'advanced' }` in
-  `beforeEach` because they exercise the full surface.
+  has `.wb-adv-active`. The basic contract is **click-only**: a curated
+  palette tier (`PaletteItem.basic` — things people reach for that drop in
+  right and can't break the formatter) and exactly ONE inspector section,
+  the Alignment editor (summary chip → picker with a 3×3 position grid
+  whose buttons sit where their result puts content). No free-text property
+  editing in basic, anywhere in the inspector — that's by explicit product
+  decision, don't "helpfully" re-reveal sections. `.wb-adv-active` is only
+  used on the data side (CFR registry when references are unresolved,
+  tenant theme when one is active) where hiding would strand live state.
+  Mode is a UI pref, not project state: it never touches the document or
+  autosave. E2E specs seed `{ mode: 'advanced' }` in `beforeEach` because
+  they exercise the full surface.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 

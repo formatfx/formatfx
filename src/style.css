@@ -273,31 +273,50 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
 }
 .wb-kv-add { margin-top: 4px; padding: 3px 8px; }
 
-/* ── visual flex editor ──────────────────────────────────── */
-.wb-flex-presets { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin: 4px 0 8px; }
-.wb-flex-presets button {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 5px 2px; font-size: 10px;
+/* ── alignment editor ────────────────────────────────────── */
+.wb-flexmini {
+  width: 34px; height: 20px;
+  border: 1px dotted var(--wb-border); border-radius: 2px; padding: 1px;
+  box-sizing: border-box; overflow: hidden; flex-shrink: 0;
+}
+.wb-flexmini i { background: var(--wb-accent); border-radius: 1px; flex-shrink: 0; }
+.wb-align-summary {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; font-size: 12px; text-align: left;
   border: 1px solid var(--wb-border); border-radius: 4px;
   background: var(--wb-bg); color: var(--wb-text); cursor: pointer;
 }
-.wb-flex-presets button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-flexrow { display: flex; align-items: center; gap: 4px; margin: 5px 0; flex-wrap: wrap; }
-.wb-flexrow-label { font-size: 10px; color: var(--wb-text-2); width: 48px; flex-shrink: 0; }
-.wb-flexbtn {
+.wb-align-summary:hover { border-color: var(--wb-accent); }
+.wb-align-summary.open { border-radius: 4px 4px 0 0; border-color: var(--wb-accent); }
+.wb-align-phrase { flex: 1; }
+.wb-align-caret { color: var(--wb-text-2); }
+.wb-align-panel {
+  display: flex; flex-direction: column; gap: 8px; padding: 8px;
+  border: 1px solid var(--wb-accent); border-top: 0; border-radius: 0 0 4px 4px;
+  background: var(--wb-bg);
+}
+.wb-align-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.wb-align-label { font-size: 10px; color: var(--wb-text-2); width: 100%; }
+.wb-align-chip {
+  display: flex; align-items: center; gap: 5px; padding: 3px 8px; font-size: 11px;
+  border: 1px solid var(--wb-border); border-radius: 10px;
+  background: var(--wb-surface); color: var(--wb-text); cursor: pointer;
+}
+.wb-align-chip:hover { border-color: var(--wb-accent); }
+.wb-align-chip.active { border-color: var(--wb-accent); background: rgba(0, 120, 212, .12); }
+.wb-align-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 100%;
+}
+.wb-align-cell {
+  display: flex; height: 42px; padding: 5px;
   border: 1px solid var(--wb-border); border-radius: 4px;
-  background: var(--wb-bg); cursor: pointer; padding: 3px;
+  background: var(--wb-surface); cursor: pointer;
 }
-.wb-flexbtn:hover { border-color: var(--wb-accent); }
-.wb-flexbtn.active { border-color: var(--wb-accent); background: rgba(0, 120, 212, .12); }
-.wb-flexmini {
-  width: 34px; height: 20px; gap: 2px;
-  border: 1px dotted var(--wb-border); border-radius: 2px; padding: 1px;
-  box-sizing: border-box; overflow: hidden;
-}
-.wb-flexmini i { background: var(--wb-accent); border-radius: 1px; flex-shrink: 0; }
-.wb-flexgap { width: 52px; font: 11px Consolas, monospace; padding: 2px 4px;
-  border: 1px solid var(--wb-border); border-radius: 3px; background: var(--wb-bg); color: var(--wb-text); }
+.wb-align-cell:hover { border-color: var(--wb-accent); }
+.wb-align-cell.active { border-color: var(--wb-accent); background: rgba(0, 120, 212, .12); }
+.wb-align-dots { display: flex; gap: 2px; }
+.wb-align-dots i { background: var(--wb-accent); border-radius: 1px; width: 4px; height: 10px; }
+.wb-align-dots[style*="column"] i { width: 10px; height: 4px; }
 
 /* ── box model editor ────────────────────────────────────── */
 .wb-boxmodel { padding: 4px 0; }

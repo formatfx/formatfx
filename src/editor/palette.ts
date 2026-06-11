@@ -14,15 +14,17 @@ export function mountPalette(host: HTMLElement): void {
     groups.get(item.group)!.push(item);
   }
   for (const [group, items] of groups) {
+    // basic mode shows only `basic` items; groups with none disappear whole
+    const groupHasBasic = items.some((i) => i.basic);
     const h = document.createElement('div');
-    h.className = 'wb-palette-group';
+    h.className = 'wb-palette-group' + (groupHasBasic ? '' : ' wb-adv');
     h.textContent = group;
     host.appendChild(h);
     const grid = document.createElement('div');
     grid.className = 'wb-palette-grid';
     for (const item of items) {
       const btn = document.createElement('button');
-      btn.className = 'wb-palette-item';
+      btn.className = 'wb-palette-item' + (item.basic ? '' : ' wb-adv');
       btn.title = `${item.label} — ${item.description}`;
       btn.draggable = true;
       btn.innerHTML = `<i class="ms-Icon ms-Icon--${item.icon}" aria-hidden="true"></i><span>${item.label}</span>`;
