@@ -55,11 +55,17 @@ app.innerHTML = `
       </label>
       <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
-      <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i></button>
-      <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i></button>
-      <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i></button>
-      <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i></button>
-      <label class="wb-check wb-adv" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> outlines</label>
+      <div class="wb-menu" id="wb-menu">
+        <button id="wb-menu-btn" title="Project & view options">☰</button>
+        <div class="wb-menu-panel" id="wb-menu-panel" hidden>
+          <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
+          <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
+          <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i> <span id="wb-theme-label">Switch to light mode</span></button>
+          <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
+          <hr>
+          <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i> Reset to default example</button>
+        </div>
+      </div>
     </div>
   </header>
   <main class="wb-layout" id="wb-layout">
@@ -215,6 +221,20 @@ for (const b of modeButtons) {
 }
 applyMode();
 
+// ─── topbar ☰ menu (save/open/theme/outlines/reset live here) ───────────────
+const menuEl = document.getElementById('wb-menu')!;
+const menuPanel = document.getElementById('wb-menu-panel') as HTMLDivElement;
+document.getElementById('wb-menu-btn')!.addEventListener('click', () => {
+  menuPanel.hidden = !menuPanel.hidden;
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!menuPanel.hidden && !menuEl.contains(e.target as Node)) menuPanel.hidden = true;
+});
+menuPanel.addEventListener('click', (e) => {
+  // button actions close the menu; the outlines checkbox keeps it open
+  if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
+});
+
 // toast
 let toastTimer = 0;
 function toast(message: string): void {
@@ -235,6 +255,8 @@ const applyAppTheme = () => {
   setCustomPalette(state.customTheme);
   document.body.classList.toggle('wb-dark', state.themeMode === 'dark');
   applyTheme(state.themeMode);
+  document.getElementById('wb-theme-label')!.textContent =
+    state.themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
 };
 applyAppTheme();
 document.getElementById('wb-theme')!.addEventListener('click', () => {

@@ -69,6 +69,17 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   expect(await page.evaluate(() => navigator.clipboard.readText())).not.toContain('_elmName');
 });
 
+test('style editor explains properties: ⓘ knows what flex-flow is and its syntax', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click();
+  const styleSection = page.locator('details.wb-inspector-section')
+    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+  await styleSection.locator('.wb-kv-add').click();
+  const row = styleSection.locator('.wb-kv-row').last();
+  await row.locator('.wb-kv-key').fill('flex-flow');
+  await expect(row.locator('.wb-kv-info')).toHaveAttribute('title', /flex-direction \+ flex-wrap.*row wrap/);
+  await expect(row.locator('.wb-kv-info')).toHaveClass(/wb-kv-info-known/);
+});
+
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
   await page.selectOption('#wb-example', 'status-pill');
   await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
@@ -144,6 +155,7 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
   await page.click('#wb-json-apply');
   const probe = page.locator('.wb-mock-cell-fmt [data-sp-path]').first();
   await expect(probe).toHaveCSS('background-color', 'rgb(49, 49, 49)'); // dark default #313131
+  await page.click('#wb-menu-btn');
   await page.click('#wb-theme');
   await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
   await expect(probe).toHaveCSS('background-color', 'rgb(243, 242, 241)'); // light #f3f2f1

@@ -114,6 +114,136 @@ export const META_KEYS = ['_elmName', '_factory', '_debug'] as const;
 
 // ─── Value suggestions for the inspector (low-code friendly pickers) ─────────
 
+/**
+ * Plain-language explanations + syntax examples for the style allow-list.
+ * Surfaced as ⓘ tooltips and datalist labels in the inspector's Style
+ * editor — written for people who know what they want but not the CSS for it.
+ */
+export const STYLE_PROP_DOCS: Record<string, string> = {
+  'background-color': "Fill color behind the element — '#e1f5e1', 'transparent'. Conditional: =if([$Status]=='Done','#107c10','#a80000')",
+  'background-image': "Gradient or picture — 'linear-gradient(to right, #0078d4, #5c2d91)' or 'url(https://…)'",
+  'background-position': "Where the background image sits — 'center', 'top right', '10px 20px'",
+  'background-repeat': "'no-repeat' (once), 'repeat-x' (tile sideways), 'repeat'",
+  'background-size': "'cover' (fill the box, crop), 'contain' (fit inside), or '40px 40px'",
+  'fill': "SVG shape fill color — '#0078d4'",
+  'stroke': "SVG line/outline color — '#605e5c'",
+  'stroke-width': "SVG line thickness — '2'",
+  'stroke-dasharray': "SVG dash pattern — '4 2' = 4 on, 2 off. Progress donuts: '=(@currentField*100)+\' 100\''",
+  'border': "All four borders at once — width style color: '1px solid #e1dfdd'",
+  'border-color': "Color of all four borders — '#e1dfdd'",
+  'border-style': "'solid', 'dashed', 'dotted', 'none' — all four sides",
+  'border-width': "Thickness of all four borders — '1px'",
+  'border-radius': "Rounded corners — '4px'; pill = half the height ('12px'); circle = '50%'",
+  'outline': "Like border but drawn OUTSIDE the box, takes no space — '2px dashed #0078d4'",
+  'outline-color': "Outline color", 'outline-style': "'solid', 'dashed', 'dotted'", 'outline-width': "Outline thickness — '2px'",
+  'box-shadow': "Drop shadow — x y blur color: '0 2px 4px rgba(0,0,0,.2)'. Card feel: '0 1.6px 3.6px rgba(0,0,0,.1)'",
+  'box-sizing': "'border-box' = width/height INCLUDE padding+border (almost always what you want)",
+  'color': "Text color — '#323130', 'white', or conditional =if(…)",
+  'opacity': "0 (invisible) → 1 (solid) — '0.6' = 60% visible; dims the whole element incl. children",
+  'visibility': "'hidden' keeps the gap but doesn't paint — use display 'none' to remove entirely",
+  'display': "'flex' (arrange children), 'inline-block', 'block', 'none' (gone). Conditional hide: =if([$Done],'none','flex')",
+  'overflow': "What happens when content doesn't fit — 'hidden' clips, 'auto' scrolls",
+  'overflow-x': "Horizontal overflow only — 'hidden', 'auto'",
+  'overflow-y': "Vertical overflow only — 'hidden', 'auto'",
+  'cursor': "'pointer' = hand cursor on hover — pair with customRowAction so it reads as clickable",
+  'content': "Generated content for pseudo-elements — rarely useful in SP formatting",
+  'z-index': "Stacking order — higher sits on top: '1', '10'. Only works with position set",
+  'position': "'relative' = nudge from normal spot (and anchor children); 'absolute' = pin by top/left inside nearest relative parent",
+  'top': "Offset when position is set — '4px', '-2px'", 'right': "Offset when position is set — '4px'",
+  'bottom': "Offset when position is set — '4px'", 'left': "Offset when position is set — '-8px' (overlap trick for facepiles)",
+  'float': "Old-school wrap layout — prefer display 'flex'", 'clear': "Stops floating — prefer flex",
+  'width': "'24px', '100%', 'auto'. Data-bar trick: =(@currentField*100/120)+'%'",
+  'height': "'24px', '100%'. Avatars: equal width+height + border-radius '50%'",
+  'min-width': "Never narrower than this — '24px' keeps tiny data bars readable",
+  'min-height': "Never shorter than this — '32px'",
+  'max-width': "Never wider than this — '200px' (pair with ellipsis)",
+  'max-height': "Never taller than this — '60px'",
+  'margin': "Space OUTSIDE the border — '4px' all · '2px 8px' vert/horiz · '0 8px 0 0' top right bottom left. Always give units",
+  'padding': "Space INSIDE, around content — '2px 10px' is the classic pill padding. Always give units",
+  'flex': "This CHILD's share of space — '1' = fill an equal share, '0 0 auto' = natural size, '2' = double share",
+  'flex-basis': "Child's starting size before grow/shrink — '120px', 'auto'",
+  'flex-direction': "'row' = children side by side, 'column' = stacked (the Alignment section sets this visually)",
+  'flex-flow': "Shorthand for flex-direction + flex-wrap in one — 'row wrap', 'column nowrap'",
+  'flex-grow': "How eagerly this child takes leftover space — '1' grows, '0' stays put",
+  'flex-shrink': "May this child squish below its natural size? '0' = never (keeps icons round)",
+  'flex-wrap': "'wrap' lets children flow onto new lines — pills, tags, chips",
+  'align-items': "Cross-axis alignment of children — 'center', 'flex-start', 'stretch' (Alignment section does this visually)",
+  'justify-content': "Main-axis packing — 'center', 'space-between', 'flex-end' (Alignment section does this visually)",
+  'gap': "Space between flex children — '8px'. Supported by modern SP",
+  'row-gap': "Vertical space between wrapped lines — '4px'",
+  'column-gap': "Horizontal space between children — '8px'",
+  'font': "Shorthand for all font props — prefer the individual font-* properties",
+  'font-family': "Typeface — '\"Segoe UI\", sans-serif', 'monospace' for IDs/code",
+  'font-size': "Text size — '13px' (SP body text is 13–14px), '12px' for captions",
+  'font-style': "'italic' or 'normal'",
+  'font-variant': "'small-caps'",
+  'font-weight': "'600' = semibold (SP's emphasis weight), 'bold', 'normal'",
+  'line-height': "Vertical rhythm of text — '20px' or unitless '1.4'",
+  'letter-spacing': "Space between letters — '0.5px' makes UPPERCASE labels breathe",
+  'word-spacing': "Space between words — '2px'",
+  'word-break': "'break-all' force-wraps long IDs/URLs that have no spaces",
+  'word-wrap': "'break-word' wraps a too-long word instead of overflowing",
+  'white-space': "'nowrap' = one line (pair with ellipsis); 'pre-wrap' keeps the field's line breaks",
+  'text-align': "Horizontal alignment of text — 'center', 'right' (numbers)",
+  'text-decoration': "'none' removes a link's underline; 'line-through' strikes out done items",
+  'text-indent': "First-line indent — '12px'",
+  'text-overflow': "'ellipsis' shows … when clipped — needs overflow 'hidden' + white-space 'nowrap' too",
+  'text-shadow': "x y blur color — '0 1px 2px rgba(0,0,0,.4)' lifts text off photos",
+  'text-transform': "'uppercase', 'capitalize', 'lowercase'",
+  'vertical-align': "Aligns inline elements to the text line — 'middle', 'text-bottom'",
+  'direction': "'rtl' for right-to-left languages",
+  'unicode-bidi': "Bidirectional text control — pairs with direction",
+  'list-style': "Bullet style shorthand — 'none' removes bullets",
+  'list-style-image': "Custom bullet image — 'url(…)'",
+  'list-style-position': "'inside' or 'outside' the text block",
+  'list-style-type': "'disc', 'decimal', 'none'",
+  'table-layout': "'fixed' = columns honor your widths instead of content",
+  'border-collapse': "'collapse' merges adjacent table cell borders into one",
+  'border-spacing': "Gap between table cells — '0'",
+  'caption-side': "'top' or 'bottom' for table captions",
+  'empty-cells': "'hide' borders of empty table cells",
+  'transform': "'rotate(45deg)', 'scale(1.2)', 'translateX(4px)' — chevrons, badges, micro-nudges",
+  'object-fit': "How an <img> fills its box — 'cover' crops to fill, 'contain' letterboxes",
+  '-webkit-line-clamp': "Max text lines, then … — '2'. Needs display '-webkit-box' + -webkit-box-orient 'vertical' + overflow 'hidden'",
+  '-webkit-box-orient': "'vertical' — required partner of -webkit-line-clamp",
+  '--inline-editor-border-width': "Styles the inline-edit affordance (inlineEditField) — '1px'",
+  '--inline-editor-border-style': "Inline-edit border style — 'solid'",
+  '--inline-editor-border-radius': "Inline-edit corner rounding — '4px'",
+  '--inline-editor-border-color': "Inline-edit border color — '#0078d4'",
+};
+// the per-side / per-corner families, generated to stay in sync
+for (const side of ['top', 'right', 'bottom', 'left']) {
+  STYLE_PROP_DOCS[`border-${side}`] = `Border on the ${side} side only — '1px solid #e1dfdd'. Left accent stripe: '3px solid #0078d4'`;
+  STYLE_PROP_DOCS[`border-${side}-color`] = `Color of the ${side} border`;
+  STYLE_PROP_DOCS[`border-${side}-style`] = `'solid', 'dashed', 'dotted' — ${side} side`;
+  STYLE_PROP_DOCS[`border-${side}-width`] = `Thickness of the ${side} border — '1px'`;
+  STYLE_PROP_DOCS[`margin-${side}`] = `Space outside, ${side} side only — '8px' (the box-model diagram above edits this too)`;
+  STYLE_PROP_DOCS[`padding-${side}`] = `Space inside, ${side} side only — '8px' (the box-model diagram above edits this too)`;
+}
+for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+  STYLE_PROP_DOCS[`border-${corner}-radius`] = `Round only the ${corner.replace('-', ' ')} corner — '4px'`;
+}
+
+/** Same idea for the attribute allow-list. */
+export const ATTRIBUTE_DOCS: Record<string, string> = {
+  'class': "SP/Fluent utility classes — theme-aware colors ('ms-bgColor-themePrimary', 'sp-field-severity--good') beat hex codes in dark mode",
+  'iconName': "Fluent UI icon to render in this element — 'CheckMark', 'Warning', 'Flag' (value suggestions below)",
+  'href': "Link target — 'https://…' or build one: ='mailto:'+[$Owner.email]",
+  'target': "'_blank' opens the link in a new tab",
+  'rel': "'noreferrer noopener' — pair with target _blank",
+  'src': "Image URL — avatars: =getUserImage([$Owner.email],'S')",
+  'alt': "Image description for screen readers",
+  'title': "Tooltip on hover — also what screen readers announce; always set one on icons",
+  'role': "Accessibility role — 'img', 'button', 'presentation'",
+  'aria': "Aria attribute bundle for accessibility",
+  'd': "SVG path data — the shape itself: 'M 0 0 L 10 10 …'",
+  'viewBox': "SVG coordinate system — '0 0 20 20'",
+  'preserveAspectRatio': "How the SVG scales in its box — 'xMidYMid meet'",
+  'data-interception': "'off' makes SP open the href without its link interception",
+  'draggable': "'false' stops image ghost-dragging",
+  'id': "Element id — rarely needed; prefer classes",
+};
+
 export const STYLE_VALUE_SUGGESTIONS: Record<string, string[]> = {
   'display': ['flex', 'inline-flex', 'block', 'inline-block', 'none', 'table', 'table-row', 'table-cell', "=if([$Field]=='','none','flex')"],
   'flex-direction': ['row', 'column', 'row-reverse', 'column-reverse'],

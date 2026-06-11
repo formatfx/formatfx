@@ -10,6 +10,7 @@ import type { SPElement, SPExpr, CustomRowAction } from '../core/types';
 import {
   ELM_TYPES, ALLOWED_STYLES, ALLOWED_ATTRIBUTES, ROW_ACTIONS, DIRECTIONAL_HINTS,
   STYLE_VALUE_SUGGESTIONS, ATTRIBUTE_VALUE_SUGGESTIONS,
+  STYLE_PROP_DOCS, ATTRIBUTE_DOCS,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
 
@@ -109,13 +110,13 @@ export function mountInspector(host: HTMLElement): void {
     host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
 
     host.appendChild(section('Style', [
-      kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, (obj) => commit((n) => {
+      kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
       })),
     ], true));
 
     host.appendChild(section('Attributes', [
-      kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, (obj) => commit((n) => {
+      kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.attributes; else n.attributes = obj;
       })),
     ], true));
@@ -578,12 +579,14 @@ let datalistSeq = 0;
 /**
  * Key/value table editor for style & attributes objects. Values may be
  * Excel-style strings or AST operator objects — objects display as JSON and
- * are kept intact unless the user actually edits that row.
+ * are kept intact unless the user actually edits that row. `docs` feeds the
+ * dropdown's secondary text and each row's ⓘ explanation.
  */
 function kvEditor(
   obj: Record<string, SPExpr | undefined>,
   keySuggestions: string[],
   valueSuggestions: Record<string, string[]>,
+  docs: Record<string, string>,
   onChange: (next: Record<string, SPExpr>) => void,
 ): HTMLElement {
   const wrap = document.createElement('div');
@@ -595,6 +598,7 @@ function kvEditor(
   for (const k of keySuggestions) {
     const o = document.createElement('option');
     o.value = k;
+    if (docs[k]) o.label = docs[k]; // shown as secondary text in the dropdown
     dl.appendChild(o);
   }
   wrap.appendChild(dl);
@@ -640,13 +644,21 @@ function kvEditor(
     const valList = document.createElement('datalist');
     valList.id = `wb-dl-${datalistSeq++}`;
     val.setAttribute('list', valList.id);
+    // ⓘ — what this property does and what its values look like
+    const info = document.createElement('span');
+    info.className = 'wb-kv-info';
+    info.textContent = 'ⓘ';
     const refreshValueOptions = () => {
+      const k = key.value.trim();
       valList.innerHTML = '';
-      for (const opt of valueSuggestions[key.value.trim()] ?? []) {
+      for (const opt of valueSuggestions[k] ?? []) {
         const o = document.createElement('option');
         o.value = opt;
         valList.appendChild(o);
       }
+      const doc = docs[k];
+      info.title = doc ?? (k ? `No notes for "${k}" — check the allow-list suggestions` : 'Pick a property to see what it does');
+      info.classList.toggle('wb-kv-info-known', !!doc);
     };
     refreshValueOptions();
     const del = document.createElement('button');
@@ -656,7 +668,7 @@ function kvEditor(
     key.addEventListener('input', refreshValueOptions);
     key.addEventListener('change', commitRows);
     val.addEventListener('change', commitRows);
-    row.append(key, val, valList, del);
+    row.append(key, val, valList, info, del);
     wrap.appendChild(row);
   };
 

@@ -96,7 +96,8 @@ test('dark mode (the default) keeps the row card readable (theme classes, not he
   await expect(title).toHaveCSS('color', 'rgb(255, 255, 255)');
 });
 
-test('outlines toggle draws element boxes', async ({ page }) => {
+test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) => {
+  await page.click('#wb-menu-btn');
   await page.check('#wb-outlines');
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
@@ -107,8 +108,11 @@ test('basic mode (the default) trims the surface to click-only controls', async 
   await page.reload();
   await expect(page.locator('#wb-mode button', { hasText: 'Basic' })).toHaveClass(/active/);
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
-  await expect(page.locator('#wb-outlines')).toBeHidden();
   await expect(page.locator('#wb-activedoc')).toBeHidden();
+  // outlines lives in the ☰ menu and IS part of basic
+  await page.click('#wb-menu-btn');
+  await expect(page.locator('#wb-outlines')).toBeVisible();
+  await page.click('#wb-menu-btn');
 
   // palette: only the curated basic tier — no actions, no shells, no forEach presets
   await expect(page.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();

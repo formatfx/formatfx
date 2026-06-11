@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { evaluate, evalAny, parseForEach, evaluateForEachList, type EvalContext } from './expressions';
 import { lintDocument, stripExpressionWhitespace } from './linter';
 import { importJson, exportJson } from './serializer';
+import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES, STYLE_PROP_DOCS, ATTRIBUTE_DOCS } from './schema';
 import { importSchema, mapSpFieldType, buildSampleRows } from './schemaImport';
 import { renderElement } from './renderer';
 import type { FormatterDocument, SPElement } from './types';
@@ -302,6 +303,19 @@ describe('serializer', () => {
     expect(kept._elmName).toBe('Card');
     expect(kept.children[0]._elmName).toBe('Label');
     expect(exportJson(doc, { keepMeta: false })).not.toContain('_elmName');
+  });
+});
+
+describe('schema docs', () => {
+  it('every allow-listed style property has an ⓘ explanation', () => {
+    for (const prop of ALLOWED_STYLES) {
+      expect(STYLE_PROP_DOCS[prop], `missing STYLE_PROP_DOCS entry for "${prop}"`).toBeTruthy();
+    }
+  });
+  it('every allow-listed attribute has an ⓘ explanation', () => {
+    for (const attr of ALLOWED_ATTRIBUTES) {
+      expect(ATTRIBUTE_DOCS[attr], `missing ATTRIBUTE_DOCS entry for "${attr}"`).toBeTruthy();
+    }
   });
 });
 

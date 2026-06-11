@@ -34,13 +34,13 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 - **Basic & Advanced modes** — the app lands in **Basic**: a curated palette
   of the pieces people actually reach for (status pills, traffic lights,
   date badges, data bars, personas, stars…), the canvas, the structure tree,
-  your data, and a single click-only **Alignment** control — nothing
-  hand-editable, so a misclick can't corrupt the formatter, and everything
-  is undoable. **Advanced** (topbar toggle, remembered per browser) restores
-  the full surface: every preset, all element/style/attribute properties,
-  the box model, the raw JSON tab with lint diagnostics, `forEach` loops,
-  row actions, hover cards, inline edit, the CFR registry, tenant themes
-  and the outlines/debug tools.
+  your data, the inspect-outlines toggle, and a single click-only
+  **Alignment** control — nothing hand-editable, so a misclick can't corrupt
+  the formatter, and everything is undoable. **Advanced** (topbar toggle,
+  remembered per browser) restores the full surface: every preset, all
+  element/style/attribute properties, the box model, the raw JSON tab with
+  lint diagnostics, `forEach` loops, row actions, hover cards, inline edit,
+  the CFR registry and tenant themes.
 - **Named elements** — every element can carry a friendly name (double-click
   it in the Structure pane, or the ✎ action): presets arrive pre-named
   ("Status pill", not "div"). Names use the `_elmName` convention — SharePoint
