@@ -1,0 +1,194 @@
+/**
+ * editor/canvas.ts — Interactive preview surface. Renders the formatter
+ * against every mock row in a context matching the document kind (column
+ * cell, full-width row, or gallery tile), supports click-to-select (incl.
+ * inside customCardProps flyouts), per-element drop targeting with live
+ * highlight, columnFormatterReference resolution from the registry, an
+ * inspect-outlines mode, and surfaces runtime evaluation issues.
+ */
+
+import { state } from './state';
+import { renderElement, closeFlyout, type RenderIssue } from '../core/renderer';
+import type { EvalContext } from '../core/expressions';
+import { paletteItemById } from './palette';
+import { instantiate } from './presets';
+import type { NodePath, SPElement } from '../core/types';
+
+export interface CanvasApi {
+  getRuntimeIssues: () => RenderIssue[];
+  setOutlines: (on: boolean) => void;
+}
+
+function pathFromAttr(raw: string | undefined): NodePath | undefined {
+  if (raw === undefined) return undefined;
+  return raw === '' ? [] : raw.split('.').map(Number);
+}
+
+/** Short human label for a node, for drop/select feedback. */
+function describeNode(el: SPElement | null): string {
+  if (!el) return 'canvas';
+  const txt = typeof el.txtContent === 'string' ? ` "${el.txtContent.slice(0, 18)}"` : '';
+  return `<${el.elmType}>${txt}`;
+}
+
+export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): CanvasApi {
+  let runtimeIssues: RenderIssue[] = [];
+
+  const resolveColumnRef = (fieldRef: string): SPElement | null => {
+    const name = fieldRef.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+    return state.columnRefs[name] ?? null;
+  };
+
+  const ctxForRow = (rowIndex: number): EvalContext => ({
+    row: state.rows[rowIndex],
+    rowIndex,
+    currentFieldName: state.currentFieldName,
+    me: state.me,
+    iterators: {},
+    iteratorIndex: {},
+    displayNames: Object.fromEntries(state.fields.map((f) => [f.name, f.displayName ?? f.name])),
+    now: new Date(),
+  });
+
+  const render = () => {
+    closeFlyout();
+    host.innerHTML = '';
+    runtimeIssues = [];
+    const issues: RenderIssue[] = [];
+    const opts = {
+      issues,
+      tagPaths: true,
+      resolveColumnRef,
+      onAction: (_el: unknown, summary: string) => onToast(summary),
+    };
+
+    const kind = state.doc.kind;
+    if (kind === 'column') {
+      const table = document.createElement('div');
+      table.className = 'wb-mock-list';
+      const header = document.createElement('div');
+      header.className = 'wb-mock-row wb-mock-header';
+      header.innerHTML = `<div class="wb-mock-cell">Title</div><div class="wb-mock-cell wb-mock-cell-fmt">${state.currentFieldName} (formatted)</div>`;
+      table.appendChild(header);
+      state.rows.forEach((row, i) => {
+        const tr = document.createElement('div');
+        tr.className = 'wb-mock-row';
+        const title = document.createElement('div');
+        title.className = 'wb-mock-cell';
+        title.textContent = String(row.Title ?? `Item ${i + 1}`);
+        const cell = document.createElement('div');
+        cell.className = 'wb-mock-cell wb-mock-cell-fmt';
+        try {
+          cell.appendChild(renderElement(state.doc.root, ctxForRow(i), opts));
+        } catch (e) {
+          cell.textContent = `⚠ ${(e as Error).message}`;
+          cell.classList.add('wb-render-error');
+        }
+        tr.append(title, cell);
+        table.appendChild(tr);
+      });
+      host.appendChild(table);
+    } else if (kind === 'row') {
+      state.rows.forEach((_row, i) => {
+        const rowHost = document.createElement('div');
+        rowHost.className = 'wb-mock-viewrow';
+        try {
+          rowHost.appendChild(renderElement(state.doc.root, ctxForRow(i), opts));
+        } catch (e) {
+          rowHost.textContent = `⚠ ${(e as Error).message}`;
+          rowHost.classList.add('wb-render-error');
+        }
+        host.appendChild(rowHost);
+      });
+    } else {
+      const deck = document.createElement('div');
+      deck.className = 'wb-mock-deck';
+      state.rows.forEach((_row, i) => {
+        const tile = document.createElement('div');
+        tile.className = 'wb-mock-tile';
+        tile.style.width = `${state.doc.tileWidth ?? 254}px`;
+        tile.style.minHeight = `${state.doc.tileHeight ?? 220}px`;
+        try {
+          tile.appendChild(renderElement(state.doc.root, ctxForRow(i), opts));
+        } catch (e) {
+          tile.textContent = `⚠ ${(e as Error).message}`;
+          tile.classList.add('wb-render-error');
+        }
+        deck.appendChild(tile);
+      });
+      host.appendChild(deck);
+    }
+
+    runtimeIssues = issues;
+    highlightSelection();
+  };
+
+  const highlightSelection = () => {
+    host.querySelectorAll('.wb-selected').forEach((n) => n.classList.remove('wb-selected'));
+    if (!state.selection) return;
+    const key = state.selection.join('.');
+    host.querySelectorAll(`[data-sp-path="${CSS.escape(key)}"]`).forEach((n) => n.classList.add('wb-selected'));
+  };
+
+  // click-to-select — flyouts are appended to <body>, so listen there too
+  const selectFrom = (e: MouseEvent, scope: HTMLElement | Document) => {
+    const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
+    if (!target) return false;
+    if (scope instanceof HTMLElement && !scope.contains(target)) return false;
+    const path = pathFromAttr(target.dataset.spPath);
+    if (path === undefined) return false;
+    state.select(path);
+    return true;
+  };
+  host.addEventListener('click', (e) => selectFrom(e, host));
+  document.addEventListener('click', (e) => {
+    const inFlyout = (e.target as HTMLElement).closest?.('.wb-flyout');
+    if (inFlyout) selectFrom(e, inFlyout as HTMLElement);
+  });
+
+  // palette drag-drop with per-element target highlight
+  let lastDropTarget: HTMLElement | null = null;
+  const clearDropHighlight = () => {
+    lastDropTarget?.classList.remove('wb-drop-target');
+    lastDropTarget = null;
+    host.classList.remove('wb-canvas-drop');
+  };
+  host.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer?.types.includes('application/x-wb-palette')) return;
+    e.preventDefault();
+    host.classList.add('wb-canvas-drop');
+    const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
+    if (target !== lastDropTarget) {
+      lastDropTarget?.classList.remove('wb-drop-target');
+      lastDropTarget = target;
+      target?.classList.add('wb-drop-target');
+    }
+  });
+  host.addEventListener('dragleave', (e) => {
+    if (!host.contains(e.relatedTarget as Node)) clearDropHighlight();
+  });
+  host.addEventListener('drop', (e) => {
+    const id = e.dataTransfer?.getData('application/x-wb-palette');
+    const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
+    clearDropHighlight();
+    if (!id) return;
+    e.preventDefault();
+    const item = paletteItemById(id);
+    if (!item) return;
+    const path = pathFromAttr(target?.dataset.spPath);
+    const container = path !== undefined ? state.nodeAt(path) : null;
+    const insertedAt = state.insertNode(instantiate(item, state.fields), path);
+    onToast(`Inserted "${item.label}" into ${describeNode(container)} — now selected (depth ${insertedAt.length})`);
+  });
+
+  state.subscribe((reason) => {
+    if (reason === 'selection') highlightSelection();
+    else render();
+  });
+  render();
+
+  return {
+    getRuntimeIssues: () => runtimeIssues,
+    setOutlines: (on: boolean) => host.classList.toggle('wb-outlines', on),
+  };
+}

@@ -1,0 +1,402 @@
+/* SP List Formatting Sandbox — app chrome */
+
+:root {
+  --wb-bg: #faf9f8;
+  --wb-surface: #ffffff;
+  --wb-border: #e1dfdd;
+  --wb-text: #323130;
+  --wb-text-2: #605e5c;
+  --wb-accent: #0078d4;
+  --wb-canvas-bg: #f3f2f1;
+}
+
+body.wb-dark {
+  --wb-bg: #1b1a19;
+  --wb-surface: #252423;
+  --wb-border: #3b3a39;
+  --wb-text: #f3f2f1;
+  --wb-text-2: #c8c6c4;
+  --wb-accent: #2899f5;
+  --wb-canvas-bg: #141312;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  font-size: 13px;
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── top bar ─────────────────────────────────────────────── */
+.wb-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+.wb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+.wb-brand .ms-Icon { color: var(--wb-accent); font-size: 18px; }
+.wb-brand-sub { font-weight: 400; font-size: 11px; color: var(--wb-text-2); }
+.wb-topbar-controls { display: flex; align-items: center; gap: 10px; }
+.wb-topbar-controls label { font-size: 12px; color: var(--wb-text-2); display: flex; align-items: center; gap: 5px; }
+.wb-topbar-controls button {
+  border: 1px solid var(--wb-border); background: var(--wb-surface); color: var(--wb-text);
+  border-radius: 3px; padding: 4px 8px; cursor: pointer;
+}
+.wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* ── layout ──────────────────────────────────────────────── */
+.wb-layout {
+  display: grid;
+  grid-template-columns: 220px 5px 250px 5px 1fr 5px 360px;
+  flex: 1; min-height: 0;
+}
+.wb-resizer {
+  cursor: col-resize; background: transparent; touch-action: none;
+}
+.wb-resizer:hover, .wb-resizer:active { background: var(--wb-accent); opacity: .5; }
+.wb-pane {
+  overflow: auto; border-right: 1px solid var(--wb-border);
+  background: var(--wb-surface); padding: 10px;
+}
+.wb-pane h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin: 2px 0 10px;
+}
+.wb-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* ── palette ─────────────────────────────────────────────── */
+.wb-palette-group {
+  font-size: 11px; font-weight: 600; color: var(--wb-text-2);
+  margin: 12px 0 6px;
+}
+.wb-palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.wb-palette-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px; border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-bg); color: var(--wb-text); cursor: grab; font-size: 11px;
+}
+.wb-palette-item:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-palette-item .ms-Icon { font-size: 16px; }
+
+/* collapsed palette: icon-only, drag still works, hover shows the name */
+.wb-pane-palette h2 { display: flex; align-items: center; justify-content: space-between; }
+.wb-pane-palette h2 button {
+  border: none; background: transparent; color: var(--wb-text-2);
+  cursor: pointer; font-size: 12px; padding: 0 2px;
+}
+.wb-pane-palette.wb-collapsed { padding: 10px 6px; }
+.wb-pane-palette.wb-collapsed .wb-pane-title,
+.wb-pane-palette.wb-collapsed .wb-palette-group,
+.wb-pane-palette.wb-collapsed .wb-palette-item span { display: none; }
+.wb-pane-palette.wb-collapsed .wb-palette-grid { grid-template-columns: 1fr; gap: 4px; }
+.wb-pane-palette.wb-collapsed .wb-palette-item { padding: 7px 0; }
+
+/* ── workspace tree: document headers ────────────────────── */
+.wb-doc-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 7px; margin: 4px 0 2px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-doc-header:hover { border-color: var(--wb-accent); }
+.wb-doc-header.active { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-doc-badge { margin-left: auto; font-size: 10px; font-weight: 400; color: var(--wb-text-2); white-space: nowrap; }
+.wb-doc-group {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin: 12px 0 2px;
+}
+.wb-doc-missing {
+  font-size: 11px; color: var(--wb-text-2); font-style: italic;
+  border: 1px dashed var(--wb-border); border-radius: 4px;
+  padding: 4px 7px; margin: 4px 0;
+}
+
+/* ── tree ────────────────────────────────────────────────── */
+.wb-tree-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 3px 4px; border-radius: 3px; cursor: pointer; user-select: none;
+}
+.wb-tree-row:hover { background: var(--wb-bg); }
+.wb-tree-row.selected { background: var(--wb-accent); color: #fff; }
+.wb-tree-row.droptarget { outline: 2px dashed var(--wb-accent); }
+.wb-tree-label {
+  font-family: Consolas, monospace; font-size: 11px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.wb-tree-elmicon { font-size: 11px; color: var(--wb-text-2); }
+.wb-tree-row.selected .wb-tree-elmicon { color: inherit; }
+.wb-tree-elmtype { font-weight: 600; }
+.wb-tree-hint { color: var(--wb-text-2); }
+.wb-tree-row.selected .wb-tree-hint { color: inherit; opacity: .85; }
+.wb-chip {
+  font-size: 9px; border-radius: 3px; padding: 0 3px; line-height: 1.4;
+  color: #fff; flex-shrink: 0;
+}
+.wb-chip-loop { background: #ca5010; }
+.wb-chip-action { background: #0078d4; }
+.wb-chip-card { background: #5c2d91; }
+.wb-chip-cfr { background: #038387; }
+.wb-chip-edit { background: #767676; }
+.wb-tree-actions { display: none; gap: 2px; }
+.wb-tree-row:hover .wb-tree-actions { display: inline-flex; }
+.wb-tree-actions button {
+  border: none; background: transparent; cursor: pointer; color: inherit;
+  padding: 1px 3px; font-size: 10px;
+}
+.wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
+
+/* ── canvas ──────────────────────────────────────────────── */
+.wb-pane-canvas { background: var(--wb-canvas-bg); }
+.wb-canvas { min-height: 300px; padding: 12px; border-radius: 6px; }
+.wb-canvas.wb-canvas-drop { outline: 2px dashed var(--wb-accent); }
+
+.wb-mock-list { background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 4px; }
+.wb-mock-row { display: flex; border-bottom: 1px solid var(--wb-border); align-items: center; min-height: 38px; }
+.wb-mock-row:last-child { border-bottom: none; }
+.wb-mock-header { font-size: 11px; font-weight: 600; color: var(--wb-text-2); min-height: 30px; }
+.wb-mock-cell { width: 200px; padding: 4px 10px; flex-shrink: 0; }
+.wb-mock-cell-fmt { flex: 1; }
+/* left gutter mirrors the real SP row margin so absolute left-edge chrome
+   (e.g. "PROJ [$ID]" chips at left:-Npx) isn't clipped by the pane */
+.wb-mock-viewrow { margin-bottom: 4px; padding-left: 18px; position: relative; }
+.wb-mock-deck { display: flex; flex-wrap: wrap; }
+.wb-mock-tile { margin: 6px; }
+.wb-render-error { color: #a4262c; font-size: 12px; }
+
+/* selection + emulation affordances inside the preview.
+   Deliberately NOT a solid border: dashed, offset away from the element and
+   gently pulsing, so it can't be mistaken for the element's own design. */
+@keyframes wb-sel-pulse {
+  0%, 100% { outline-color: var(--wb-accent); }
+  50% { outline-color: rgba(0, 120, 212, .25); }
+}
+.wb-selected {
+  outline: 1px dashed var(--wb-accent) !important;
+  outline-offset: 3px;
+  animation: wb-sel-pulse 1.4s ease-in-out infinite;
+}
+.wb-drop-target { outline: 2px dashed var(--wb-accent) !important; outline-offset: -1px; background: rgba(0,120,212,.08); }
+.wb-outlines [data-sp-path] { outline: 1px dashed rgba(140,140,160,.6); outline-offset: -1px; }
+.wb-canvas [data-sp-path]:empty { min-height: 24px; min-width: 24px; }
+.wb-clickable { cursor: pointer; }
+.wb-has-card { cursor: pointer; }
+.wb-inline-edit { border-bottom: 1px dashed var(--wb-accent); }
+.wb-cfr-chip {
+  font-size: 10px; background: repeating-linear-gradient(45deg, #f3f2f1, #f3f2f1 4px, #e8e6e4 4px, #e8e6e4 8px);
+  border: 1px dashed #a19f9d; border-radius: 3px; padding: 1px 6px; color: #605e5c;
+}
+.wb-foreach-empty { font-size: 10px; color: var(--wb-text-2); opacity: .6; }
+
+.wb-flyout {
+  position: absolute; z-index: 1000; background: var(--wb-surface);
+  border: 1px solid var(--wb-border); border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.22); min-width: 120px; max-width: 420px;
+}
+/* customCardProps beak (isBeakVisible) — rotated square on the anchor-facing edge */
+.wb-flyout-beak {
+  position: absolute; width: 12px; height: 12px;
+  background: var(--wb-surface); transform: rotate(45deg);
+  border: 1px solid var(--wb-border);
+}
+.wb-flyout-beak-top { top: -7px; left: calc(50% - 6px); border-right: none; border-bottom: none; }
+.wb-flyout-beak-bottom { bottom: -7px; left: calc(50% - 6px); border-left: none; border-top: none; }
+.wb-flyout-beak-left { left: -7px; top: 16px; border-top: none; border-right: none; }
+.wb-flyout-beak-right { right: -7px; top: 16px; border-bottom: none; border-left: none; }
+
+/* ── side pane: tabs ─────────────────────────────────────── */
+.wb-pane-side { border-right: none; border-left: 1px solid var(--wb-border); display: flex; flex-direction: column; }
+.wb-tabs { display: flex; gap: 2px; margin-bottom: 8px; align-items: center; }
+.wb-tabs button {
+  flex: 1; padding: 6px; border: none; background: var(--wb-bg); color: var(--wb-text-2);
+  border-radius: 3px 3px 0 0; cursor: pointer; font-size: 12px;
+}
+.wb-tabs button.active { background: var(--wb-accent); color: #fff; }
+.wb-tabs #wb-side-peek, .wb-tabs #wb-side-max {
+  flex: 0 0 auto; padding: 4px 6px; border-radius: 3px; font-size: 11px;
+}
+.wb-tabs #wb-side-peek.active, .wb-tabs #wb-side-max.active { background: var(--wb-accent); color: #fff; }
+
+/* auto-hide (peek) mode: rail when closed, fixed overlay when open */
+.wb-side-rail {
+  display: none; flex-direction: column; align-items: center; gap: 6px;
+  color: var(--wb-text-2); font-size: 12px; cursor: pointer; padding-top: 8px;
+}
+.wb-side-rail span { writing-mode: vertical-rl; letter-spacing: .12em; text-transform: uppercase; font-size: 10px; }
+.wb-pane-side.wb-peek:not(.wb-peek-open) > :not(.wb-side-rail) { display: none; }
+.wb-pane-side.wb-peek:not(.wb-peek-open) { padding: 4px 2px; }
+.wb-pane-side.wb-peek:not(.wb-peek-open) .wb-side-rail { display: flex; }
+.wb-pane-side.wb-peek.wb-peek-open {
+  position: fixed; right: 0; top: 49px; bottom: 0;
+  width: var(--wb-side-w, 380px); z-index: 600;
+  background: var(--wb-surface);
+  box-shadow: -10px 0 28px rgba(0,0,0,.28);
+  border-left: 1px solid var(--wb-border);
+}
+.wb-tab { display: none; flex: 1; min-height: 0; overflow: auto; }
+.wb-tab.active { display: flex; flex-direction: column; }
+
+/* ── inspector ───────────────────────────────────────────── */
+.wb-inspector-empty { color: var(--wb-text-2); padding: 16px 6px; }
+.wb-inspector-section { border-bottom: 1px solid var(--wb-border); padding: 4px 0 8px; }
+.wb-inspector-section summary {
+  font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; color: var(--wb-text);
+}
+.wb-field { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.wb-field > span { font-size: 11px; color: var(--wb-text-2); }
+.wb-field input[type="text"], .wb-field textarea, .wb-field select,
+.wb-kv input, .wb-data-table input, .wb-data-toolbar select {
+  font: 12px Consolas, monospace; padding: 4px 6px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text); width: 100%;
+}
+.wb-kv-row { display: flex; gap: 4px; margin: 3px 0; }
+.wb-kv input.wb-kv-key { flex: 0 0 40%; width: auto; min-width: 0; }
+.wb-kv input.wb-kv-val { flex: 1 1 0; width: auto; min-width: 0; }
+.wb-kv-row button, .wb-kv-add {
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text-2);
+  border-radius: 3px; cursor: pointer; font-size: 10px;
+}
+.wb-kv-add { margin-top: 4px; padding: 3px 8px; }
+
+/* ── visual flex editor ──────────────────────────────────── */
+.wb-flex-presets { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin: 4px 0 8px; }
+.wb-flex-presets button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 5px 2px; font-size: 10px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-bg); color: var(--wb-text); cursor: pointer;
+}
+.wb-flex-presets button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-flexrow { display: flex; align-items: center; gap: 4px; margin: 5px 0; flex-wrap: wrap; }
+.wb-flexrow-label { font-size: 10px; color: var(--wb-text-2); width: 48px; flex-shrink: 0; }
+.wb-flexbtn {
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-bg); cursor: pointer; padding: 3px;
+}
+.wb-flexbtn:hover { border-color: var(--wb-accent); }
+.wb-flexbtn.active { border-color: var(--wb-accent); background: rgba(0, 120, 212, .12); }
+.wb-flexmini {
+  width: 34px; height: 20px; gap: 2px;
+  border: 1px dotted var(--wb-border); border-radius: 2px; padding: 1px;
+  box-sizing: border-box; overflow: hidden;
+}
+.wb-flexmini i { background: var(--wb-accent); border-radius: 1px; flex-shrink: 0; }
+.wb-flexgap { width: 52px; font: 11px Consolas, monospace; padding: 2px 4px;
+  border: 1px solid var(--wb-border); border-radius: 3px; background: var(--wb-bg); color: var(--wb-text); }
+
+/* ── box model editor ────────────────────────────────────── */
+.wb-boxmodel { padding: 4px 0; }
+.wb-box {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 14px 6px 6px; border-radius: 4px;
+}
+.wb-box-margin { background: rgba(249, 174, 88, .18); border: 1px dashed rgba(202, 80, 16, .55); }
+.wb-box-padding { background: rgba(123, 197, 138, .18); border: 1px dashed rgba(16, 124, 16, .5); width: 100%; }
+.wb-box-tag {
+  position: absolute; top: 1px; left: 6px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
+}
+.wb-box-mid { display: flex; align-items: center; gap: 4px; width: 100%; }
+.wb-box-mid > .wb-box, .wb-box-mid > .wb-box-content { flex: 1; }
+.wb-boxmodel input.wb-box-side {
+  width: 44px; flex: 0 0 44px; text-align: center;
+  font: 10px Consolas, monospace; padding: 2px;
+  border: 1px solid transparent; border-radius: 2px;
+  background: transparent; color: var(--wb-text);
+}
+.wb-boxmodel input.wb-box-side:hover, .wb-boxmodel input.wb-box-side:focus {
+  border-color: var(--wb-accent); background: var(--wb-surface);
+}
+.wb-box-content {
+  text-align: center; font: 10px Consolas, monospace;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 3px; padding: 8px 4px; color: var(--wb-text-2);
+}
+.wb-box-hint { font-size: 10px; color: var(--wb-text-2); margin-top: 4px; }
+
+/* ── JSON panel ──────────────────────────────────────────── */
+.wb-json-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; align-items: center; }
+.wb-json-toolbar button {
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
+  border-radius: 3px; padding: 4px 8px; cursor: pointer; font-size: 11px;
+}
+.wb-json-toolbar button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-check { font-size: 11px; color: var(--wb-text-2); display: flex; align-items: center; gap: 3px; }
+.wb-check input { width: auto; }
+#wb-json-text {
+  flex: 1; min-height: 220px; resize: vertical; white-space: pre;
+  font: 11px Consolas, monospace; padding: 8px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+
+/* ── lint ────────────────────────────────────────────────── */
+.wb-lint { margin-top: 8px; overflow: auto; max-height: 220px; }
+.wb-lint-ok { color: #107c10; font-size: 12px; padding: 6px; }
+.wb-lint-item {
+  font-size: 11px; padding: 5px 8px; margin: 3px 0; border-radius: 3px;
+  cursor: pointer; border-left: 3px solid transparent; background: var(--wb-bg);
+}
+.wb-lint-error { border-left-color: #d13438; }
+.wb-lint-warning { border-left-color: #ffb900; }
+.wb-lint-info { border-left-color: #0078d4; }
+.wb-lint-runtime { border-left-color: #8a8886; }
+
+/* ── data panel ──────────────────────────────────────────── */
+.wb-data-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
+.wb-data-toolbar button {
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
+  border-radius: 3px; padding: 3px 8px; cursor: pointer; font-size: 11px; white-space: nowrap;
+}
+.wb-data-table { border-collapse: collapse; width: 100%; }
+.wb-data-table th { text-align: left; padding: 2px; vertical-align: top; }
+.wb-data-table td { padding: 2px; }
+.wb-data-table th select { width: 100%; font-size: 10px; margin-top: 2px; }
+.wb-data-fieldname { font-size: 11px; font-weight: 600; }
+.wb-data-table td button { border: none; background: transparent; cursor: pointer; color: var(--wb-text-2); }
+
+/* ── schema forms (add field / import) ───────────────────── */
+.wb-schema-form {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  padding: 8px; margin-bottom: 8px; background: var(--wb-bg);
+}
+.wb-schema-form input[type="text"], .wb-schema-form input:not([type]),
+.wb-schema-form select, .wb-schema-form textarea {
+  font: 12px Consolas, monospace; padding: 4px 6px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-surface); color: var(--wb-text); width: 100%;
+}
+.wb-schema-form button {
+  border: 1px solid var(--wb-border); background: var(--wb-surface); color: var(--wb-text);
+  border-radius: 3px; padding: 4px 8px; cursor: pointer; font-size: 11px;
+}
+.wb-schema-form button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-schema-lookup { display: flex; gap: 4px; }
+.wb-schema-help {
+  font: 10px Consolas, monospace; color: var(--wb-text-2);
+  margin: 0; white-space: pre-wrap; background: var(--wb-surface);
+  border: 1px dashed var(--wb-border); border-radius: 3px; padding: 6px;
+}
+.wb-schema-help-summary { font-size: 11px; color: var(--wb-text-2); cursor: pointer; }
+.wb-current-chip {
+  font-size: 11px; color: var(--wb-text-2); background: var(--wb-bg);
+  border: 1px dashed var(--wb-border); border-radius: 3px; padding: 4px 8px;
+}
+
+/* ── toast ───────────────────────────────────────────────── */
+.wb-toast {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  background: #323130; color: #fff; padding: 8px 16px; border-radius: 4px;
+  font-size: 12px; z-index: 2000; box-shadow: 0 4px 12px rgba(0,0,0,.3);
+}
+
+/* Fluent icon fallback if the CDN font is unavailable */
+.ms-Icon { font-style: normal; display: inline-block; min-width: 1em; line-height: 1; }

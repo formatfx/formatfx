@@ -1,0 +1,25 @@
+{
+  "name": "formatfx",
+  "description": "FormatFX — the visual sandbox and layout editor for SharePoint list formatting",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:single": "tsc && vite build --mode single",
+    "test": "vitest run",
+    "test:ui": "playwright test",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "happy-dom": "^20.10.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.4",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^4.1.8"
+  },
+  "license": "MIT",
+  "repository": "github:formatfx/formatfx"
+}
