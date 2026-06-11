@@ -92,10 +92,11 @@ Key structural invariants:
 - **Element names**: `SPElement._elmName` (a pre-existing TwFw provenance
   field) is the user-facing naming mechanism — tree shows it as the primary
   label (dblclick / ✎ renames), `instantiate()` stamps the palette label on
-  inserted presets, and the showcase workspace ships named. Export contract:
-  `exportJson` strips it unless `keepMeta` (the JSON tab's textarea always
-  passes `keepMeta: true` so Apply-to-canvas round-trips losslessly; the
-  copy/download buttons honor the "ship names" checkbox, default off).
+  inserted presets, and the showcase workspace ships named. Export contract
+  (per explicit product decision): names stay in exported JSON by DEFAULT —
+  `exportJson` keeps `_elmName` unless `keepMeta: false`; "clean" is opt-in
+  via the JSON tab's "names" checkbox (default checked). The JSON tab's
+  textarea always keeps them so Apply-to-canvas round-trips losslessly.
   Project save/autosave keep names (raw stringify).
 - **Basic/advanced mode**: `uiPrefs.mode` in `wb-ui-prefs`, **default
   `basic`** — that's the landing experience, deliberately. The mechanism is

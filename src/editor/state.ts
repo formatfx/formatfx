@@ -165,7 +165,7 @@ export class EditorState {
   private mainDocStash: FormatterDocument | null = null;
   private mainFieldStash: string | null = null;
   selection: NodePath | null = [];
-  themeMode: 'light' | 'dark' = 'light';
+  themeMode: 'light' | 'dark' = 'dark';
   /** Tenant theme palette overrides (token → hex), or null for stock Fluent. */
   customTheme: Record<string, string> | null = null;
   me: PersonValue = ME;

@@ -86,9 +86,8 @@ test('hover card opens as flyout and its content is selectable', async ({ page }
   await expect(page.locator('.wb-tree-row.selected')).toHaveCount(1);
 });
 
-test('dark mode keeps the row card readable (theme classes, not hex)', async ({ page }) => {
+test('dark mode (the default) keeps the row card readable (theme classes, not hex)', async ({ page }) => {
   await page.selectOption('#wb-example', 'row-card');
-  await page.click('#wb-theme');
   await expect(page.locator('body')).toHaveClass(/wb-dark/);
   const card = page.locator('.wb-mock-viewrow .ms-bgColor-white').first();
   // dark palette maps the "white" token to near-black — not #fff

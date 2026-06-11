@@ -61,9 +61,24 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   // the JSON tab keeps names so Apply round-trips losslessly…
   await openTab(page, 'json');
   expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "My pill"');
-  // …but copied (shipped) JSON is schema-clean by default
+  // …copies keep them by default (SP ignores them); clean is opt-in
+  await page.click('#wb-json-copy');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('"_elmName": "My pill"');
+  await page.uncheck('#wb-json-names');
   await page.click('#wb-json-copy');
   expect(await page.evaluate(() => navigator.clipboard.readText())).not.toContain('_elmName');
+});
+
+test('Title column toggle hides the context column in the column preview', async ({ page }) => {
+  await page.selectOption('#wb-example', 'status-pill');
+  await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
+  await page.uncheck('#wb-titlecol');
+  await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeHidden();
+  await page.check('#wb-titlecol');
+  await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
+  // the toggle only appears for column-kind previews
+  await page.selectOption('#wb-example', 'row-card');
+  await expect(page.locator('#wb-titlecol')).toBeHidden();
 });
 
 test('wrap-in-parent works on the root', async ({ page }) => {
@@ -128,15 +143,15 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
   }));
   await page.click('#wb-json-apply');
   const probe = page.locator('.wb-mock-cell-fmt [data-sp-path]').first();
-  await expect(probe).toHaveCSS('background-color', 'rgb(243, 242, 241)'); // light #f3f2f1
+  await expect(probe).toHaveCSS('background-color', 'rgb(49, 49, 49)'); // dark default #313131
   await page.click('#wb-theme');
-  await expect(page.locator('body')).toHaveClass(/wb-dark/);
-  await expect(probe).toHaveCSS('background-color', 'rgb(49, 49, 49)'); // dark #313131
-  // the harness reloads between captures — autosave must restore dark too
+  await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
+  await expect(probe).toHaveCSS('background-color', 'rgb(243, 242, 241)'); // light #f3f2f1
+  // the harness reloads between captures — autosave must restore the choice too
   await page.reload();
-  await expect(page.locator('body')).toHaveClass(/wb-dark/);
+  await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
   await expect(page.locator('.wb-mock-cell-fmt [data-sp-path]').first())
-    .toHaveCSS('background-color', 'rgb(49, 49, 49)');
+    .toHaveCSS('background-color', 'rgb(243, 242, 241)');
 });
 
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {

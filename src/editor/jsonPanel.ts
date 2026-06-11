@@ -20,7 +20,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
   host.innerHTML = `
     <div class="wb-json-toolbar">
       <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
-      <label class="wb-check" title="Include the Structure pane's _elmName labels in copied/downloaded JSON. SharePoint ignores them; default output is schema-clean. (The editor view below always shows them so Apply round-trips losslessly.)"><input type="checkbox" id="wb-json-names"> ship names</label>
+      <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>
       <button id="wb-json-copy" title="Copy to clipboard">Copy</button>
       <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
       <button id="wb-json-download" title="Download .json">Download</button>

@@ -76,6 +76,9 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
   color: var(--wb-text-2); margin: 2px 0 10px;
 }
 .wb-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.wb-preview-titlecol { display: inline-flex; float: right; text-transform: none; letter-spacing: 0; font-weight: 400; }
+/* hide the Title context cells (header + rows) when toggled off */
+.wb-canvas.wb-no-titlecol .wb-mock-cell:not(.wb-mock-cell-fmt) { display: none; }
 
 /* ── palette ─────────────────────────────────────────────── */
 .wb-palette-group {

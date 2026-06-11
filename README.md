@@ -44,9 +44,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 - **Named elements** — every element can carry a friendly name (double-click
   it in the Structure pane, or the ✎ action): presets arrive pre-named
   ("Status pill", not "div"). Names use the `_elmName` convention — SharePoint
-  ignores it — and are stripped from copied/downloaded JSON by default
-  ("ship names" in the JSON tab keeps them); project files and the JSON tab's
-  editing loop always preserve them.
+  ignores it — and stay in exported JSON by default; untick "names" in the
+  JSON tab for schema-pristine output. Project files always preserve them.
 - **Element palette** — schema primitives plus ~25 ready-made components
   distilled from years of community samples: status pills, traffic lights,
   severity classes, tag pills, due-date badges, day counters, personas,

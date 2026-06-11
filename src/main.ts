@@ -76,7 +76,9 @@ app.innerHTML = `
     </aside>
     <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
     <section class="wb-pane wb-pane-canvas">
-      <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span></h2>
+      <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span>
+        <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to preview the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
+      </h2>
       <div id="wb-canvas" class="wb-canvas"></div>
     </section>
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>
@@ -104,12 +106,14 @@ interface UiPrefs {
   paletteCollapsed: boolean;
   sideMode: 'normal' | 'peek' | 'max';
   mode: 'basic' | 'advanced';
+  titleCol: boolean;
 }
 const uiPrefs: UiPrefs = {
   cols: { palette: 220, tree: 250, side: 360 },
   paletteCollapsed: false,
   sideMode: 'normal',
   mode: 'basic',
+  titleCol: true,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
@@ -373,6 +377,25 @@ mountDataPanel(document.getElementById('wb-tab-data')!, toast);
 (document.getElementById('wb-outlines') as HTMLInputElement).addEventListener('change', (e) => {
   canvas.setOutlines((e.target as HTMLInputElement).checked);
 });
+
+// Title context column in the column-formatter preview (persisted view pref)
+const titleColCb = document.getElementById('wb-titlecol') as HTMLInputElement;
+const titleColLabel = document.getElementById('wb-titlecol-label')!;
+titleColCb.checked = uiPrefs.titleCol;
+canvas.setTitleColumn(uiPrefs.titleCol);
+titleColCb.addEventListener('change', () => {
+  uiPrefs.titleCol = titleColCb.checked;
+  canvas.setTitleColumn(titleColCb.checked);
+  saveUiPrefs();
+});
+const refreshTitleColVisibility = () => {
+  // only meaningful in the column-kind preview (incl. open column formatters)
+  titleColLabel.style.display = state.doc.kind === 'column' ? '' : 'none';
+};
+state.subscribe((reason) => {
+  if (reason === 'kind' || reason === 'load' || reason === 'data' || reason === 'document') refreshTitleColVisibility();
+});
+refreshTitleColVisibility();
 
 // lint refresh after each render pass
 state.subscribe((reason) => {
