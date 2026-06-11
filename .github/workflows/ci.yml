@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
   pull_request:
+# Node 20 action runtime is removed 2026-06-16; opt in to Node 24 now so
+# the forced switch is a no-op (HANDOFF roadmap #1)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 permissions:
   contents: read
   pages: write
