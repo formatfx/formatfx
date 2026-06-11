@@ -10,7 +10,8 @@
     "build:single": "tsc && vite build --mode single",
     "test": "vitest run",
     "test:ui": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:web": "npm run build && npx -y firebase-tools deploy --only hosting"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
