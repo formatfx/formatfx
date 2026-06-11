@@ -576,6 +576,89 @@ function boxModelEditor(node: SPElement, commit: (fn: (n: SPElement) => void) =>
 
 let datalistSeq = 0;
 
+// ─── property doc cards ──────────────────────────────────────────────────────
+// A formatted, readable replacement for the native tooltip: monospace
+// property header, the explanation with every 'example' rendered as a
+// clickable chip that applies itself as the value, and a live demo chip
+// actually wearing the property where that reads visually.
+
+const closeDocCards = () => {
+  document.querySelectorAll<HTMLElement>('.wb-doccard').forEach((c) => { c.hidden = true; });
+};
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target as HTMLElement;
+  if (!t.closest('.wb-doccard') && !t.closest('.wb-kv-info')) closeDocCards();
+});
+
+/** Properties whose first example value makes a sensible visual demo on a text chip. */
+const DEMOABLE = new Set([
+  'background-color', 'background-image', 'color', 'opacity', 'box-shadow',
+  'border', 'border-color', 'border-style', 'border-width', 'border-radius',
+  'border-top', 'border-right', 'border-bottom', 'border-left',
+  'border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius',
+  'outline', 'font-family', 'font-size', 'font-style', 'font-weight',
+  'letter-spacing', 'text-decoration', 'text-transform', 'text-shadow',
+  'transform', 'padding', 'cursor',
+]);
+
+function buildDocCard(card: HTMLElement, prop: string, doc: string | undefined, useExample: (v: string) => void): void {
+  card.innerHTML = '';
+  const head = document.createElement('code');
+  head.className = 'wb-doccard-prop';
+  head.textContent = prop || '(property)';
+  card.appendChild(head);
+
+  if (!doc) {
+    const p = document.createElement('div');
+    p.textContent = prop
+      ? 'No notes for this one — it may not be on the SP allow-list, in which case SharePoint silently drops it. Try the dropdown suggestions.'
+      : 'Pick a property to see what it does, with examples you can click to apply.';
+    card.appendChild(p);
+    return;
+  }
+
+  // explanation text, with 'quoted examples' rendered as clickable chips
+  const body = document.createElement('div');
+  body.className = 'wb-doccard-body';
+  const parts = doc.split(/'([^']*)'/g);
+  let firstDemoValue: string | null = null;
+  parts.forEach((part, i) => {
+    if (i % 2 === 0) {
+      body.appendChild(document.createTextNode(part));
+    } else {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'wb-doccard-ex';
+      chip.textContent = part;
+      chip.title = 'Click to use this as the value';
+      chip.addEventListener('click', () => useExample(part));
+      body.appendChild(chip);
+      if (!firstDemoValue && !part.startsWith('=') && !part.includes('…')) firstDemoValue = part;
+    }
+  });
+  card.appendChild(body);
+
+  // live demo — a chip actually wearing the property
+  if (DEMOABLE.has(prop) && firstDemoValue) {
+    const demo = document.createElement('div');
+    demo.className = 'wb-doccard-demo';
+    const lab = document.createElement('span');
+    lab.className = 'wb-doccard-demo-label';
+    lab.textContent = 'live';
+    const chip = document.createElement('span');
+    chip.className = 'wb-doccard-demo-chip';
+    chip.textContent = 'Style my style';
+    try { chip.style.setProperty(prop, firstDemoValue); } catch { /* invalid demo value */ }
+    demo.append(lab, chip);
+    card.appendChild(demo);
+  }
+
+  const hint = document.createElement('div');
+  hint.className = 'wb-doccard-hint';
+  hint.textContent = 'click an example to apply it';
+  card.appendChild(hint);
+}
+
 /**
  * Key/value table editor for style & attributes objects. Values may be
  * Excel-style strings or AST operator objects — objects display as JSON and
@@ -644,10 +727,16 @@ function kvEditor(
     const valList = document.createElement('datalist');
     valList.id = `wb-dl-${datalistSeq++}`;
     val.setAttribute('list', valList.id);
-    // ⓘ — what this property does and what its values look like
-    const info = document.createElement('span');
+    // ⓘ — opens a styled doc card: explanation, clickable example chips,
+    // and (where it reads visually) a live demo wearing the property
+    const info = document.createElement('button');
+    info.type = 'button';
     info.className = 'wb-kv-info';
     info.textContent = 'ⓘ';
+    info.title = 'What does this property do?';
+    const card = document.createElement('div');
+    card.className = 'wb-doccard';
+    card.hidden = true;
     const refreshValueOptions = () => {
       const k = key.value.trim();
       valList.innerHTML = '';
@@ -656,11 +745,16 @@ function kvEditor(
         o.value = opt;
         valList.appendChild(o);
       }
-      const doc = docs[k];
-      info.title = doc ?? (k ? `No notes for "${k}" — check the allow-list suggestions` : 'Pick a property to see what it does');
-      info.classList.toggle('wb-kv-info-known', !!doc);
+      info.classList.toggle('wb-kv-info-known', !!docs[k]);
+      buildDocCard(card, k, docs[k], (example) => { val.value = example; commitRows(); });
     };
     refreshValueOptions();
+    info.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willShow = card.hidden;
+      closeDocCards();
+      card.hidden = !willShow;
+    });
     const del = document.createElement('button');
     del.innerHTML = '<i class="ms-Icon ms-Icon--Cancel"></i>';
     del.title = 'Remove';
@@ -668,7 +762,7 @@ function kvEditor(
     key.addEventListener('input', refreshValueOptions);
     key.addEventListener('change', commitRows);
     val.addEventListener('change', commitRows);
-    row.append(key, val, valList, info, del);
+    row.append(key, val, valList, info, del, card);
     wrap.appendChild(row);
   };
 

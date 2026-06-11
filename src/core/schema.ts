@@ -128,7 +128,7 @@ export const STYLE_PROP_DOCS: Record<string, string> = {
   'fill': "SVG shape fill color — '#0078d4'",
   'stroke': "SVG line/outline color — '#605e5c'",
   'stroke-width': "SVG line thickness — '2'",
-  'stroke-dasharray': "SVG dash pattern — '4 2' = 4 on, 2 off. Progress donuts: '=(@currentField*100)+\' 100\''",
+  'stroke-dasharray': "SVG dash pattern — '4 2' = 4 on, 2 off. Progress donuts drive the first number with an =expression",
   'border': "All four borders at once — width style color: '1px solid #e1dfdd'",
   'border-color': "Color of all four borders — '#e1dfdd'",
   'border-style': "'solid', 'dashed', 'dotted', 'none' — all four sides",

@@ -69,15 +69,25 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   expect(await page.evaluate(() => navigator.clipboard.readText())).not.toContain('_elmName');
 });
 
-test('style editor explains properties: ⓘ knows what flex-flow is and its syntax', async ({ page }) => {
+test('style editor explains properties: ⓘ opens a doc card with clickable examples', async ({ page }) => {
   await page.locator('.wb-tree-row').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
     .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
   await styleSection.locator('.wb-kv-add').click();
   const row = styleSection.locator('.wb-kv-row').last();
   await row.locator('.wb-kv-key').fill('flex-flow');
-  await expect(row.locator('.wb-kv-info')).toHaveAttribute('title', /flex-direction \+ flex-wrap.*row wrap/);
   await expect(row.locator('.wb-kv-info')).toHaveClass(/wb-kv-info-known/);
+  await row.locator('.wb-kv-info').click();
+  const card = row.locator('.wb-doccard');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.wb-doccard-prop')).toHaveText('flex-flow');
+  await expect(card).toContainText('flex-direction + flex-wrap');
+  // examples render as chips — clicking one applies it as the value
+  await card.locator('.wb-doccard-ex', { hasText: 'row wrap' }).click();
+  await expect(row.locator('.wb-kv-val')).toHaveValue('row wrap');
+  // clicking elsewhere closes the card
+  await page.locator('.wb-pane-canvas h2').click();
+  await expect(card).toBeHidden();
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {

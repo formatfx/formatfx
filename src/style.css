@@ -296,11 +296,47 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
 .wb-kv-row { display: flex; gap: 4px; margin: 3px 0; }
 .wb-kv input.wb-kv-key { flex: 0 0 40%; width: auto; min-width: 0; }
 .wb-kv input.wb-kv-val { flex: 1 1 0; width: auto; min-width: 0; }
+.wb-kv-row { position: relative; }
 .wb-kv-info {
-  align-self: center; font-size: 12px; color: var(--wb-border);
+  align-self: center; font-size: 12px; color: var(--wb-text-2);
   cursor: help; flex-shrink: 0; line-height: 1;
+  border: none !important; background: transparent !important; padding: 0 2px !important;
 }
 .wb-kv-info-known { color: var(--wb-accent); }
+
+/* ── property doc card ───────────────────────────────────── */
+.wb-doccard {
+  position: absolute; top: calc(100% + 5px); right: 0; z-index: 45;
+  width: 290px; padding: 10px 12px;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border); border-left: 3px solid var(--wb-accent);
+  border-radius: 6px; box-shadow: 0 8px 22px rgba(0, 0, 0, .3);
+  font-size: 12px; line-height: 1.6; color: var(--wb-text);
+  cursor: default;
+}
+.wb-doccard[hidden] { display: none; }
+.wb-doccard-prop {
+  display: block; margin-bottom: 5px;
+  font: 600 12px Consolas, monospace; color: var(--wb-accent);
+}
+.wb-doccard-body { white-space: normal; }
+.wb-doccard .wb-doccard-ex {
+  display: inline-block; margin: 1px 1px; padding: 0 6px;
+  font: 11px Consolas, monospace; line-height: 1.7;
+  background: var(--wb-bg); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 4px; cursor: pointer;
+}
+.wb-doccard .wb-doccard-ex:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-doccard-demo { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.wb-doccard-demo-label {
+  font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--wb-text-2);
+}
+.wb-doccard-demo-chip {
+  display: inline-block; padding: 3px 12px; font-size: 12px;
+  background: var(--wb-bg); border: 1px solid var(--wb-border); border-radius: 3px;
+}
+.wb-doccard-hint { margin-top: 7px; font-size: 10px; color: var(--wb-text-2); font-style: italic; }
 .wb-kv-row button, .wb-kv-add {
   border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text-2);
   border-radius: 3px; cursor: pointer; font-size: 10px;
