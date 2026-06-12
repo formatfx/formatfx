@@ -176,7 +176,10 @@ function mount(opts: Opts): void {
       const childRel = rel.length ? `${relAttr}.${i}` : String(i);
       for (const el of find(childRel)) {
         el.classList.add('wb-pgx-child');
-        el.setAttribute('data-pgx-name', nameOf(child));
+        // a CFR slot's content comes from another formatter — say so
+        el.setAttribute('data-pgx-name', child.columnFormatterReference
+          ? `${nameOf(child)} ⤷ ${child.columnFormatterReference}`
+          : nameOf(child));
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           switchTarget([...targetPath, i]);
@@ -200,7 +203,11 @@ function mount(opts: Opts): void {
     lab.className = 'wb-pg-stagelab';
     lab.textContent = (targetNode.children?.length
       ? 'children are masked with their names — click one to restyle it instead · '
-      : '') + 'rendered with row 1 of your data';
+      : '')
+      + (targetNode.columnFormatterReference
+        ? `content comes from the ${targetNode.columnFormatterReference} column formatter (⤷ button above opens it) · `
+        : '')
+      + 'rendered with row 1 of your data';
     stage.appendChild(lab);
     return stage;
   };
@@ -279,6 +286,24 @@ function mount(opts: Opts): void {
         if (stashes.has(child)) down.classList.add('wb-pg-navstash');
         nav.appendChild(down);
       });
+      // CFR slot: its content comes from a registered column formatter —
+      // offer to open THAT formatter in the playground (switches the
+      // workspace, exactly like clicking the column in the Structure tree)
+      const cfr = targetNode.columnFormatterReference;
+      const cfrName = cfr?.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+      if (cfrName && state.columnRefs[cfrName]) {
+        const enter = document.createElement('button');
+        enter.className = 'wb-pg-navbtn wb-pg-navcfr';
+        enter.textContent = `⤷ open [$${cfrName}] formatter`;
+        enter.title = 'The content inside this slot is the referenced column formatter — open it in the playground';
+        enter.addEventListener('click', () => {
+          if (!confirm(`This slot pulls in the [$${cfrName}] column formatter.\n\nOpen that formatter in the playground? The workspace switches to editing [$${cfrName}] (the Structure tree switches back anytime).`)) return;
+          stashCurrent();
+          state.openColumnRef(cfrName);
+          openElementPlayground([]);
+        });
+        nav.appendChild(enter);
+      }
       panel.appendChild(nav);
     }
 

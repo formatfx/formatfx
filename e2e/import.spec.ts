@@ -5,6 +5,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
+  page.on('dialog', (d) => { void d.accept(); });
   await page.goto('/');
   await page.evaluate(() => {
     localStorage.clear();

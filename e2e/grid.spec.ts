@@ -7,6 +7,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
+  // accept dialogs: applying name-less JSON over a named design now asks first
+  page.on('dialog', (d) => { void d.accept(); });
   await page.goto('/');
   await page.evaluate(() => {
     localStorage.clear();

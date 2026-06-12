@@ -133,7 +133,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 npm install
 npm run dev           # local dev server
 npm test              # engine test suite (vitest + happy-dom)
-npm run test:ui       # 37 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
+npm run test:ui       # 39 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
 npm run build         # type-check + production bundle in dist/
 npm run build:single  # everything inlined into one dist-single/index.html
 ```
