@@ -5,6 +5,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
+  page.on('dialog', (d) => { void d.accept(); });
   await page.goto('/');
   await page.evaluate(() => {
     localStorage.clear();
@@ -193,6 +194,22 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   // class hint when _elmName is lost — that's the bug signature)
   await expect(page.locator('.wb-tree-name', { hasText: 'Title block' })).toBeVisible();
   expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "Title block"');
+});
+
+test('element playground marks CFR slots and can enter the referenced formatter', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click(); // Row card root
+  await page.locator('.wb-inspector-play').click();
+  const pg = page.locator('.wb-pg');
+  // the CFR child's overlay says where its content comes from
+  await expect(pg.locator('.wb-pgx-child[data-pgx-name="Progress slot ⤷ [$Progress]"]')).toBeVisible();
+  // descend into the slot — the nav offers to open the referenced formatter
+  await pg.locator('.wb-pg-navbtn', { hasText: 'Progress slot' }).click();
+  await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('content comes from the [$Progress] column formatter');
+  await pg.locator('.wb-pg-navcfr').click(); // confirm() auto-accepted
+  // the playground now targets the column formatter's root…
+  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Progress bar');
+  // …because the workspace switched to editing [$Progress]
+  await expect(page.locator('#wb-activedoc')).toHaveValue('Progress');
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {

@@ -5,7 +5,10 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
+let lastDialog = '';
 test.beforeEach(async ({ page }) => {
+  lastDialog = '';
+  page.on('dialog', (d) => { lastDialog = d.message(); void d.accept(); });
   await page.goto('/');
   // a fresh run each time — clear the autosaved project
   await page.evaluate(() => {
@@ -132,6 +135,15 @@ test('basic mode (the default) trims the surface to click-only controls', async 
   await expect(inspector.locator('textarea').first()).toBeVisible();
   await page.reload();
   await expect(page.locator('#wb-mode button', { hasText: 'Advanced' })).toHaveClass(/active/);
+});
+
+test('applying name-less JSON over a named design warns before dropping names', async ({ page }) => {
+  await openTab(page, 'json');
+  await page.fill('#wb-json-text', JSON.stringify({ elmType: 'div', txtContent: 'plain' }));
+  await page.click('#wb-json-apply');
+  expect(lastDialog).toContain('element names');
+  // auto-accepted → applied; names are gone, exactly what the dialog said
+  await expect(page.locator('.wb-tree-name')).toHaveCount(0);
 });
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {

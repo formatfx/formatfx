@@ -7,6 +7,7 @@
  * the visual editor.
  */
 
+import type { SPElement } from '../core/types';
 import { state } from './state';
 import { exportJson, importJson } from '../core/serializer';
 import { lintDocument, type LintIssue } from '../core/linter';
@@ -61,9 +62,19 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
     a.click();
     URL.revokeObjectURL(a.href);
   });
+  const hasNames = (el: SPElement): boolean =>
+    !!el._elmName
+    || (el.children ?? []).some(hasNames)
+    || (el.customCardProps?.formatter ? hasNames(el.customCardProps.formatter) : false);
+
   host.querySelector('#wb-json-apply')!.addEventListener('click', () => {
     try {
       const doc = importJson(textEl.value);
+      // soft guard: name-less JSON replacing a named design silently drops
+      // every _elmName — the Structure pane falls back to type/class hints
+      if (hasNames(state.doc.root) && !hasNames(doc.root)) {
+        if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
+      }
       dirty = false;
       state.loadDocument(doc);
       onToast(`Imported ${doc.kind} formatter`);
