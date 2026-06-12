@@ -7,10 +7,16 @@
  *  - ELEMENT mode (inspector "⚗ Restyle in playground"): the stage renders
  *    the REAL selected element via the real renderer — its parent for
  *    context (siblings dimmed), its children masked with name overlays so
- *    you can watch them move without restyling below this level. Click a
- *    child (overlay or nav chip) to descend; your picks stash per element
- *    and resume when you come back. Nothing touches the formatter until
- *    "Apply" (undoable via the state store).
+ *    you can watch them move without restyling below this level. A mini
+ *    structure tree beside the stage shows where you are (ancestors above,
+ *    children below) — click any row to restyle THAT element; your picks
+ *    stash per element and resume when you come back. Nothing touches the
+ *    formatter until "Apply" (undoable via the state store).
+ *
+ * The controls read top to bottom as labeled steps: Quick looks (one-click
+ * style bundles), Family, Property (with a formatted "what does this do"
+ * card whose examples apply themselves), Values, what the element already
+ * wears, and your unapplied picks.
  */
 
 import {
@@ -18,7 +24,7 @@ import {
   styleFamilyOf, type StyleFamily,
 } from '../core/schema';
 import { renderElement } from '../core/renderer';
-import type { SPElement, NodePath } from '../core/types';
+import type { SPElement, SPExpr, NodePath } from '../core/types';
 import { state, CARD_SEGMENT } from './state';
 
 const FAMILY_ORDER: StyleFamily[] = [
@@ -61,6 +67,64 @@ function familyProps(family: StyleFamily): string[] {
 }
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
+
+/**
+ * Quick looks — the style bundles people actually reach for, distilled from
+ * the community samples the palette presets came from. One click applies
+ * the whole combination as picks (click again to take it off).
+ */
+const QUICK_LOOKS: Array<{
+  label: string; hint: string; props: Record<string, string>;
+  /** Extra styles for the preview chip only (e.g. a width so … shows). */
+  demo?: Record<string, string>;
+}> = [
+  {
+    label: 'Pill', hint: 'Rounded ends, snug padding, semibold — the classic status look',
+    props: {
+      'display': 'inline-flex', 'align-items': 'center', 'border-radius': '12px',
+      'padding': '2px 10px', 'font-size': '12px', 'font-weight': '600',
+    },
+  },
+  {
+    label: 'Soft badge', hint: 'Pastel fill with matching ink — quieter than a pill',
+    props: {
+      'background-color': '#deecf9', 'color': '#0078d4',
+      'border-radius': '4px', 'padding': '2px 8px', 'font-size': '12px',
+    },
+  },
+  {
+    label: 'Card', hint: 'White surface, hairline border, gentle shadow, breathing room',
+    props: {
+      'background-color': '#ffffff', 'border': '1px solid #e1dfdd',
+      'border-radius': '6px', 'padding': '12px', 'box-shadow': '0 1.6px 3.6px rgba(0,0,0,.13)',
+    },
+  },
+  {
+    label: 'Lifted', hint: 'A deeper shadow that floats the element off the page',
+    props: { 'box-shadow': '0 6.4px 14.4px rgba(0,0,0,.13)', 'border-radius': '6px' },
+  },
+  {
+    label: 'Accent edge', hint: 'A colored stripe down the left side — row emphasis',
+    props: { 'border-left': '3px solid #0078d4', 'padding-left': '8px' },
+  },
+  {
+    label: 'One line + …', hint: 'Never wraps; ends with an ellipsis when the box runs out',
+    props: { 'white-space': 'nowrap', 'overflow': 'hidden', 'text-overflow': 'ellipsis' },
+    demo: { 'max-width': '64px', 'display': 'inline-block' },
+  },
+  {
+    label: 'Compact', hint: 'Tighter padding and smaller type — dense grids',
+    props: { 'padding': '1px 6px', 'font-size': '11px', 'line-height': '16px' },
+  },
+  {
+    label: 'Quiet caption', hint: 'Smaller, dimmer — secondary information',
+    props: { 'color': '#605e5c', 'font-size': '11px' },
+  },
+  {
+    label: 'Strike out', hint: 'Crossed off and faded — done or cancelled items',
+    props: { 'text-decoration': 'line-through', 'opacity': '0.6' },
+  },
+];
 
 /** Unapplied picks, per real document node — survive close/reopen ("stash"). */
 const stashes = new WeakMap<SPElement, Record<string, string>>();
@@ -121,6 +185,18 @@ function mount(opts: Opts): void {
   const panel = document.createElement('div');
   panel.className = 'wb-pg';
   overlay.appendChild(panel);
+
+  /** A labeled section — the grouping that keeps the controls scannable. */
+  const group = (label: string, ...kids: HTMLElement[]): HTMLElement => {
+    const g = document.createElement('div');
+    g.className = 'wb-pg-group';
+    const lab = document.createElement('div');
+    lab.className = 'wb-pg-grouplab';
+    lab.textContent = label;
+    g.appendChild(lab);
+    for (const k of kids) g.appendChild(k);
+    return g;
+  };
 
   // ── element-mode stage: the real subtree, really rendered ──────────────────
   const elementStage = (): HTMLElement => {
@@ -205,7 +281,7 @@ function mount(opts: Opts): void {
       ? 'children are masked with their names — click one to restyle it instead · '
       : '')
       + (targetNode.columnFormatterReference
-        ? `content comes from the ${targetNode.columnFormatterReference} column formatter (⤷ button above opens it) · `
+        ? `content comes from the ${targetNode.columnFormatterReference} column formatter (⤷ in the structure opens it) · `
         : '')
       + 'rendered with row 1 of your data';
     stage.appendChild(lab);
@@ -239,9 +315,84 @@ function mount(opts: Opts): void {
     return stage;
   };
 
+  // ── element-mode structure: a real tree, not a road ────────────────────────
+  // Ancestors above, the target spotlighted, children below — click any row
+  // to restyle that element instead (picks stash per element).
+  const structureTree = (targetNode: SPElement): HTMLElement => {
+    const tree = document.createElement('div');
+    tree.className = 'wb-pg-tree';
+    const lab = document.createElement('div');
+    lab.className = 'wb-pg-grouplab';
+    lab.textContent = 'structure';
+    tree.appendChild(lab);
+
+    const row = (el: SPElement, path: NodePath | null, depth: number, kind: 'ancestor' | 'target' | 'child'): HTMLElement => {
+      const r = document.createElement('button');
+      r.className = `wb-pg-tree-row wb-pg-tree-${kind}`;
+      r.style.paddingLeft = `${6 + depth * 12}px`;
+      const caret = document.createElement('span');
+      caret.className = 'wb-pg-tree-caret';
+      caret.textContent = kind === 'target' ? '●' : kind === 'ancestor' ? '▾' : '▸';
+      r.appendChild(caret);
+      const nm = document.createElement('span');
+      nm.className = 'wb-pg-tree-name';
+      nm.textContent = nameOf(el) + (el.columnFormatterReference ? ` ⤷ ${el.columnFormatterReference}` : '');
+      r.appendChild(nm);
+      if (stashes.has(el) && kind !== 'target') {
+        const dot = document.createElement('span');
+        dot.className = 'wb-pg-tree-stash';
+        dot.textContent = '◌';
+        dot.title = 'Has unapplied picks stashed';
+        r.appendChild(dot);
+      }
+      if (kind === 'target') {
+        r.disabled = true;
+        r.title = 'You are styling this element';
+      } else {
+        r.title = `Restyle ${nameOf(el)} instead — your picks here are stashed`;
+        r.addEventListener('click', () => switchTarget(path!));
+      }
+      return r;
+    };
+
+    // root … parent chain
+    for (let d = 0; d < targetPath.length; d++) {
+      const p = targetPath.slice(0, d);
+      const n = state.nodeAt(p);
+      if (n) tree.appendChild(row(n, p, d, 'ancestor'));
+    }
+    tree.appendChild(row(targetNode, null, targetPath.length, 'target'));
+    (targetNode.children ?? []).forEach((child, i) => {
+      tree.appendChild(row(child, [...targetPath, i], targetPath.length + 1, 'child'));
+    });
+
+    // CFR slot: its content comes from a registered column formatter —
+    // offer to open THAT formatter in the playground (switches the
+    // workspace, exactly like clicking the column in the Structure tree)
+    const cfr = targetNode.columnFormatterReference;
+    const cfrName = cfr?.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+    if (cfrName && state.columnRefs[cfrName]) {
+      const enter = document.createElement('button');
+      enter.className = 'wb-pg-tree-row wb-pg-tree-child wb-pg-navcfr';
+      enter.style.paddingLeft = `${6 + (targetPath.length + 1) * 12}px`;
+      enter.textContent = `⤷ open [$${cfrName}] formatter`;
+      enter.title = 'The content inside this slot is the referenced column formatter — open it in the playground';
+      enter.addEventListener('click', () => {
+        if (!confirm(`This slot pulls in the [$${cfrName}] column formatter.\n\nOpen that formatter in the playground? The workspace switches to editing [$${cfrName}] (the Structure tree switches back anytime).`)) return;
+        stashCurrent();
+        state.openColumnRef(cfrName);
+        openElementPlayground([]);
+      });
+      tree.appendChild(enter);
+    }
+    return tree;
+  };
+
   const render = () => {
     panel.innerHTML = '';
     const targetNode = opts.mode === 'element' ? state.nodeAt(targetPath) : null;
+    const styleMap = opts.mode === 'element' ? pending
+      : family === 'flex-container' ? shelfStyle : chipStyle;
 
     // ── header ──
     const head = document.createElement('div');
@@ -258,58 +409,44 @@ function mount(opts: Opts): void {
     head.appendChild(close);
     panel.appendChild(head);
 
-    // ── element-mode navigation: up to the parent, down into children ──
+    // ── context: the structure tree beside the live stage ──
     if (opts.mode === 'element' && targetNode) {
-      const nav = document.createElement('div');
-      nav.className = 'wb-pg-row wb-pg-nav';
-      if (targetPath.length) {
-        const parent = state.nodeAt(targetPath.slice(0, -1));
-        if (parent) {
-          const up = document.createElement('button');
-          up.className = 'wb-pg-navbtn';
-          up.textContent = `▲ ${nameOf(parent)}`;
-          up.title = 'Restyle the parent instead (your picks here are stashed)';
-          up.addEventListener('click', () => switchTarget(targetPath.slice(0, -1)));
-          nav.appendChild(up);
-        }
-      }
-      const here = document.createElement('span');
-      here.className = 'wb-pg-navhere';
-      here.textContent = nameOf(targetNode);
-      nav.appendChild(here);
-      (targetNode.children ?? []).forEach((child, i) => {
-        const down = document.createElement('button');
-        down.className = 'wb-pg-navbtn';
-        down.textContent = `▼ ${nameOf(child)}`;
-        down.title = 'Restyle this child instead (your picks here are stashed)';
-        down.addEventListener('click', () => switchTarget([...targetPath, i]));
-        if (stashes.has(child)) down.classList.add('wb-pg-navstash');
-        nav.appendChild(down);
-      });
-      // CFR slot: its content comes from a registered column formatter —
-      // offer to open THAT formatter in the playground (switches the
-      // workspace, exactly like clicking the column in the Structure tree)
-      const cfr = targetNode.columnFormatterReference;
-      const cfrName = cfr?.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
-      if (cfrName && state.columnRefs[cfrName]) {
-        const enter = document.createElement('button');
-        enter.className = 'wb-pg-navbtn wb-pg-navcfr';
-        enter.textContent = `⤷ open [$${cfrName}] formatter`;
-        enter.title = 'The content inside this slot is the referenced column formatter — open it in the playground';
-        enter.addEventListener('click', () => {
-          if (!confirm(`This slot pulls in the [$${cfrName}] column formatter.\n\nOpen that formatter in the playground? The workspace switches to editing [$${cfrName}] (the Structure tree switches back anytime).`)) return;
-          stashCurrent();
-          state.openColumnRef(cfrName);
-          openElementPlayground([]);
-        });
-        nav.appendChild(enter);
-      }
-      panel.appendChild(nav);
+      const ctx = document.createElement('div');
+      ctx.className = 'wb-pg-context';
+      ctx.appendChild(structureTree(targetNode));
+      ctx.appendChild(elementStage());
+      panel.appendChild(ctx);
+    } else {
+      panel.appendChild(sampleStage());
     }
 
-    panel.appendChild(opts.mode === 'element' ? elementStage() : sampleStage());
+    // ── quick looks: whole outfits in one click ──
+    // always dress the element (or the sample chip) — never the shelf
+    const macroMap = opts.mode === 'element' ? pending : chipStyle;
+    const lookRow = document.createElement('div');
+    lookRow.className = 'wb-pg-row';
+    for (const look of QUICK_LOOKS) {
+      const applied = Object.entries(look.props).every(([k, v]) => macroMap[k] === v);
+      const b = document.createElement('button');
+      b.className = 'wb-pg-macro' + (applied ? ' active' : '');
+      b.title = `${look.hint}\n\n${Object.entries(look.props).map(([k, v]) => `${k}: ${v}`).join(' · ')}\n\nClick to ${applied ? 'take the whole look off' : 'add every property as a pick'}`;
+      const demo = document.createElement('span');
+      demo.className = 'wb-pg-macro-demo';
+      demo.textContent = 'Aa';
+      Object.assign(demo.style, look.props, look.demo ?? {});
+      const t = document.createElement('span');
+      t.textContent = look.label;
+      b.append(demo, t);
+      b.addEventListener('click', () => {
+        if (applied) for (const k of Object.keys(look.props)) delete macroMap[k];
+        else Object.assign(macroMap, look.props);
+        render();
+      });
+      lookRow.appendChild(b);
+    }
+    panel.appendChild(group('Quick looks — full combinations, one click', lookRow));
 
-    // ── family chips ──
+    // ── family chips + the story, together ──
     const famRow = document.createElement('div');
     famRow.className = 'wb-pg-row';
     for (const f of FAMILY_ORDER) {
@@ -323,15 +460,18 @@ function mount(opts: Opts): void {
       });
       famRow.appendChild(b);
     }
-    panel.appendChild(famRow);
-
-    // family story (the short version)
+    // family story — a formatted callout, not a floating paragraph
     const story = document.createElement('div');
     story.className = 'wb-pg-story';
-    story.textContent = STYLE_FAMILY_EXPLAINS[family].plain;
-    panel.appendChild(story);
+    const storyTag = document.createElement('span');
+    storyTag.className = 'wb-pg-story-tag';
+    storyTag.textContent = STYLE_FAMILY_EXPLAINS[family].name;
+    const storyText = document.createElement('span');
+    storyText.textContent = STYLE_FAMILY_EXPLAINS[family].plain;
+    story.append(storyTag, storyText);
+    panel.appendChild(group('What part of the look', famRow, story));
 
-    // ── property chips for the family ──
+    // ── property chips + the formatted "what does it do" card ──
     const propRow = document.createElement('div');
     propRow.className = 'wb-pg-row';
     for (const p of familyProps(family)) {
@@ -342,17 +482,20 @@ function mount(opts: Opts): void {
       b.addEventListener('click', () => { prop = p; render(); });
       propRow.appendChild(b);
     }
-    panel.appendChild(propRow);
+    panel.appendChild(group('Property', propRow, propDoc()));
 
     // ── value chips: click to see it happen ──
-    const styleMap = opts.mode === 'element' ? pending
-      : family === 'flex-container' ? shelfStyle : chipStyle;
     const valRow = document.createElement('div');
     valRow.className = 'wb-pg-row wb-pg-vals';
     const current = styleMap[prop];
+    const committed = opts.mode === 'element' ? targetNode?.style?.[prop] : undefined;
     for (const v of valueOptions(prop)) {
       const b = document.createElement('button');
       b.className = 'wb-pg-val' + (current === v ? ' active' : '');
+      if (typeof committed === 'string' && committed === v && current === undefined) {
+        b.classList.add('wb-pg-val-current');
+        b.title = 'The element already wears this value';
+      }
       b.textContent = v;
       b.addEventListener('click', () => {
         if (styleMap[prop] === v) delete styleMap[prop]; // click again to remove
@@ -370,7 +513,12 @@ function mount(opts: Opts): void {
       none.textContent = 'no preset values for this one — use the Style section to type a value';
       valRow.appendChild(none);
     }
-    panel.appendChild(valRow);
+    panel.appendChild(group('Click a value to try it', valRow));
+
+    // ── what the element already wears (element mode) ──
+    if (opts.mode === 'element' && targetNode) {
+      panel.appendChild(group(`Already on ${nameOf(targetNode)}`, currentStyles(targetNode)));
+    }
 
     // ── what you've dialed in ──
     const picked = opts.mode === 'element'
@@ -398,7 +546,7 @@ function mount(opts: Opts): void {
     } else {
       out.innerHTML = '<div class="wb-pg-stagelab">click values above — they stack up here</div>';
     }
-    panel.appendChild(out);
+    panel.appendChild(group('Your picks (unapplied)', out));
 
     // ── footer: reset / stash / apply ──
     const foot = document.createElement('div');
@@ -465,6 +613,107 @@ function mount(opts: Opts): void {
       foot.appendChild(apply);
     }
     panel.appendChild(foot);
+
+    /** The formatted description of the selected property — the doc one-liner
+     *  with «syntax shapes» rendered as shapes and 'examples' as chips that
+     *  apply themselves to whatever you're styling. */
+    function propDoc(): HTMLElement {
+      const box = document.createElement('div');
+      box.className = 'wb-pg-doc';
+      const headRow = document.createElement('div');
+      headRow.className = 'wb-pg-doc-head';
+      const name = document.createElement('code');
+      name.className = 'wb-pg-doc-prop';
+      name.textContent = prop;
+      headRow.appendChild(name);
+      box.appendChild(headRow);
+
+      const doc = STYLE_PROP_DOCS[prop];
+      const body = document.createElement('div');
+      body.className = 'wb-pg-doc-body';
+      if (!doc) {
+        body.textContent = 'No notes for this one — click the values below and watch the stage.';
+        box.appendChild(body);
+        return box;
+      }
+      for (const seg of doc.split(/(«[^»]*»)/g)) {
+        if (seg.startsWith('«')) {
+          const syn = document.createElement('code');
+          syn.className = 'wb-doccard-syntax';
+          syn.textContent = seg.slice(1, -1);
+          syn.title = 'The shape of the value — replace each word with yours';
+          body.appendChild(syn);
+          continue;
+        }
+        seg.split(/'([^']*)'/g).forEach((part, i) => {
+          if (i % 2 === 0) {
+            body.appendChild(document.createTextNode(part));
+            return;
+          }
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'wb-doccard-ex';
+          chip.textContent = part;
+          chip.title = `Click to try ${prop}: ${part}`;
+          chip.addEventListener('click', () => {
+            styleMap[prop] = part;
+            if (opts.mode === 'sample' && family === 'flex-container' && !('display' in shelfStyle)) {
+              shelfStyle['display'] = 'flex';
+            }
+            render();
+          });
+          body.appendChild(chip);
+        });
+      }
+      box.appendChild(body);
+      return box;
+    }
+
+    /** What the element is already wearing — click a property to jump to it. */
+    function currentStyles(node: SPElement): HTMLElement {
+      const wrap = document.createElement('div');
+      wrap.className = 'wb-pg-cur';
+      const entries = Object.entries(node.style ?? {})
+        .filter((e): e is [string, SPExpr] => e[1] !== undefined);
+      if (!entries.length) {
+        wrap.innerHTML = '<div class="wb-pg-stagelab">no styles on this element yet — a blank canvas</div>';
+        return wrap;
+      }
+      for (const [k, v] of entries) {
+        const row = document.createElement('div');
+        row.className = 'wb-pg-cur-row';
+        const key = document.createElement('button');
+        key.className = 'wb-pg-cur-key';
+        key.textContent = k;
+        if (ALLOWED_STYLES.has(k)) {
+          key.title = `Jump to ${k} — its family, notes and values`;
+          key.addEventListener('click', () => {
+            family = styleFamilyOf(k);
+            prop = k;
+            render();
+          });
+        } else {
+          key.disabled = true;
+          key.title = 'Not on the SP allow-list — SharePoint silently drops it (see the linter)';
+        }
+        const val = document.createElement('span');
+        val.className = 'wb-pg-cur-val';
+        const isFormula = typeof v !== 'string' || v.startsWith('=');
+        val.textContent = isFormula ? '𝑓x' : (v as string);
+        if (isFormula) val.title = typeof v === 'string' ? v : JSON.stringify(v);
+        row.append(key, val);
+        if (pending[k] !== undefined) {
+          val.classList.add('wb-pg-cur-over');
+          const next = document.createElement('span');
+          next.className = 'wb-pg-cur-next';
+          next.textContent = `→ ${pending[k]}`;
+          next.title = 'Your unapplied pick replaces this when you Apply';
+          row.appendChild(next);
+        }
+        wrap.appendChild(row);
+      }
+      return wrap;
+    }
   };
 
   render();

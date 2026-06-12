@@ -182,7 +182,7 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   await page.locator('.wb-inspector-play').click();
   const pg = page.locator('.wb-pg');
   await expect(pg).toBeVisible();
-  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Row layout');
+  await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Row layout');
   // children render for real but are masked with their names (click-to-descend)
   await expect(pg.locator('.wb-pgx-child[data-pgx-name="Title"]')).toBeVisible();
   // dial in a pick (padding family is the default)
@@ -197,10 +197,12 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   await openTab(page, 'inspector');
   await page.locator('.wb-inspector-play').click();
   await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
-  // descend into a child and come back — picks survive the round trip
-  await pg.locator('.wb-pg-navbtn', { hasText: 'Title' }).first().click();
-  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title');
-  await pg.locator('.wb-pg-navbtn', { hasText: '▲ Row layout' }).click();
+  // descend into a child via the structure tree and come back — picks
+  // survive the round trip (the stash dot marks the parent meanwhile)
+  await pg.locator('.wb-pg-tree-child', { hasText: 'Title' }).first().click();
+  await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Title');
+  await expect(pg.locator('.wb-pg-tree-ancestor', { hasText: 'Row layout' }).locator('.wb-pg-tree-stash')).toBeVisible();
+  await pg.locator('.wb-pg-tree-ancestor', { hasText: 'Row layout' }).click();
   await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
   // apply for real this time
   await pg.locator('.wb-pg-apply').click();
@@ -213,18 +215,38 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "Row layout"');
 });
 
+test('playground polish: quick looks stack whole bundles, the property card applies examples, current styles are listed', async ({ page }) => {
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Row layout' }) }).click();
+  await page.locator('.wb-inspector-play').click();
+  const pg = page.locator('.wb-pg');
+  // one click dresses the element in the whole pill bundle…
+  await pg.locator('.wb-pg-macro', { hasText: 'Pill' }).click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('border-radius: 12px');
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 2px 10px');
+  // …and a second click takes the whole look off again
+  await pg.locator('.wb-pg-macro', { hasText: 'Pill' }).click();
+  await expect(pg.locator('.wb-pg-out')).not.toContainText('border-radius');
+  // the formatted property card: clicking an example applies it as a pick
+  await expect(pg.locator('.wb-pg-doc-prop')).toHaveText('padding');
+  await pg.locator('.wb-pg-doc .wb-doccard-ex').first().click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 2px 10px');
+  // what the element already wears is listed (the grid root is a flex row)
+  await expect(pg.locator('.wb-pg-cur-row', { hasText: 'display' })).toBeVisible();
+  await expect(pg.locator('.wb-pg-cur-row', { hasText: 'gap' })).toContainText('12px');
+});
+
 test('element playground marks CFR slots and can enter the referenced formatter', async ({ page }) => {
   await page.locator('.wb-tree-row').first().click(); // Row layout root
   await page.locator('.wb-inspector-play').click();
   const pg = page.locator('.wb-pg');
   // the CFR child's overlay says where its content comes from
   await expect(pg.locator('.wb-pgx-child[data-pgx-name="Progress ⤷ [$Progress]"]')).toBeVisible();
-  // descend into the slot — the nav offers to open the referenced formatter
-  await pg.locator('.wb-pg-navbtn', { hasText: 'Progress' }).first().click();
+  // descend into the slot — the structure tree offers to open the referenced formatter
+  await pg.locator('.wb-pg-tree-child', { hasText: 'Progress' }).first().click();
   await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('content comes from the [$Progress] column formatter');
   await pg.locator('.wb-pg-navcfr').click(); // confirm() auto-accepted
   // the playground now targets the column formatter's root…
-  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Progress bar');
+  await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Progress bar');
   // …because the workspace switched to editing [$Progress]
   await expect(page.locator('#wb-activedoc')).toHaveValue('Progress');
 });

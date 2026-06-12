@@ -18,6 +18,8 @@ import { renderElement, type RenderOptions } from '../core/renderer';
 import { parseForEach, evaluateForEachList, type EvalContext, type SPValue } from '../core/expressions';
 import { exportJson } from '../core/serializer';
 import { openElementPlayground } from './playground';
+import { openCondFormat } from './condFormat';
+import { openMenu, closeMenu, type MenuItem } from './menu';
 import {
   gridCellForField, defaultColumnFormatter, gridColumnField, gridColumnLabel,
   groupName, unplacedFields, fieldLabel,
@@ -33,67 +35,6 @@ interface GridDeps {
 interface GridColumn {
   el: SPElement;
   path: NodePath;
-}
-
-// ─── header menu (one at a time, anchored under the clicked header) ─────────
-
-let menuEl: HTMLElement | null = null;
-let menuCloser: ((e: Event) => void) | null = null;
-
-export function closeGridMenu(): void {
-  menuEl?.remove();
-  menuEl = null;
-  if (menuCloser) {
-    document.removeEventListener('pointerdown', menuCloser);
-    document.removeEventListener('keydown', menuCloser);
-    menuCloser = null;
-  }
-}
-
-interface MenuItem {
-  icon: string;
-  label: string;
-  title?: string;
-  fn: () => void;
-}
-
-function openMenu(anchor: HTMLElement, title: string, items: MenuItem[]): void {
-  closeGridMenu();
-  const menu = document.createElement('div');
-  menu.className = 'wb-grid-menu';
-  const head = document.createElement('div');
-  head.className = 'wb-grid-menu-title';
-  head.textContent = title;
-  menu.appendChild(head);
-  for (const item of items) {
-    const b = document.createElement('button');
-    b.innerHTML = `<i class="ms-Icon ms-Icon--${item.icon}" aria-hidden="true"></i><span></span>`;
-    (b.lastChild as HTMLElement).textContent = item.label;
-    if (item.title) b.title = item.title;
-    b.addEventListener('click', () => {
-      closeGridMenu();
-      item.fn();
-    });
-    menu.appendChild(b);
-  }
-  document.body.appendChild(menu);
-  const r = anchor.getBoundingClientRect();
-  const mr = menu.getBoundingClientRect();
-  menu.style.top = `${r.bottom + 4}px`;
-  menu.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - mr.width - 8))}px`;
-  menuEl = menu;
-  menuCloser = (e: Event) => {
-    if (e instanceof KeyboardEvent) {
-      if (e.key === 'Escape') closeGridMenu();
-      return;
-    }
-    if (!menu.contains(e.target as Node)) closeGridMenu();
-  };
-  window.setTimeout(() => {
-    if (!menuCloser) return;
-    document.addEventListener('pointerdown', menuCloser);
-    document.addEventListener('keydown', menuCloser);
-  }, 0);
 }
 
 // ─── per-column actions ──────────────────────────────────────────────────────
@@ -147,6 +88,12 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
         ? `Open the [$${field.name}] column formatter on the canvas`
         : 'Start a column formatter for this column and open it — the grid keeps rendering it live',
       fn: () => formatColumn(col, field, onToast),
+    });
+    items.push({
+      icon: 'LightningBolt',
+      label: 'Conditional formatting…',
+      title: `Color ${fieldLabel(field)} by its value — pick conditions and looks, see them on your rows, apply in one click`,
+      fn: () => openCondFormat({ kind: 'column', fieldName: field.name, cellPath: col.path }, onToast),
     });
   }
   items.push({
@@ -222,7 +169,7 @@ function applyDrop(zone: DropZone, from: number, to: number, cols: GridColumn[],
 // ─── render ──────────────────────────────────────────────────────────────────
 
 export function renderGrid(host: HTMLElement, deps: GridDeps): void {
-  closeGridMenu();
+  closeMenu();
   const { opts, ctxForRow, onToast } = deps;
   const root = state.doc.root;
   const cols: GridColumn[] = root.children?.length
@@ -255,6 +202,14 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     h.append(label, caret);
 
     h.addEventListener('click', () => {
+      state.select(col.path);
+      menuFor(col, h, onToast);
+    });
+    // right-click = the same column menu (headers aren't elements, so the
+    // canvas-level element context menu doesn't cover them)
+    h.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       state.select(col.path);
       menuFor(col, h, onToast);
     });

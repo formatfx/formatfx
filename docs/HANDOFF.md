@@ -71,11 +71,21 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
                inspector/jsonPanel/dataPanel, playground.ts (the
                consequence-free style playground overlay; doc-card data —
-               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema),
-               gridScaffold.ts (grid-first workspace generation/mapping —
-               pure, node-testable; state.ts imports it for the default
-               doc, so it must never import state), gridView.ts (the grid
-               canvas context: headers, per-column menus, drag-to-group)
+               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema;
+               QUICK_LOOKS style bundles live here), gridScaffold.ts
+               (grid-first workspace generation/mapping — pure,
+               node-testable; state.ts imports it for the default doc, so
+               it must never import state), gridView.ts (the grid canvas
+               context: headers, per-column menus, drag-to-group),
+               menu.ts (THE anchored action menu — header menus, "+ column"
+               and right-click share it; `wb-grid-menu` class is
+               load-bearing for e2e/CSS), contextMenu.ts (preview-pane
+               right-click: the works-on-most-things element actions),
+               condRules.ts (conditional formatting brain — condition
+               catalog per field type, looks, palette, =if() chain codegen;
+               pure + node-tested like gridScaffold), condFormat.ts (the
+               conditional formatting overlay UI; imports state, never the
+               other way)
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```
@@ -239,6 +249,32 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
    confirm-and-enter button that switches the workspace to the referenced
    column formatter and reopens the playground there, and a soft confirm
    on Apply-to-canvas when name-less JSON would replace a named design.
+1.7. **Preview context menus + playground restructure + conditional
+   formatting — BUILT 2026-06-12** (owner's voice-memo brief). Three parts:
+   (a) right-click in the preview: shared menu.ts; elements/columns/groups
+   get the common actions (playground, conditional formatting, rename,
+   wrap, ungroup, duplicate, copy JSON, remove — all undoable, basic-safe);
+   grid headers answer right-click with their existing column menu.
+   (b) playground reorganized into labeled groups: QUICK_LOOKS macro
+   bundles (pill/card/stripe/ellipsis…, toggle on/off as picks), the nav
+   "road" replaced by a mini structure tree beside the stage (ancestors +
+   children, stash dots, CFR enter row keeps `wb-pg-navcfr`), the family
+   story restyled as a tagged callout, the selected property rendered as a
+   formatted card with self-applying examples, and an "already on X"
+   current-styles list (expressions shown as 𝑓x; picks strike the old
+   value). e2e specs for the old road were updated to the tree.
+   (c) conditional formatting: condRules.ts is the brain (NEVER generate
+   date comparisons without the toString() null guard — §3.1; unit tests
+   pin this), condFormat.ts the overlay. Semantics: rules are first-match-
+   wins via per-property =if() chains threaded through every rule; an
+   existing PLAIN value on a managed property becomes the no-match
+   fallback, an existing FORMULA is replaced (UI warns first). Column route
+   = "Format this column" semantics (register scaffold, CFR-swap the cell
+   as one doc mutation, openColumnRef switches the workspace, then the
+   style merge is the undoable step). Known gap, deliberate: the builder
+   is a one-way generator — it does not parse existing =if() chains back
+   into editable rules; reopening starts fresh over the current style as
+   fallback. Parsing chains back into rules is the obvious next step.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
@@ -257,15 +293,19 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 ## 7. Test inventory
 
-- `npm test` — 82 vitest unit tests (engine semantics incl. every
+- `npm test` — 96 vitest unit tests (engine semantics incl. every
   live-verified behavior in §3, serializer round-trips, schema import,
-  workspace/state, preset binding, grid scaffolding + grid mutations).
+  workspace/state, preset binding, grid scaffolding + grid mutations,
+  conditional-formatting codegen evaluated through the real engine —
+  the empty-date/overdue guards are pinned there).
   Run headlessly anywhere.
-- `npm run test:ui` — 39 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 43 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild),
-  `workspace.spec.ts` (doc switching, box model, flex editor, pane modes,
-  dark-mode probe), `grid.spec.ts` (grid-first workspace: header menus,
-  format-column round trip, hide/add, drag-to-group/reorder, basic mode).
+  `workspace.spec.ts` (doc switching, box model, flex editor, playground
+  incl. quick looks/structure tree/property card, pane modes, dark-mode
+  probe), `grid.spec.ts` (grid-first workspace: header menus, right-click
+  context menus, conditional formatting both routes, format-column round
+  trip, hide/add, drag-to-group/reorder, basic mode).
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).

@@ -13,6 +13,7 @@ import type { EvalContext } from '../core/expressions';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { renderGrid } from './gridView';
+import { installPreviewContextMenu } from './contextMenu';
 import type { NodePath, SPElement } from '../core/types';
 
 export interface CanvasApi {
@@ -151,6 +152,9 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     const inFlyout = (e.target as HTMLElement).closest?.('.wb-flyout');
     if (inFlyout) selectFrom(e, inFlyout as HTMLElement);
   });
+
+  // right-click an element (or a grid cell) for the common actions
+  installPreviewContextMenu(host, onToast);
 
   // palette drag-drop with per-element target highlight
   let lastDropTarget: HTMLElement | null = null;
