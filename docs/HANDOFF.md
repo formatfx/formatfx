@@ -217,26 +217,12 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
    from the same surface. Build it as a fourth canvas context (kind-aware
    like list/row/tile today) rather than a separate page, so the
    palette/tree/inspector keep working against it.
-1.6. **Playground polish backlog (owner feedback 2026-06-12):**
-   - the overlay recenters vertically as panel height changes between
-     family tabs — jarring. Pin the panel (e.g. fixed top offset or
-     anchor to a max height) so switching tabs doesn't move the window.
-   - breathing room: space out the family tabs / story / property rows /
-     value rows — mainly margin above AND below the family story text.
-   - element mode + CFR slots: a `columnFormatterReference` child renders
-     inline but is not enterable — indicate that subtly but usefully
-     (e.g. overlay reads "⤷ Status — column formatter") so people don't
-     wonder why they can't click into it; better: click → confirm prompt
-     → open the playground against that column formatter document
-     (`state.columnRefs[name]`, like openColumnRef does for the canvas).
-   - audit every path that can drop `_elmName`: owner observed a tree row
-     showing the `.ms-bgColor-white` class-fallback hint where a name used
-     to be (i.e. the root lost its name). Playground apply only merges
-     `style` and is now pinned by an e2e assertion; the prime suspects are
-     applying JSON that was copied with the "names" checkbox unticked, or
-     JSON saved from pre-names-by-default builds. Consider a soft warning
-     on Apply-to-canvas when the pasted JSON is name-less but the current
-     doc is named ("this will drop your element names — keep them?").
+1.6. ~~Playground polish backlog~~ **DONE 2026-06-12**: panel top-anchored
+   (no recentering between family tabs), breathing room around the family
+   story, CFR slots labeled "name ⤷ [$Field]" on their overlays with a
+   confirm-and-enter button that switches the workspace to the referenced
+   column formatter and reopens the playground there, and a soft confirm
+   on Apply-to-canvas when name-less JSON would replace a named design.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
