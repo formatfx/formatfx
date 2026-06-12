@@ -674,6 +674,164 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
 }
 .wb-doccard-play:hover { text-decoration: underline; }
 
+/* ── field guide (☰ menu → 📖) ───────────────────────────── */
+/* a full-screen Learn-style reader: nav tree | article | "in this article" */
+.wb-guide-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; flex-direction: column;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-guide-head {
+  display: flex; align-items: baseline; gap: 10px; flex-shrink: 0;
+  padding: 10px 18px; background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+.wb-guide-title { font-size: 15px; font-weight: 600; }
+.wb-guide-sub { font-size: 11px; color: var(--wb-text-2); }
+.wb-guide-close {
+  margin-left: auto; border: none; background: transparent; color: var(--wb-text-2);
+  font-size: 14px; cursor: pointer; padding: 2px 6px;
+}
+.wb-guide-close:hover { color: var(--wb-accent); }
+.wb-guide-body {
+  display: grid; grid-template-columns: 250px 1fr 230px;
+  flex: 1; min-height: 0;
+}
+@media (max-width: 980px) { .wb-guide-body { grid-template-columns: 230px 1fr; } .wb-guide-rail { display: none; } }
+
+/* left: the library tree */
+.wb-guide-nav {
+  overflow-y: auto; padding: 14px 10px;
+  background: var(--wb-surface); border-right: 1px solid var(--wb-border);
+}
+.wb-guide-search {
+  width: 100%; margin-bottom: 10px; padding: 5px 8px; font-size: 12px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-guide-chapter {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin: 14px 6px 4px;
+}
+.wb-guide-navitem {
+  display: block; width: 100%; text-align: left;
+  border: none; border-left: 2px solid transparent; border-radius: 0 3px 3px 0;
+  background: transparent; color: var(--wb-text); cursor: pointer;
+  padding: 5px 8px; font-size: 12.5px; line-height: 1.35;
+}
+.wb-guide-navitem:hover { background: var(--wb-bg); color: var(--wb-accent); }
+.wb-guide-navitem.active {
+  border-left-color: var(--wb-accent); color: var(--wb-accent);
+  background: rgba(0, 120, 212, .08); font-weight: 600;
+}
+.wb-guide-none { font-size: 12px; color: var(--wb-text-2); font-style: italic; padding: 8px; }
+
+/* middle: the article */
+.wb-guide-main { overflow-y: auto; min-width: 0; }
+.wb-guide-article {
+  max-width: 860px; margin: 0 auto; padding: 28px 40px 60px;
+  font-size: 14px; line-height: 1.65;
+}
+.wb-guide-article h1 { font-size: 24px; font-weight: 600; margin: 0 0 6px; line-height: 1.25; }
+.wb-guide-article h2 {
+  font-size: 17px; font-weight: 600; margin: 30px 0 8px;
+  padding-top: 14px; border-top: 1px solid var(--wb-border);
+}
+.wb-guide-article h3 { font-size: 13.5px; font-weight: 600; margin: 0; display: inline; }
+.wb-guide-lede { color: var(--wb-text-2); font-size: 14.5px; margin: 0 0 14px; }
+.wb-guide-article p { margin: 8px 0; }
+.wb-guide-article ul { margin: 8px 0; padding-left: 22px; }
+.wb-guide-article li { margin: 4px 0; }
+.wb-guide-article a { color: var(--wb-accent); text-decoration: none; }
+.wb-guide-article a:hover { text-decoration: underline; }
+.wb-guide-ext::after { content: ' ↗'; font-size: 10px; }
+.wb-guide-article code {
+  font: 12px Consolas, monospace; padding: 0 4px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 3px;
+}
+.wb-guide-article pre {
+  padding: 10px 12px; overflow-x: auto;
+  background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 6px;
+}
+.wb-guide-article pre code { border: none; background: transparent; padding: 0; }
+.wb-guide-dim { color: var(--wb-text-2); font-size: 12px; }
+.wb-guide-footnotes { font-size: 11.5px; color: var(--wb-text-2); }
+
+/* tables (the capability matrix etc.) */
+.wb-guide-table {
+  border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12.5px;
+}
+.wb-guide-table th, .wb-guide-table td {
+  border: 1px solid var(--wb-border); padding: 5px 9px; text-align: left; vertical-align: top;
+}
+.wb-guide-table th { background: var(--wb-surface); font-weight: 600; }
+.wb-guide-matrix td:not(:first-child), .wb-guide-matrix th:not(:first-child) { text-align: center; }
+.wb-guide-matrix td:not(:first-child) { font-weight: 600; }
+
+/* callouts + gotcha cards */
+.wb-guide-note {
+  margin: 12px 0; padding: 9px 12px; font-size: 13px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-left: 3px solid var(--wb-accent); border-radius: 4px;
+}
+.wb-guide-note-warning { border-left-color: #ffb900; }
+.wb-guide-gotcha {
+  margin: 10px 0; padding: 10px 12px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 6px;
+}
+.wb-guide-gotcha p { margin: 6px 0 0; font-size: 13px; }
+.wb-guide-sev {
+  display: inline-block; margin-right: 8px; padding: 0 7px; border-radius: 8px;
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: #fff; vertical-align: 2px;
+}
+.wb-guide-sev-error { background: #d13438; }
+.wb-guide-sev-warning { background: #ca5010; }
+.wb-guide-sev-info { background: #0078d4; }
+.wb-guide-lintrule {
+  float: right; font: 10px Consolas, monospace; color: var(--wb-text-2);
+  border: 1px dashed var(--wb-border); border-radius: 8px; padding: 1px 7px; cursor: help;
+}
+
+/* diagrams */
+.wb-guide-fig {
+  margin: 14px 0; padding: 14px; text-align: center;
+  background: var(--wb-canvas-bg); border-radius: 8px;
+}
+.wb-guide-fig svg { max-width: 100%; height: auto; }
+.wb-guide-fig figcaption {
+  font-size: 11.5px; color: var(--wb-text-2); font-style: italic; margin-top: 8px;
+}
+
+/* right: "in this article" */
+.wb-guide-rail { overflow-y: auto; padding: 26px 14px; }
+.wb-guide-rail-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin-bottom: 6px;
+}
+.wb-guide-railitem {
+  display: block; width: 100%; text-align: left;
+  border: none; border-left: 2px solid var(--wb-border);
+  background: transparent; color: var(--wb-text-2); cursor: pointer;
+  padding: 4px 10px; font-size: 11.5px; line-height: 1.4;
+}
+.wb-guide-railitem:hover { color: var(--wb-accent); }
+.wb-guide-railitem.active { border-left-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* prev/next reading-order footer */
+.wb-guide-pager {
+  display: flex; justify-content: space-between; gap: 10px;
+  margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--wb-border);
+}
+.wb-guide-pager button {
+  max-width: 46%; padding: 8px 14px; font-size: 12.5px; text-align: left; cursor: pointer;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 6px;
+}
+.wb-guide-pager button span { color: var(--wb-accent); }
+.wb-guide-pager button:hover { border-color: var(--wb-accent); }
+.wb-guide-next { text-align: right; }
+
 /* ── element-mode playground ─────────────────────────────── */
 .wb-inspector-play {
   display: block; width: 100%; margin: 0 0 8px; padding: 6px 10px;
