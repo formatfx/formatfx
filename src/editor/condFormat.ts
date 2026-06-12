@@ -63,14 +63,26 @@ function defaultEffectFor(field: MockField): EffectId {
   return 'fill';
 }
 
+/** Friendly type names — the picker must SAY what kind of column it is. */
+const TYPE_LABELS: Record<string, string> = {
+  text: 'text', note: 'multiline text', number: 'number', currency: 'currency',
+  choice: 'choice', choiceMulti: 'multi-choice', date: 'date',
+  person: 'person', personMulti: 'people', boolean: 'yes/no',
+  hyperlink: 'link', lookup: 'lookup', lookupMulti: 'multi-lookup',
+};
+const typeLabel = (f: MockField): string => TYPE_LABELS[f.type] ?? f.type;
+
 export function openCondFormat(target: CondTarget, onToast?: (m: string) => void): void {
   closeCondFormat();
   const toast = onToast ?? (() => { /* entry points without a toaster stay quiet */ });
 
+  // the column being PAINTED is fixed (column route); the field being
+  // WATCHED is free — "color DueDate by Status" is the whole point
+  const paintField: MockField | null = target.kind === 'column'
+    ? state.fields.find((f) => f.name === target.fieldName) ?? null
+    : null;
   let field: MockField =
-    target.kind === 'column'
-      ? state.fields.find((f) => f.name === target.fieldName) ?? state.fields[0]
-      : guessField(state.nodeAt(target.path) ?? state.doc.root);
+    paintField ?? guessField(state.nodeAt(target.kind === 'element' ? target.path : []) ?? state.doc.root);
   if (!field) { toast('Add a column in the Data tab first.'); return; }
 
   const rules: CondRule[] = [];
@@ -86,7 +98,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   const existingStyle = (): Record<string, SPExpr | undefined> | undefined =>
     target.kind === 'element'
       ? state.nodeAt(target.path)?.style
-      : state.columnRefs[field.name]?.style;
+      : state.columnRefs[paintField!.name]?.style;
 
   overlay = document.createElement('div');
   overlay.className = 'wb-cf-overlay';
@@ -101,7 +113,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   const ctxForRow = (rowIndex: number): EvalContext => ({
     row: state.rows[rowIndex] ?? {},
     rowIndex,
-    currentFieldName: field.name,
+    // @currentField in the painted content is the painted column
+    currentFieldName: (paintField ?? field).name,
     me: state.me,
     iterators: {},
     iteratorIndex: {},
@@ -156,21 +169,19 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     targetRow.className = 'wb-cf-target';
     const tlabel = document.createElement('span');
     tlabel.textContent = target.kind === 'element'
-      ? `Painting ${nameOf(targetNode!)} when`
-      : `Painting the ${fieldLabel(field)} column when`;
+      ? `Painting ${nameOf(targetNode!)} — every row — when`
+      : `Painting the ${fieldLabel(paintField!)} column — every row — when`;
     targetRow.appendChild(tlabel);
     const fieldSel = document.createElement('select');
     for (const f of state.fields) {
       const o = document.createElement('option');
       o.value = f.name;
-      o.textContent = `[$${f.name}]`;
+      // the type is part of the name here — it decides which conditions appear
+      o.textContent = `[$${f.name}] — ${typeLabel(f)}`;
       if (f.name === field.name) o.selected = true;
       fieldSel.appendChild(o);
     }
-    fieldSel.disabled = target.kind === 'column';
-    fieldSel.title = target.kind === 'column'
-      ? 'The column route always tests its own field — use the right-click menu on an element to test a different one'
-      : 'Which field the rules test — the element can watch any column in the row';
+    fieldSel.title = 'Which column the rules watch — pick any column in the row (no typing); the conditions below adapt to its type';
     fieldSel.addEventListener('change', () => {
       field = state.fields.find((f) => f.name === fieldSel.value) ?? field;
       rules.length = 0; // suggestions, defaults and rules are per-field
@@ -274,7 +285,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       });
       condRow.appendChild(inp);
     }
-    panel.appendChild(group(`When ${fieldLabel(field)}…`, condRow));
+    panel.appendChild(group(`When ${fieldLabel(field)} (a ${typeLabel(field)} column)…`, condRow));
 
     const lookRow = document.createElement('div');
     lookRow.className = 'wb-cf-row';
@@ -335,7 +346,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       const strip = document.createElement('div');
       strip.className = 'wb-cf-preview';
       const gen = rulesToStyle(field, rules, existingStyle());
-      const sample: SPElement = { ...defaultColumnFormatter(field), style: gen.style };
+      // the preview wears the PAINTED column's content, styled by the rules
+      const sample: SPElement = { ...defaultColumnFormatter(paintField ?? field), style: gen.style };
       state.rows.forEach((row, i) => {
         const item = document.createElement('div');
         item.className = 'wb-cf-preview-item';
@@ -376,7 +388,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     apply.className = 'wb-cf-apply';
     apply.textContent = target.kind === 'element'
       ? `Apply to ${nameOf(targetNode!)}`
-      : `Apply to the [$${field.name}] formatter`;
+      : `Apply to the [$${paintField!.name}] formatter`;
     apply.title = 'Merge the generated conditional styles (undoable with Ctrl+Z)';
     apply.disabled = !rules.length;
     apply.addEventListener('click', () => {
@@ -396,28 +408,31 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     toast(`${rules.length} rule${rules.length === 1 ? '' : 's'} applied to ${nameOf(node)} — Ctrl+Z undoes`);
   };
 
-  /** The "Format this column" route: register, CFR-wire the cell, switch, merge. */
+  /** The "Format this column" route: register, CFR-wire the cell, switch,
+   *  merge. The PAINTED column gets the formatter; the rules inside it may
+   *  watch any field. */
   const applyToColumn = (cellPath?: NodePath): void => {
-    const existed = field.name in state.columnRefs;
-    if (!existed) state.columnRefs[field.name] = defaultColumnFormatter(field);
+    const paint = paintField!;
+    const existed = paint.name in state.columnRefs;
+    if (!existed) state.columnRefs[paint.name] = defaultColumnFormatter(paint);
     if (cellPath?.length && state.activeDocKey === 'main') {
       const cell = state.nodeAt(cellPath);
       const p = state.parentOf(cellPath);
       if (cell && !cell.columnFormatterReference && p?.parent.children) {
         state.mutateDocument(() => {
-          const next = gridCellForField(field, state.columnRefs);
+          const next = gridCellForField(paint, state.columnRefs);
           if (cell._elmName) next._elmName = cell._elmName;
           p.parent.children![p.index] = next;
         });
       }
     }
-    state.openColumnRef(field.name);
+    state.openColumnRef(paint.name);
     const root = state.doc.root;
     const gen = rulesToStyle(field, rules, root.style);
     state.mutateDocument(() => { root.style = { ...(root.style ?? {}), ...gen.style }; });
     toast(existed
-      ? `Rules applied to the [$${field.name}] formatter — you're editing it now (Ctrl+Z undoes the styles)`
-      : `Started a formatter for ${field.name} with your rules — the grid renders it live`);
+      ? `Rules applied to the [$${paint.name}] formatter — you're editing it now (Ctrl+Z undoes the styles)`
+      : `Started a formatter for ${paint.name} with your rules — the grid renders it live`);
   };
 
   render();

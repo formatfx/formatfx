@@ -3,11 +3,10 @@
  * the type-aware condition catalog, the looks (style bundles), the color
  * palette with keyword-smart choice mapping, and SP expression generation.
  *
- * No DOM, no state imports — node-testable, like gridScaffold. The
- * generated expressions honor the live-verified semantics in HANDOFF §3:
- * an empty Date cell is null and null == '' is FALSE, so date emptiness is
- * tested with toString(); ordering comparisons guard against null dates
- * (which would otherwise coerce to the 1970 epoch and read as overdue).
+ * No DOM, no state imports — node-testable, like gridScaffold. The exact
+ * semantics of every generated condition (blank cells, per-type quirks,
+ * the no-NOT rule) are pinned by condRules.test.ts — that test file is the
+ * contract; change behavior there first.
  *
  * Rule semantics: rules read top-down and the FIRST matching rule wins for
  * every property it manages — one mental model, no Excel priority maze.
@@ -167,8 +166,7 @@ export function condExpr(field: MockField, cond: Condition): string {
       return `indexOf(toLowerCase(${r}), '${v}') != -1`;
     }
     case 'empty':
-      // empty Date/lookup/person cells are null, and null == '' is FALSE on
-      // real SP (HANDOFF §3) — toString() folds null and '' together
+      // blank-cell detection per type — pinned in condRules.test.ts
       if (multi) return `length(${r}) == 0`;
       if (field.type === 'date' || field.type === 'lookup' || field.type === 'person') {
         return `toString(${r}) == ''`;
@@ -182,7 +180,7 @@ export function condExpr(field: MockField, cond: Condition): string {
       return `${r} != ''`;
     case 'gte': return `${r} >= ${numLiteral(cond.value)}`;
     case 'lt': return `${r} < ${numLiteral(cond.value)}`;
-    // a null date coerces to the 1970 epoch in comparisons — guard first
+    // date comparisons keep their blank guard — pinned in condRules.test.ts
     case 'overdue': return `toString(${r}) != '' && ${r} < @now`;
     case 'today':
       return `toString(${r}) != '' && getDate(${r}) == getDate(@now) && getMonth(${r}) == getMonth(@now) && getYear(${r}) == getYear(@now)`;
@@ -194,8 +192,10 @@ export function condExpr(field: MockField, cond: Condition): string {
       return field.type === 'personMulti'
         ? `indexOf([$${n}.email], @me) != -1`
         : `[$${n}.email] == @me`;
-    case 'isTrue': return r;
-    case 'isFalse': return `!${r}`;
+    // SP has no logical NOT ('!=' is fine; a standalone '!' is not) —
+    // booleans compare explicitly
+    case 'isTrue': return `${r} == true`;
+    case 'isFalse': return `${r} == false`;
   }
 }
 

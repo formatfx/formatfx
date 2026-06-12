@@ -19,6 +19,7 @@ import { parseForEach, evaluateForEachList, type EvalContext, type SPValue } fro
 import { exportJson } from '../core/serializer';
 import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
+import { openFormatCells } from './formatCells';
 import { openMenu, closeMenu, type MenuItem } from './menu';
 import {
   gridCellForField, defaultColumnFormatter, gridColumnField, gridColumnLabel,
@@ -96,6 +97,15 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
       fn: () => openCondFormat({ kind: 'column', fieldName: field.name, cellPath: col.path }, onToast),
     });
   }
+  items.push({
+    icon: 'Font',
+    label: 'Format cells…',
+    title: 'Font, borders, fill and alignment — the comfortable dialog; applies to every row of this column',
+    fn: () => {
+      state.select(col.path);
+      openFormatCells(col.path, onToast);
+    },
+  });
   items.push({
     icon: 'Color',
     label: isGroup ? 'Style this group' : 'Style this cell',

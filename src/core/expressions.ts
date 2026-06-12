@@ -100,6 +100,19 @@ export type AstNode =
   | { kind: 'ternary'; cond: AstNode; yes: AstNode; no: AstNode }
   | { kind: 'call'; fn: string; args: AstNode[] };
 
+/**
+ * SharePoint's expression language has NO logical NOT in either syntax —
+ * no not() function and no standalone '!' prefix (owner-corrected
+ * 2026-06-12; an earlier version of this engine wrongly recommended '!').
+ * '!=' (not-equals) is a different, fully supported operator. Negation
+ * must be rewritten inside the expression itself.
+ */
+const NO_NOT_MESSAGE =
+  "SharePoint formatting has no logical NOT — neither not() nor a standalone '!' works "
+  + "('!=' for not-equals is fine; that's a different operator). "
+  + 'Negate inside the expression instead: turn == into !=, < into >=, '
+  + 'swap the if() branches, or compare a yes/no field with == false.';
+
 class Parser {
   private pos = 0;
   private toks: Tok[];
@@ -169,6 +182,7 @@ class Parser {
   }
   private unary(): AstNode {
     const op = this.matchOp('!', '-');
+    if (op === '!') throw new ExpressionError(NO_NOT_MESSAGE);
     if (op) return { kind: 'unary', op, operand: this.unary() };
     return this.primary();
   }
@@ -245,10 +259,8 @@ function looseEq(a: SPValue, b: SPValue): boolean {
   const aNull = a === null || a === undefined;
   const bNull = b === null || b === undefined;
   if (aNull || bNull) {
-    // SP treats a truly empty Date/lookup value (null) as NOT equal to ''
-    // (verified live 2026-06-10: =if([$EmptyStartDate]=='',...) takes the
-    // false branch on real SP). Absent FIELDS still resolve to '' and
-    // compare equal to '' — only null cell values differ.
+    // null CELL values are not equal to '' on real SP; absent FIELDS
+    // resolve to '' and are. Pinned in core.test.ts — don't fold together.
     return aNull && bNull;
   }
   if (typeof a === 'number' || typeof b === 'number') {
@@ -409,7 +421,7 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
     case 'getUserImage': return svgAvatar(toStr(a(0)));
     case 'getThumbnailImage': return toStr(a(0)) || svgAvatar('thumb');
     case 'not':
-      throw new ExpressionError("not() does not exist in SP formatting — use the '!' prefix operator (e.g. =!([$Done]=='Yes'))");
+      throw new ExpressionError(NO_NOT_MESSAGE);
     default:
       throw new ExpressionError(`'${fn}' is not a SharePoint formatting function. The full set is: ${SP_FUNCTIONS.join(', ')}. (Check spelling — names are case-sensitive.)`);
   }
@@ -469,8 +481,8 @@ export function evalAst(node: AstNode, ctx: EvalContext): SPValue {
       throw new ExpressionError(`Unknown identifier '${node.name}'`);
     }
     case 'unary': {
-      const v = evalAst(node.operand, ctx);
-      return node.op === '!' ? !truthy(v) : -toNum(v);
+      // only '-' reaches here — '!' is rejected at parse time (NO_NOT_MESSAGE)
+      return -toNum(evalAst(node.operand, ctx));
     }
     case 'ternary':
       return truthy(evalAst(node.cond, ctx)) ? evalAst(node.yes, ctx) : evalAst(node.no, ctx);
@@ -540,7 +552,7 @@ function evalAstTree(node: { operator: string; operands: SPExpr[] }, ctx: EvalCo
     }
     return false;
   }
-  if (op === '!') return !truthy(ev(0));
+  if (op === '!') throw new ExpressionError(NO_NOT_MESSAGE); // no NOT in the AST form either
   if (BINARY_OPS.has(op)) {
     if (op === '-' && operands.length === 1) return -toNum(ev(0));
     let acc = ev(0);

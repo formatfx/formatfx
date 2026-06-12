@@ -43,14 +43,14 @@ describe('condExpr — generated conditions evaluate correctly through the engin
     expect(test(FIELDS.Status, { kind: 'eq', value: 'Blocked' }, { Status: 'Done' })).toBe(false);
   });
 
-  it('overdue is FALSE for empty dates (null would coerce to the 1970 epoch unguarded)', () => {
+  it('overdue never matches a blank date', () => {
     expect(test(FIELDS.DueDate, { kind: 'overdue' }, { DueDate: days(-3) })).toBe(true);
     expect(test(FIELDS.DueDate, { kind: 'overdue' }, { DueDate: days(3) })).toBe(false);
     expect(test(FIELDS.DueDate, { kind: 'overdue' }, { DueDate: null })).toBe(false);
     expect(test(FIELDS.DueDate, { kind: 'overdue' }, {})).toBe(false);
   });
 
-  it('empty date detected via toString (null == "" is FALSE per live-verified SP)', () => {
+  it('blank dates are detected reliably', () => {
     expect(test(FIELDS.DueDate, { kind: 'empty' }, { DueDate: null })).toBe(true);
     expect(test(FIELDS.DueDate, { kind: 'empty' }, { DueDate: days(1) })).toBe(false);
   });

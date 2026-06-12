@@ -12,6 +12,7 @@ import { state, CARD_SEGMENT } from './state';
 import { openMenu, type MenuItem } from './menu';
 import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
+import { openFormatCells } from './formatCells';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -35,6 +36,12 @@ export function elementMenuItems(path: NodePath, onToast: (m: string) => void): 
     label: 'Conditional formatting…',
     title: 'Paint this element by a field\'s value — pick conditions and looks, Excel-style without the dialog maze',
     fn: () => { state.select(path); openCondFormat({ kind: 'element', path }, onToast); },
+  });
+  items.push({
+    icon: 'Font',
+    label: 'Format cells…',
+    title: 'Font, borders, fill and alignment — the comfortable dialog; applies to every row',
+    fn: () => { state.select(path); openFormatCells(path, onToast); },
   });
   items.push({
     icon: 'Rename',

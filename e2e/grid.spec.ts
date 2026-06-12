@@ -155,6 +155,45 @@ test('conditional formatting from the header menu: condition → rule → data p
   await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
 });
 
+test('conditional formatting can watch a different column than the one it paints', async ({ page }) => {
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  const cf = page.locator('.wb-cf');
+  // the picker is a type-labeled dropdown — no typing column names
+  await expect(cf.locator('select option', { hasText: '[$Status] — choice' })).toHaveCount(1);
+  await cf.locator('select').selectOption('Status');
+  // the conditions adapt to the watched column's type (choice → ready chips)
+  await cf.locator('.wb-cf-cond', { hasText: 'is Blocked' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await expect(cf.locator('.wb-cf-rule-when').first()).toContainText('Status is Blocked');
+  await cf.locator('.wb-cf-apply').click();
+  // the PAINTED column gets the formatter; the rules inside watch Status
+  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+  await page.locator('.wb-tabs button[data-tab="json"]').click();
+  expect(await page.inputValue('#wb-json-text')).toContain("[$Status]=='Blocked'");
+});
+
+test('format cells: bold + fill + outline border stage together and apply as one undo step', async ({ page }) => {
+  await header(page, 'Title').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
+  const fc = page.locator('.wb-fc');
+  await expect(fc).toBeVisible();
+  await fc.locator('.wb-fc-toggle', { hasText: 'Bold' }).click();
+  await fc.locator('.wb-fc-tab', { hasText: 'Fill' }).click();
+  await fc.locator('.wb-fc-swatch[title="#deecf9"]').click();
+  await fc.locator('.wb-fc-tab', { hasText: 'Border' }).click();
+  await fc.locator('.wb-fc-preset', { hasText: 'Outline' }).click();
+  await fc.locator('.wb-fc-ok').click();
+  const cell = page.locator('.wb-grid [data-sp-path="0"]').first();
+  await expect(cell).toHaveCSS('font-weight', '600');
+  await expect(cell).toHaveCSS('background-color', 'rgb(222, 236, 249)');
+  await expect(cell).toHaveCSS('border-top-width', '1px');
+  // ONE undo reverts the whole dialog's patch
+  await page.keyboard.press('Control+z');
+  await expect(cell).toHaveCSS('font-weight', '400');
+  await expect(cell).toHaveCSS('border-top-width', '0px');
+});
+
 test('✨ a color for each choice: one rule per choice, smart colors, formula-replacement warning', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();

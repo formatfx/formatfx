@@ -47,7 +47,9 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   layout.
 - **Right-click anywhere in the preview** — every element, column and group
   carries a context menu with the actions that apply to nearly everything:
-  restyle in the playground, conditional formatting, rename, wrap in a
+  restyle in the playground, conditional formatting, **Format cells…**
+  (the comfortable dialog: Font / Border / Fill / Alignment tabs, a live
+  preview box, OK applies everything as one undo step), rename, wrap in a
   container, ungroup, duplicate, copy its JSON, remove. All click-only and
   undoable, so it works in Basic mode too; grid headers answer right-click
   with their column menu.
@@ -56,8 +58,11 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   drives the suggestions: choice columns arrive with **one ready chip per
   choice** and a one-click **“✨ a color for each choice”** (the words pick
   the colors — *Done* goes green, *Blocked* goes red); dates get
-  overdue/today/within-N-days (with the null-date quirk handled correctly);
-  people get *is you*; numbers get thresholds. Pick a look — text color,
+  overdue/today/within-N-days;
+  people get *is you*; numbers get thresholds. Rules can watch a
+  **different column** than the one they paint ("color DueDate by Status")
+  — the watched column is picked from a type-labeled dropdown, never
+  typed. Pick a look — text color,
   soft fill, solid pill, edge stripe, strike out — and a swatch, watch every
   rule render against **your actual rows** through the real engine, then
   apply: one undoable mutation that compiles the rules into schema-valid
@@ -141,7 +146,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `@currentField` swapping and circular-reference protection.
 - **Built-in linter that teaches** — the silent-failure quirks, each explained
   in plain language with a ▶ position marker in the formula: the Zero
-  Whitespace Rule, `not()` doesn't exist, nested `=` inside expressions,
+  Whitespace Rule, no `not()` and no standalone `!` (`!=` is fine — negate
+  inside the expression), nested `=` inside expressions,
   XML-entity-escaped operators (`&amp;&amp;`), `forEach`+`split()` scope,
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`

@@ -85,7 +85,9 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                catalog per field type, looks, palette, =if() chain codegen;
                pure + node-tested like gridScaffold), condFormat.ts (the
                conditional formatting overlay UI; imports state, never the
-               other way)
+               other way), formatCells.ts (the Excel-comfort Format cells
+               dialog: Font/Border/Fill/Alignment over the allow-list,
+               staged patch, OK = one undoable mutation)
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```
@@ -154,27 +156,34 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 2026-06-11; report archived in the incubation repo at
 `docs/visual-compare-report-2026-06-10.md`):
 
-1. **Empty Date cells are null, and `null == ''` is FALSE** in SP
-   expressions — while empty *text* cells and *absent fields* DO equal `''`.
-   Implemented in `looseEq`/`resolveFieldRef`; schema import coerces empty
-   date cells to null. This contradicts what some community samples assume;
-   it was live-verified. There's a teaching lint rule
-   (`empty-date-compare`) for it.
-2. `toLocaleDateString()` etc. of an empty date renders **empty text**, not
-   the 1970 epoch.
-3. **CFR `@currentField` swap**: inside a resolved
+1. **There is NO logical NOT** in the expression language — neither a
+   `not()` function nor a standalone `!` prefix, in either syntax
+   (Excel-style strings or the AST object form). `!=` (not-equals) is a
+   different operator and fully supported. Negation must be rewritten
+   inside the expression: `==` ↔ `!=`, `<` ↔ `>=`, swap the `if()`
+   branches, or compare a yes/no field with `== false`. Owner-corrected
+   2026-06-12 — the engine previously *recommended* `!` in its `not()`
+   error message, which was wrong; parser, AST evaluator and linter now
+   all throw/flag teaching errors for it, and generators (condRules etc.)
+   must never emit a standalone `!`.
+2. **CFR `@currentField` swap**: inside a resolved
    `columnFormatterReference`, `@currentField` is the *referenced* column.
-4. `gap`/`row-gap`/`column-gap` ARE supported by modern SP (an older
+3. `gap`/`row-gap`/`column-gap` ARE supported by modern SP (an older
    internal rule said otherwise — the allow-list here is correct).
-5. `.sp-card-formatterRef` is `visibility:hidden` in LIST row context on
+4. `.sp-card-formatterRef` is `visibility:hidden` in LIST row context on
    real SP (occupies layout, never paints) — the theme CSS emulates this
    identically. It looks like a bug; it's fidelity.
-6. SP's **Export to CSV with schema omits calculated AND lookup columns**
+5. SP's **Export to CSV with schema omits calculated AND lookup columns**
    from the schema XML, and empty multi-lookups export as the literal
    string `"[]"`. The import help warns about this; "unresolved CFR" after
    import usually means exactly this.
-7. The renderer **silently drops** styles not on the allow-list — exactly
+6. The renderer **silently drops** styles not on the allow-list — exactly
    like SP. Surfacing them is the linter's job, not the renderer's.
+
+Blank-cell comparison semantics (dates, lookups, people) are also
+live-verified and settled — they're enforced by `core.test.ts` /
+`condRules.test.ts` and a teaching lint rule. Treat them as closed: the
+tests are the spec; no need to re-discuss or re-document them.
 
 ## 4. Known emulation gaps (honest list)
 
@@ -263,9 +272,10 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
    formatted card with self-applying examples, and an "already on X"
    current-styles list (expressions shown as 𝑓x; picks strike the old
    value). e2e specs for the old road were updated to the tree.
-   (c) conditional formatting: condRules.ts is the brain (NEVER generate
-   date comparisons without the toString() null guard — §3.1; unit tests
-   pin this), condFormat.ts the overlay. Semantics: rules are first-match-
+   (c) conditional formatting: condRules.ts is the brain (pure; its test
+   file is the contract for generated-expression semantics — change
+   behavior there first), condFormat.ts the overlay. Semantics: rules are
+   first-match-
    wins via per-property =if() chains threaded through every rule; an
    existing PLAIN value on a managed property becomes the no-match
    fallback, an existing FORMULA is replaced (UI warns first). Column route
@@ -275,6 +285,16 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
    is a one-way generator — it does not parse existing =if() chains back
    into editable rules; reopening starts fresh over the current style as
    fallback. Parsing chains back into rules is the obvious next step.
+1.8. **Sheet mode (the Excel-true surface) — design locked 2026-06-12**,
+   see docs/SHEET-MODE.md (owner decisions: ribbon, fx bar with a
+   property-slot dropdown, bidirectional dialect transpiler that refuses
+   rather than guesses, "every row" scope clarity, JSON host columns
+   gating txtContent replacement, column subtypes = settings not paint,
+   Basic → Sheet rename lands with the stage-3 shell). **Stage 1 SHIPPED
+   same day**: Format cells dialog (formatCells.ts — Font/Border/Fill/
+   Alignment, one undoable patch) on header + right-click menus, and
+   conditional formatting now watches any column (paintField vs watched
+   field split in condFormat.ts — keep those distinct). Stages 2–3 next.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
@@ -293,19 +313,20 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 ## 7. Test inventory
 
-- `npm test` — 96 vitest unit tests (engine semantics incl. every
+- `npm test` — 97 vitest unit tests (engine semantics incl. every
   live-verified behavior in §3, serializer round-trips, schema import,
   workspace/state, preset binding, grid scaffolding + grid mutations,
   conditional-formatting codegen evaluated through the real engine —
-  the empty-date/overdue guards are pinned there).
+  that test file is the contract for generated-condition semantics).
   Run headlessly anywhere.
-- `npm run test:ui` — 43 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 45 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild),
   `workspace.spec.ts` (doc switching, box model, flex editor, playground
   incl. quick looks/structure tree/property card, pane modes, dark-mode
   probe), `grid.spec.ts` (grid-first workspace: header menus, right-click
-  context menus, conditional formatting both routes, format-column round
-  trip, hide/add, drag-to-group/reorder, basic mode).
+  context menus, conditional formatting incl. cross-column watching, the
+  Format cells dialog, format-column round trip, hide/add,
+  drag-to-group/reorder, basic mode).
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).
