@@ -18,6 +18,22 @@ async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
 }
 
+/** Load a known row-layout document (the box-model/alignment fixture):
+ *  a flex row with 10px/14px padding, rendered once per mock row. */
+async function loadRowFixture(page: Page): Promise<void> {
+  await openTab(page, 'json');
+  await page.fill('#wb-json-text', JSON.stringify({
+    rowFormatter: {
+      elmType: 'div',
+      _elmName: 'Fixture row',
+      style: { 'display': 'flex', 'align-items': 'center', 'padding': '10px 14px' },
+      children: [{ elmType: 'span', txtContent: '[$Title]' }],
+    },
+  }));
+  await page.click('#wb-json-apply');
+  await openTab(page, 'inspector');
+}
+
 test('edit a column formatter, switch back, the view reflects it (CFR round-trip)', async ({ page }) => {
   // open the Status column formatter from the workspace tree
   await page.locator('.wb-doc-header', { hasText: '[$Status]' }).click();
@@ -30,9 +46,9 @@ test('edit a column formatter, switch back, the view reflects it (CFR round-trip
   }));
   await page.click('#wb-json-apply');
   await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('»In Progress«');
-  // back to the view — the CFR renders the edited formatter
+  // back to the view — the grid's Status column renders the edited formatter
   await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
-  await expect(page.locator('.wb-mock-viewrow').first()).toContainText('»In Progress«');
+  await expect(page.locator('.wb-grid-row').first()).toContainText('»In Progress«');
 });
 
 test('one-click topbar copy puts the active formatter JSON on the clipboard', async ({ page, context }) => {
@@ -48,8 +64,8 @@ test('one-click topbar copy puts the active formatter JSON on the clipboard', as
 test('element naming: showcase and presets arrive named, double-click renames, shipped JSON stays clean', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   // the showcase tree reads as names, not anonymous divs
-  await expect(page.locator('.wb-tree-name', { hasText: 'Row card' })).toBeVisible();
-  await expect(page.locator('.wb-tree-name', { hasText: 'Title block' })).toBeVisible();
+  await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toBeVisible();
+  await expect(page.locator('.wb-tree-name', { hasText: 'DueDate' })).toBeVisible();
   // a fresh preset arrives named after its palette label
   await page.selectOption('#wb-example', 'status-pill');
   await expect(page.locator('.wb-tree-name', { hasText: 'Status pill' })).toBeVisible();
@@ -116,7 +132,8 @@ test('doc card groups longhands: padding-left gets the padding card, variants sw
 });
 
 test('style playground: value chips style the sample live, apply merges into selection', async ({ page }) => {
-  await page.locator('.wb-tree-row').first().click(); // select the root to apply onto
+  // select the DueDate grid column's element to apply onto
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'DueDate' }) }).click();
   // entry via ☰ menu — consequence-free overlay
   await page.click('#wb-menu-btn');
   await page.click('#wb-playground');
@@ -137,7 +154,7 @@ test('style playground: value chips style the sample live, apply merges into sel
   await expect(pg.locator('.wb-pg-apply')).toContainText('Applied');
   await page.keyboard.press('Escape');
   await expect(pg).toBeHidden();
-  const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
+  const target = page.locator('.wb-grid [data-sp-path="2"]').first();
   await expect(target).toHaveCSS('padding', '16px');
   await expect(target).toHaveCSS('background-color', 'rgb(16, 124, 16)');
 });
@@ -159,12 +176,12 @@ test('doc card links into the playground with the property preselected', async (
 });
 
 test('element playground: real subtree, masked children, stash & resume, apply', async ({ page }) => {
-  // open the playground ON the Title block (a real element with children)
-  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Title block' }) }).click();
+  // open the playground ON the grid root (a real element with named children)
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Row layout' }) }).click();
   await page.locator('.wb-inspector-play').click();
   const pg = page.locator('.wb-pg');
   await expect(pg).toBeVisible();
-  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title block');
+  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Row layout');
   // children render for real but are masked with their names (click-to-descend)
   await expect(pg.locator('.wb-pgx-child[data-pgx-name="Title"]')).toBeVisible();
   // dial in a pick (padding family is the default)
@@ -182,7 +199,7 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   // descend into a child and come back — picks survive the round trip
   await pg.locator('.wb-pg-navbtn', { hasText: 'Title' }).first().click();
   await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title');
-  await pg.locator('.wb-pg-navbtn', { hasText: '▲ Title block' }).click();
+  await pg.locator('.wb-pg-navbtn', { hasText: '▲ Row layout' }).click();
   await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
   // apply for real this time
   await pg.locator('.wb-pg-apply').click();
@@ -191,8 +208,8 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   expect(await page.inputValue('#wb-json-text')).toContain('"padding": "8px"');
   // applying must never cost an element its name (tree falls back to a
   // class hint when _elmName is lost — that's the bug signature)
-  await expect(page.locator('.wb-tree-name', { hasText: 'Title block' })).toBeVisible();
-  expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "Title block"');
+  await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toBeVisible();
+  expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "Row layout"');
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
@@ -218,6 +235,7 @@ test('wrap-in-parent works on the root', async ({ page }) => {
 });
 
 test('box-model editor writes per-side padding to the selected element', async ({ page }) => {
+  await loadRowFixture(page);
   // select the view root in the tree structure
   await page.locator('.wb-tree-row').first().click();
   const padTop = page.locator('.wb-box-padding input.wb-box-top').first();
@@ -227,6 +245,7 @@ test('box-model editor writes per-side padding to the selected element', async (
 });
 
 test('alignment editor: summary chip opens picker, position grid writes layout styles', async ({ page }) => {
+  await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row').first().click();
   // summary chip shows a plain-language readout and opens the picker
@@ -247,6 +266,7 @@ test('alignment editor: summary chip opens picker, position grid writes layout s
 });
 
 test('box model: arrow-stepping adjusts padding live without losing focus', async ({ page }) => {
+  await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row').first().click();
   const padTop = page.locator('.wb-box-padding input.wb-box-top').first();
@@ -254,7 +274,7 @@ test('box model: arrow-stepping adjusts padding live without losing focus', asyn
   await padTop.press('ArrowUp');
   await padTop.press('ArrowUp');
   await expect(padTop).toBeFocused();
-  await expect(target).toHaveCSS('padding-top', '12px'); // showcase starts at 10px
+  await expect(target).toHaveCSS('padding-top', '12px'); // fixture starts at 10px
 });
 
 test('dark mode recolors sp-css background token classes — engine probe', async ({ page }) => {
@@ -283,8 +303,9 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
 
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {
   await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
+  // inserts at the grid root — arrives as a new grid column
   await page.locator('.wb-palette-item', { hasText: 'Hover card' }).click();
-  await page.locator('.wb-mock-viewrow .wb-has-card').first().click();
+  await page.locator('.wb-grid .wb-has-card').first().click();
   await expect(page.locator('.wb-flyout-beak')).toBeVisible();
 });
 

@@ -6,6 +6,7 @@
 import type {
   FormatterDocument, SPElement, NodePath, MockField, MockRow, PersonValue, DocumentKind,
 } from '../core/types';
+import { buildGridRoot } from './gridScaffold';
 
 export type ChangeReason =
   | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load';
@@ -17,45 +18,16 @@ const ME: PersonValue = {
 };
 
 function defaultDocument(): FormatterDocument {
-  // a small showcase workspace: a row-layout view formatter that pulls in
-  // registered column formatters via CFRs — demonstrates the mental model
-  // (view = layout shell; columns = reusable pieces it references)
+  // the grid-first workspace: the preview pane starts as a Microsoft-Lists
+  // style grid — one column per view column, each rendered with its current
+  // formatter (Status/Progress arrive formatted; Owner stays registered but
+  // unplaced so "+ column" demonstrates adding an already-formatted column).
+  // Dragging one column header onto another generates the row-formatter
+  // scaffolding — the on-ramp from "I know grids" to row formatting.
   return {
-    kind: 'row',
-    root: {
-      elmType: 'div',
-      _elmName: 'Row card',
-      attributes: { class: 'ms-bgColor-white sp-css-borderColor-neutralLight' },
-      style: {
-        'display': 'flex', 'align-items': 'center', 'width': '100%',
-        'padding': '10px 14px', 'margin': '4px 0', 'border-radius': '6px',
-        'border-width': '1px', 'border-style': 'solid',
-        'box-shadow': '0 1.6px 3.6px rgba(0,0,0,.1)',
-      },
-      children: [
-        {
-          elmType: 'div',
-          _elmName: 'Title block',
-          style: { 'display': 'flex', 'flex-direction': 'column', 'flex': '1' },
-          children: [
-            {
-              elmType: 'span', _elmName: 'Title', txtContent: '[$Title]',
-              attributes: { class: 'ms-fontColor-neutralPrimary' },
-              style: { 'font-size': '14px', 'font-weight': '600', 'margin-bottom': '3px' },
-            },
-            {
-              elmType: 'span',
-              _elmName: 'Due date · project',
-              txtContent: "='Due '+toLocaleDateString([$DueDate])+' · '+[$Project.lookupValue]",
-              attributes: { class: 'ms-fontColor-neutralSecondary' },
-              style: { 'font-size': '11px' },
-            },
-          ],
-        },
-        { elmType: 'div', _elmName: 'Progress slot', style: { 'width': '130px' }, columnFormatterReference: '[$Progress]' },
-        { elmType: 'div', _elmName: 'Status slot', style: { 'margin-left': '12px' }, columnFormatterReference: '[$Status]' },
-      ],
-    },
+    kind: 'grid',
+    root: buildGridRoot(defaultFields(), defaultColumnRefs(),
+      ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']),
   };
 }
 
@@ -238,6 +210,7 @@ export class EditorState {
     const d = this.activeDocKey === 'main' ? this.doc : this.mainDocStash ?? this.doc;
     const field = this.activeDocKey === 'main' ? this.currentFieldName : this.mainFieldStash ?? this.currentFieldName;
     switch (d.kind) {
+      case 'grid': return 'View formatter — grid';
       case 'row': return 'View formatter — row layout';
       case 'tile': return 'View formatter — tile/gallery';
       default: return `Column formatter on [$${field}]`;
@@ -490,6 +463,61 @@ export class EditorState {
     const [node] = p.parent.children.splice(p.index, 1);
     p.parent.children.splice(to, 0, node);
     this.selection = [...path.slice(0, -1), to];
+    this.emit('document');
+  }
+
+  /** Move a node so it sits before the sibling currently at `beforeIndex`
+   *  (children.length = end). One undo step; a no-op move snapshots nothing. */
+  moveNodeTo(path: NodePath, beforeIndex: number): void {
+    const p = this.parentOf(path);
+    if (!p || !p.parent.children) return;
+    const to = Math.max(0, Math.min(beforeIndex > p.index ? beforeIndex - 1 : beforeIndex, p.parent.children.length - 1));
+    if (to === p.index) return;
+    this.snapshot();
+    const [node] = p.parent.children.splice(p.index, 1);
+    p.parent.children.splice(to, 0, node);
+    this.selection = [...path.slice(0, -1), to];
+    this.emit('document');
+  }
+
+  /** Grid grouping: wrap the nodes at `onto` (kept first) and `from` in a
+   *  new named flex-column div at `onto`'s position — the row-formatter
+   *  scaffolding, generated as ONE undoable document mutation. */
+  groupNodes(from: NodePath, onto: NodePath, name: string): void {
+    if (from.length === 0 || from.length !== onto.length) return;
+    if (!samePath(from.slice(0, -1), onto.slice(0, -1))) return; // siblings only
+    const i = from[from.length - 1];
+    const j = onto[onto.length - 1];
+    if (i === j || i === CARD_SEGMENT || j === CARD_SEGMENT) return;
+    const parent = this.nodeAt(from.slice(0, -1));
+    if (!parent?.children?.[i] || !parent.children[j]) return;
+    this.snapshot();
+    const dragged = parent.children[i];
+    const target = parent.children[j];
+    const group: SPElement = {
+      elmType: 'div',
+      _elmName: name,
+      style: {
+        'display': 'flex', 'flex-direction': 'column', 'align-items': 'flex-start',
+        'gap': '4px', 'flex': '1', 'min-width': '0',
+      },
+      children: [target, dragged],
+    };
+    parent.children.splice(i, 1);
+    const at = j > i ? j - 1 : j;
+    parent.children[at] = group;
+    this.selection = [...from.slice(0, -1), at];
+    this.emit('document');
+  }
+
+  /** Dissolve a wrapper: replace the node with its children (ungroup). */
+  unwrapNode(path: NodePath): void {
+    const node = this.nodeAt(path);
+    const p = this.parentOf(path);
+    if (!node?.children?.length || !p?.parent.children) return;
+    this.snapshot();
+    p.parent.children.splice(p.index, 1, ...node.children);
+    this.selection = [...path];
     this.emit('document');
   }
 

@@ -20,17 +20,21 @@ async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
 }
 
-test('first load shows the showcase workspace: view formatter + column formatters', async ({ page }) => {
-  // default is a row-layout view rendered once per mock row
-  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+test('first load shows the grid-first workspace: Lists-style grid, formatted columns resolve', async ({ page }) => {
+  // default is a grid — one column per view column, real headers
+  await expect(page.locator('.wb-grid-header-label')).toHaveText(
+    ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
+  await expect(page.locator('.wb-grid-row')).toHaveCount(3);
   // workspace tree: the view + Status/Progress/Owner column formatters
-  await expect(page.locator('.wb-doc-header').first()).toContainText('View formatter — row layout');
+  await expect(page.locator('.wb-doc-header').first()).toContainText('View formatter — grid');
   await expect(page.locator('.wb-doc-header')).toHaveCount(4);
   await expect(page.locator('.wb-doc-header', { hasText: '[$Status]' })).toContainText('in view');
+  // Owner is registered but unplaced — "+ column" can add it, formatted
   await expect(page.locator('.wb-doc-header', { hasText: '[$Owner]' })).toContainText('unused');
-  // the Status CFR resolves — the pill text renders inside the row
-  await expect(page.locator('.wb-mock-viewrow').first()).toContainText('In Progress');
-  await expect(page.locator('.wb-mock-viewrow .wb-cfr-chip')).toHaveCount(0);
+  await expect(page.locator('.wb-grid-addcol')).toBeVisible();
+  // formatted columns render their formatters (CFR resolves, pills not chips)
+  await expect(page.locator('.wb-grid-row').first()).toContainText('In Progress');
+  await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
 });
 
 test('status pill example renders colored pills per row', async ({ page }) => {
