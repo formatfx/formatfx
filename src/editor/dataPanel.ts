@@ -137,7 +137,9 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
   // ── tenant theme palette ──
   const tenantThemeSection = (): HTMLElement => {
     const wrap = document.createElement('div');
-    wrap.className = 'wb-schema-form';
+    // advanced — but if a theme is active (e.g. from a project file), basic
+    // users can still see why the preview looks different, and clear it
+    wrap.className = 'wb-schema-form wb-adv' + (state.customTheme ? ' wb-adv-active' : '');
 
     const heading = document.createElement('div');
     heading.className = 'wb-data-fieldname';
@@ -198,7 +200,10 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
   // ── columnFormatterReference registry ──
   const columnRefsSection = (): HTMLElement => {
     const wrap = document.createElement('div');
-    wrap.className = 'wb-schema-form';
+    // advanced — but revealed in basic when the view references a column the
+    // workspace doesn't have (the tree's "missing" note sends people here)
+    const missingRef = [...state.referencedColumns()].some((n) => !(n in state.columnRefs));
+    wrap.className = 'wb-schema-form wb-adv' + (missingRef ? ' wb-adv-active' : '');
 
     const heading = document.createElement('div');
     heading.className = 'wb-data-fieldname';

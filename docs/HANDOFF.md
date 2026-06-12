@@ -69,8 +69,11 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
                incl. live CustomFormatters), PS-script JSON, hand CSV
 src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
-               inspector/jsonPanel/dataPanel
-src/main.ts    app shell: panes (resize/peek/max), doc switcher, copy, theme
+               inspector/jsonPanel/dataPanel, playground.ts (the
+               consequence-free style playground overlay; doc-card data —
+               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema)
+src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
+               doc switcher, copy, theme
 ```
 
 Key structural invariants:
@@ -88,6 +91,30 @@ Key structural invariants:
 - **Autosave**: debounced 400ms to localStorage + `flushAutosave()` on
   `beforeunload` (a real bug once: a theme toggle right before reload was
   lost to the debounce).
+- **Element names**: `SPElement._elmName` (a pre-existing TwFw provenance
+  field) is the user-facing naming mechanism — tree shows it as the primary
+  label (dblclick / ✎ renames), `instantiate()` stamps the palette label on
+  inserted presets, and the showcase workspace ships named. Export contract
+  (per explicit product decision): names stay in exported JSON by DEFAULT —
+  `exportJson` keeps `_elmName` unless `keepMeta: false`; "clean" is opt-in
+  via the JSON tab's "names" checkbox (default checked). The JSON tab's
+  textarea always keeps them so Apply-to-canvas round-trips losslessly.
+  Project save/autosave keep names (raw stringify).
+- **Basic/advanced mode**: `uiPrefs.mode` in `wb-ui-prefs`, **default
+  `basic`** — that's the landing experience, deliberately. The mechanism is
+  CSS-only: `body.wb-basic` hides every `.wb-adv` element *unless* it also
+  has `.wb-adv-active`. The basic contract is **click-only**: a curated
+  palette tier (`PaletteItem.basic` — things people reach for that drop in
+  right and can't break the formatter) and exactly ONE inspector section,
+  the Alignment editor (summary chip → picker with a 3×3 position grid
+  whose buttons sit where their result puts content). No free-text property
+  editing in basic, anywhere in the inspector — that's by explicit product
+  decision, don't "helpfully" re-reveal sections. `.wb-adv-active` is only
+  used on the data side (CFR registry when references are unresolved,
+  tenant theme when one is active) where hiding would strand live state.
+  Mode is a UI pref, not project state: it never touches the document or
+  autosave. E2E specs seed `{ mode: 'advanced' }` in `beforeEach` because
+  they exercise the full surface.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -136,11 +163,12 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 - **`.github/workflows/ci.yml`**: `test-build` (vitest 64 tests + vite
   build, uploads `dist/` as the Pages artifact) → `deploy-pages` (main
-  only); `e2e` runs the 22 Playwright specs with `PW_CHANNEL=bundled`
+  only); `e2e` runs the 23 Playwright specs with `PW_CHANNEL=bundled`
   (Playwright's chromium). Locally, `npm run test:ui` defaults to the
   **installed Edge** (`channel: msedge`) because the original dev machine
   sat behind a corporate proxy that blocked Playwright's browser CDN —
-  override with `PW_CHANNEL=chrome`, or `bundled` for CI parity.
+  override with `PW_CHANNEL=chrome`, `bundled` for CI parity, or
+  `PW_EXECUTABLE=/path/to/chromium` for containers that can't download.
 - **Branch protection on `main`**: `test-build` and `e2e` checks required.
 - **GitHub Pages is the canonical host** (build_type=workflow). Custom
   domain `formatfx.dev`; `https_enforced=true`; cert covers apex + www,
@@ -169,6 +197,26 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 1. **Node 20 runner deprecation — DEADLINE 2026-06-16**: GitHub forces
    actions to Node 24; either bump action versions in ci.yml or set
    `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env. Do this first.
+1.5. **Grid-first workspace (the big basic-mode bet — designed 2026-06-11,
+   owner's vision, not yet built).** Reframe the preview pane as the
+   WORKSPACE: it starts as a plain Microsoft-Lists-style grid — one column
+   per view column, each rendered with its current formatter (pills etc.
+   from import), real column headers. Header menus = per-column actions
+   (format this column, hide, copy JSON). The on-ramp to row formatting:
+   the user DRAGS a column header left/right to reorder — or drops one
+   column ONTO another, which generates the row-formatter scaffolding
+   (outer flex div + the two columns as children, named after the
+   columns). That moment converts "I know grids" people into row-formatter
+   users without them ever seeing JSON: from there groups can be
+   repositioned, wrapped, bordered, shadowed via the existing click-only
+   tools (alignment editor, element playground). Constraints to respect:
+   keep the grid metaphor as long as possible (columns stay column-ish
+   until grouped); generated structure must arrive fully _elmName'd
+   ("Status + DueDate group"); each grid mutation maps to ONE undoable
+   document mutation. Advanced mode later adds hover-card creation etc.
+   from the same surface. Build it as a fourth canvas context (kind-aware
+   like list/row/tile today) rather than a separate page, so the
+   palette/tree/inspector keep working against it.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class

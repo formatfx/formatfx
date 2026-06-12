@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { evaluate, evalAny, parseForEach, evaluateForEachList, type EvalContext } from './expressions';
 import { lintDocument, stripExpressionWhitespace } from './linter';
 import { importJson, exportJson } from './serializer';
+import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES, STYLE_PROP_DOCS, ATTRIBUTE_DOCS } from './schema';
 import { importSchema, mapSpFieldType, buildSampleRows } from './schemaImport';
 import { renderElement } from './renderer';
 import type { FormatterDocument, SPElement } from './types';
@@ -289,6 +290,38 @@ describe('serializer', () => {
     const csom = exportJson(doc, { csomSafe: true });
     expect(csom).not.toMatch(/[&<]/);
     expect(csom).toContain('\\u0026\\u0026');
+  });
+
+  it('_elmName survives import and export by default; keepMeta:false strips (clean is opt-in)', () => {
+    const doc = importJson(JSON.stringify({
+      elmType: 'div', _elmName: 'Card',
+      children: [{ elmType: 'span', _elmName: 'Label', txtContent: '[$Title]' }],
+    }));
+    expect(doc.root._elmName).toBe('Card');
+    expect(doc.root.children?.[0]._elmName).toBe('Label');
+    const kept = JSON.parse(exportJson(doc));
+    expect(kept._elmName).toBe('Card');
+    expect(kept.children[0]._elmName).toBe('Label');
+    expect(exportJson(doc, { keepMeta: false })).not.toContain('_elmName');
+  });
+});
+
+describe('schema docs', () => {
+  it('every allow-listed style property has an ⓘ explanation', () => {
+    for (const prop of ALLOWED_STYLES) {
+      expect(STYLE_PROP_DOCS[prop], `missing STYLE_PROP_DOCS entry for "${prop}"`).toBeTruthy();
+    }
+  });
+  it('every allow-listed attribute has an ⓘ explanation', () => {
+    for (const attr of ALLOWED_ATTRIBUTES) {
+      expect(ATTRIBUTE_DOCS[attr], `missing ATTRIBUTE_DOCS entry for "${attr}"`).toBeTruthy();
+    }
+  });
+
+  it("doc prose never contains word-internal apostrophes (they desync the 'example' chip parser)", () => {
+    for (const [prop, doc] of [...Object.entries(STYLE_PROP_DOCS), ...Object.entries(ATTRIBUTE_DOCS)]) {
+      expect(/[A-Za-z]'[A-Za-z]/.test(doc), `"${prop}" doc has a prose apostrophe: ${doc}`).toBe(false);
+    }
   });
 });
 

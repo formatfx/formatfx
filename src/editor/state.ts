@@ -24,6 +24,7 @@ function defaultDocument(): FormatterDocument {
     kind: 'row',
     root: {
       elmType: 'div',
+      _elmName: 'Row card',
       attributes: { class: 'ms-bgColor-white sp-css-borderColor-neutralLight' },
       style: {
         'display': 'flex', 'align-items': 'center', 'width': '100%',
@@ -34,23 +35,25 @@ function defaultDocument(): FormatterDocument {
       children: [
         {
           elmType: 'div',
+          _elmName: 'Title block',
           style: { 'display': 'flex', 'flex-direction': 'column', 'flex': '1' },
           children: [
             {
-              elmType: 'span', txtContent: '[$Title]',
+              elmType: 'span', _elmName: 'Title', txtContent: '[$Title]',
               attributes: { class: 'ms-fontColor-neutralPrimary' },
               style: { 'font-size': '14px', 'font-weight': '600', 'margin-bottom': '3px' },
             },
             {
               elmType: 'span',
+              _elmName: 'Due date · project',
               txtContent: "='Due '+toLocaleDateString([$DueDate])+' · '+[$Project.lookupValue]",
               attributes: { class: 'ms-fontColor-neutralSecondary' },
               style: { 'font-size': '11px' },
             },
           ],
         },
-        { elmType: 'div', style: { 'width': '130px' }, columnFormatterReference: '[$Progress]' },
-        { elmType: 'div', style: { 'margin-left': '12px' }, columnFormatterReference: '[$Status]' },
+        { elmType: 'div', _elmName: 'Progress slot', style: { 'width': '130px' }, columnFormatterReference: '[$Progress]' },
+        { elmType: 'div', _elmName: 'Status slot', style: { 'margin-left': '12px' }, columnFormatterReference: '[$Status]' },
       ],
     },
   };
@@ -61,6 +64,7 @@ function defaultColumnRefs(): Record<string, SPElement> {
   return {
     Status: {
       elmType: 'div',
+      _elmName: 'Status pill',
       txtContent: "=if([$Status]=='','None',[$Status])",
       style: {
         'display': 'inline-flex', 'align-items': 'center', 'justify-content': 'center',
@@ -71,10 +75,12 @@ function defaultColumnRefs(): Record<string, SPElement> {
     },
     Progress: {
       elmType: 'div',
+      _elmName: 'Progress bar',
       attributes: { class: 'ms-bgColor-neutralLighter' },
       style: { 'width': '120px', 'border-radius': '3px', 'overflow': 'hidden' },
       children: [{
         elmType: 'div',
+        _elmName: 'Fill',
         txtContent: "=@currentField+'%'",
         style: {
           'width': "=@currentField+'%'", 'min-width': '24px',
@@ -85,10 +91,12 @@ function defaultColumnRefs(): Record<string, SPElement> {
     },
     Owner: {
       elmType: 'div',
+      _elmName: 'Owner persona',
       style: { 'display': 'flex', 'align-items': 'center' },
       children: [
         {
           elmType: 'img',
+          _elmName: 'Avatar',
           attributes: { src: "=getUserImage([$Owner.email],'S')", title: '=[$Owner.title]' },
           style: { 'width': '24px', 'height': '24px', 'border-radius': '50%', 'margin-right': '6px' },
         },
@@ -157,7 +165,7 @@ export class EditorState {
   private mainDocStash: FormatterDocument | null = null;
   private mainFieldStash: string | null = null;
   selection: NodePath | null = [];
-  themeMode: 'light' | 'dark' = 'light';
+  themeMode: 'light' | 'dark' = 'dark';
   /** Tenant theme palette overrides (token → hex), or null for stock Fluent. */
   customTheme: Record<string, string> | null = null;
   me: PersonValue = ME;

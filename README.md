@@ -31,6 +31,21 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 
 ## Editor features
 
+- **Basic & Advanced modes** — the app lands in **Basic**: a curated palette
+  of the pieces people actually reach for (status pills, traffic lights,
+  date badges, data bars, personas, stars…), the canvas, the structure tree,
+  your data, the inspect-outlines toggle, and a single click-only
+  **Alignment** control — nothing hand-editable, so a misclick can't corrupt
+  the formatter, and everything is undoable. **Advanced** (topbar toggle,
+  remembered per browser) restores the full surface: every preset, all
+  element/style/attribute properties, the box model, the raw JSON tab with
+  lint diagnostics, `forEach` loops, row actions, hover cards, inline edit,
+  the CFR registry and tenant themes.
+- **Named elements** — every element can carry a friendly name (double-click
+  it in the Structure pane, or the ✎ action): presets arrive pre-named
+  ("Status pill", not "div"). Names use the `_elmName` convention — SharePoint
+  ignores it — and stay in exported JSON by default; untick "names" in the
+  JSON tab for schema-pristine output. Project files always preserve them.
 - **Element palette** — schema primitives plus ~25 ready-made components
   distilled from years of community samples: status pills, traffic lights,
   severity classes, tag pills, due-date badges, day counters, personas,
@@ -45,13 +60,22 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   per-element target highlighting, light/dark Fluent theme toggle, and an
   inspect-outlines mode. The selection highlight is a pulsing dashed outline
   offset *outside* the element, so it can't be confused with your design.
-- **Visual inspector** — devtools-style **box model** (per-side margin/padding
-  with ↑/↓ stepping) and a **visual flex editor**: plain-language presets
-  ("Row · spread", "Center both", "Chip wrap"…) and segmented controls whose
-  buttons each contain a live miniature flex container demonstrating their own
-  property. Plus full property editing with per-key value suggestions (theme
-  class tokens, Fluent icon names, style values), row actions, hover cards,
-  inline edit and CFRs.
+- **Visual inspector** — a plain-language **Alignment** control: a summary
+  chip reads out the current arrangement ("Side by side · centered · middle ·
+  gap 8px") and expands into a picker whose 3×3 grid buttons sit *where their
+  result puts the content*, plus click-only direction/spread/spacing chips.
+  Advanced adds a devtools-style **box model** (per-side margin/padding with
+  ↑/↓ stepping) and full property editing with per-key value suggestions
+  (theme class tokens, Fluent icon names, style values), row actions, hover
+  cards, inline edit and CFRs. Every style property and attribute carries an
+  ⓘ **doc card**: an SVG concept diagram (the box, the flex shelf, paint
+  layers…), a no-jargon explanation, «syntax shapes», clickable examples
+  that apply themselves, longhand groups (one card serves `padding` and all
+  its sides) and a full flex glossary — plus a one-click jump into the
+  **⚗ Style playground** (also in the ☰ menu): a consequence-free overlay
+  where every property is a row of clickable value chips applied live to
+  sample elements, with an explicit "apply to selected element" (undoable)
+  when you've dialed in something you like.
 - **customCardProps are first-class** — card formatters appear nested in the
   structure tree, are click-selectable inside the live flyout, and edit with
   the same palette/inspector as everything else.

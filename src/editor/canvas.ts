@@ -17,6 +17,8 @@ import type { NodePath, SPElement } from '../core/types';
 export interface CanvasApi {
   getRuntimeIssues: () => RenderIssue[];
   setOutlines: (on: boolean) => void;
+  /** Show/hide the Title context column in the column-formatter preview. */
+  setTitleColumn: (show: boolean) => void;
 }
 
 function pathFromAttr(raw: string | undefined): NodePath | undefined {
@@ -190,5 +192,6 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   return {
     getRuntimeIssues: () => runtimeIssues,
     setOutlines: (on: boolean) => host.classList.toggle('wb-outlines', on),
+    setTitleColumn: (show: boolean) => host.classList.toggle('wb-no-titlecol', !show),
   };
 }

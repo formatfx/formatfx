@@ -20,6 +20,12 @@ export interface PaletteItem {
   icon: string;          // Fluent icon name (also used to exercise icon rendering)
   group: 'Primitives' | 'Text & Status' | 'People' | 'Actions' | 'Data & Charts' | 'Layout Shells';
   description: string;
+  /**
+   * Shown in basic mode. The bar: something people actually reach for, that
+   * drops in looking right, and that a misclick can't break — no forEach
+   * shapes to mismatch, no actions to configure, no structure replaced.
+   */
+  basic?: boolean;
   create: () => SPElement;
 }
 
@@ -51,12 +57,12 @@ export const PALETTE: PaletteItem[] = [
     create: () => flex('column'),
   },
   {
-    id: 'text', label: 'Text', icon: 'PlainText', group: 'Primitives',
+    id: 'text', label: 'Text', icon: 'PlainText', group: 'Primitives', basic: true,
     description: 'Span bound to @currentField',
     create: () => ({ elmType: 'span', txtContent: '@currentField', style: { 'font-size': '13px' } }),
   },
   {
-    id: 'icon', label: 'Icon', icon: 'Emoji2', group: 'Primitives',
+    id: 'icon', label: 'Icon', icon: 'Emoji2', group: 'Primitives', basic: true,
     description: 'Fluent UI icon via the iconName attribute (always pair with a title tooltip)',
     create: () => ({
       elmType: 'span',
@@ -65,7 +71,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'link', label: 'Link', icon: 'Link', group: 'Primitives',
+    id: 'link', label: 'Link', icon: 'Link', group: 'Primitives', basic: true,
     description: 'Anchor with target=_blank',
     create: () => ({
       elmType: 'a',
@@ -75,7 +81,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'image', label: 'Image', icon: 'Photo2', group: 'Primitives',
+    id: 'image', label: 'Image', icon: 'Photo2', group: 'Primitives', basic: true,
     description: 'img element',
     create: () => ({
       elmType: 'img',
@@ -86,7 +92,7 @@ export const PALETTE: PaletteItem[] = [
 
   // ─── Text & Status ─────────────────────────────────────────────────────────
   {
-    id: 'status-pill', label: 'Status pill', icon: 'StatusCircleInner', group: 'Text & Status',
+    id: 'status-pill', label: 'Status pill', icon: 'StatusCircleInner', group: 'Text & Status', basic: true,
     description: 'Conditional colored pill (generic-issuestatus-pill / statusBadge pattern)',
     create: () => ({
       elmType: 'div',
@@ -100,7 +106,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'traffic-light', label: 'Traffic light', icon: 'CircleFill', group: 'Text & Status',
+    id: 'traffic-light', label: 'Traffic light', icon: 'CircleFill', group: 'Text & Status', basic: true,
     description: 'Dot + label severity indicator (generic-traffic-light-status)',
     create: () => flex('row', [
       {
@@ -143,7 +149,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'date-badge', label: 'Due-date badge', icon: 'Calendar', group: 'Text & Status',
+    id: 'date-badge', label: 'Due-date badge', icon: 'Calendar', group: 'Text & Status', basic: true,
     description: 'Red when overdue, neutral otherwise (date-range-rag pattern)',
     create: () => ({
       elmType: 'div',
@@ -157,7 +163,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'day-counter', label: 'Days-until counter', icon: 'Timer', group: 'Text & Status',
+    id: 'day-counter', label: 'Days-until counter', icon: 'Timer', group: 'Text & Status', basic: true,
     description: 'Day arithmetic via Number(date) milliseconds (date-day-counter)',
     create: () => ({
       elmType: 'span',
@@ -188,7 +194,7 @@ export const PALETTE: PaletteItem[] = [
 
   // ─── People ───────────────────────────────────────────────────────────────
   {
-    id: 'persona', label: 'Persona', icon: 'Contact', group: 'People',
+    id: 'persona', label: 'Persona', icon: 'Contact', group: 'People', basic: true,
     description: 'Avatar + display name for a single person field',
     create: () => flex('row', [
       {
@@ -328,7 +334,7 @@ export const PALETTE: PaletteItem[] = [
 
   // ─── Data & Charts ────────────────────────────────────────────────────────
   {
-    id: 'data-bar', label: 'Data bar', icon: 'BarChartHorizontal', group: 'Data & Charts',
+    id: 'data-bar', label: 'Data bar', icon: 'BarChartHorizontal', group: 'Data & Charts', basic: true,
     description: 'Width-bound percentage bar (number-data-bar)',
     create: () => ({
       elmType: 'div',
@@ -346,7 +352,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'progress-ring', label: 'Progress donut', icon: 'DonutChart', group: 'Data & Charts',
+    id: 'progress-ring', label: 'Progress donut', icon: 'DonutChart', group: 'Data & Charts', basic: true,
     description: 'Conic-style donut faked with SVG stroke-dasharray (generic-gauge family)',
     create: () => ({
       elmType: 'div',
@@ -391,7 +397,7 @@ export const PALETTE: PaletteItem[] = [
     }),
   },
   {
-    id: 'star-rating', label: 'Star rating', icon: 'FavoriteStarFill', group: 'Data & Charts',
+    id: 'star-rating', label: 'Star rating', icon: 'FavoriteStarFill', group: 'Data & Charts', basic: true,
     description: 'Repeat icons via forEach over a padded string (generic-star-icon trick)',
     create: () => ({
       elmType: 'div',
@@ -553,5 +559,8 @@ export function bindFragmentToSchema(fragment: SPElement, fields: MockField[]): 
 
 /** Create a palette fragment bound to the given schema. */
 export function instantiate(item: PaletteItem, fields: MockField[]): SPElement {
-  return bindFragmentToSchema(item.create(), fields);
+  const el = bindFragmentToSchema(item.create(), fields);
+  // arrive named — the Structure pane reads "Status pill", not "div"
+  el._elmName = el._elmName ?? item.label;
+  return el;
 }

@@ -8,7 +8,11 @@ import { test, expect, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   // a fresh run each time — clear the autosaved project
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    // most specs exercise the full surface — run them in advanced mode
+    localStorage.setItem('wb-ui-prefs', JSON.stringify({ mode: 'advanced' }));
+  });
   await page.reload();
 });
 
@@ -82,9 +86,8 @@ test('hover card opens as flyout and its content is selectable', async ({ page }
   await expect(page.locator('.wb-tree-row.selected')).toHaveCount(1);
 });
 
-test('dark mode keeps the row card readable (theme classes, not hex)', async ({ page }) => {
+test('dark mode (the default) keeps the row card readable (theme classes, not hex)', async ({ page }) => {
   await page.selectOption('#wb-example', 'row-card');
-  await page.click('#wb-theme');
   await expect(page.locator('body')).toHaveClass(/wb-dark/);
   const card = page.locator('.wb-mock-viewrow .ms-bgColor-white').first();
   // dark palette maps the "white" token to near-black — not #fff
@@ -93,9 +96,42 @@ test('dark mode keeps the row card readable (theme classes, not hex)', async ({ 
   await expect(title).toHaveCSS('color', 'rgb(255, 255, 255)');
 });
 
-test('outlines toggle draws element boxes', async ({ page }) => {
+test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) => {
+  await page.click('#wb-menu-btn');
   await page.check('#wb-outlines');
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
+});
+
+test('basic mode (the default) trims the surface to click-only controls', async ({ page }) => {
+  // fresh prefs → basic mode is the landing default
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator('#wb-mode button', { hasText: 'Basic' })).toHaveClass(/active/);
+  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
+  await expect(page.locator('#wb-activedoc')).toBeHidden();
+  // outlines lives in the ☰ menu and IS part of basic
+  await page.click('#wb-menu-btn');
+  await expect(page.locator('#wb-outlines')).toBeVisible();
+  await page.click('#wb-menu-btn');
+
+  // palette: only the curated basic tier — no actions, no shells, no forEach presets
+  await expect(page.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
+  await expect(page.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeHidden();
+  await expect(page.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeHidden();
+  await expect(page.locator('.wb-palette-group', { hasText: 'Actions' })).toBeHidden();
+
+  // inspector: ONLY the alignment editor — nothing hand-editable in basic
+  await page.locator('.wb-tree-row').first().click();
+  const inspector = page.locator('#wb-tab-inspector');
+  await expect(inspector.locator('.wb-align-summary')).toBeVisible();
+  await expect(inspector.locator('input:visible, textarea:visible')).toHaveCount(0);
+
+  // switching to advanced restores the full surface, and it persists
+  await page.locator('#wb-mode button', { hasText: 'Advanced' }).click();
+  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
+  await expect(inspector.locator('textarea').first()).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#wb-mode button', { hasText: 'Advanced' })).toHaveClass(/active/);
 });
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {

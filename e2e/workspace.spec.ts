@@ -6,7 +6,11 @@ import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    // most specs exercise the full surface — run them in advanced mode
+    localStorage.setItem('wb-ui-prefs', JSON.stringify({ mode: 'advanced' }));
+  });
   await page.reload();
 });
 
@@ -41,6 +45,164 @@ test('one-click topbar copy puts the active formatter JSON on the clipboard', as
   expect(text).toContain('columnFormatterReference');
 });
 
+test('element naming: showcase and presets arrive named, double-click renames, shipped JSON stays clean', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // the showcase tree reads as names, not anonymous divs
+  await expect(page.locator('.wb-tree-name', { hasText: 'Row card' })).toBeVisible();
+  await expect(page.locator('.wb-tree-name', { hasText: 'Title block' })).toBeVisible();
+  // a fresh preset arrives named after its palette label
+  await page.selectOption('#wb-example', 'status-pill');
+  await expect(page.locator('.wb-tree-name', { hasText: 'Status pill' })).toBeVisible();
+  // double-click renames inline
+  await page.locator('.wb-tree-row').first().dblclick();
+  await page.locator('.wb-tree-rename').fill('My pill');
+  await page.locator('.wb-tree-rename').press('Enter');
+  await expect(page.locator('.wb-tree-name', { hasText: 'My pill' })).toBeVisible();
+  // the JSON tab keeps names so Apply round-trips losslessly…
+  await openTab(page, 'json');
+  expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "My pill"');
+  // …copies keep them by default (SP ignores them); clean is opt-in
+  await page.click('#wb-json-copy');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('"_elmName": "My pill"');
+  await page.uncheck('#wb-json-names');
+  await page.click('#wb-json-copy');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).not.toContain('_elmName');
+});
+
+test('style editor explains properties: ⓘ opens a doc card with clickable examples', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click();
+  const styleSection = page.locator('details.wb-inspector-section')
+    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+  await styleSection.locator('.wb-kv-add').click();
+  const row = styleSection.locator('.wb-kv-row').last();
+  await row.locator('.wb-kv-key').fill('flex-flow');
+  await expect(row.locator('.wb-kv-info')).toHaveClass(/wb-kv-info-known/);
+  await row.locator('.wb-kv-info').click();
+  const card = row.locator('.wb-doccard');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.wb-doccard-prop')).toHaveText('flex-flow');
+  // the mental model: family diagram + plain-language story + flex glossary
+  await expect(card.locator('.wb-doccard-figure svg')).toBeVisible();
+  await expect(card.locator('.wb-doccard-plain')).toContainText('shelf');
+  await expect(card.locator('.wb-doccard-gloss')).toContainText('justify-content');
+  // examples render as chips — clicking one applies it as the value
+  await card.locator('.wb-doccard-ex', { hasText: 'row wrap' }).click();
+  await expect(row.locator('.wb-kv-val')).toHaveValue('row wrap');
+  // glossary terms switch the card without closing it
+  await card.locator('.wb-doccard-gloss .wb-doccard-rel', { hasText: 'align-items' }).click();
+  await expect(card.locator('.wb-doccard-prop')).toHaveText('align-items');
+  // clicking elsewhere closes the card
+  await page.locator('.wb-pane-canvas h2').click();
+  await expect(card).toBeHidden();
+});
+
+test('doc card groups longhands: padding-left gets the padding card, variants switch the row', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click();
+  const styleSection = page.locator('details.wb-inspector-section')
+    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+  await styleSection.locator('.wb-kv-add').click();
+  const row = styleSection.locator('.wb-kv-row').last();
+  await row.locator('.wb-kv-key').fill('padding-left');
+  await row.locator('.wb-kv-info').click();
+  const card = row.locator('.wb-doccard');
+  // one card serves the whole group — variants row lists the siblings
+  const variants = card.locator('.wb-doccard-related');
+  await expect(variants).toContainText('padding-top');
+  await expect(variants.locator('.wb-doccard-rel.active')).toHaveText('padding-left');
+  // «syntax» chips render distinctly (box-shadow style notation, not clickable values)
+  await variants.locator('.wb-doccard-rel', { hasText: /^padding$/ }).click();
+  await expect(row.locator('.wb-kv-key')).toHaveValue('padding');
+  await expect(card.locator('.wb-doccard-syntax')).toContainText('top right bottom left');
+});
+
+test('style playground: value chips style the sample live, apply merges into selection', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click(); // select the root to apply onto
+  // entry via ☰ menu — consequence-free overlay
+  await page.click('#wb-menu-btn');
+  await page.click('#wb-playground');
+  const pg = page.locator('.wb-pg');
+  await expect(pg).toBeVisible();
+  // default prop is padding (box family); click a value → the sample chip wears it
+  await pg.locator('.wb-pg-val', { hasText: /^16px$/ }).click();
+  await expect(page.locator('.wb-pg-target')).toHaveCSS('padding', '16px');
+  // it stacks in the readout
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 16px');
+  // switch family to paint, pick a background color
+  await pg.locator('.wb-pg-fam', { hasText: 'Paint & ink' }).click();
+  await pg.locator('.wb-pg-prop', { hasText: /^background-color$/ }).click();
+  await pg.locator('.wb-pg-val', { hasText: '#107c10' }).click();
+  await expect(page.locator('.wb-pg-target')).toHaveCSS('background-color', 'rgb(16, 124, 16)');
+  // apply to the selected element (root) — merges via the undoable store
+  await pg.locator('.wb-pg-apply').click();
+  await expect(pg.locator('.wb-pg-apply')).toContainText('Applied');
+  await page.keyboard.press('Escape');
+  await expect(pg).toBeHidden();
+  const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
+  await expect(target).toHaveCSS('padding', '16px');
+  await expect(target).toHaveCSS('background-color', 'rgb(16, 124, 16)');
+});
+
+test('doc card links into the playground with the property preselected', async ({ page }) => {
+  await page.locator('.wb-tree-row').first().click();
+  const styleSection = page.locator('details.wb-inspector-section')
+    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+  await styleSection.locator('.wb-kv-add').click();
+  const row = styleSection.locator('.wb-kv-row').last();
+  await row.locator('.wb-kv-key').fill('justify-content');
+  await row.locator('.wb-kv-info').click();
+  await row.locator('.wb-doccard .wb-doccard-play').click();
+  const pg = page.locator('.wb-pg');
+  await expect(pg).toBeVisible();
+  await expect(pg.locator('.wb-pg-fam.active')).toHaveText('Arranging children');
+  await expect(pg.locator('.wb-pg-prop.active')).toHaveText('justify-content');
+  await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('SHELF');
+});
+
+test('element playground: real subtree, masked children, stash & resume, apply', async ({ page }) => {
+  // open the playground ON the Title block (a real element with children)
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Title block' }) }).click();
+  await page.locator('.wb-inspector-play').click();
+  const pg = page.locator('.wb-pg');
+  await expect(pg).toBeVisible();
+  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title block');
+  // children render for real but are masked with their names (click-to-descend)
+  await expect(pg.locator('.wb-pgx-child[data-pgx-name="Title"]')).toBeVisible();
+  // dial in a pick (padding family is the default)
+  await pg.locator('.wb-pg-val', { hasText: /^8px$/ }).click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
+  // stash & close — consequence-free, the document is untouched
+  await pg.locator('button', { hasText: 'Stash & close' }).click();
+  await expect(pg).toBeHidden();
+  await openTab(page, 'json');
+  expect(await page.inputValue('#wb-json-text')).not.toContain('"padding": "8px"');
+  // reopen → the stash resumes
+  await openTab(page, 'inspector');
+  await page.locator('.wb-inspector-play').click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
+  // descend into a child and come back — picks survive the round trip
+  await pg.locator('.wb-pg-navbtn', { hasText: 'Title' }).first().click();
+  await expect(pg.locator('.wb-pg-navhere')).toHaveText('Title');
+  await pg.locator('.wb-pg-navbtn', { hasText: '▲ Title block' }).click();
+  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
+  // apply for real this time
+  await pg.locator('.wb-pg-apply').click();
+  await page.keyboard.press('Escape');
+  await openTab(page, 'json');
+  expect(await page.inputValue('#wb-json-text')).toContain('"padding": "8px"');
+});
+
+test('Title column toggle hides the context column in the column preview', async ({ page }) => {
+  await page.selectOption('#wb-example', 'status-pill');
+  await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
+  await page.uncheck('#wb-titlecol');
+  await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeHidden();
+  await page.check('#wb-titlecol');
+  await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
+  // the toggle only appears for column-kind previews
+  await page.selectOption('#wb-example', 'row-card');
+  await expect(page.locator('#wb-titlecol')).toBeHidden();
+});
+
 test('wrap-in-parent works on the root', async ({ page }) => {
   const rootRow = page.locator('.wb-tree-row').first();
   await rootRow.hover();
@@ -60,15 +222,24 @@ test('box-model editor writes per-side padding to the selected element', async (
   await expect(page.locator('.wb-mock-viewrow [data-sp-path]').first()).toHaveCSS('padding-top', '33px');
 });
 
-test('visual flex editor: a preset writes the layout styles', async ({ page }) => {
+test('alignment editor: summary chip opens picker, position grid writes layout styles', async ({ page }) => {
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row').first().click();
-  await page.locator('.wb-flex-presets button', { hasText: 'Row · spread' }).click();
-  await expect(target).toHaveCSS('justify-content', 'space-between');
-  await expect(target).toHaveCSS('align-items', 'center');
-  // segmented control reflects + changes it
-  await page.locator('.wb-flexbtn[title*="Pack in the middle"]').click();
+  // summary chip shows a plain-language readout and opens the picker
+  const summary = page.locator('.wb-align-summary');
+  await expect(summary).toContainText('Side by side');
+  await summary.click();
+  // 3×3 position grid: click "center · middle" — buttons sit where the result puts content
+  await page.locator('.wb-align-cell[title="center · middle"]').click();
   await expect(target).toHaveCSS('justify-content', 'center');
+  await expect(target).toHaveCSS('align-items', 'center');
+  await expect(summary).toContainText('centered · middle');
+  // spread chip switches the main axis to space-between
+  await page.locator('.wb-align-chip', { hasText: 'To the edges' }).click();
+  await expect(target).toHaveCSS('justify-content', 'space-between');
+  // spacing chips are click-only — no typing anywhere in this editor
+  await page.locator('.wb-align-chip', { hasText: '8px' }).click();
+  await expect(target).toHaveCSS('gap', '8px');
 });
 
 test('box model: arrow-stepping adjusts padding live without losing focus', async ({ page }) => {
@@ -94,15 +265,16 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
   }));
   await page.click('#wb-json-apply');
   const probe = page.locator('.wb-mock-cell-fmt [data-sp-path]').first();
-  await expect(probe).toHaveCSS('background-color', 'rgb(243, 242, 241)'); // light #f3f2f1
+  await expect(probe).toHaveCSS('background-color', 'rgb(49, 49, 49)'); // dark default #313131
+  await page.click('#wb-menu-btn');
   await page.click('#wb-theme');
-  await expect(page.locator('body')).toHaveClass(/wb-dark/);
-  await expect(probe).toHaveCSS('background-color', 'rgb(49, 49, 49)'); // dark #313131
-  // the harness reloads between captures — autosave must restore dark too
+  await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
+  await expect(probe).toHaveCSS('background-color', 'rgb(243, 242, 241)'); // light #f3f2f1
+  // the harness reloads between captures — autosave must restore the choice too
   await page.reload();
-  await expect(page.locator('body')).toHaveClass(/wb-dark/);
+  await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
   await expect(page.locator('.wb-mock-cell-fmt [data-sp-path]').first())
-    .toHaveCSS('background-color', 'rgb(49, 49, 49)');
+    .toHaveCSS('background-color', 'rgb(243, 242, 241)');
 });
 
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {

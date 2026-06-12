@@ -17,6 +17,7 @@ import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel } from './editor/dataPanel';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
+import { openPlayground } from './editor/playground';
 import type { DocumentKind, FormatterDocument } from './core/types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -28,7 +29,11 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
-      <label title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
+      <div class="wb-mode" id="wb-mode" title="Basic shows the everyday tools — presets, visual editing, your data. Advanced adds the raw JSON tab, loops, row actions, hover cards, CFRs and tenant themes.">
+        <button data-mode="basic">Basic</button>
+        <button data-mode="advanced">Advanced</button>
+      </div>
+      <label class="wb-adv" title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
         <select id="wb-activedoc"><option value="main">Main formatter</option></select>
       </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
@@ -51,11 +56,18 @@ app.innerHTML = `
       </label>
       <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
-      <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i></button>
-      <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i></button>
-      <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i></button>
-      <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i></button>
-      <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> outlines</label>
+      <div class="wb-menu" id="wb-menu">
+        <button id="wb-menu-btn" title="Project & view options">☰</button>
+        <div class="wb-menu-panel" id="wb-menu-panel" hidden>
+          <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
+          <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
+          <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i> <span id="wb-theme-label">Switch to light mode</span></button>
+          <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
+          <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
+          <hr>
+          <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i> Reset to default example</button>
+        </div>
+      </div>
     </div>
   </header>
   <main class="wb-layout" id="wb-layout">
@@ -72,7 +84,9 @@ app.innerHTML = `
     </aside>
     <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
     <section class="wb-pane wb-pane-canvas">
-      <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span></h2>
+      <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span>
+        <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to preview the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
+      </h2>
       <div id="wb-canvas" class="wb-canvas"></div>
     </section>
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>
@@ -80,7 +94,7 @@ app.innerHTML = `
       <div class="wb-side-rail" title="Hover to open the panel — it stays open until you click somewhere else">◧<span>panel</span></div>
       <nav class="wb-tabs">
         <button data-tab="inspector" class="active">Inspector</button>
-        <button data-tab="json">JSON</button>
+        <button data-tab="json" class="wb-adv">JSON</button>
         <button data-tab="data">Data</button>
         <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close">📌</button>
         <button id="wb-side-max" title="Maximize this pane — room for editing data and JSON">⛶</button>
@@ -99,11 +113,15 @@ interface UiPrefs {
   cols: { palette: number; tree: number; side: number };
   paletteCollapsed: boolean;
   sideMode: 'normal' | 'peek' | 'max';
+  mode: 'basic' | 'advanced';
+  titleCol: boolean;
 }
 const uiPrefs: UiPrefs = {
   cols: { palette: 220, tree: 250, side: 360 },
   paletteCollapsed: false,
   sideMode: 'normal',
+  mode: 'basic',
+  titleCol: true,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
@@ -176,6 +194,50 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
 }
 applyLayout();
 
+// ─── basic / advanced mode ──────────────────────────────────────────────────
+// Basic (the default) hides the power-user surface: the raw JSON tab, the
+// doc switcher, outlines, and the inspector/data sections marked `.wb-adv`.
+// Sections that are marked `.wb-adv-active` (the element already uses the
+// feature) stay visible in basic so nothing becomes uneditable.
+const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#wb-mode button')];
+const applyMode = () => {
+  const basic = uiPrefs.mode === 'basic';
+  document.body.classList.toggle('wb-basic', basic);
+  for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === uiPrefs.mode);
+  // never leave a hidden tab active — fall back to the inspector
+  const activeTab = app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab].active');
+  if (basic && activeTab?.classList.contains('wb-adv')) {
+    app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab="inspector"]')!.click();
+  }
+};
+for (const b of modeButtons) {
+  b.addEventListener('click', () => {
+    if (uiPrefs.mode === b.dataset.mode) return;
+    uiPrefs.mode = b.dataset.mode as UiPrefs['mode'];
+    applyMode();
+    saveUiPrefs();
+    toast(uiPrefs.mode === 'basic'
+      ? 'Basic mode — drop in ready-made pieces and arrange them. Everything is click-only and undoable.'
+      : 'Advanced mode — full surface: every preset, all properties, JSON tab, loops, actions, cards, CFRs, tenant theme.');
+  });
+}
+applyMode();
+
+// ─── topbar ☰ menu (save/open/theme/outlines/reset live here) ───────────────
+const menuEl = document.getElementById('wb-menu')!;
+const menuPanel = document.getElementById('wb-menu-panel') as HTMLDivElement;
+document.getElementById('wb-menu-btn')!.addEventListener('click', () => {
+  menuPanel.hidden = !menuPanel.hidden;
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!menuPanel.hidden && !menuEl.contains(e.target as Node)) menuPanel.hidden = true;
+});
+menuPanel.addEventListener('click', (e) => {
+  // button actions close the menu; the outlines checkbox keeps it open
+  if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
+});
+document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
+
 // toast
 let toastTimer = 0;
 function toast(message: string): void {
@@ -196,6 +258,8 @@ const applyAppTheme = () => {
   setCustomPalette(state.customTheme);
   document.body.classList.toggle('wb-dark', state.themeMode === 'dark');
   applyTheme(state.themeMode);
+  document.getElementById('wb-theme-label')!.textContent =
+    state.themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
 };
 applyAppTheme();
 document.getElementById('wb-theme')!.addEventListener('click', () => {
@@ -339,6 +403,25 @@ mountDataPanel(document.getElementById('wb-tab-data')!, toast);
   canvas.setOutlines((e.target as HTMLInputElement).checked);
 });
 
+// Title context column in the column-formatter preview (persisted view pref)
+const titleColCb = document.getElementById('wb-titlecol') as HTMLInputElement;
+const titleColLabel = document.getElementById('wb-titlecol-label')!;
+titleColCb.checked = uiPrefs.titleCol;
+canvas.setTitleColumn(uiPrefs.titleCol);
+titleColCb.addEventListener('change', () => {
+  uiPrefs.titleCol = titleColCb.checked;
+  canvas.setTitleColumn(titleColCb.checked);
+  saveUiPrefs();
+});
+const refreshTitleColVisibility = () => {
+  // only meaningful in the column-kind preview (incl. open column formatters)
+  titleColLabel.style.display = state.doc.kind === 'column' ? '' : 'none';
+};
+state.subscribe((reason) => {
+  if (reason === 'kind' || reason === 'load' || reason === 'data' || reason === 'document') refreshTitleColVisibility();
+});
+refreshTitleColVisibility();
+
 // lint refresh after each render pass
 state.subscribe((reason) => {
   if (reason !== 'selection' && reason !== 'theme') {
@@ -347,5 +430,6 @@ state.subscribe((reason) => {
 });
 jsonPanel.refreshLint(canvas.getRuntimeIssues());
 refreshActiveDocSel();
+kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 
 if (restored) toast('Restored your autosaved project');
