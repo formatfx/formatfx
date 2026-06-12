@@ -17,9 +17,10 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 1. **Import your list** — Data tab → *Import schema…* → pick the file SharePoint
    gives you from **Export → Export to CSV** with *Include schema*. One file
    yields the columns (types, choices, read-only flags), up to 10 real rows of
-   preview data, **and every column's live formatter**, auto-registered.
-   (Also accepted: JSON from `tools/Export-ListSchema.ps1`, or a hand-written
-   CSV — see in-app help.)
+   preview data, **and every column's live formatter**, auto-registered — the
+   grid workspace rebuilds around it, so you're looking at *your* list,
+   formatters and all. (Also accepted: JSON from `tools/Export-ListSchema.ps1`,
+   or a hand-written CSV — see in-app help.)
 2. **Edit visually** — the Structure pane is a **workspace tree**: your view
    formatter plus every registered column formatter, with badges showing which
    columns the view references (`⤷ in view` / `unused` / missing). Click any
@@ -31,6 +32,18 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 
 ## Editor features
 
+- **Grid-first workspace** — the app lands on your list as a
+  **Microsoft-Lists-style grid**: one column per view column, real headers,
+  each column rendered with its current formatter (import a list and its
+  pills/bars show up live). Header menus hold the per-column actions —
+  *format this column* (scaffolds and opens a column formatter), *style*,
+  *copy JSON*, *hide* — plus a **“+ column”** chip for the rest of your
+  schema. Drag a header left/right to reorder; **drop one column onto
+  another** and the two become named row-formatter scaffolding ("Status +
+  DueDate group") you can immediately reposition, wrap, border or shadow
+  with the same click-only tools. The grid stays a grid until you group;
+  every grid gesture is exactly one undo step; switch Type to *row layout*
+  any time to see the same tree as a free layout.
 - **Basic & Advanced modes** — the app lands in **Basic**: a curated palette
   of the pieces people actually reach for (status pills, traffic lights,
   date badges, data bars, personas, stars…), the canvas, the structure tree,
@@ -55,7 +68,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   rebind their field references to your best-matching columns by type.
   Collapsible to an icon rail (drag still works).
 - **Interactive canvas** — renders against every data row in a context
-  matching the formatter type (list cell, full-width row, or gallery tile);
+  matching the formatter type (Lists grid, list cell, full-width row, or
+  gallery tile);
   click-to-select (including inside customCardProps flyouts), drag-drop with
   per-element target highlighting, light/dark Fluent theme toggle, and an
   inspect-outlines mode. The selection highlight is a pulsing dashed outline
@@ -119,7 +133,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 npm install
 npm run dev           # local dev server
 npm test              # engine test suite (vitest + happy-dom)
-npm run test:ui       # 22 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
+npm run test:ui       # 39 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
 npm run build         # type-check + production bundle in dist/
 npm run build:single  # everything inlined into one dist-single/index.html
 ```
@@ -147,6 +161,8 @@ src/
   editor/          # the visual editor shell
     state.ts       #   workspace store: main doc + column refs, undo, autosave
     presets.ts     #   palette factories + schema-aware binding
+    gridScaffold.ts#   grid-first workspace generation/mapping (pure)
+    gridView.ts    #   the grid canvas context: headers, menus, drag-to-group
     palette/treeView/canvas/inspector/jsonPanel/dataPanel
   main.ts          # app shell: panes, switcher, copy, persistence
 tools/

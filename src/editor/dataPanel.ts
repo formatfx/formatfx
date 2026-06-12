@@ -12,6 +12,7 @@
 
 import { state } from './state';
 import { importSchema, buildSampleRows, sampleValue, FIELD_TYPE_OPTIONS, CSV_HELP } from '../core/schemaImport';
+import { buildGridRoot, isPureGrid } from './gridScaffold';
 import { importJson, exportJson } from '../core/serializer';
 import { parseThemeJson } from '../core/theme';
 import type { CellValue, FieldType, MockField, PersonValue, LookupValue, SPElement } from '../core/types';
@@ -341,6 +342,16 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         }
         if (!state.fields.some((f) => f.name === state.currentFieldName)) {
           state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
+        }
+        // grid-first: an untouched grid (every column still column-ish)
+        // rebuilds around the imported schema so the user sees THEIR list —
+        // imported formatters render as pills etc. immediately. A grid with
+        // groups is someone's layout work; never clobber it (one undo step
+        // covers the rebuild case anyway).
+        if (state.activeDocKey === 'main' && state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+          state.mutateDocument(() => {
+            state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+          });
         }
         done();
         state.emit('data');

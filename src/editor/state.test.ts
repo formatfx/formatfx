@@ -42,7 +42,7 @@ describe('card-segment paths', () => {
 
   it('mainDocLabel describes the document, even while a ref is open', () => {
     const s = withCard();
-    expect(s.mainDocLabel()).toBe('View formatter — row layout'); // showcase default
+    expect(s.mainDocLabel()).toBe('View formatter — grid'); // grid-first showcase default
     s.doc.kind = 'column';
     expect(s.mainDocLabel()).toContain('Column formatter on [$Status]');
     s.doc.kind = 'row';

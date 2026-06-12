@@ -12,6 +12,7 @@ import { renderElement, closeFlyout, type RenderIssue } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
+import { renderGrid } from './gridView';
 import type { NodePath, SPElement } from '../core/types';
 
 export interface CanvasApi {
@@ -90,6 +91,9 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
         table.appendChild(tr);
       });
       host.appendChild(table);
+    } else if (kind === 'grid') {
+      // the grid-first workspace: root children as Lists-style view columns
+      renderGrid(host, { opts, ctxForRow, onToast });
     } else if (kind === 'row') {
       state.rows.forEach((_row, i) => {
         const rowHost = document.createElement('div');

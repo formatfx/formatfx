@@ -37,8 +37,9 @@ app.innerHTML = `
         <select id="wb-activedoc"><option value="main">Main formatter</option></select>
       </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
-      <label title="What kind of formatter you're building: a column formatter lives on ONE column; row/tile formatters lay out the whole item and can embed column formatters via references">Type
+      <label title="What kind of formatter you're building: the grid shows your view column-by-column (drag headers together to start a row layout); a column formatter lives on ONE column; row/tile formatters lay out the whole item and can embed column formatters via references">Type
         <select id="wb-kind">
+          <option value="grid">Grid — view columns</option>
           <option value="column">Column formatter</option>
           <option value="row">View (row) formatter</option>
           <option value="tile">Tile / Gallery</option>
@@ -277,6 +278,8 @@ kindSel.addEventListener('change', () => {
   state.setKind(kindSel.value as DocumentKind);
   toast(kindSel.value === 'column'
     ? 'Same element tree, new wrapper: this formatter now sits on ONE column (pick which in the Data tab). Your registered column formatters are untouched.'
+    : kindSel.value === 'grid'
+    ? 'Grid view: the same tree, column by column — click a header for actions, drag one onto another to group them into a row layout.'
     : `Same element tree, new wrapper: this formatter now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 state.subscribe((reason) => {
@@ -317,9 +320,11 @@ state.subscribe((reason) => {
 document.getElementById('wb-copy')!.addEventListener('click', async () => {
   const { exportJson } = await import('./core/serializer');
   await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
-  toast(state.activeDocKey === 'main'
-    ? 'Main formatter JSON copied — paste into the view\'s Format pane'
-    : `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`);
+  toast(state.activeDocKey !== 'main'
+    ? `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`
+    : state.doc.kind === 'grid'
+    ? 'View (row) formatter JSON copied — the grid ships as a row layout; for one column\'s JSON use its header menu'
+    : 'Main formatter JSON copied — paste into the view\'s Format pane');
 });
 
 // examples

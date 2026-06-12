@@ -51,6 +51,10 @@ test('native CSV-with-schema import: fields, real rows, formatters registered', 
   // registry section lists the recovered formatter
   await expect(page.locator('.wb-schema-form', { hasText: 'Column formatter references' }))
     .toContainText('[$Pct]');
+  // the untouched grid workspace rebuilds around the import: real headers
+  // (display names), and the recovered formatter renders immediately
+  await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
+  await expect(page.locator('.wb-grid-row').first()).toContainText('75%');
 });
 
 test('columnFormatterReference renders the registered formatter with swapped @currentField', async ({ page }) => {

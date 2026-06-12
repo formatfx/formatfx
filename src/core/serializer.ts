@@ -100,6 +100,7 @@ export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): st
   let payload: Record<string, unknown>;
   switch (doc.kind) {
     case 'row':
+    case 'grid': // the grid is editor presentation; the wrapper is a view formatter
       payload = {
         $schema: SCHEMA_URLS.row,
         ...(doc.hideSelection !== undefined ? { hideSelection: doc.hideSelection } : {}),
@@ -130,5 +131,6 @@ export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): st
 export function detectKindLabel(kind: DocumentKind): string {
   return kind === 'column' ? 'Column formatter'
     : kind === 'row' ? 'View (row) formatter'
+    : kind === 'grid' ? 'View (row) formatter — grid'
     : 'Tile / Gallery formatter';
 }

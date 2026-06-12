@@ -71,13 +71,34 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
                inspector/jsonPanel/dataPanel, playground.ts (the
                consequence-free style playground overlay; doc-card data —
-               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema)
+               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema),
+               gridScaffold.ts (grid-first workspace generation/mapping —
+               pure, node-testable; state.ts imports it for the default
+               doc, so it must never import state), gridView.ts (the grid
+               canvas context: headers, per-column menus, drag-to-group)
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```
 
 Key structural invariants:
-- **Workspace model**: one "main" document (column/row/tile) + N registered
+- **Grid-first workspace (kind 'grid', the landing default)**: a grid doc
+  IS a row formatter in embryo — the root is the future rowFormatter flex
+  row and **each root child is one grid column**. The canvas renders header
+  + body rows as separate CSS grids sharing one track template
+  (`--wb-grid-cols`), cells carry the child's `data-sp-path`, so selection
+  /palette-drop/tree/inspector all work unchanged. Column↔field mapping is
+  derived (CFR target, else the single `[$Field]` ref in the subtree —
+  `gridColumnField`), NOT stored: no extra metadata in the JSON. Serializer
+  treats 'grid' exactly like 'row' (re-importing detects 'row'; project
+  files keep 'grid'). **Every grid gesture is ONE undoable document
+  mutation** (`moveNodeTo`/`groupNodes`/`unwrapNode`/insert/remove) — a
+  roadmap contract; no-op moves must not snapshot. Generated structure
+  arrives fully `_elmName`'d ("Status + DueDate group"). "Format this
+  column" registers a `defaultColumnFormatter` scaffold and swaps the plain
+  cell for a CFR cell (one doc mutation), then `openColumnRef`s it. Schema
+  import rebuilds the grid root **only while `isPureGrid`** (every column
+  still single-field) — never clobber a layout someone has started.
+- **Workspace model**: one "main" document (column/row/tile/grid) + N registered
   column formatters (`state.columnRefs`, keyed by field internal name).
   CFRs resolve against the registry; editing an open column formatter
   updates the registry live (see `EditorState.emit`).
@@ -161,9 +182,9 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 ## 5. CI / hosting / domain — how and why
 
-- **`.github/workflows/ci.yml`**: `test-build` (vitest 64 tests + vite
+- **`.github/workflows/ci.yml`**: `test-build` (vitest unit tests + vite
   build, uploads `dist/` as the Pages artifact) → `deploy-pages` (main
-  only); `e2e` runs the 23 Playwright specs with `PW_CHANNEL=bundled`
+  only); `e2e` runs the Playwright specs with `PW_CHANNEL=bundled`
   (Playwright's chromium). Locally, `npm run test:ui` defaults to the
   **installed Edge** (`channel: msedge`) because the original dev machine
   sat behind a corporate proxy that blocked Playwright's browser CDN —
@@ -194,29 +215,24 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 ## 6. Roadmap / TODO (in rough priority order)
 
-1. **Node 20 runner deprecation — DEADLINE 2026-06-16**: GitHub forces
-   actions to Node 24; either bump action versions in ci.yml or set
-   `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env. Do this first.
-1.5. **Grid-first workspace (the big basic-mode bet — designed 2026-06-11,
-   owner's vision, not yet built).** Reframe the preview pane as the
-   WORKSPACE: it starts as a plain Microsoft-Lists-style grid — one column
-   per view column, each rendered with its current formatter (pills etc.
-   from import), real column headers. Header menus = per-column actions
-   (format this column, hide, copy JSON). The on-ramp to row formatting:
-   the user DRAGS a column header left/right to reorder — or drops one
-   column ONTO another, which generates the row-formatter scaffolding
-   (outer flex div + the two columns as children, named after the
-   columns). That moment converts "I know grids" people into row-formatter
-   users without them ever seeing JSON: from there groups can be
-   repositioned, wrapped, bordered, shadowed via the existing click-only
-   tools (alignment editor, element playground). Constraints to respect:
-   keep the grid metaphor as long as possible (columns stay column-ish
-   until grouped); generated structure must arrive fully _elmName'd
-   ("Status + DueDate group"); each grid mutation maps to ONE undoable
-   document mutation. Advanced mode later adds hover-card creation etc.
-   from the same surface. Build it as a fourth canvas context (kind-aware
-   like list/row/tile today) rather than a separate page, so the
-   palette/tree/inspector keep working against it.
+1. ~~Node 20 runner deprecation — DEADLINE 2026-06-16~~ **DONE (merged to
+   main before 2026-06-12)**: ci.yml sets the
+   `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'` env opt-in, so GitHub's
+   forced switch is a no-op. Can be deleted once GitHub completes the
+   migration.
+1.5. **Grid-first workspace — BUILT 2026-06-12** (designed 2026-06-11,
+   owner's vision). Shipped as designed: fourth canvas context on a new
+   DocumentKind 'grid' (now the landing default), header menus (format /
+   style / copy / hide + "+ column" for unplaced fields), drag headers to
+   reorder (edge zones) or drop ONTO another column (center zone / any
+   cell) to generate named row-formatter scaffolding; groups get Ungroup
+   in their menu. All constraints honored — grid metaphor until grouped,
+   fully _elmName'd output, one undoable mutation per gesture (see the
+   invariants in §2). Schema import rebuilds pure grids so "pills etc.
+   from import" land immediately. Default showcase: Title/Status/DueDate/
+   Progress/AssignedTo/Project columns; Owner stays registered-but-unplaced
+   to demo "+ column" adding an already-formatted column. Still open from
+   this vision: advanced-mode hover-card creation from the grid surface.
 1.6. ~~Playground polish backlog~~ **DONE 2026-06-12**: panel top-anchored
    (no recentering between family tabs), breathing room around the family
    story, CFR slots labeled "name ⤷ [$Field]" on their overlays with a
@@ -241,12 +257,18 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 
 ## 7. Test inventory
 
-- `npm test` — 64 vitest unit tests (engine semantics incl. every
+- `npm test` — 82 vitest unit tests (engine semantics incl. every
   live-verified behavior in §3, serializer round-trips, schema import,
-  workspace/state, preset binding). Run headlessly anywhere.
-- `npm run test:ui` — 22 Playwright specs across `sandbox.spec.ts`
-  (core flows), `import.spec.ts` (schema import + CFR), `workspace.spec.ts`
-  (doc switching, box model, flex editor, pane modes, dark-mode probe).
+  workspace/state, preset binding, grid scaffolding + grid mutations).
+  Run headlessly anywhere.
+- `npm run test:ui` — 39 Playwright specs across `sandbox.spec.ts`
+  (core flows), `import.spec.ts` (schema import + CFR + grid rebuild),
+  `workspace.spec.ts` (doc switching, box model, flex editor, pane modes,
+  dark-mode probe), `grid.spec.ts` (grid-first workspace: header menus,
+  format-column round trip, hide/add, drag-to-group/reorder, basic mode).
+  Containers that can't reach the browser CDN: `npm i -D --no-save
+  @sparticuz/chromium`, extract with `executablePath()`, run with
+  `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.
