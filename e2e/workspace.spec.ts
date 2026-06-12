@@ -189,6 +189,10 @@ test('element playground: real subtree, masked children, stash & resume, apply',
   await page.keyboard.press('Escape');
   await openTab(page, 'json');
   expect(await page.inputValue('#wb-json-text')).toContain('"padding": "8px"');
+  // applying must never cost an element its name (tree falls back to a
+  // class hint when _elmName is lost — that's the bug signature)
+  await expect(page.locator('.wb-tree-name', { hasText: 'Title block' })).toBeVisible();
+  expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "Title block"');
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
