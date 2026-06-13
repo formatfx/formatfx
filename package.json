@@ -1,13 +1,41 @@
 {
   "name": "formatfx",
-  "description": "FormatFX — the visual sandbox and layout editor for SharePoint list formatting",
-  "private": true,
+  "description": "SharePoint list-formatting toolkit: the teaching linter, expression engine, schema importer and snippet bridge behind formatfx.dev — headless, zero dependencies",
   "version": "0.1.0",
   "type": "module",
+  "keywords": [
+    "sharepoint",
+    "list-formatting",
+    "column-formatting",
+    "view-formatting",
+    "linter",
+    "microsoft-365",
+    "pnp"
+  ],
+  "homepage": "https://formatfx.dev",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/lib.d.ts",
+      "import": "./dist-lib/lib.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "formatfx": "dist-lib/cli.js"
+  },
+  "files": [
+    "dist-lib",
+    "tools/Export-ListSchema.ps1"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "build:single": "tsc && vite build --mode single",
+    "build:lib": "tsc -p tsconfig.lib.json && node tools/fix-esm-extensions.mjs dist-lib",
+    "prepublishOnly": "npm test && npm run build:lib",
     "test": "vitest run",
     "test:ui": "playwright test",
     "preview": "vite preview",
@@ -15,6 +43,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.3",
     "happy-dom": "^20.10.2",
     "typescript": "~6.0.2",
     "vite": "^8.0.4",

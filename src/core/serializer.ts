@@ -128,6 +128,14 @@ export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): st
   return text;
 }
 
+/** Does any element in the tree carry a friendly _elmName? (Drives the
+ *  "applying name-less JSON over a named design" soft confirms.) */
+export function treeHasNames(el: SPElement): boolean {
+  return !!el._elmName
+    || (el.children ?? []).some(treeHasNames)
+    || (el.customCardProps?.formatter ? treeHasNames(el.customCardProps.formatter) : false);
+}
+
 export function detectKindLabel(kind: DocumentKind): string {
   return kind === 'column' ? 'Column formatter'
     : kind === 'row' ? 'View (row) formatter'

@@ -413,6 +413,33 @@ describe('schema import', () => {
     expect(out.rows?.[1].Title).toBe('Line\nbreak title'); // quoted newline survives
     expect(out.columnFormatters?.Progress.txtContent).toBe('@currentField');
   });
+
+  // the List Snapshot happy path (incl. OData row coercion and the
+  // generator→parser round trip) lives in src/bridge/bridge.test.ts —
+  // these are the parser's edges
+  it('list snapshot: hidden fields skipped, view formatters kept as raw text', () => {
+    const out = importSchema(JSON.stringify({
+      formatfx: 'list-snapshot', version: 1, list: 'Tasks',
+      fields: [
+        { internalName: 'Title', type: 'Text' },
+        { internalName: 'Ghost', type: 'Text', hidden: true },
+        { internalName: 'Broken', type: 'Text', customFormatter: '{not json' },
+      ],
+      views: [{ title: 'All Items', isDefault: true, customFormatter: '{"rowFormatter":{"elmType":"div"}}' }],
+    }));
+    expect(out.fields.map((f) => f.name)).toEqual(['Title', 'Broken']);
+    // an unparseable column formatter never blocks the field import
+    expect(out.columnFormatters).toBeUndefined();
+    expect(out.views?.[0].customFormatter).toBe('{"rowFormatter":{"elmType":"div"}}');
+    expect(out.listName).toBe('Tasks');
+  });
+
+  it('list snapshot: future versions refuse with teaching copy; empty refuses too', () => {
+    expect(() => importSchema(JSON.stringify({ formatfx: 'list-snapshot', version: 99, fields: [] })))
+      .toThrow(/newer than this app understands/);
+    expect(() => importSchema(JSON.stringify({ formatfx: 'list-snapshot', version: 1 })))
+      .toThrow(/no "fields" array/);
+  });
 });
 
 describe('renderer (happy-dom)', () => {

@@ -71,6 +71,94 @@ test('columnFormatterReference renders the registered formatter with swapped @cu
   await expect(firstCell.locator('.wb-cfr-chip')).toHaveCount(0);
 });
 
+/** Synthetic List Snapshot — what the live-extract snippet captures. */
+function listSnapshot(opts: { defaultViewFormatter?: boolean } = {}): string {
+  return JSON.stringify({
+    formatfx: 'list-snapshot',
+    version: 1,
+    siteUrl: 'https://contoso.sharepoint.com/sites/team',
+    list: 'Tasks',
+    fields: [
+      { internalName: 'Title', displayName: 'Task name', type: 'Text' },
+      {
+        internalName: 'Phase', type: 'Choice', choices: ['Plan', 'Build'],
+        customFormatter: JSON.stringify({ elmType: 'div', txtContent: '@currentField' }),
+      },
+      { internalName: 'Pct', type: 'Number' },
+    ],
+    views: [
+      {
+        title: 'All Items', isDefault: true, viewFields: ['LinkTitle', 'Phase'],
+        ...(opts.defaultViewFormatter ? {
+          customFormatter: JSON.stringify({
+            $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+            rowFormatter: { elmType: 'div', _elmName: 'Imported row', txtContent: "='»'+[$Title]+'«'" },
+          }),
+        } : {}),
+      },
+      { title: 'Board', viewFields: ['Phase'] },
+    ],
+    rows: [
+      { Title: 'Ship the bridge', Phase: 'Build', Pct: 75 },
+      { Title: 'Write the docs', Phase: 'Plan', Pct: 20 },
+    ],
+  });
+}
+
+test('list snapshot import: fields + views land; the default view\'s row formatting auto-loads on a pure grid', async ({ page }) => {
+  await openTab(page, 'data');
+  await page.click('button:has-text("Import schema…")');
+  // the live block advertises the zero-install path
+  await expect(page.locator('.wb-live-extract')).toContainText('Live from SharePoint');
+  await page.fill('.wb-schema-form textarea', listSnapshot({ defaultViewFormatter: true }));
+  await page.click('button:has-text("Import pasted text")');
+  await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
+  await expect(page.locator('#wb-toast')).toContainText('2 views');
+  await expect(page.locator('#wb-toast')).toContainText('"All Items" row formatting loaded');
+  // the captured view formatter IS the main document now (row kind renders per-row)
+  await expect(page.locator('.wb-mock-viewrow').first()).toContainText('»Ship the bridge«');
+  // …and the views section lists both captured views
+  await expect(page.locator('.wb-schema-form', { hasText: 'Views from your list' })).toContainText('Board');
+  // one undo restores the previous (grid) document
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-grid')).toBeVisible();
+});
+
+test('list snapshot without a default-view formatter rebuilds the grid; Load-as-main works from the views section', async ({ page }) => {
+  await openTab(page, 'data');
+  await page.click('button:has-text("Import schema…")');
+  await page.fill('.wb-schema-form textarea', listSnapshot());
+  await page.click('button:has-text("Import pasted text")');
+  // grid rebuilt around the snapshot (display names as headers)
+  await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
+  // no view had a formatter — the views section still lists them, without Load buttons
+  const views = page.locator('.wb-schema-form', { hasText: 'Views from your list' });
+  await expect(views).toContainText('All Items · default · no row formatting');
+  await expect(views.locator('button', { hasText: 'Load as main document' })).toHaveCount(0);
+});
+
+test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openTab(page, 'json');
+  await page.click('#wb-json-deploy');
+  // grid/row documents deploy as VIEW formatting
+  await expect(page.locator('#wb-deploy-target')).toContainText('view');
+  await page.click('#wb-deploy-copy');
+  await expect(page.locator('#wb-toast')).toContainText('Deploy snippet copied');
+  const snippet = await page.evaluate(() => navigator.clipboard.readText());
+  expect(snippet).toContain("getByTitle('All%20Items')");
+  expect(snippet).toContain('X-HTTP-Method');
+  expect(snippet).toContain('rowFormatter');
+
+  // a document with a lint ERROR refuses to generate (refuse-and-teach)
+  await page.fill('#wb-json-text', JSON.stringify({
+    elmType: 'div', txtContent: '=not([$Title])',
+  }));
+  await page.click('#wb-json-apply');
+  await page.click('#wb-deploy-copy');
+  await expect(page.locator('#wb-toast')).toContainText('Not deploying');
+});
+
 test('unregistered CFR shows the explanatory chip', async ({ page }) => {
   await openTab(page, 'json');
   await page.fill('#wb-json-text', JSON.stringify({

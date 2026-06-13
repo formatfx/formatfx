@@ -575,6 +575,32 @@ body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
   border: 1px dashed var(--wb-border); border-radius: 3px; padding: 4px 8px;
 }
 
+/* ── live extract + deploy (the Tier-0 snippet bridge) ───── */
+.wb-live-extract {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px dashed var(--wb-accent); border-radius: 4px;
+  padding: 8px; background: rgba(0, 120, 212, .05);
+}
+.wb-live-steps { font-size: 10px; color: var(--wb-text-2); line-height: 1.5; }
+.wb-deploy {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px dashed var(--wb-accent); border-radius: 4px;
+  padding: 8px; margin-bottom: 6px; background: rgba(0, 120, 212, .05);
+}
+.wb-deploy[hidden] { display: none; }
+.wb-deploy-target { font-size: 11px; font-weight: 600; }
+.wb-deploy input {
+  font: 12px Consolas, monospace; padding: 4px 6px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-surface); color: var(--wb-text);
+}
+.wb-deploy button {
+  align-self: flex-start;
+  border: 1px solid var(--wb-accent); background: var(--wb-accent); color: #fff;
+  border-radius: 3px; padding: 4px 10px; cursor: pointer; font-size: 11px;
+}
+.wb-deploy-note { font-size: 10px; color: var(--wb-text-2); white-space: pre-line; line-height: 1.5; }
+
 /* ── toast ───────────────────────────────────────────────── */
 .wb-toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
