@@ -7,10 +7,10 @@
  * the visual editor.
  */
 
-import type { SPElement } from '../core/types';
 import { state } from './state';
-import { exportJson, importJson } from '../core/serializer';
+import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { lintDocument, type LintIssue } from '../core/linter';
+import { buildDeploySnippet } from '../bridge/deploySnippet';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -26,6 +26,16 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
       <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
       <button id="wb-json-download" title="Download .json">Download</button>
       <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
+      <button id="wb-json-deploy" class="wb-adv" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, no install, no app registration">🚀 Deploy…</button>
+    </div>
+    <div id="wb-deploy-panel" class="wb-deploy wb-adv" hidden>
+      <div id="wb-deploy-target" class="wb-deploy-target"></div>
+      <input id="wb-deploy-view" placeholder="View title, exactly as on the list" value="All Items" title="The (shared) view that receives this row formatting">
+      <input id="wb-deploy-list" placeholder="List title (blank = the list you run it on)" title="Usually leave blank and run the snippet on the list's own page">
+      <button id="wb-deploy-copy">Copy deploy snippet</button>
+      <div class="wb-deploy-note">Paste the snippet into the console (F12) on your SharePoint list page.
+It reads the target, shows you exactly what changes, and asks before the ONE write.
+Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).</div>
     </div>
     <textarea id="wb-json-text" spellcheck="false"></textarea>
     <div id="wb-lint" class="wb-lint"></div>
@@ -62,17 +72,12 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
     a.click();
     URL.revokeObjectURL(a.href);
   });
-  const hasNames = (el: SPElement): boolean =>
-    !!el._elmName
-    || (el.children ?? []).some(hasNames)
-    || (el.customCardProps?.formatter ? hasNames(el.customCardProps.formatter) : false);
-
   host.querySelector('#wb-json-apply')!.addEventListener('click', () => {
     try {
       const doc = importJson(textEl.value);
       // soft guard: name-less JSON replacing a named design silently drops
       // every _elmName — the Structure pane falls back to type/class hints
-      if (hasNames(state.doc.root) && !hasNames(doc.root)) {
+      if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
         if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
       }
       dirty = false;
@@ -81,6 +86,57 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
     } catch (e) {
       onToast(`Import failed: ${(e as Error).message}`);
     }
+  });
+
+  // ── deploy: the Tier-0 bridge (docs/CONNECTIVITY.md §3.3) ──
+  const deployPanel = host.querySelector('#wb-deploy-panel') as HTMLDivElement;
+  const deployTargetEl = host.querySelector('#wb-deploy-target') as HTMLDivElement;
+  const deployViewEl = host.querySelector('#wb-deploy-view') as HTMLInputElement;
+  const deployListEl = host.querySelector('#wb-deploy-list') as HTMLInputElement;
+
+  /** Where the formatter lands, derived from what's being edited. */
+  const deployTarget = (): { target: 'field' | 'view'; name: string; label: string } => {
+    if (state.doc.kind === 'column') {
+      const field = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
+      return { target: 'field', name: field, label: `→ the [$${field}] column's CustomFormatter` };
+    }
+    // row/grid/tile all ship as view formatting
+    return { target: 'view', name: deployViewEl.value.trim() || 'All Items', label: '→ a view\'s CustomFormatter (row/tile formatting):' };
+  };
+
+  const refreshDeployPanel = () => {
+    if (deployPanel.hidden) return;
+    const t = deployTarget();
+    deployTargetEl.textContent = `Deploys ${t.label}`;
+    deployViewEl.hidden = t.target !== 'view';
+  };
+
+  host.querySelector('#wb-json-deploy')!.addEventListener('click', () => {
+    deployPanel.hidden = !deployPanel.hidden;
+    refreshDeployPanel();
+  });
+
+  host.querySelector('#wb-deploy-copy')!.addEventListener('click', async () => {
+    // refuse-and-teach: SP would accept a broken write and render blank
+    const errors = lintDocument(
+      state.doc,
+      state.fields.map((f) => f.name),
+      Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
+    ).filter((i) => i.severity === 'error');
+    if (errors.length) {
+      onToast(`Not deploying with ${errors.length} lint error${errors.length === 1 ? '' : 's'} — SP would accept the write and render blank. Fix the red items below first.`);
+      return;
+    }
+    const t = deployTarget();
+    const snippet = buildDeploySnippet({
+      target: t.target,
+      name: t.name,
+      // never csomSafe: REST stores the raw string
+      formatterJson: exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }),
+      ...(deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {}),
+    });
+    await navigator.clipboard.writeText(snippet);
+    onToast(`Deploy snippet copied for ${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`} — run it in the console on your list page; it confirms before writing`);
   });
 
   const renderLint = (runtime: RenderIssue[]) => {
@@ -109,7 +165,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
   };
 
   state.subscribe((reason) => {
-    if (reason !== 'selection' && reason !== 'theme') { dirty = false; regenerate(); }
+    if (reason !== 'selection' && reason !== 'theme') { dirty = false; regenerate(); refreshDeployPanel(); }
   });
   regenerate();
   renderLint([]);

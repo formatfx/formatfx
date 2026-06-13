@@ -1,21 +1,31 @@
 <#
 .SYNOPSIS
   Exports a SharePoint list's column schema (and optionally sample rows) as
-  JSON for the List Formatting Sandbox ("Import schema..." in the Data tab).
+  JSON for FormatFX ("Import schema..." in the Data tab).
 
 .DESCRIPTION
-  Works with both PnP.PowerShell (modern) and the legacy
-  SharePointPnPPowerShellOnline module. Captures internal name, display name,
-  SP field type, lookup target list/column, read-only (protected) flags and
-  choice options. With -SampleRows N it also pulls the first N list items so
-  the sandbox previews against your real data.
+  This is the "I already use PnP PowerShell" path. If you don't: FormatFX's
+  Data tab has a zero-setup alternative — "Live from SharePoint" copies a
+  read-only snippet you paste into the browser console on your list page;
+  no modules, no app registration, and it also captures VIEW formatters.
+
+  AUTH NOTE (the world changed): since 2024-09-09, PnP.PowerShell requires
+  your OWN Entra app registration for -Interactive/-Credentials (pass its
+  -ClientId), and the old ACS/Add-in auth stopped working entirely on
+  2026-04-02. -UseWebLogin is legacy cookie auth and may be unavailable on
+  your tenant. If any of this is a blocker, use the in-app snippet instead.
+
+  Captures internal name, display name, SP field type, lookup target
+  list/column, read-only (protected) flags and choice options. With
+  -SampleRows N it also pulls the first N list items so FormatFX previews
+  against your real data.
 
 .EXAMPLE
-  Connect-PnPOnline -Url https://contoso.sharepoint.com/sites/team -Interactive
+  Connect-PnPOnline -Url https://contoso.sharepoint.com/sites/team -ClientId <your-entra-app-id> -Interactive
   ./Export-ListSchema.ps1 -ListName "Tasks" -SampleRows 3 -OutFile tasks.listschema.json
 
 .EXAMPLE
-  # Legacy module + web login, connect handled by the script:
+  # Legacy module + web login, connect handled by the script (where still permitted):
   ./Export-ListSchema.ps1 -SiteUrl https://contoso.sharepoint.com/sites/team -ListName "Tasks" -UseWebLogin
 #>
 param(

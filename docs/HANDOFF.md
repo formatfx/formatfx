@@ -88,6 +88,12 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                other way), formatCells.ts (the Excel-comfort Format cells
                dialog: Font/Border/Fill/Alignment over the allow-list,
                staged patch, OK = one undoable mutation)
+src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
+               extractSnippet.ts / deploySnippet.ts generate the auditable
+               paste-into-devtools snippets. Pure + dependency-free, and
+               bridge.test.ts EXECUTES the generated code against stubbed
+               fetch fixtures, round-tripping the captured payload through
+               importSchema — that executed round trip is the contract
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```
@@ -307,6 +313,21 @@ tests are the spec; no need to re-discuss or re-document them.
    supported types, 5,000 view / 12-join thresholds, calculated-column
    own-row rule) and against §3 of this doc; keep new claims sourced the
    same way. `e2e/guide.spec.ts` covers it.
+1.10. **Connectivity Tier 0 — BUILT 2026-06-13** (owner brief; design in
+   docs/CONNECTIVITY.md — read its §1 auth reality before touching
+   anything here: no app registrations is a HARD constraint and only
+   page-context auth satisfies it post-ACS). Shipped: the FormatFX List
+   Snapshot v1 (fourth schemaImport format, ALSO the future extension
+   wire protocol — version it), the GET-only extract snippet ("⚡ Live
+   from SharePoint" in the Data tab; captures fields + live column AND
+   view formatters + 10 rows), captured views in state.importedViews
+   (additive project key) with default-view auto-load under the exact
+   isPureGrid guard, and the confirm-first deploy snippet (JSON tab →
+   🚀 Deploy…, advanced-gated, LINT-GATED — refuse-and-teach applies to
+   deployment). Owner still owes the one-time live checklist in
+   CONNECTIVITY.md §3.6 against a real tenant. Next per the design:
+   npm package prep (separate PR; owner adds NPM_TOKEN + tags v0.1.0),
+   then Tier-1 extension after Sheet stage 3.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
@@ -325,20 +346,22 @@ tests are the spec; no need to re-discuss or re-document them.
 
 ## 7. Test inventory
 
-- `npm test` — 97 vitest unit tests (engine semantics incl. every
-  live-verified behavior in §3, serializer round-trips, schema import,
-  workspace/state, preset binding, grid scaffolding + grid mutations,
-  conditional-formatting codegen evaluated through the real engine —
-  that test file is the contract for generated-condition semantics).
-  Run headlessly anywhere.
-- `npm run test:ui` — 45 Playwright specs across `sandbox.spec.ts`
+- `npm test` — 110 vitest unit tests (engine semantics incl. every
+  live-verified behavior in §3, serializer round-trips, schema import
+  incl. the List Snapshot edges, workspace/state, preset binding, grid
+  scaffolding + grid mutations, conditional-formatting codegen evaluated
+  through the real engine — that test file is the contract for
+  generated-condition semantics — and the bridge's EXECUTED-snippet
+  round trips against stubbed fetch). Run headlessly anywhere.
+- `npm run test:ui` — 53 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild),
   `workspace.spec.ts` (doc switching, box model, flex editor, playground
   incl. quick looks/structure tree/property card, pane modes, dark-mode
   probe), `grid.spec.ts` (grid-first workspace: header menus, right-click
   context menus, conditional formatting incl. cross-column watching, the
   Format cells dialog, format-column round trip, hide/add,
-  drag-to-group/reorder, basic mode).
+  drag-to-group/reorder, basic mode), `guide.spec.ts` (field guide),
+  plus the snapshot-import/views/deploy-panel specs in `import.spec.ts`.
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).

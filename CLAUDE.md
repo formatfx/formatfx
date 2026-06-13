@@ -42,3 +42,8 @@ guidance in your environment.
   corrupt a formatter.
 - localStorage keys and the `wb-` CSS prefix are frozen — renames must
   never wipe anyone's autosaved work.
+- Connectivity snippets (`src/bridge/`) stay self-contained, commented and
+  auditable — a maker's IT must be able to read every line. `src/bridge`
+  stays dependency-free; extraction stays GET-only; deploys confirm first
+  and are lint-gated. The auth constraint behind all of this is closed:
+  docs/CONNECTIVITY.md §1.

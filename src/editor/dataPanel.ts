@@ -13,9 +13,11 @@
 import { state } from './state';
 import { importSchema, buildSampleRows, sampleValue, FIELD_TYPE_OPTIONS, CSV_HELP } from '../core/schemaImport';
 import { buildGridRoot, isPureGrid } from './gridScaffold';
-import { importJson, exportJson } from '../core/serializer';
+import { importJson, exportJson, treeHasNames } from '../core/serializer';
 import { parseThemeJson } from '../core/theme';
+import { buildExtractSnippet } from '../bridge/extractSnippet';
 import type { CellValue, FieldType, MockField, PersonValue, LookupValue, SPElement } from '../core/types';
+import type { FormatterDocument } from '../core/types';
 import exportScript from '../../tools/Export-ListSchema.ps1?raw';
 
 /** Accept a bare element or any wrapper shape and return the element tree. */
@@ -131,8 +133,67 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     if (showImport) host.appendChild(importForm(onToast, () => { showImport = false; }));
 
     host.appendChild(dataGrid());
+    if (state.importedViews.length) host.appendChild(viewsSection());
     host.appendChild(columnRefsSection());
     host.appendChild(tenantThemeSection());
+  };
+
+  // ── views captured by a List Snapshot ──
+  const viewsSection = (): HTMLElement => {
+    const wrap = document.createElement('div');
+    wrap.className = 'wb-schema-form';
+    const heading = document.createElement('div');
+    heading.className = 'wb-data-fieldname';
+    heading.textContent = `Views from your list (${state.importedViews.length})`;
+    heading.title = 'Captured by the live-extract snippet. A view\'s formatter is the row formatting of THAT view — load one as the main document to edit it.';
+    wrap.appendChild(heading);
+
+    for (const view of state.importedViews) {
+      const row = document.createElement('div');
+      row.className = 'wb-data-toolbar';
+      const label = document.createElement('span');
+      label.style.flex = '1';
+      label.textContent = `${view.title}${view.isDefault ? ' · default' : ''}`
+        + `${view.customFormatter ? ' · formatted' : ' · no row formatting'}`;
+      row.appendChild(label);
+      if (view.customFormatter) {
+        const load = document.createElement('button');
+        load.textContent = 'Load as main document';
+        load.title = 'Parse this view\'s row formatting and put it on the canvas (one undo step)';
+        load.addEventListener('click', () => {
+          try {
+            const doc = importJson(view.customFormatter!);
+            if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
+              if (!confirm(`"${view.title}" has no element names (_elmName), but your current design is named.\n\nLoading it replaces the main document and drops those names from the Structure pane. Load anyway?`)) return;
+            }
+            state.openMain();
+            state.loadDocument(doc);
+            onToast(`"${view.title}" loaded as the main document — Ctrl+Z brings the previous design back`);
+          } catch (e) {
+            onToast(`Couldn't load "${view.title}": ${(e as Error).message}`);
+          }
+        });
+        const copy = document.createElement('button');
+        copy.textContent = 'copy';
+        copy.title = 'Copy this view\'s raw formatter JSON';
+        copy.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(view.customFormatter!);
+          onToast(`"${view.title}" view formatter JSON copied`);
+        });
+        row.append(load, copy);
+      }
+      wrap.appendChild(row);
+    }
+
+    const clear = document.createElement('button');
+    clear.textContent = 'Clear captured views';
+    clear.title = 'Forget this list — loaded documents and registered formatters stay';
+    clear.addEventListener('click', () => {
+      state.importedViews = [];
+      state.emit('data');
+    });
+    wrap.appendChild(clear);
+    return wrap;
   };
 
   // ── tenant theme palette ──
@@ -340,6 +401,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         if (schema.columnFormatters) {
           Object.assign(state.columnRefs, schema.columnFormatters);
         }
+        state.importedViews = schema.views ?? [];
         if (!state.fields.some((f) => f.name === state.currentFieldName)) {
           state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
         }
@@ -347,20 +409,60 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         // rebuilds around the imported schema so the user sees THEIR list —
         // imported formatters render as pills etc. immediately. A grid with
         // groups is someone's layout work; never clobber it (one undo step
-        // covers the rebuild case anyway).
+        // covers the rebuild case anyway). When a snapshot brought the
+        // default view's OWN row formatting, load THAT instead — the
+        // extraction magic moment — under the exact same guard and still
+        // as a single undoable step.
+        let loadedView: string | null = null;
         if (state.activeDocKey === 'main' && state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
-          state.mutateDocument(() => {
-            state.doc.root = buildGridRoot(state.fields, state.columnRefs);
-          });
+          const dv = schema.views?.find((v) => v.isDefault && v.customFormatter);
+          let viewDoc: FormatterDocument | null = null;
+          if (dv) {
+            try { viewDoc = importJson(dv.customFormatter!); } catch { /* fall back to the grid rebuild */ }
+          }
+          if (viewDoc) {
+            state.loadDocument(viewDoc);
+            loadedView = dv!.title;
+          } else {
+            state.mutateDocument(() => {
+              state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+            });
+          }
         }
         done();
         state.emit('data');
         const cfCount = Object.keys(schema.columnFormatters ?? {}).length;
-        toast(`Imported ${schema.fields.length} fields${schema.listName ? ` from "${schema.listName}"` : ''}${schema.rows ? ` + ${schema.rows.length} rows` : ''}${cfCount ? ` + ${cfCount} live column formatters (registered as references)` : ''}`);
+        const vCount = schema.views?.length ?? 0;
+        toast(`Imported ${schema.fields.length} fields${schema.listName ? ` from "${schema.listName}"` : ''}`
+          + `${schema.rows ? ` + ${schema.rows.length} rows` : ''}`
+          + `${cfCount ? ` + ${cfCount} live column formatters (registered as references)` : ''}`
+          + `${vCount ? ` + ${vCount} views` : ''}`
+          + `${loadedView ? ` — "${loadedView}" row formatting loaded as the main document (Ctrl+Z restores the grid)` : ''}`);
       } catch (e) {
         toast(`Schema import failed: ${(e as Error).message}`);
       }
     };
+
+    // zero-install live path: an auditable GET-only snippet run on the list
+    // page captures fields + live column/view formatters + rows
+    const live = document.createElement('div');
+    live.className = 'wb-live-extract';
+    const liveHead = document.createElement('div');
+    liveHead.className = 'wb-data-fieldname';
+    liveHead.textContent = '⚡ Live from SharePoint (no install)';
+    const liveBtn = document.createElement('button');
+    liveBtn.textContent = 'Copy live-extract snippet';
+    liveBtn.title = 'A commented, read-only (GET-only) script — every line is meant to be read before you run it';
+    liveBtn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(buildExtractSnippet());
+      toast('Extract snippet copied — run it in the console (F12) on your list page, then paste the snapshot it captures below');
+    });
+    const liveSteps = document.createElement('div');
+    liveSteps.className = 'wb-live-steps';
+    liveSteps.textContent = '1 · open your SharePoint list page   2 · F12 → Console → paste the snippet & Enter '
+      + '(Chrome may make you type "allow pasting" first — its safety prompt for pasted code; the snippet is plain readable GETs) '
+      + '  3 · paste the copied snapshot below. Captures columns, choices, live column AND view formatters, and 10 real rows.';
+    live.append(liveHead, liveBtn, liveSteps);
 
     // primary path: pick the exported file directly
     const fileBtn = document.createElement('button');
@@ -415,7 +517,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     cancel.addEventListener('click', () => { done(); state.emit('data'); });
 
     row.append(apply, dl, cancel);
-    form.append(fileBtn, text, row, help);
+    form.append(live, fileBtn, text, row, help);
     return form;
   };
 

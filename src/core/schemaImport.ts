@@ -28,12 +28,26 @@
 
 import type { MockField, MockRow, FieldType, CellValue, PersonValue, LookupValue, SPElement } from './types';
 
+/** A view captured by the live-extract snippet (formatter kept as raw text). */
+export interface ImportedView {
+  title: string;
+  id?: string;
+  isDefault?: boolean;
+  viewFields?: string[];
+  /** Raw CustomFormatter JSON string — parsed at load time so capture is faithful. */
+  customFormatter?: string;
+}
+
 export interface ImportedSchema {
   listName?: string;
   fields: MockField[];
   rows?: MockRow[];
   /** Live column formatters recovered from the export (internal name → tree). */
   columnFormatters?: Record<string, SPElement>;
+  /** Views captured by a List Snapshot (view formatters arrive here). */
+  views?: ImportedView[];
+  siteUrl?: string;
+  listId?: string;
 }
 
 export const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
@@ -356,6 +370,133 @@ export function importListSchemaCsv(text: string): ImportedSchema {
   };
 }
 
+// ─── FormatFX List Snapshot (the live-extract snippet's payload) ─────────────
+// Versioned from day one: this format is also the future companion-extension
+// wire protocol (docs/CONNECTIVITY.md §3.1). Formatters travel as raw JSON
+// strings so capture is faithful; parse problems surface at import time.
+
+export const LIST_SNAPSHOT_VERSION = 1;
+
+export function isListSnapshot(parsed: unknown): parsed is Record<string, unknown> {
+  return !!parsed && typeof parsed === 'object'
+    && (parsed as Record<string, unknown>)['formatfx'] === 'list-snapshot';
+}
+
+interface SnapshotField {
+  internalName: string;
+  displayName?: string;
+  type?: string;
+  choices?: string[];
+  lookupList?: string;
+  lookupColumn?: string;
+  readOnly?: boolean;
+  hidden?: boolean;
+  customFormatter?: string;
+}
+
+/** One OData (nometadata) cell → the mock-data model. */
+function coerceSnapshotCell(raw: unknown, field: MockField): CellValue {
+  if (raw === null || raw === undefined) {
+    if (field.type === 'personMulti' || field.type === 'lookupMulti') return [];
+    if (field.type === 'date') return null; // blank dates stay null
+    return '';
+  }
+  const person = (o: Record<string, unknown>): PersonValue => ({
+    title: String(o.Title ?? o.title ?? ''),
+    email: String(o.EMail ?? o.Email ?? o.email ?? ''),
+  });
+  const lookup = (o: Record<string, unknown>): LookupValue => {
+    const id = Number(o.Id ?? o.ID ?? 0);
+    const valueKey = Object.keys(o).find((k) => k !== 'Id' && k !== 'ID' && typeof o[k] !== 'object');
+    return { lookupId: Number.isFinite(id) ? id : 0, lookupValue: String(valueKey ? o[valueKey] : '') };
+  };
+  const asArray = Array.isArray(raw) ? raw : [raw];
+  switch (field.type) {
+    case 'person': return typeof raw === 'object' ? person(asArray[0] as Record<string, unknown>) : '';
+    case 'personMulti': return asArray.filter((x) => x && typeof x === 'object').map((x) => person(x as Record<string, unknown>));
+    case 'lookup': return typeof raw === 'object' ? lookup(asArray[0] as Record<string, unknown>) : '';
+    case 'lookupMulti': return asArray.filter((x) => x && typeof x === 'object').map((x) => lookup(x as Record<string, unknown>));
+    case 'choiceMulti': return Array.isArray(raw) ? raw.map(String).join(';#') : String(raw);
+    case 'boolean': return typeof raw === 'boolean' ? raw : /^(true|yes|1)$/i.test(String(raw));
+    case 'number': case 'currency': {
+      if (typeof raw === 'number') return raw;
+      const n = parseFloat(String(raw));
+      return Number.isNaN(n) ? String(raw) : n;
+    }
+    case 'hyperlink':
+      return typeof raw === 'object' ? String((raw as Record<string, unknown>).Url ?? '') : String(raw);
+    default:
+      return typeof raw === 'object' ? '' : String(raw);
+  }
+}
+
+function importListSnapshot(parsed: Record<string, unknown>): ImportedSchema {
+  const version = Number(parsed.version ?? 0);
+  if (version > LIST_SNAPSHOT_VERSION) {
+    throw new Error(`This snapshot is version ${version}, newer than this app understands (v${LIST_SNAPSHOT_VERSION}) — refresh FormatFX, or re-copy the extract snippet from this version and capture again.`);
+  }
+  const rawFields = parsed.fields;
+  if (!Array.isArray(rawFields)) throw new Error('Snapshot has no "fields" array — re-run the extract snippet on your list page.');
+
+  const fields: MockField[] = [];
+  const columnFormatters: Record<string, SPElement> = {};
+  for (const rf of rawFields as SnapshotField[]) {
+    if (!rf.internalName || rf.hidden) continue;
+    const type = mapSpFieldType(rf.type ?? 'text');
+    fields.push({
+      name: rf.internalName,
+      ...(rf.displayName && rf.displayName !== rf.internalName ? { displayName: rf.displayName } : {}),
+      type,
+      ...(type === 'lookup' || type === 'lookupMulti'
+        ? { lookup: { list: rf.lookupList || '?', column: rf.lookupColumn || 'Title' } } : {}),
+      ...(rf.readOnly ? { protected: true } : {}),
+      ...(rf.choices?.length ? { choices: rf.choices } : {}),
+    });
+    if (typeof rf.customFormatter === 'string' && rf.customFormatter.trim()) {
+      try {
+        columnFormatters[rf.internalName] = JSON.parse(rf.customFormatter);
+      } catch { /* unparseable formatter — the field still imports */ }
+    }
+  }
+  if (fields.length === 0) throw new Error('No usable fields in the snapshot.');
+
+  const views: ImportedView[] = Array.isArray(parsed.views)
+    ? (parsed.views as Array<Record<string, unknown>>)
+      .filter((v) => typeof v.title === 'string' && v.title)
+      .map((v) => ({
+        title: String(v.title),
+        ...(typeof v.id === 'string' ? { id: v.id } : {}),
+        ...(v.isDefault ? { isDefault: true } : {}),
+        ...(Array.isArray(v.viewFields) ? { viewFields: v.viewFields.map(String) } : {}),
+        ...(typeof v.customFormatter === 'string' && v.customFormatter.trim()
+          ? { customFormatter: v.customFormatter } : {}),
+      }))
+    : [];
+
+  let rows: MockRow[] | undefined;
+  if (Array.isArray(parsed.rows) && parsed.rows.length) {
+    rows = (parsed.rows as Array<Record<string, unknown>>).slice(0, 10).map((r, i) => {
+      const row: MockRow = {};
+      for (const f of fields) {
+        // fields beyond the snippet's expand cap arrive absent — gap-fill,
+        // exactly like the CSV import does for non-view columns
+        row[f.name] = f.name in r ? coerceSnapshotCell(r[f.name], f) : sampleValue(f, i);
+      }
+      return row;
+    });
+  }
+
+  return {
+    listName: typeof parsed.list === 'string' ? parsed.list : undefined,
+    siteUrl: typeof parsed.siteUrl === 'string' ? parsed.siteUrl : undefined,
+    listId: typeof parsed.listId === 'string' ? parsed.listId : undefined,
+    fields,
+    rows,
+    ...(Object.keys(columnFormatters).length ? { columnFormatters } : {}),
+    ...(views.length ? { views } : {}),
+  };
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────────────
 
 export function importSchema(text: string): ImportedSchema {
@@ -368,6 +509,7 @@ export function importSchema(text: string): ImportedSchema {
     } catch (e) {
       throw new Error(`Invalid JSON: ${(e as Error).message}`);
     }
+    if (isListSnapshot(parsed)) return importListSnapshot(parsed);
     if (Array.isArray(parsed)) return importSchemaJson({ fields: parsed });
     return importSchemaJson(parsed as Record<string, unknown>);
   }
@@ -375,13 +517,16 @@ export function importSchema(text: string): ImportedSchema {
 }
 
 export const CSV_HELP = `Accepts (auto-detected):
-1. SharePoint's native "Export to CSV" with "Include schema" — paste the whole
+1. A FormatFX List Snapshot — what the "⚡ Live from SharePoint" snippet above
+   copies to your clipboard. The best path: fields, choices, live COLUMN and
+   VIEW formatters, and up to 10 real rows, no file hop.
+2. SharePoint's native "Export to CSV" with "Include schema" — paste the whole
    file. Recovers internal names, types, choices, read-only flags, your view's
    real rows AND any live column formatters (auto-registered as references).
    NOTE: SP's export OMITS calculated columns entirely — register those
    formatters by hand (Column formatter references section below).
-2. Export-ListSchema.ps1 JSON (download below).
-3. Hand-written CSV: one field per line — InternalName,Type,DisplayName,LookupList,LookupColumn,Protected,Choices
+3. Export-ListSchema.ps1 JSON (download below).
+4. Hand-written CSV: one field per line — InternalName,Type,DisplayName,LookupList,LookupColumn,Protected,Choices
   Title,text,Task name
   Status,choice,,,,,"Not started|In progress|Done"
   Project,lookup,Project,Projects,Title

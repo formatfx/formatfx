@@ -14,21 +14,28 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 
 ## The workflow
 
-1. **Import your list** — Data tab → *Import schema…* → pick the file SharePoint
-   gives you from **Export → Export to CSV** with *Include schema*. One file
-   yields the columns (types, choices, read-only flags), up to 10 real rows of
-   preview data, **and every column's live formatter**, auto-registered — the
-   grid workspace rebuilds around it, so you're looking at *your* list,
-   formatters and all. (Also accepted: JSON from `tools/Export-ListSchema.ps1`,
-   or a hand-written CSV — see in-app help.)
+1. **Import your list** — Data tab → *Import schema…*. Fastest path:
+   **⚡ Live from SharePoint** — copy the read-only extract snippet, run it
+   in the console on your list page, paste the captured snapshot back. No
+   install, no app registration, just your own session; it brings the
+   columns (types, choices, read-only flags), up to 10 real rows, **every
+   column's live formatter** (auto-registered) *and your views' row
+   formatting* — the default view's formatter loads straight onto the
+   canvas. Also accepted: the file from **Export → Export to CSV** with
+   *Include schema*, JSON from `tools/Export-ListSchema.ps1`, or a
+   hand-written CSV (see in-app help).
 2. **Edit visually** — the Structure pane is a **workspace tree**: your view
    formatter plus every registered column formatter, with badges showing which
    columns the view references (`⤷ in view` / `unused` / missing). Click any
    header to put that formatter on the canvas; edits to a column formatter
    propagate live into the view's `columnFormatterReference`s.
 3. **Ship it** — one-click topbar **JSON** copy (sanitized, `$schema`-wrapped)
-   for SharePoint's Format pane, per-column copy buttons in the registry, or
-   download / CSOM-safe variants from the JSON tab.
+   for SharePoint's Format pane, per-column copy buttons in the registry,
+   download / CSOM-safe variants from the JSON tab — or **🚀 Deploy…**
+   (JSON tab, Advanced): a generated, confirm-first snippet that writes the
+   formatter to your column or view from the list page itself, using only
+   your own permissions. It refuses to generate while the linter sees
+   errors, and it shows exactly what it will replace before the one write.
 
 ## Editor features
 
