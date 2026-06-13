@@ -613,12 +613,13 @@ for theme-awareness</td></tr>
 <tr><td><code>filter</code>, <code>backdrop-filter</code>, <code>clip-path</code>,
 <code>mask</code>, <code>aspect-ratio</code></td><td>dropped</td><td>opacity, border-radius,
 explicit sizes</td></tr>
-<tr><td><code>align-self</code>, <code>justify-self</code>, <code>order</code>,
+<tr><td><code>justify-self</code>, <code>order</code>,
 <code>align-content</code>, <code>justify-items</code></td><td>dropped</td>
 <td>restructure: alignment lives on the parent (<code>align-items</code>/<code>justify-content</code>);
 order lives in the children array</td></tr>
-<tr><td><code>pointer-events</code></td><td>dropped</td><td>structure around it (overlay buttons,
-<code>cursor</code> for affordance)</td></tr>
+<tr><td><code>align-self</code>, <code>pointer-events</code></td><td>reported dropped —
+unverified; re-test before relying on it either way</td><td>safe route: <code>align-items</code>
+on the parent; overlay elements + <code>cursor</code> for click affordance</td></tr>
 <tr><td><code>transform: rotate(…)/scale(…)</code></td><td>treat as suspect — this app's linter
 flags non-<code>translate</code> transforms because they've been seen to drop on real
 tenants</td><td><code>translate(…)</code> for nudges; pre-rotated SVG paths for chevrons</td></tr>
@@ -708,17 +709,20 @@ another formatter (<code>formatter</code>, <code>openOnEvent</code>, <code>direc
 <code>isBeakVisible</code>). <code>defaultHoverField</code> is the zero-effort sibling: point it
 at a person column for the standard profile card, or at <code>[$FileLeafRef]</code> for the file
 card.</p>
-<p>Two structural traps live here (details in <a href="#" data-guide-page="gotchas">gotchas</a>):
-the card-trigger element wants to be a <code>button</code> with direct <code>txtContent</code> —
-child elements hijack the click registration — and <code>columnFormatterReference</code> inside
-a card formatter renders blank.</p>
+<p>Field notes for cards (details in <a href="#" data-guide-page="gotchas">gotchas</a>): give
+the card a dedicated trigger — an absolutely-positioned overlay div, or a <code>button</code>
+with direct <code>txtContent</code> — rather than hanging <code>customCardProps</code> on a div
+full of children, whose clicks have been seen to get swallowed. And
+<code>columnFormatterReference</code> works inside card content (an old "renders blank" rule
+was retracted on production evidence), including referenced formatters that open cards of
+their own.</p>
 
 <h2 id="ac-foreach">forEach — the loop that pairs with all of this</h2>
 <p><code>"forEach": "_item in [$MultiValueField]"</code> repeats an element per value — the
 standard way to render multi-value joins as chips, facepiles, tag rows. Convention: prefix the
 iterator with an underscore so it can't shadow a field reference. One hard scope rule:
-<code>forEach</code> over a <code>split()</code> expression only works inside
-<code>customCardProps</code> — at the top level it kills the whole formatter.</p>
+<code>forEach</code> over a <code>split()</code> expression on the <strong>root element</strong>
+kills the whole formatter — wrap it and loop on a child, where it works fine.</p>
 `,
   },
 
@@ -731,14 +735,19 @@ iterator with an underscore so it can't shadow a field reference. One hard scope
 <p class="wb-guide-lede">Field-tested failure modes, most of which fail <em>silently</em> on real
 SharePoint — the element just renders blank and nothing tells you why. Each entry names the rule
 in this app's linter where there is one; several semantics were verified against a live tenant
-with screenshot comparison (2026-06-11).</p>
+with screenshot comparison (2026-06-11), and entries marked <em>unverified</em> are canon under
+review — treat those as cautions, not laws. Two old rules were retracted outright on production
+evidence (2026-06-13); they're kept below so they stay dead.</p>
 
 <h2 id="go-expr">Expression language</h2>
 
-<div class="wb-guide-gotcha">${sev('warning')}<h3>The Zero Whitespace Rule</h3>${lintRule('zero-whitespace')}
-<p>Spaces in an <code>=expression</code> outside quoted literals can silently kill the formatter
-in production. <code>=if([$a] == 1, 'x', 'y')</code> reads beautifully and may render nothing.
-Author readable, ship sanitized — this app's exports strip unquoted whitespace for you.</p></div>
+<div class="wb-guide-gotcha">${sev('warning')}<h3>The Zero Whitespace Rule — verified scope: split()</h3>${lintRule('zero-whitespace')}
+<p>The verified case: spaces outside quoted literals <em>inside a <code>split()</code>
+expression</em> silently kill the formatter. The generalized folklore — "no spaces in any
+expression, ever" — is long-standing canon but is <strong>not</strong> verified; plenty of
+spaced expressions render fine. Shipping tight JSON costs nothing (this app's exports strip
+unquoted whitespace anyway, and the linter notes non-split cases as info-level precaution),
+so author readable and sanitize on export — just don't treat every space as a fire.</p></div>
 
 <div class="wb-guide-gotcha">${sev('error')}<h3>not() does not exist</h3>${lintRule('no-not-function')}
 <p>The formatting dialect has no <code>not()</code> function — that's the calculated-column
@@ -786,28 +795,40 @@ midnight passes. Time-relative logic belongs in formatting expressions with <cod
 
 <h2 id="go-structure">Structure, cards and loops</h2>
 
-<div class="wb-guide-gotcha">${sev('warning')}<h3>Card triggers want a button</h3>${lintRule('card-trigger-button')}
-<p><code>customCardProps</code> on a <code>div</code> with children: the child spans hijack click
-registration and the card never opens. Use <code>elmType "button"</code> with direct
-<code>txtContent</code>, or an absolutely-positioned overlay div as the trigger.</p></div>
+<div class="wb-guide-gotcha">${sev('info')}<h3>Card triggers: give the card a dedicated trigger</h3>${lintRule('card-trigger-button')}
+<p><code>customCardProps</code> on a <code>div</code> full of children: the children have been
+seen to swallow the click so the card never opens. Field observation, not gold-certified — but
+the patterns that hold up are an <strong>absolutely-positioned overlay div</strong> as the
+dedicated trigger (the preferred one), or a <code>button</code> with direct
+<code>txtContent</code>.</p></div>
 
-<div class="wb-guide-gotcha">${sev('error')}<h3>No CFR inside a card</h3>${lintRule('cfr-in-card')}
-<p><code>columnFormatterReference</code> inside a <code>customCardProps</code> formatter renders
-blank. Inline the markup instead. (Also: CFRs don't nest multi-level, and references to
-multi-choice template formatters aren't supported —
-${ext(MS.syntaxRef, 'syntax reference')}.)</p></div>
+<div class="wb-guide-gotcha">${sev('info')}<h3>CFRs inside cards work (old canon said otherwise)</h3>
+<p>Retraction: an earlier version of this guide — and the imported team canon — claimed
+<code>columnFormatterReference</code> inside a <code>customCardProps</code> formatter renders
+blank. <strong>It doesn't.</strong> CFRs inside card content are used in production constantly,
+including referenced column formatters that open cards of their own. The limits that
+<em>are</em> documented: a reference isn't resolved multi-level, and references to multi-choice
+template formatters aren't supported (${ext(MS.syntaxRef, 'syntax reference')}).</p></div>
 
-<div class="wb-guide-gotcha">${sev('error')}<h3>forEach + split() scope</h3>${lintRule('foreach-split-scope')}
-<p><code>forEach</code> over a <code>split()</code> expression works only inside
-<code>customCardProps</code>. At the top level of a formatter it kills the whole thing. Iterate
-real multi-value fields at the top level; save string-splitting for card content. Convention:
-underscore-prefix iterators (<code>_tag in [$Tags]</code>) so they can't shadow field refs
-${lintRule('foreach-iterator-underscore')}. And <code>inlineEditField</code> inside a
-<code>forEach</code> is unreliable ${lintRule('inline-edit-foreach')}.</p></div>
+<div class="wb-guide-gotcha">${sev('error')}<h3>forEach + split() on the root element</h3>${lintRule('foreach-split-scope')}
+<p>The verified failure: <code>forEach</code> over a <code>split()</code> expression on the
+<strong>root div</strong> kills the whole formatter. On child elements it works — wrap the loop
+in a parent div and put the <code>forEach</code> on a child. Convention: underscore-prefix
+iterators (<code>_tag in [$Tags]</code>) so they can't shadow field refs
+${lintRule('foreach-iterator-underscore')}.</p></div>
 
-<div class="wb-guide-gotcha">${sev('error')}<h3>_comment placement</h3>${lintRule('comment-placement')}
-<p>A <code>_comment</code> key as a sibling of <code>elmType</code> breaks rendering. It is only
-safe inside <code>style</code> objects.</p></div>
+<div class="wb-guide-gotcha">${sev('info')}<h3>inlineEditField inside forEach works (old canon said otherwise)</h3>
+<p>Retraction: the imported canon called <code>inlineEditField</code> inside a
+<code>forEach</code> "unreliable". Production formatters render inline editors on looped
+elements (text and similar columns) without trouble — the old lint rule is gone, and the
+pattern isn't discouraged.</p></div>
+
+<div class="wb-guide-gotcha">${sev('warning')}<h3>Non-schema keys: mostly ignored, once bitten</h3>${lintRule('comment-placement')}
+<p>SharePoint ignores unknown keys as a rule — this app's <code>_elmName</code> labels ship in
+exported JSON precisely because SP doesn't care. But there is a remembered (unverified, pending
+re-test) incident of a <code>_comment</code> sibling of <code>elmType</code> breaking a
+formatter. Until that's re-verified: keep annotations inside <code>style</code> objects, and be
+deliberate about inventing keys anywhere else.</p></div>
 
 <div class="wb-guide-gotcha">${sev('error')}<h3>class, not className</h3>${lintRule('class-not-classname')}
 <p>The schema uses HTML attribute names: <code>attributes.class</code>. <code>className</code>
@@ -817,15 +838,20 @@ is a JSX habit the renderer ignores.</p></div>
 
 <div class="wb-guide-gotcha">${sev('warning')}<h3>Off-list styles drop silently</h3>${lintRule('css-unknown / css-unsupported')}
 <p>Anything not on the allow-list — <code>var()</code>, <code>calc()</code>, grid, transitions,
-animations, filters, <code>align-self</code>, <code>order</code>, <code>pointer-events</code> —
-silently never paints. The full table lives in
-<a href="#" data-guide-page="formatting">the JSON layer</a>. Non-<code>translate</code>
-transforms: treat as suspect ${lintRule('css-transform')}.</p></div>
+animations, filters, <code>order</code> — silently never paints. Two long-listed entries are
+softer than canon claimed: <code>align-self</code> and <code>pointer-events</code> are
+<em>reported</em> dropped but unverified — re-test before designing around either, in either
+direction. The full table lives in <a href="#" data-guide-page="formatting">the JSON layer</a>.
+Non-<code>translate</code> transforms: treat as suspect ${lintRule('css-transform')}.</p></div>
 
-<div class="wb-guide-gotcha">${sev('info')}<h3>.sp-card-formatterRef is invisible by design</h3>
-<p>In LIST row context, real SharePoint renders <code>.sp-card-formatterRef</code> with
-<code>visibility: hidden</code> — it occupies layout and never paints. Looks like a bug; it's
-fidelity, and this app's preview reproduces it.</p></div>
+<div class="wb-guide-gotcha">${sev('info')}<h3>.sp-card-formatterRef outside card markup goes invisible</h3>
+<p>Live-verified (2026-06-11): in LIST row context, an element carrying the
+<code>.sp-card-formatterRef</code> class renders <code>visibility: hidden</code> — occupies
+layout, never paints — and this app's preview reproduces that. Scope it correctly, though: the
+class belongs to the <code>sp-card-*</code> gallery/card vocabulary. CFRs in list views don't
+need it at all; pair it with card-classed containers (<code>sp-card-container</code> and
+friends), where it's the expected wrapper for a CFR. The verified invisibility is best read as
+"this class used outside card markup", not as a defect of CFRs in lists.</p></div>
 
 <h2 id="go-platform">Platform &amp; tooling</h2>
 

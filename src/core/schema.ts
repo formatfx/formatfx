@@ -57,8 +57,8 @@ export const ALLOWED_STYLES = new Set<string>([
  * (.agent/knowledge/sp-elements.md — "Unsupported CSS Properties")
  */
 export const KNOWN_UNSUPPORTED_STYLES: Record<string, string> = {
-  'pointer-events': 'silently ignored by the SP renderer',
-  'align-self': 'not supported',
+  'pointer-events': 'reported ignored by the SP renderer — unverified, re-test before relying on it either way',
+  'align-self': 'reported not to work — unverified; the safe route is align-items on the parent',
   'align-content': 'not supported',
   'justify-items': 'not supported',
   'justify-self': 'not supported',

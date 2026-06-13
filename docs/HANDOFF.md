@@ -166,6 +166,40 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 7. The renderer **silently drops** styles not on the allow-list — exactly
    like SP. Surfacing them is the linter's job, not the renderer's.
 
+### 3b. Canon corrections — owner field testimony, 2026-06-13
+
+The imported TwFw canon overstated several rules. The owner corrected them
+from active production formatters; linter + field guide were updated to
+match. Do not resurrect the old wording without fresh tenant evidence:
+
+- **Zero Whitespace Rule** is verified fatal **only inside split()
+  expressions**. Elsewhere it's an unverified generalization — the linter
+  keeps a precautionary flag (info severity for non-split cases) because
+  sanitize-on-export strips it anyway, but never publish "every spaced
+  expression breaks".
+- **CFR inside customCardProps works** (rule `cfr-in-card` REMOVED — was
+  error severity, was wrong). Used in production constantly, including
+  referenced formatters that open their own cards. The documented limits
+  that stand: no multi-level reference resolution; no references to
+  multi-choice template formatters.
+- **inlineEditField inside forEach works** (rule `inline-edit-foreach`
+  REMOVED). Production formatters render inline editors on looped elements.
+- **forEach + split() is fatal on the ROOT element only** (rule scoped to
+  `path.length === 0`); on child elements the pattern works — the old
+  "only works inside customCardProps" framing was wrong.
+- **_comment-as-sibling breakage is unverified** (downgraded error →
+  warning). SP ignores most non-schema keys — `_elmName` ships in exports
+  unharmed. Re-test before re-tightening.
+- **align-self and pointer-events are unverified** "unsupported" entries —
+  KNOWN_UNSUPPORTED_STYLES now says "reported … unverified" for both.
+- **Card trigger hijack is a field observation, not certified** (downgraded
+  warning → info). Owner-preferred robust trigger: absolutely-positioned
+  overlay div; button-with-direct-txtContent also holds.
+- **§3.5 scoping**: the verified `.sp-card-formatterRef` invisibility is
+  the class used in LIST row context *outside card markup*. The class
+  belongs with `sp-card-*` containers (where it's the expected CFR
+  wrapper); CFRs in list views don't need it at all.
+
 ## 4. Known emulation gaps (honest list)
 
 - `inlineEditField` renders an indicator, not an editable control.

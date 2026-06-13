@@ -2,20 +2,27 @@
  * core/linter.ts — Static checks for SP formatter trees.
  *
  * Encodes field-tested quirks of the SharePoint formatting engine (most fail
- * SILENTLY in production — these rules come from the TwFw knowledge base and
- * years of community samples in pnp/List-Formatting):
+ * SILENTLY in production — these rules come from the TwFw knowledge base,
+ * years of community samples in pnp/List-Formatting, and the owner's canon
+ * corrections logged in docs/HANDOFF.md §3b):
  *
- *  - Zero Whitespace Rule: spaces in expressions outside quoted literals
+ *  - Zero Whitespace Rule: verified fatal only inside split() expressions;
+ *    flagged elsewhere as a precaution (sanitize-on-export strips it anyway)
  *  - not() does not exist — use the ! prefix operator
- *  - forEach + split() outside customCardProps kills the formatter
+ *  - forEach + split() on the ROOT element kills the formatter (children are fine)
  *  - forEach iterators should be underscore-prefixed (convention)
- *  - _comment only safe inside style objects
- *  - unsupported CSS properties (silently dropped)
- *  - customCardProps trigger: div with children hijacks click registration
- *  - columnFormatterReference inside customCardProps renders blank
+ *  - _comment outside style: remembered (unverified) breakage — annotations
+ *    are safest inside style objects; SP ignores most non-schema keys
+ *  - unsupported CSS properties (silently dropped; a couple are unverified)
+ *  - customCardProps triggers: children have been seen to swallow the click —
+ *    prefer an absolute overlay div, or a button with direct txtContent
  *  - non-ASCII characters garble through CSOM deployment
  *  - nested if() depth > 10 may silently fail
  *  - className instead of attributes.class
+ *
+ * Retracted (owner-verified in production, 2026-06-13 — do not re-add without
+ * fresh evidence): "CFR inside customCardProps renders blank" and
+ * "inlineEditField inside forEach is unreliable". Both work on real SP.
  */
 
 import type { SPElement, NodePath, FormatterDocument } from './types';
@@ -32,7 +39,6 @@ export interface LintIssue {
 }
 
 interface WalkState {
-  insideCard: boolean;
   /** Field internal names known to the mock schema (undefined = skip the check). */
   knownFields?: Set<string>;
   /** Field name → type, for type-aware rules (e.g. empty-date comparisons). */
@@ -48,7 +54,6 @@ export function lintDocument(
 ): LintIssue[] {
   const issues: LintIssue[] = [];
   walk(doc.root, [], {
-    insideCard: false,
     knownFields: knownFields ? new Set(knownFields) : undefined,
     fieldTypes,
     iterators: new Set(),
@@ -142,10 +147,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     push('error', 'elmType-invalid', `"${el.elmType}" is not a valid elmType (${ELM_TYPES.join(', ')}).`);
   }
 
-  // _comment placement (only safe inside style)
+  // _comment outside style: a remembered breakage, pending re-verification —
+  // SP ignores most non-schema keys (_elmName ships in exports unharmed)
   for (const key of Object.keys(el)) {
     if (key === '_comment') {
-      push('error', 'comment-placement', '_comment as a sibling of elmType breaks rendering — it is only safe inside style objects.');
+      push('warning', 'comment-placement', '_comment as a sibling of elmType has been seen to break rendering (unverified — SP ignores most non-schema keys, e.g. _elmName). Safest home for annotations is inside a style object.');
     }
   }
 
@@ -178,7 +184,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
   // expression-level checks
   for (const { where, value } of expressionStrings(el)) {
     if (hasUnsafeWhitespace(value)) {
-      push('warning', 'zero-whitespace', `${where}: spaces outside quoted literals cause silent render failure (Zero Whitespace Rule). Use "Sanitize" on export.`);
+      if (/split\s*\(/.test(value)) {
+        push('warning', 'zero-whitespace', `${where}: spaces outside quoted literals inside a split() expression cause silent render failure (the verified case of the Zero Whitespace Rule). Use "Sanitize" on export.`);
+      } else {
+        push('info', 'zero-whitespace', `${where}: spaces outside quoted literals — only split() expressions are verified to break on real SP; flagged as a precaution, and "Sanitize" on export strips them either way.`);
+      }
     }
     if (/(^|[^a-zA-Z0-9_])not\s*\(/.test(value)) {
       push('error', 'no-not-function', `${where}: not() does not exist in SP formatting — use the ! prefix operator.`);
@@ -260,8 +270,8 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       if (!binding.iterator.startsWith('_')) {
         push('warning', 'foreach-iterator-underscore', `forEach iterator "${binding.iterator}" should be underscore-prefixed (e.g. "_${binding.iterator}") to distinguish it from field references.`);
       }
-      if (/split\s*\(/.test(binding.listExpr) && !state.insideCard) {
-        push('error', 'foreach-split-scope', 'forEach + split() outside customCardProps kills the entire formatter — it only works inside customCardProps.');
+      if (/split\s*\(/.test(binding.listExpr) && path.length === 0) {
+        push('error', 'foreach-split-scope', 'forEach + split() on the ROOT element kills the entire formatter — wrap it in a parent div and loop on a child instead (children handle it fine).');
       }
     }
   }
@@ -269,31 +279,17 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
   // customCardProps checks
   if (el.customCardProps) {
     if (el.elmType !== 'button' && el.children?.length) {
-      push('warning', 'card-trigger-button', 'customCardProps on a div with children: child spans hijack click registration and the card never opens. Use elmType "button" with txtContent directly, or an absolute overlay div.');
+      push('info', 'card-trigger-button', 'customCardProps on an element with children: the children have been seen to swallow the click so the card never opens (field observation). The robust trigger patterns: an absolutely-positioned overlay div, or a button with direct txtContent.');
     }
     const f = el.customCardProps.formatter;
     if (f) {
       const cardIssues: LintIssue[] = [];
-      walk(f, [...path, -1], { ...state, insideCard: true }, cardIssues);
+      walk(f, [...path, -1], state, cardIssues);
       for (const issue of cardIssues) {
         issues.push({ ...issue, message: `[customCardProps] ${issue.message}`, path });
       }
-      forEachNode(f, (n) => {
-        if (n.columnFormatterReference) {
-          push('error', 'cfr-in-card', 'columnFormatterReference inside a customCardProps formatter renders blank — inline the markup instead.');
-        }
-      });
     }
   }
 
-  if (el.inlineEditField && state.insideCard === false && el.forEach) {
-    push('warning', 'inline-edit-foreach', 'inlineEditField inside forEach is unreliable.');
-  }
-
   el.children?.forEach((child, i) => walk(child, [...path, i], state, issues));
-}
-
-function forEachNode(el: SPElement, fn: (n: SPElement) => void): void {
-  fn(el);
-  el.children?.forEach((c) => forEachNode(c, fn));
 }

@@ -79,10 +79,46 @@ describe('linter', () => {
         ],
       },
     };
-    const rules = lintDocument(doc).map((i) => i.rule);
-    for (const expected of ['no-not-function', 'css-unsupported', 'foreach-iterator-underscore', 'foreach-split-scope', 'zero-whitespace']) {
+    const issues = lintDocument(doc);
+    const rules = issues.map((i) => i.rule);
+    for (const expected of ['no-not-function', 'css-unsupported', 'foreach-iterator-underscore', 'zero-whitespace']) {
       expect(rules).toContain(expected);
     }
+    // canon correction 2026-06-13: split()+forEach is only fatal on the ROOT
+    // element — on a child it works, so the old blanket rule must stay quiet
+    expect(rules).not.toContain('foreach-split-scope');
+    // whitespace without split() is a precaution, not a verified failure
+    expect(issues.find((i) => i.rule === 'zero-whitespace')!.severity).toBe('info');
+  });
+
+  it('foreach-split-scope fires on the root element only', () => {
+    const doc: FormatterDocument = {
+      kind: 'column',
+      root: { elmType: 'div', forEach: "_t in split([$Tags],';')", txtContent: '[$_t]' },
+    };
+    expect(lintDocument(doc).map((i) => i.rule)).toContain('foreach-split-scope');
+  });
+
+  it('retracted canon stays retracted: CFR-in-card and inlineEditField-in-forEach are clean', () => {
+    const doc: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        customCardProps: {
+          openOnEvent: 'hover',
+          formatter: {
+            elmType: 'div',
+            children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
+          },
+        },
+        children: [
+          { elmType: 'div', forEach: '_p in [$AssignedTo]', inlineEditField: '[$AssignedTo]', txtContent: '[$_p.title]' },
+        ],
+      },
+    };
+    const rules = lintDocument(doc).map((i) => i.rule);
+    expect(rules).not.toContain('cfr-in-card');
+    expect(rules).not.toContain('inline-edit-foreach');
   });
 });
 
