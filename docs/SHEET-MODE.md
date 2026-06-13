@@ -32,6 +32,11 @@ product; it is earned by never generating something that silently fails.
   Basic palette becomes a ribbon tab (Insert-flavored).
 - **No flanking panels in Sheet mode** — the grid is front and center,
   full-bleed. Palette/Structure/Inspector are Advanced (studio) furniture.
+  *Status (2026-06-13): the shell visual landed early in Basic — palette →
+  ribbon, inspector dropped, preview widened. Per the owner the Structure
+  pane is kept (a useful map; not strictly full-bleed) and the rename to
+  "Sheet" is still deferred to the finished stage 3. See HANDOFF "Basic/
+  advanced mode".*
 - **fx bar: yes, but not Excel-literal.** The known discomforts are design
   inputs, not features to copy:
   - It must be structurally clear that the bar **formats, never sets

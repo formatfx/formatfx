@@ -14,12 +14,16 @@ export function mountPalette(host: HTMLElement): void {
     groups.get(item.group)!.push(item);
   }
   for (const [group, items] of groups) {
-    // basic mode shows only `basic` items; groups with none disappear whole
+    // basic mode shows only `basic` items; groups with none disappear whole.
+    // The label + grid live in one wrapper so the ribbon (basic) can stack
+    // them as a labelled group, and so an all-advanced group hides entirely.
     const groupHasBasic = items.some((i) => i.basic);
+    const wrap = document.createElement('div');
+    wrap.className = 'wb-palette-group-wrap' + (groupHasBasic ? '' : ' wb-adv');
     const h = document.createElement('div');
-    h.className = 'wb-palette-group' + (groupHasBasic ? '' : ' wb-adv');
+    h.className = 'wb-palette-group';
     h.textContent = group;
-    host.appendChild(h);
+    wrap.appendChild(h);
     const grid = document.createElement('div');
     grid.className = 'wb-palette-grid';
     for (const item of items) {
@@ -37,7 +41,8 @@ export function mountPalette(host: HTMLElement): void {
       });
       grid.appendChild(btn);
     }
-    host.appendChild(grid);
+    wrap.appendChild(grid);
+    host.appendChild(wrap);
   }
 }
 
