@@ -13,5 +13,9 @@
     "allowImportingTsExtensions": false,
     "types": ["node"]
   },
-  "include": ["src/lib.ts", "src/cli.ts"]
+  "include": ["src/lib.ts", "src/cli.ts"],
+  // the base config excludes cli.ts (browser program, no node types) and
+  // exclude is INHERITED — reset it here or cli.js never emits (CI caught
+  // exactly this once)
+  "exclude": []
 }
