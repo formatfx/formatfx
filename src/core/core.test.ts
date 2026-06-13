@@ -43,7 +43,7 @@ describe('expression engine', () => {
     ['[!Title.DisplayName]', 'Task name'],
     ['@rowIndex', 0],
     ["=padStart(toString([$Progress]),5,'0')", '00064'],
-    ["=!([$Status]=='Done')", true],
+    ["=[$Status]!='Done'", true],
     // lookup field access
     ['=[$Project.lookupValue]', 'Apollo'],
     ["='ID='+[$Project.lookupId]", 'ID=3'],
@@ -52,6 +52,14 @@ describe('expression engine', () => {
   for (const [expr, expected] of cases) {
     it(expr, () => expect(evaluate(expr, ctx)).toEqual(expected));
   }
+
+  it("there is no logical NOT — not(), '!' and the AST '!' all throw teaching errors", () => {
+    expect(() => evaluate("=not([$Status]=='Done')", ctx)).toThrow(/no logical NOT/);
+    expect(() => evaluate("=!([$Status]=='Done')", ctx)).toThrow(/no logical NOT/);
+    expect(() => evalAny({ operator: '!', operands: [true] } as never, ctx)).toThrow(/no logical NOT/);
+    // '!=' and negative literals are unaffected
+    expect(evaluate("=indexOf([$Tags],'web')!=-1", ctx)).toBe(true);
+  });
 
   it('forEach over split and person arrays', () => {
     const b = parseForEach("_tag in split([$Tags],';')")!;
@@ -167,7 +175,7 @@ describe('tenant theme', () => {
   });
 });
 
-describe('empty-date semantics (live-verified 2026-06-10)', () => {
+describe('blank-cell semantics', () => {
   const dctx: EvalContext = { ...ctx, row: { ...ctx.row, EmptyDate: null, EmptyText: '' } as never };
 
   it("[$EmptyDate]=='' is FALSE — null date cells differ from empty strings", () => {

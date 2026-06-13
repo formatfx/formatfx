@@ -36,14 +36,39 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   **Microsoft-Lists-style grid**: one column per view column, real headers,
   each column rendered with its current formatter (import a list and its
   pills/bars show up live). Header menus hold the per-column actions —
-  *format this column* (scaffolds and opens a column formatter), *style*,
-  *copy JSON*, *hide* — plus a **“+ column”** chip for the rest of your
-  schema. Drag a header left/right to reorder; **drop one column onto
-  another** and the two become named row-formatter scaffolding ("Status +
-  DueDate group") you can immediately reposition, wrap, border or shadow
-  with the same click-only tools. The grid stays a grid until you group;
-  every grid gesture is exactly one undo step; switch Type to *row layout*
-  any time to see the same tree as a free layout.
+  *format this column* (scaffolds and opens a column formatter),
+  *conditional formatting*, *style*, *copy JSON*, *hide* — plus a
+  **“+ column”** chip for the rest of your schema. Drag a header left/right
+  to reorder; **drop one column onto another** and the two become named
+  row-formatter scaffolding ("Status + DueDate group") you can immediately
+  reposition, wrap, border or shadow with the same click-only tools. The
+  grid stays a grid until you group; every grid gesture is exactly one undo
+  step; switch Type to *row layout* any time to see the same tree as a free
+  layout.
+- **Right-click anywhere in the preview** — every element, column and group
+  carries a context menu with the actions that apply to nearly everything:
+  restyle in the playground, conditional formatting, **Format cells…**
+  (the comfortable dialog: Font / Border / Fill / Alignment tabs, a live
+  preview box, OK applies everything as one undo step), rename, wrap in a
+  container, ungroup, duplicate, copy its JSON, remove. All click-only and
+  undoable, so it works in Basic mode too; grid headers answer right-click
+  with their column menu.
+- **Conditional formatting builder** — the Excel mental model ("when the
+  value …, make it look …") without the dialog maze. The field's type
+  drives the suggestions: choice columns arrive with **one ready chip per
+  choice** and a one-click **“✨ a color for each choice”** (the words pick
+  the colors — *Done* goes green, *Blocked* goes red); dates get
+  overdue/today/within-N-days;
+  people get *is you*; numbers get thresholds. Rules can watch a
+  **different column** than the one they paint ("color DueDate by Status")
+  — the watched column is picked from a type-labeled dropdown, never
+  typed. Pick a look — text color,
+  soft fill, solid pill, edge stripe, strike out — and a swatch, watch every
+  rule render against **your actual rows** through the real engine, then
+  apply: one undoable mutation that compiles the rules into schema-valid
+  `=if(…)` chains (first match wins; an element's existing look becomes the
+  no-match fallback). From a grid header it lands on that column's
+  registered formatter, exactly like *format this column*.
 - **Basic & Advanced modes** — the app lands in **Basic**: a curated palette
   of the pieces people actually reach for (status pills, traffic lights,
   date badges, data bars, personas, stars…), the canvas, the structure tree,
@@ -87,9 +112,14 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   that apply themselves, longhand groups (one card serves `padding` and all
   its sides) and a full flex glossary — plus a one-click jump into the
   **⚗ Style playground** (also in the ☰ menu): a consequence-free overlay
-  where every property is a row of clickable value chips applied live to
-  sample elements, with an explicit "apply to selected element" (undoable)
-  when you've dialed in something you like.
+  organized as labeled steps. **Quick looks** apply whole style bundles in
+  one click (pill, card, accent edge, one-line ellipsis…); a mini
+  **structure tree** beside the live stage shows ancestors and children
+  (click any row to restyle that element instead; unapplied picks stash per
+  element); the selected property gets a **formatted description card**
+  whose examples apply themselves; the element's **current styles** are
+  listed (expressions as 𝑓x) with your picks shown replacing them; and
+  nothing touches the formatter until the explicit, undoable Apply.
 - **customCardProps are first-class** — card formatters appear nested in the
   structure tree, are click-selectable inside the live flyout, and edit with
   the same palette/inspector as everything else.
@@ -116,7 +146,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `@currentField` swapping and circular-reference protection.
 - **Built-in linter that teaches** — the silent-failure quirks, each explained
   in plain language with a ▶ position marker in the formula: the Zero
-  Whitespace Rule, `not()` doesn't exist, nested `=` inside expressions,
+  Whitespace Rule, no `not()` and no standalone `!` (`!=` is fine — negate
+  inside the expression), nested `=` inside expressions,
   XML-entity-escaped operators (`&amp;&amp;`), `forEach`+`split()` scope,
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`

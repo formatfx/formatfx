@@ -111,6 +111,103 @@ test('the same tree graduates: switch Type to row layout and back to grid', asyn
     ['Title', 'Status + DueDate group', 'Progress', 'AssignedTo', 'Project']);
 });
 
+test('right-click: column menu on headers, element menu on cell content, remove + undo', async ({ page }) => {
+  // a header right-click opens the same column menu as a click
+  await header(page, 'Status').click({ button: 'right' });
+  await expect(page.locator('.wb-grid-menu-title')).toHaveText('Status');
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wb-grid-menu')).toBeHidden();
+  // right-clicking rendered cell content gets the element menu for that column
+  const titleCell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first();
+  await titleCell.locator('[data-sp-path]').first().click({ button: 'right' });
+  await expect(page.locator('.wb-grid-menu-title')).toHaveText('Title');
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Restyle in playground' })).toBeVisible();
+  await page.locator('.wb-grid-menu button', { hasText: 'Remove' }).click();
+  await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS.filter((h) => h !== 'Title'));
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
+});
+
+test('conditional formatting from the header menu: condition → rule → data preview → apply lands on the column formatter', async ({ page }) => {
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  const cf = page.locator('.wb-cf');
+  await expect(cf).toBeVisible();
+  // a date field suggests date conditions — pick "overdue", add the rule
+  await cf.locator('.wb-cf-cond', { hasText: 'is in the past (overdue)' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
+  await expect(cf.locator('.wb-cf-rule-when').first()).toContainText('DueDate is overdue');
+  // every mock row previews through the real renderer; row 2 is overdue
+  await expect(cf.locator('.wb-cf-preview-item')).toHaveCount(3);
+  await expect(cf.locator('.wb-cf-preview-lab').nth(0)).toHaveText('no rule');
+  await expect(cf.locator('.wb-cf-preview-lab').nth(1)).toHaveText('rule 1');
+  await cf.locator('.wb-cf-apply').click();
+  // the column route registers a formatter and switches the workspace to it
+  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+  await page.locator('.wb-tabs button[data-tab="json"]').click();
+  const json = await page.inputValue('#wb-json-text');
+  // the JSON tab shows the sanitized export (Zero Whitespace Rule)
+  expect(json).toContain("=if(toString([$DueDate])!=''&&[$DueDate]<@now,'#d13438','')");
+  // back on the grid, the cell resolves the new formatter (no placeholder chip)
+  await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
+  await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
+});
+
+test('conditional formatting can watch a different column than the one it paints', async ({ page }) => {
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  const cf = page.locator('.wb-cf');
+  // the picker is a type-labeled dropdown — no typing column names
+  await expect(cf.locator('select option', { hasText: '[$Status] — choice' })).toHaveCount(1);
+  await cf.locator('select').selectOption('Status');
+  // the conditions adapt to the watched column's type (choice → ready chips)
+  await cf.locator('.wb-cf-cond', { hasText: 'is Blocked' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await expect(cf.locator('.wb-cf-rule-when').first()).toContainText('Status is Blocked');
+  await cf.locator('.wb-cf-apply').click();
+  // the PAINTED column gets the formatter; the rules inside watch Status
+  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+  await page.locator('.wb-tabs button[data-tab="json"]').click();
+  expect(await page.inputValue('#wb-json-text')).toContain("[$Status]=='Blocked'");
+});
+
+test('format cells: bold + fill + outline border stage together and apply as one undo step', async ({ page }) => {
+  await header(page, 'Title').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
+  const fc = page.locator('.wb-fc');
+  await expect(fc).toBeVisible();
+  await fc.locator('.wb-fc-toggle', { hasText: 'Bold' }).click();
+  await fc.locator('.wb-fc-tab', { hasText: 'Fill' }).click();
+  await fc.locator('.wb-fc-swatch[title="#deecf9"]').click();
+  await fc.locator('.wb-fc-tab', { hasText: 'Border' }).click();
+  await fc.locator('.wb-fc-preset', { hasText: 'Outline' }).click();
+  await fc.locator('.wb-fc-ok').click();
+  const cell = page.locator('.wb-grid [data-sp-path="0"]').first();
+  await expect(cell).toHaveCSS('font-weight', '600');
+  await expect(cell).toHaveCSS('background-color', 'rgb(222, 236, 249)');
+  await expect(cell).toHaveCSS('border-top-width', '1px');
+  // ONE undo reverts the whole dialog's patch
+  await page.keyboard.press('Control+z');
+  await expect(cell).toHaveCSS('font-weight', '400');
+  await expect(cell).toHaveCSS('border-top-width', '0px');
+});
+
+test('✨ a color for each choice: one rule per choice, smart colors, formula-replacement warning', async ({ page }) => {
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  const cf = page.locator('.wb-cf');
+  await cf.locator('.wb-cf-auto').click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(4);
+  await expect(cf.locator('.wb-cf-rule-when').nth(2)).toContainText('Status is Blocked');
+  // Done gets the green solid pill — the words pick the colors
+  await expect(cf.locator('.wb-cf-rule').nth(3).locator('.wb-cf-chip'))
+    .toHaveCSS('background-color', 'rgb(16, 124, 16)');
+  // the showcase Status pill already drives background-color by formula — we warn
+  await expect(cf.locator('.wb-cf-note')).toContainText('replaces the formula');
+});
+
 test('basic mode lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
