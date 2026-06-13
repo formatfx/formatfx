@@ -152,6 +152,15 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`
   depth, and more. Written for low-code makers, not compiler authors.
+- **Built-in field guide** (☰ menu → 📖) — a full-screen, Learn-style reference
+  with a chapter tree, "in this article" rail, diagrams and Microsoft Learn
+  links — written for developers, not Excel translation. What lists really are
+  (SQL tables behind a React UI — view thresholds and the 12-join lookup limit
+  included), the column type system (person/metadata columns ARE lookups,
+  projected fields, calculated-column boundaries, the single-vs-multi
+  capability matrix), the formatting JSON layer (allow-listed CSS — no `var()`
+  / `calc()` / grid — plus `customRowAction`, `inlineEditField`, hover cards),
+  and every field-tested gotcha the linter knows, cross-referenced to its rules.
 - **Projects & autosave** — the whole workspace (formatters + schema + data +
   references) autosaves to localStorage and saves/opens as portable
   `.sandbox.json` files. Panes are drag-resizable; the side pane has 📌

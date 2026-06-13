@@ -295,6 +295,18 @@ tests are the spec; no need to re-discuss or re-document them.
    Alignment, one undoable patch) on header + right-click menus, and
    conditional formatting now watches any column (paintField vs watched
    field split in condFormat.ts — keep those distinct). Stages 2–3 next.
+1.9. **Field guide — BUILT 2026-06-12** (owner request; landed via PR #7,
+   renumbered from 1.7 in the merge): ☰ menu → 📖 opens a
+   full-screen Learn-style reader (`editor/guide.ts` UI + `editor/guideContent.ts`
+   pages: chapter tree, in-this-article rail with scroll spy, filter,
+   prev/next, inline SVG diagrams). Content = the SQL-under-React story,
+   the column type system (joins/calculated/single-vs-multi capability
+   matrix), the formatting JSON layer, and the linter's gotchas with rule
+   tags. Factual claims were re-verified against Microsoft Learn / support
+   docs at build time (lookup source types, inlineEditField + setValue
+   supported types, 5,000 view / 12-join thresholds, calculated-column
+   own-row rule) and against §3 of this doc; keep new claims sourced the
+   same way. `e2e/guide.spec.ts` covers it.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
