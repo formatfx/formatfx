@@ -73,6 +73,10 @@ app.innerHTML = `
       </div>
     </div>
   </header>
+  <div class="wb-ribbon" id="wb-ribbon" title="Insert — the basic palette, one click drops a ready-made piece onto the selected container">
+    <span class="wb-ribbon-tab">Insert</span>
+    <div class="wb-ribbon-palette" id="wb-ribbon-palette"></div>
+  </div>
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
       <h2><span class="wb-pane-title">Palette</span>
@@ -136,7 +140,13 @@ const applyLayout = () => {
   const side = uiPrefs.sideMode === 'peek' ? 30
     : uiPrefs.sideMode === 'max' ? Math.max(560, Math.round(window.innerWidth * 0.62))
     : uiPrefs.cols.side;
-  layout.style.gridTemplateColumns = `${p}px 5px ${uiPrefs.cols.tree}px 5px 1fr 5px ${side}px`;
+  // Basic is the Sheet shell: the palette becomes the ribbon and the
+  // inspector is studio-only, so the grid drops both their columns (and
+  // their resizers, hidden in CSS). Structure stays — it's the cheap,
+  // useful map of what you're building.
+  layout.style.gridTemplateColumns = uiPrefs.mode === 'basic'
+    ? `${uiPrefs.cols.tree}px 5px 1fr`
+    : `${p}px 5px ${uiPrefs.cols.tree}px 5px 1fr 5px ${side}px`;
   document.getElementById('wb-pane-palette')!.classList.toggle('wb-collapsed', uiPrefs.paletteCollapsed);
   (document.getElementById('wb-palette-toggle') as HTMLButtonElement).textContent = uiPrefs.paletteCollapsed ? '⮞' : '⮜';
   sidePane.classList.toggle('wb-peek', uiPrefs.sideMode === 'peek');
@@ -198,15 +208,26 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
 applyLayout();
 
 // ─── basic / advanced mode ──────────────────────────────────────────────────
-// Basic (the default) hides the power-user surface: the raw JSON tab, the
-// doc switcher, outlines, and the inspector/data sections marked `.wb-adv`.
-// Sections that are marked `.wb-adv-active` (the element already uses the
-// feature) stay visible in basic so nothing becomes uneditable.
+// Basic (the default) is the Sheet shell: the palette moves to a ribbon, the
+// left palette pane and the right inspector pane are dropped (studio
+// furniture), and the preview widens to fill them. The Structure pane stays.
+// On top of that it still hides the power-user surface marked `.wb-adv` (raw
+// JSON tab, doc switcher, advanced palette items / inspector sections);
+// `.wb-adv-active` elements stay visible so nothing becomes uneditable.
+// Editing in basic happens through the Format-cells dialog (right-click / the
+// grid header menu), not the inspector.
+const ribbonPalette = document.getElementById('wb-ribbon-palette')!;
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#wb-mode button')];
 const applyMode = () => {
   const basic = uiPrefs.mode === 'basic';
   document.body.classList.toggle('wb-basic', basic);
   for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === uiPrefs.mode);
+  // the palette has two homes: the ribbon in basic, the left studio pane in
+  // advanced. Keep only one populated so a selector never matches both.
+  if (basic) mountPalette(ribbonPalette);
+  else ribbonPalette.innerHTML = '';
+  // the grid template drops the palette/inspector columns in basic
+  applyLayout();
   // never leave a hidden tab active — fall back to the inspector
   const activeTab = app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab].active');
   if (basic && activeTab?.classList.contains('wb-adv')) {

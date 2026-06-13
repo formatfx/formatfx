@@ -109,34 +109,42 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('basic mode (the default) trims the surface to click-only controls', async ({ page }) => {
+test('basic mode (the default) is the Sheet shell — ribbon, no palette/inspector panes', async ({ page }) => {
   // fresh prefs → basic mode is the landing default
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator('#wb-mode button', { hasText: 'Basic' })).toHaveClass(/active/);
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
   await expect(page.locator('#wb-activedoc')).toBeHidden();
+
+  // the flanking studio panes are gone: palette → ribbon, inspector hidden.
+  // Structure stays as the map of what you're building; the preview widens.
+  await expect(page.locator('#wb-pane-palette')).toBeHidden();
+  await expect(page.locator('#wb-pane-side')).toBeHidden();
+  await expect(page.locator('.wb-pane-tree')).toBeVisible();
+
   // outlines lives in the ☰ menu and IS part of basic
   await page.click('#wb-menu-btn');
   await expect(page.locator('#wb-outlines')).toBeVisible();
   await page.click('#wb-menu-btn');
 
-  // palette: only the curated basic tier — no actions, no shells, no forEach presets
-  await expect(page.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
-  await expect(page.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeHidden();
-  await expect(page.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeHidden();
-  await expect(page.locator('.wb-palette-group', { hasText: 'Actions' })).toBeHidden();
+  // the palette now lives in the ribbon — still only the curated basic tier,
+  // no actions, no shells, no forEach presets
+  const ribbon = page.locator('#wb-ribbon');
+  await expect(ribbon).toBeVisible();
+  await expect(ribbon.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
+  await expect(ribbon.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeHidden();
+  await expect(ribbon.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeHidden();
+  await expect(ribbon.locator('.wb-palette-group', { hasText: 'Actions' })).toBeHidden();
 
-  // inspector: ONLY the alignment editor — nothing hand-editable in basic
-  await page.locator('.wb-tree-row').first().click();
-  const inspector = page.locator('#wb-tab-inspector');
-  await expect(inspector.locator('.wb-align-summary')).toBeVisible();
-  await expect(inspector.locator('input:visible, textarea:visible')).toHaveCount(0);
-
-  // switching to advanced restores the full surface, and it persists
+  // switching to advanced restores the studio surface, and it persists
   await page.locator('#wb-mode button', { hasText: 'Advanced' }).click();
+  await expect(ribbon).toBeHidden();
+  await expect(page.locator('#wb-pane-palette')).toBeVisible();
+  await expect(page.locator('#wb-pane-side')).toBeVisible();
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
-  await expect(inspector.locator('textarea').first()).toBeVisible();
+  await page.locator('.wb-tree-row').first().click();
+  await expect(page.locator('#wb-tab-inspector').locator('textarea').first()).toBeVisible();
   await page.reload();
   await expect(page.locator('#wb-mode button', { hasText: 'Advanced' })).toHaveClass(/active/);
 });
