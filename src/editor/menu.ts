@@ -63,9 +63,11 @@ export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): 
     }
     if (!menu.contains(e.target as Node)) closeMenu();
   };
+  // Esc may close immediately — a keyboard event can't be the gesture that
+  // opened the menu. Only the pointerdown closer waits a tick, so the
+  // opening click/right-click doesn't close the menu it just opened.
+  document.addEventListener('keydown', menuCloser);
   window.setTimeout(() => {
-    if (!menuCloser) return;
-    document.addEventListener('pointerdown', menuCloser);
-    document.addEventListener('keydown', menuCloser);
+    if (menuCloser) document.addEventListener('pointerdown', menuCloser);
   }, 0);
 }

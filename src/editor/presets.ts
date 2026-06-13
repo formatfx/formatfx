@@ -306,7 +306,7 @@ export const PALETTE: PaletteItem[] = [
   },
   {
     id: 'hover-card', label: 'Hover card trigger', icon: 'ContactCard', group: 'Actions',
-    description: 'button elmType carrying customCardProps (custom-hover-card). txtContent goes directly on the button — child spans hijack the click.',
+    description: 'button elmType carrying customCardProps (custom-hover-card). txtContent goes directly on the button — children have been seen to swallow the click (an absolute overlay div is the other robust trigger).',
     create: () => ({
       elmType: 'button',
       txtContent: 'Details',
