@@ -1,0 +1,17 @@
+{
+  // the npm-package build (npm run build:lib): tsc-only, hermetic from the
+  // vite app/single-file builds. Emits readable per-module JS + .d.ts into
+  // dist-lib/; tools/fix-esm-extensions.mjs then appends the .js extensions
+  // Node's ESM resolver requires. Only lib.ts/cli.ts are named — tsc pulls
+  // in exactly what they import (core + bridge), never the editor shell.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "dist-lib",
+    "rootDir": "src",
+    "allowImportingTsExtensions": false,
+    "types": ["node"]
+  },
+  "include": ["src/lib.ts", "src/cli.ts"]
+}

@@ -192,6 +192,28 @@ drop in a doc library, or open on a phone — no server needed.
 `sandbox-e2e.yml` runs the visual suite on a GitHub runner
 (`PW_CHANNEL=bundled`).
 
+## The npm package
+
+The UI-free engine ships as **`formatfx`** on npm — the teaching linter,
+headless and dependency-free:
+
+```bash
+npx formatfx lint my-formatter.json        # the silent-failure quirks, explained
+npx formatfx lint *.json --strict --json   # CI-friendly: warnings fail, JSON out
+npx formatfx validate my-formatter.json    # shape check only
+```
+
+```ts
+import { importJson, lintDocument, evaluate, buildExtractSnippet } from 'formatfx';
+```
+
+The package exports the schema types, JSON ⇄ document serializer,
+expression engine (both syntaxes), allow-lists, the four-format schema
+importer and the connectivity snippet builders (`npm run build:lib`
+builds it; releases publish from a `v*` tag). The renderer is deliberately
+not part of the headless surface — the sandbox at formatfx.dev *is* the
+renderer.
+
 ## Architecture
 
 ```

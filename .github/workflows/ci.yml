@@ -21,6 +21,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # the npm package build + a CLI smoke test, so the lib can't rot
+      - run: npm run build:lib
+      - run: |
+          echo '{"elmType":"div","txtContent":"@currentField"}' > /tmp/fixture.json
+          node dist-lib/cli.js lint /tmp/fixture.json
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy-pages:
