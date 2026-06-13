@@ -6,6 +6,7 @@
 import type {
   FormatterDocument, SPElement, NodePath, MockField, MockRow, PersonValue, DocumentKind,
 } from '../core/types';
+import type { ImportedView } from '../core/schemaImport';
 import { buildGridRoot } from './gridScaffold';
 
 export type ChangeReason =
@@ -132,6 +133,8 @@ export class EditorState {
   currentFieldName = 'Status';
   /** Registered column formatters for columnFormatterReference resolution: field name → tree. */
   columnRefs: Record<string, SPElement> = defaultColumnRefs();
+  /** Views captured by a List Snapshot import (formatters kept as raw text). */
+  importedViews: ImportedView[] = [];
   /** Which formatter is on the canvas: 'main' or a columnRefs key. */
   activeDocKey = 'main';
   private mainDocStash: FormatterDocument | null = null;
@@ -246,6 +249,8 @@ export class EditorState {
       rows: this.rows,
       currentFieldName: this.activeDocKey === 'main' ? this.currentFieldName : this.mainFieldStash ?? this.currentFieldName,
       columnRefs: this.columnRefs,
+      // additive key — older builds simply ignore it (no version bump)
+      ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
       themeMode: this.themeMode,
       customTheme: this.customTheme,
     }, null, 2);
@@ -261,6 +266,7 @@ export class EditorState {
     this.rows = p.rows;
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
     this.columnRefs = (p.columnRefs && typeof p.columnRefs === 'object') ? p.columnRefs : {};
+    this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
     this.activeDocKey = 'main';
     this.mainDocStash = null;
     this.mainFieldStash = null;
@@ -292,6 +298,7 @@ export class EditorState {
     this.rows = defaultRows();
     this.currentFieldName = 'Status';
     this.columnRefs = defaultColumnRefs();
+    this.importedViews = [];
     this.activeDocKey = 'main';
     this.mainDocStash = null;
     this.mainFieldStash = null;

@@ -15,6 +15,7 @@ import {
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
 import { openPlayground, openElementPlayground } from './playground';
+import { openCondFormat } from './condFormat';
 
 export function mountInspector(host: HTMLElement): void {
   const render = () => {
@@ -91,6 +92,17 @@ export function mountInspector(host: HTMLElement): void {
     playBtn.title = 'Open this element — with its parent, children and live data — in the consequence-free playground';
     playBtn.addEventListener('click', () => { if (state.selection) openElementPlayground(state.selection); });
     host.appendChild(playBtn);
+
+    // ✨ conditional formatting — also click-only; the builder generates the
+    // formulas itself, so a misclick can't corrupt the formatter
+    const condBtn = document.createElement('button');
+    condBtn.className = 'wb-inspector-cond';
+    condBtn.textContent = '✨ Conditional formatting…';
+    condBtn.title = 'Paint this element by a field\'s value — Excel-style rules, built by clicking, previewed on your rows';
+    condBtn.addEventListener('click', () => {
+      if (state.selection) openCondFormat({ kind: 'element', path: state.selection });
+    });
+    host.appendChild(condBtn);
 
     host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
 

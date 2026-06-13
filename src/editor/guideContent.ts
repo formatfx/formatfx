@@ -440,8 +440,9 @@ their idioms is a classic time sink:</p>
 <thead><tr><th></th><th>Calculated column</th><th>Formatting / conditional formulas</th></tr></thead>
 <tbody>
 <tr><td>Dialect</td><td>Excel-style: <code>=IF(…)</code>, <code>NOT(…)</code>, <code>&amp;</code>
-concatenation</td><td>lowercase <code>=if(…)</code>, <code>!</code> for not
-(<code>not()</code> doesn't exist), <code>+</code> concatenation</td></tr>
+concatenation</td><td>lowercase <code>=if(…)</code>; no logical NOT at all — neither
+<code>not()</code> nor a standalone <code>!</code> (flip <code>==</code>/<code>!=</code> or swap
+branches); <code>+</code> concatenation</td></tr>
 <tr><td>Field refs</td><td><code>[Column Name]</code></td><td><code>[$InternalName]</code>,
 <code>@currentField</code></td></tr>
 <tr><td>Whitespace</td><td>fine</td><td>spaces outside quotes can kill the formatter
@@ -643,7 +644,7 @@ this is JSON for a renderer, not JSX.)</p>
 older object/AST form (<code>{"operator": "?", "operands": […]}</code>) are both legal and both
 common in community samples. They're equivalent in power; the string form reads better. This
 app's engine implements both, so pasted samples in either dialect render and lint.</p>
-<p>For the dialect's sharp edges — whitespace, <code>not()</code>, nested <code>=</code>,
+<p>For the dialect's sharp edges — whitespace, the missing logical NOT, nested <code>=</code>,
 XML-escaped operators — go straight to <a href="#" data-guide-page="gotchas">the gotchas</a>.</p>
 `,
   },
@@ -749,9 +750,12 @@ spaced expressions render fine. Shipping tight JSON costs nothing (this app's ex
 unquoted whitespace anyway, and the linter notes non-split cases as info-level precaution),
 so author readable and sanitize on export — just don't treat every space as a fire.</p></div>
 
-<div class="wb-guide-gotcha">${sev('error')}<h3>not() does not exist</h3>${lintRule('no-not-function')}
-<p>The formatting dialect has no <code>not()</code> function — that's the calculated-column
-Excel dialect bleeding over. Use the <code>!</code> prefix: <code>=!([$Done])</code>.</p></div>
+<div class="wb-guide-gotcha">${sev('error')}<h3>There is no logical NOT</h3>${lintRule('no-not-function / no-bang-operator')}
+<p>Neither <code>not()</code> (that's the calculated-column Excel dialect bleeding over) nor a
+standalone <code>!</code> prefix exists in the formatting dialect — the only legal use of that
+character is <code>!=</code> (not-equals). Negate <em>inside</em> the expression instead: turn
+<code>==</code> into <code>!=</code>, <code>&lt;</code> into <code>&gt;=</code>, compare a
+yes/no field with <code>== false</code>, or swap the <code>if()</code> branches.</p></div>
 
 <div class="wb-guide-gotcha">${sev('error')}<h3>Nested '=' inside an expression</h3>${lintRule('nested-equals')}
 <p>The <code>=</code> prefix means "this whole string is a formula" and goes at the very start,
@@ -887,7 +891,7 @@ schema XML; add them in the Data tab if your formatters reference them.</p>
 
 <h2 id="fx-linter">Let the linter teach</h2>
 <p>The JSON tab's diagnostics are the <a href="#" data-guide-page="gotchas">gotchas page</a> in
-executable form — Zero Whitespace, <code>not()</code>, nested <code>=</code>, XML entities,
+executable form — Zero Whitespace, the missing logical NOT, nested <code>=</code>, XML entities,
 forEach scope, card traps, the style allow-list, unknown field references against your imported
 schema, empty-date comparisons. Each finding explains <em>why</em> in plain language and marks
 the exact spot (▶) in the formula.</p>

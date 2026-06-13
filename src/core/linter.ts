@@ -8,7 +8,9 @@
  *
  *  - Zero Whitespace Rule: verified fatal only inside split() expressions;
  *    flagged elsewhere as a precaution (sanitize-on-export strips it anyway)
- *  - not() does not exist — use the ! prefix operator
+ *  - there is NO logical NOT: neither not() nor a standalone '!' —
+ *    '!=' (not-equals) is fine; negate inside the expression
+ *    (== ↔ !=, < ↔ >=, swap if() branches)
  *  - forEach + split() on the ROOT element kills the formatter (children are fine)
  *  - forEach iterators should be underscore-prefixed (convention)
  *  - _comment outside style: remembered (unverified) breakage — annotations
@@ -190,12 +192,17 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
         push('info', 'zero-whitespace', `${where}: spaces outside quoted literals — only split() expressions are verified to break on real SP; flagged as a precaution, and "Sanitize" on export strips them either way.`);
       }
     }
+    let preciseSyntaxIssue = false;
     if (/(^|[^a-zA-Z0-9_])not\s*\(/.test(value)) {
-      push('error', 'no-not-function', `${where}: not() does not exist in SP formatting — use the ! prefix operator.`);
+      push('error', 'no-not-function', `${where}: not() does not exist in SP formatting — and neither does a '!' prefix. Negate inside the expression: turn == into !=, < into >=, or swap the if() branches.`);
+    }
+    // standalone '!' before a (, [$Field] or @token — '!=' stays legal
+    if (/!(?=\s*[([@])/.test(value)) {
+      push('error', 'no-bang-operator', `${where}: SP formatting has no standalone '!' — only '!=' (not-equals) uses that character. Negate inside the expression instead: turn == into !=, < into >=, swap the if() branches, or compare a yes/no field with == false.`);
+      preciseSyntaxIssue = true;
     }
     // XML-entity escapes survive deployment literally and silently break the
     // formatter at render time (e.g. && parsed instead of &&)
-    let preciseSyntaxIssue = false;
     if (/&(amp|lt|gt|quot);/.test(value)) {
       push('error', 'xml-entity-escape', `${where}: contains an XML entity (&amp;/&lt;) — SP stores it literally and the formatter silently breaks. Use the raw character; escape as \\u0026/\\u003c only at CSOM deploy time.`);
       preciseSyntaxIssue = true;
@@ -246,7 +253,7 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     if (state.fieldTypes) {
       for (const m of value.matchAll(/\[\$([A-Za-z0-9_]+)\]\s*[!=]=\s*''/g)) {
         if (state.fieldTypes[m[1]] === 'date') {
-          push('info', 'empty-date-compare', `${where}: [$${m[1]}] is a Date field — a truly EMPTY date is null on real SP, and null == '' is FALSE (verified 2026-06-10), so this comparison won't detect blanks the way it does for text fields. The preview here matches real SP.`);
+          push('info', 'empty-date-compare', `${where}: [$${m[1]}] is a Date field — a truly EMPTY date is null on real SP, and null == '' is FALSE, so this comparison won't detect blanks the way it does for text fields. The preview here matches real SP.`);
         }
       }
     }

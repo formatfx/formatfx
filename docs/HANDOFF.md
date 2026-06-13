@@ -71,11 +71,29 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
                inspector/jsonPanel/dataPanel, playground.ts (the
                consequence-free style playground overlay; doc-card data —
-               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema),
-               gridScaffold.ts (grid-first workspace generation/mapping —
-               pure, node-testable; state.ts imports it for the default
-               doc, so it must never import state), gridView.ts (the grid
-               canvas context: headers, per-column menus, drag-to-group)
+               STYLE_PROP_DOCS/FAMILY_EXPLAINS/GROUPS — lives in core/schema;
+               QUICK_LOOKS style bundles live here), gridScaffold.ts
+               (grid-first workspace generation/mapping — pure,
+               node-testable; state.ts imports it for the default doc, so
+               it must never import state), gridView.ts (the grid canvas
+               context: headers, per-column menus, drag-to-group),
+               menu.ts (THE anchored action menu — header menus, "+ column"
+               and right-click share it; `wb-grid-menu` class is
+               load-bearing for e2e/CSS), contextMenu.ts (preview-pane
+               right-click: the works-on-most-things element actions),
+               condRules.ts (conditional formatting brain — condition
+               catalog per field type, looks, palette, =if() chain codegen;
+               pure + node-tested like gridScaffold), condFormat.ts (the
+               conditional formatting overlay UI; imports state, never the
+               other way), formatCells.ts (the Excel-comfort Format cells
+               dialog: Font/Border/Fill/Alignment over the allow-list,
+               staged patch, OK = one undoable mutation)
+src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
+               extractSnippet.ts / deploySnippet.ts generate the auditable
+               paste-into-devtools snippets. Pure + dependency-free, and
+               bridge.test.ts EXECUTES the generated code against stubbed
+               fetch fixtures, round-tripping the captured payload through
+               importSchema — that executed round trip is the contract
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```
@@ -144,27 +162,34 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
 2026-06-11; report archived in the incubation repo at
 `docs/visual-compare-report-2026-06-10.md`):
 
-1. **Empty Date cells are null, and `null == ''` is FALSE** in SP
-   expressions — while empty *text* cells and *absent fields* DO equal `''`.
-   Implemented in `looseEq`/`resolveFieldRef`; schema import coerces empty
-   date cells to null. This contradicts what some community samples assume;
-   it was live-verified. There's a teaching lint rule
-   (`empty-date-compare`) for it.
-2. `toLocaleDateString()` etc. of an empty date renders **empty text**, not
-   the 1970 epoch.
-3. **CFR `@currentField` swap**: inside a resolved
+1. **There is NO logical NOT** in the expression language — neither a
+   `not()` function nor a standalone `!` prefix, in either syntax
+   (Excel-style strings or the AST object form). `!=` (not-equals) is a
+   different operator and fully supported. Negation must be rewritten
+   inside the expression: `==` ↔ `!=`, `<` ↔ `>=`, swap the `if()`
+   branches, or compare a yes/no field with `== false`. Owner-corrected
+   2026-06-12 — the engine previously *recommended* `!` in its `not()`
+   error message, which was wrong; parser, AST evaluator and linter now
+   all throw/flag teaching errors for it, and generators (condRules etc.)
+   must never emit a standalone `!`.
+2. **CFR `@currentField` swap**: inside a resolved
    `columnFormatterReference`, `@currentField` is the *referenced* column.
-4. `gap`/`row-gap`/`column-gap` ARE supported by modern SP (an older
+3. `gap`/`row-gap`/`column-gap` ARE supported by modern SP (an older
    internal rule said otherwise — the allow-list here is correct).
-5. `.sp-card-formatterRef` is `visibility:hidden` in LIST row context on
+4. `.sp-card-formatterRef` is `visibility:hidden` in LIST row context on
    real SP (occupies layout, never paints) — the theme CSS emulates this
    identically. It looks like a bug; it's fidelity.
-6. SP's **Export to CSV with schema omits calculated AND lookup columns**
+5. SP's **Export to CSV with schema omits calculated AND lookup columns**
    from the schema XML, and empty multi-lookups export as the literal
    string `"[]"`. The import help warns about this; "unresolved CFR" after
    import usually means exactly this.
-7. The renderer **silently drops** styles not on the allow-list — exactly
+6. The renderer **silently drops** styles not on the allow-list — exactly
    like SP. Surfacing them is the linter's job, not the renderer's.
+
+Blank-cell comparison semantics (dates, lookups, people) are also
+live-verified and settled — they're enforced by `core.test.ts` /
+`condRules.test.ts` and a teaching lint rule. Treat them as closed: the
+tests are the spec; no need to re-discuss or re-document them.
 
 ### 3b. Canon corrections — owner field testimony, 2026-06-13
 
@@ -195,10 +220,10 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 - **Card trigger hijack is a field observation, not certified** (downgraded
   warning → info). Owner-preferred robust trigger: absolutely-positioned
   overlay div; button-with-direct-txtContent also holds.
-- **§3.5 scoping**: the verified `.sp-card-formatterRef` invisibility is
-  the class used in LIST row context *outside card markup*. The class
-  belongs with `sp-card-*` containers (where it's the expected CFR
-  wrapper); CFRs in list views don't need it at all.
+- **`.sp-card-formatterRef` scoping** (the §3 item above): the verified
+  invisibility is the class used in LIST row context *outside card
+  markup*. The class belongs with `sp-card-*` containers (where it's the
+  expected CFR wrapper); CFRs in list views don't need it at all.
 
 ## 4. Known emulation gaps (honest list)
 
@@ -273,7 +298,45 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    confirm-and-enter button that switches the workspace to the referenced
    column formatter and reopens the playground there, and a soft confirm
    on Apply-to-canvas when name-less JSON would replace a named design.
-1.7. **Field guide — BUILT 2026-06-12** (owner request): ☰ menu → 📖 opens a
+1.7. **Preview context menus + playground restructure + conditional
+   formatting — BUILT 2026-06-12** (owner's voice-memo brief). Three parts:
+   (a) right-click in the preview: shared menu.ts; elements/columns/groups
+   get the common actions (playground, conditional formatting, rename,
+   wrap, ungroup, duplicate, copy JSON, remove — all undoable, basic-safe);
+   grid headers answer right-click with their existing column menu.
+   (b) playground reorganized into labeled groups: QUICK_LOOKS macro
+   bundles (pill/card/stripe/ellipsis…, toggle on/off as picks), the nav
+   "road" replaced by a mini structure tree beside the stage (ancestors +
+   children, stash dots, CFR enter row keeps `wb-pg-navcfr`), the family
+   story restyled as a tagged callout, the selected property rendered as a
+   formatted card with self-applying examples, and an "already on X"
+   current-styles list (expressions shown as 𝑓x; picks strike the old
+   value). e2e specs for the old road were updated to the tree.
+   (c) conditional formatting: condRules.ts is the brain (pure; its test
+   file is the contract for generated-expression semantics — change
+   behavior there first), condFormat.ts the overlay. Semantics: rules are
+   first-match-
+   wins via per-property =if() chains threaded through every rule; an
+   existing PLAIN value on a managed property becomes the no-match
+   fallback, an existing FORMULA is replaced (UI warns first). Column route
+   = "Format this column" semantics (register scaffold, CFR-swap the cell
+   as one doc mutation, openColumnRef switches the workspace, then the
+   style merge is the undoable step). Known gap, deliberate: the builder
+   is a one-way generator — it does not parse existing =if() chains back
+   into editable rules; reopening starts fresh over the current style as
+   fallback. Parsing chains back into rules is the obvious next step.
+1.8. **Sheet mode (the Excel-true surface) — design locked 2026-06-12**,
+   see docs/SHEET-MODE.md (owner decisions: ribbon, fx bar with a
+   property-slot dropdown, bidirectional dialect transpiler that refuses
+   rather than guesses, "every row" scope clarity, JSON host columns
+   gating txtContent replacement, column subtypes = settings not paint,
+   Basic → Sheet rename lands with the stage-3 shell). **Stage 1 SHIPPED
+   same day**: Format cells dialog (formatCells.ts — Font/Border/Fill/
+   Alignment, one undoable patch) on header + right-click menus, and
+   conditional formatting now watches any column (paintField vs watched
+   field split in condFormat.ts — keep those distinct). Stages 2–3 next.
+1.9. **Field guide — BUILT 2026-06-12** (owner request; landed via PR #7,
+   renumbered from 1.7 in the merge): ☰ menu → 📖 opens a
    full-screen Learn-style reader (`editor/guide.ts` UI + `editor/guideContent.ts`
    pages: chapter tree, in-this-article rail with scroll spy, filter,
    prev/next, inline SVG diagrams). Content = the SQL-under-React story,
@@ -284,6 +347,21 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    supported types, 5,000 view / 12-join thresholds, calculated-column
    own-row rule) and against §3 of this doc; keep new claims sourced the
    same way. `e2e/guide.spec.ts` covers it.
+1.10. **Connectivity Tier 0 — BUILT 2026-06-13** (owner brief; design in
+   docs/CONNECTIVITY.md — read its §1 auth reality before touching
+   anything here: no app registrations is a HARD constraint and only
+   page-context auth satisfies it post-ACS). Shipped: the FormatFX List
+   Snapshot v1 (fourth schemaImport format, ALSO the future extension
+   wire protocol — version it), the GET-only extract snippet ("⚡ Live
+   from SharePoint" in the Data tab; captures fields + live column AND
+   view formatters + 10 rows), captured views in state.importedViews
+   (additive project key) with default-view auto-load under the exact
+   isPureGrid guard, and the confirm-first deploy snippet (JSON tab →
+   🚀 Deploy…, advanced-gated, LINT-GATED — refuse-and-teach applies to
+   deployment). Owner still owes the one-time live checklist in
+   CONNECTIVITY.md §3.6 against a real tenant. Next per the design:
+   npm package prep (separate PR; owner adds NPM_TOKEN + tags v0.1.0),
+   then Tier-1 extension after Sheet stage 3.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
@@ -302,15 +380,22 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 82 vitest unit tests (engine semantics incl. every
-  live-verified behavior in §3, serializer round-trips, schema import,
-  workspace/state, preset binding, grid scaffolding + grid mutations).
-  Run headlessly anywhere.
-- `npm run test:ui` — 39 Playwright specs across `sandbox.spec.ts`
+- `npm test` — 110 vitest unit tests (engine semantics incl. every
+  live-verified behavior in §3, serializer round-trips, schema import
+  incl. the List Snapshot edges, workspace/state, preset binding, grid
+  scaffolding + grid mutations, conditional-formatting codegen evaluated
+  through the real engine — that test file is the contract for
+  generated-condition semantics — and the bridge's EXECUTED-snippet
+  round trips against stubbed fetch). Run headlessly anywhere.
+- `npm run test:ui` — 53 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild),
-  `workspace.spec.ts` (doc switching, box model, flex editor, pane modes,
-  dark-mode probe), `grid.spec.ts` (grid-first workspace: header menus,
-  format-column round trip, hide/add, drag-to-group/reorder, basic mode).
+  `workspace.spec.ts` (doc switching, box model, flex editor, playground
+  incl. quick looks/structure tree/property card, pane modes, dark-mode
+  probe), `grid.spec.ts` (grid-first workspace: header menus, right-click
+  context menus, conditional formatting incl. cross-column watching, the
+  Format cells dialog, format-column round trip, hide/add,
+  drag-to-group/reorder, basic mode), `guide.spec.ts` (field guide),
+  plus the snapshot-import/views/deploy-panel specs in `import.spec.ts`.
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).

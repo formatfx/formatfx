@@ -43,7 +43,7 @@ describe('expression engine', () => {
     ['[!Title.DisplayName]', 'Task name'],
     ['@rowIndex', 0],
     ["=padStart(toString([$Progress]),5,'0')", '00064'],
-    ["=!([$Status]=='Done')", true],
+    ["=[$Status]!='Done'", true],
     // lookup field access
     ['=[$Project.lookupValue]', 'Apollo'],
     ["='ID='+[$Project.lookupId]", 'ID=3'],
@@ -52,6 +52,14 @@ describe('expression engine', () => {
   for (const [expr, expected] of cases) {
     it(expr, () => expect(evaluate(expr, ctx)).toEqual(expected));
   }
+
+  it("there is no logical NOT — not(), '!' and the AST '!' all throw teaching errors", () => {
+    expect(() => evaluate("=not([$Status]=='Done')", ctx)).toThrow(/no logical NOT/);
+    expect(() => evaluate("=!([$Status]=='Done')", ctx)).toThrow(/no logical NOT/);
+    expect(() => evalAny({ operator: '!', operands: [true] } as never, ctx)).toThrow(/no logical NOT/);
+    // '!=' and negative literals are unaffected
+    expect(evaluate("=indexOf([$Tags],'web')!=-1", ctx)).toBe(true);
+  });
 
   it('forEach over split and person arrays', () => {
     const b = parseForEach("_tag in split([$Tags],';')")!;
@@ -203,7 +211,7 @@ describe('tenant theme', () => {
   });
 });
 
-describe('empty-date semantics (live-verified 2026-06-10)', () => {
+describe('blank-cell semantics', () => {
   const dctx: EvalContext = { ...ctx, row: { ...ctx.row, EmptyDate: null, EmptyText: '' } as never };
 
   it("[$EmptyDate]=='' is FALSE — null date cells differ from empty strings", () => {
@@ -440,6 +448,33 @@ describe('schema import', () => {
     expect(out.rows?.[0].Progress).toBe(64);
     expect(out.rows?.[1].Title).toBe('Line\nbreak title'); // quoted newline survives
     expect(out.columnFormatters?.Progress.txtContent).toBe('@currentField');
+  });
+
+  // the List Snapshot happy path (incl. OData row coercion and the
+  // generator→parser round trip) lives in src/bridge/bridge.test.ts —
+  // these are the parser's edges
+  it('list snapshot: hidden fields skipped, view formatters kept as raw text', () => {
+    const out = importSchema(JSON.stringify({
+      formatfx: 'list-snapshot', version: 1, list: 'Tasks',
+      fields: [
+        { internalName: 'Title', type: 'Text' },
+        { internalName: 'Ghost', type: 'Text', hidden: true },
+        { internalName: 'Broken', type: 'Text', customFormatter: '{not json' },
+      ],
+      views: [{ title: 'All Items', isDefault: true, customFormatter: '{"rowFormatter":{"elmType":"div"}}' }],
+    }));
+    expect(out.fields.map((f) => f.name)).toEqual(['Title', 'Broken']);
+    // an unparseable column formatter never blocks the field import
+    expect(out.columnFormatters).toBeUndefined();
+    expect(out.views?.[0].customFormatter).toBe('{"rowFormatter":{"elmType":"div"}}');
+    expect(out.listName).toBe('Tasks');
+  });
+
+  it('list snapshot: future versions refuse with teaching copy; empty refuses too', () => {
+    expect(() => importSchema(JSON.stringify({ formatfx: 'list-snapshot', version: 99, fields: [] })))
+      .toThrow(/newer than this app understands/);
+    expect(() => importSchema(JSON.stringify({ formatfx: 'list-snapshot', version: 1 })))
+      .toThrow(/no "fields" array/);
   });
 });
 

@@ -14,21 +14,28 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 
 ## The workflow
 
-1. **Import your list** — Data tab → *Import schema…* → pick the file SharePoint
-   gives you from **Export → Export to CSV** with *Include schema*. One file
-   yields the columns (types, choices, read-only flags), up to 10 real rows of
-   preview data, **and every column's live formatter**, auto-registered — the
-   grid workspace rebuilds around it, so you're looking at *your* list,
-   formatters and all. (Also accepted: JSON from `tools/Export-ListSchema.ps1`,
-   or a hand-written CSV — see in-app help.)
+1. **Import your list** — Data tab → *Import schema…*. Fastest path:
+   **⚡ Live from SharePoint** — copy the read-only extract snippet, run it
+   in the console on your list page, paste the captured snapshot back. No
+   install, no app registration, just your own session; it brings the
+   columns (types, choices, read-only flags), up to 10 real rows, **every
+   column's live formatter** (auto-registered) *and your views' row
+   formatting* — the default view's formatter loads straight onto the
+   canvas. Also accepted: the file from **Export → Export to CSV** with
+   *Include schema*, JSON from `tools/Export-ListSchema.ps1`, or a
+   hand-written CSV (see in-app help).
 2. **Edit visually** — the Structure pane is a **workspace tree**: your view
    formatter plus every registered column formatter, with badges showing which
    columns the view references (`⤷ in view` / `unused` / missing). Click any
    header to put that formatter on the canvas; edits to a column formatter
    propagate live into the view's `columnFormatterReference`s.
 3. **Ship it** — one-click topbar **JSON** copy (sanitized, `$schema`-wrapped)
-   for SharePoint's Format pane, per-column copy buttons in the registry, or
-   download / CSOM-safe variants from the JSON tab.
+   for SharePoint's Format pane, per-column copy buttons in the registry,
+   download / CSOM-safe variants from the JSON tab — or **🚀 Deploy…**
+   (JSON tab, Advanced): a generated, confirm-first snippet that writes the
+   formatter to your column or view from the list page itself, using only
+   your own permissions. It refuses to generate while the linter sees
+   errors, and it shows exactly what it will replace before the one write.
 
 ## Editor features
 
@@ -36,14 +43,39 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   **Microsoft-Lists-style grid**: one column per view column, real headers,
   each column rendered with its current formatter (import a list and its
   pills/bars show up live). Header menus hold the per-column actions —
-  *format this column* (scaffolds and opens a column formatter), *style*,
-  *copy JSON*, *hide* — plus a **“+ column”** chip for the rest of your
-  schema. Drag a header left/right to reorder; **drop one column onto
-  another** and the two become named row-formatter scaffolding ("Status +
-  DueDate group") you can immediately reposition, wrap, border or shadow
-  with the same click-only tools. The grid stays a grid until you group;
-  every grid gesture is exactly one undo step; switch Type to *row layout*
-  any time to see the same tree as a free layout.
+  *format this column* (scaffolds and opens a column formatter),
+  *conditional formatting*, *style*, *copy JSON*, *hide* — plus a
+  **“+ column”** chip for the rest of your schema. Drag a header left/right
+  to reorder; **drop one column onto another** and the two become named
+  row-formatter scaffolding ("Status + DueDate group") you can immediately
+  reposition, wrap, border or shadow with the same click-only tools. The
+  grid stays a grid until you group; every grid gesture is exactly one undo
+  step; switch Type to *row layout* any time to see the same tree as a free
+  layout.
+- **Right-click anywhere in the preview** — every element, column and group
+  carries a context menu with the actions that apply to nearly everything:
+  restyle in the playground, conditional formatting, **Format cells…**
+  (the comfortable dialog: Font / Border / Fill / Alignment tabs, a live
+  preview box, OK applies everything as one undo step), rename, wrap in a
+  container, ungroup, duplicate, copy its JSON, remove. All click-only and
+  undoable, so it works in Basic mode too; grid headers answer right-click
+  with their column menu.
+- **Conditional formatting builder** — the Excel mental model ("when the
+  value …, make it look …") without the dialog maze. The field's type
+  drives the suggestions: choice columns arrive with **one ready chip per
+  choice** and a one-click **“✨ a color for each choice”** (the words pick
+  the colors — *Done* goes green, *Blocked* goes red); dates get
+  overdue/today/within-N-days;
+  people get *is you*; numbers get thresholds. Rules can watch a
+  **different column** than the one they paint ("color DueDate by Status")
+  — the watched column is picked from a type-labeled dropdown, never
+  typed. Pick a look — text color,
+  soft fill, solid pill, edge stripe, strike out — and a swatch, watch every
+  rule render against **your actual rows** through the real engine, then
+  apply: one undoable mutation that compiles the rules into schema-valid
+  `=if(…)` chains (first match wins; an element's existing look becomes the
+  no-match fallback). From a grid header it lands on that column's
+  registered formatter, exactly like *format this column*.
 - **Basic & Advanced modes** — the app lands in **Basic**: a curated palette
   of the pieces people actually reach for (status pills, traffic lights,
   date badges, data bars, personas, stars…), the canvas, the structure tree,
@@ -87,9 +119,14 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   that apply themselves, longhand groups (one card serves `padding` and all
   its sides) and a full flex glossary — plus a one-click jump into the
   **⚗ Style playground** (also in the ☰ menu): a consequence-free overlay
-  where every property is a row of clickable value chips applied live to
-  sample elements, with an explicit "apply to selected element" (undoable)
-  when you've dialed in something you like.
+  organized as labeled steps. **Quick looks** apply whole style bundles in
+  one click (pill, card, accent edge, one-line ellipsis…); a mini
+  **structure tree** beside the live stage shows ancestors and children
+  (click any row to restyle that element instead; unapplied picks stash per
+  element); the selected property gets a **formatted description card**
+  whose examples apply themselves; the element's **current styles** are
+  listed (expressions as 𝑓x) with your picks shown replacing them; and
+  nothing touches the formatter until the explicit, undoable Apply.
 - **customCardProps are first-class** — card formatters appear nested in the
   structure tree, are click-selectable inside the live flyout, and edit with
   the same palette/inspector as everything else.
@@ -116,7 +153,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `@currentField` swapping and circular-reference protection.
 - **Built-in linter that teaches** — the silent-failure quirks, each explained
   in plain language with a ▶ position marker in the formula: the Zero
-  Whitespace Rule, `not()` doesn't exist, nested `=` inside expressions,
+  Whitespace Rule, no `not()` and no standalone `!` (`!=` is fine — negate
+  inside the expression), nested `=` inside expressions,
   XML-entity-escaped operators (`&amp;&amp;`), `forEach`+`split()` scope,
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`
@@ -153,6 +191,28 @@ drop in a doc library, or open on a phone — no server needed.
 (Settings → Pages → Source = "GitHub Actions" to enable);
 `sandbox-e2e.yml` runs the visual suite on a GitHub runner
 (`PW_CHANNEL=bundled`).
+
+## The npm package
+
+The UI-free engine ships as **`formatfx`** on npm — the teaching linter,
+headless and dependency-free:
+
+```bash
+npx formatfx lint my-formatter.json        # the silent-failure quirks, explained
+npx formatfx lint *.json --strict --json   # CI-friendly: warnings fail, JSON out
+npx formatfx validate my-formatter.json    # shape check only
+```
+
+```ts
+import { importJson, lintDocument, evaluate, buildExtractSnippet } from 'formatfx';
+```
+
+The package exports the schema types, JSON ⇄ document serializer,
+expression engine (both syntaxes), allow-lists, the four-format schema
+importer and the connectivity snippet builders (`npm run build:lib`
+builds it; releases publish from a `v*` tag). The renderer is deliberately
+not part of the headless surface — the sandbox at formatfx.dev *is* the
+renderer.
 
 ## Architecture
 
