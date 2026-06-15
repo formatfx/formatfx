@@ -10,8 +10,9 @@
  */
 
 import type { ListSnapshot, ApplyOutcome } from '../../src/bridge/spClient';
+import { selectFromSnapshot } from '../../src/bridge/spClient';
 import { serializeApplyPayload } from '../../src/bridge/applyPayload';
-import { STAGE_KEY, type StagedApply } from './staging';
+import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 
 interface WorkerResponse {
   ok: boolean;
@@ -64,19 +65,94 @@ async function runInPage(request: { action: string; text?: string }): Promise<Wo
   return result;
 }
 
+// ── extract: capture, then a column/view picker, then push or copy ──
+let captured: ListSnapshot | null = null;
+
+function showPicker(show: boolean): void {
+  (document.getElementById('main') as HTMLElement).hidden = show;
+  (document.getElementById('picker') as HTMLElement).hidden = !show;
+}
+
 async function onExtract(): Promise<void> {
   setStatus('Capturing the list…', 'busy');
   try {
     const res = await runInPage({ action: 'extract' });
     if (!res.ok || !res.snapshot) throw new Error(res.error || 'Capture failed.');
-    const snap = res.snapshot;
-    await navigator.clipboard.writeText(JSON.stringify(snap, null, 1));
-    const cf = snap.fields.filter((f) => f.customFormatter).length;
-    const vf = snap.views.filter((v) => v.customFormatter).length;
-    setStatus(`Copied: ${snap.fields.length} fields (${cf} formatted), ${snap.views.length} views (${vf} formatted), ${snap.rows.length} rows. Paste into FormatFX → Data → Import schema.`, 'ok');
+    captured = res.snapshot;
+    renderPicker(captured);
+    showPicker(true);
+    setStatus('Choose what to capture, then send.', 'idle');
   } catch (e) {
     setStatus(e instanceof Error ? e.message : String(e), 'err');
   }
+}
+
+function renderPicker(snap: ListSnapshot): void {
+  const list = document.getElementById('picker-fields') as HTMLElement;
+  list.replaceChildren();
+  for (const f of snap.fields) {
+    const label = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true; // "All columns" default
+    cb.value = f.internalName;
+    cb.className = 'fld';
+    const text = document.createElement('span');
+    text.textContent = ` ${f.displayName || f.internalName}`;
+    if (f.displayName && f.displayName !== f.internalName) {
+      const iname = document.createElement('span');
+      iname.className = 'iname';
+      iname.textContent = ` [${f.internalName}]`;
+      text.appendChild(iname);
+    }
+    label.append(cb, text);
+    list.appendChild(label);
+  }
+  // current view toggle, default on; hidden when there's no view to include
+  const viewRow = document.getElementById('picker-view-row') as HTMLElement;
+  const viewCb = document.getElementById('picker-view') as HTMLInputElement;
+  const viewLabel = document.getElementById('picker-view-label') as HTMLElement;
+  const current = snap.views.find((v) => v.id && v.id === snap.currentViewId);
+  if (current) {
+    viewRow.hidden = false;
+    viewCb.checked = true;
+    viewLabel.textContent = `Include current view: "${current.title}"`;
+  } else {
+    viewRow.hidden = true;
+    viewCb.checked = false;
+  }
+}
+
+function selectedSnapshot(): ListSnapshot {
+  const names = Array.from(document.querySelectorAll<HTMLInputElement>('#picker-fields .fld:checked')).map((c) => c.value);
+  const includeCurrentView = (document.getElementById('picker-view') as HTMLInputElement).checked;
+  return selectFromSnapshot(captured!, { fieldNames: names, includeCurrentView });
+}
+
+function setAllFields(checked: boolean): void {
+  for (const c of document.querySelectorAll<HTMLInputElement>('#picker-fields .fld')) c.checked = checked;
+}
+
+async function onPickerOpen(): Promise<void> {
+  const sel = selectedSnapshot();
+  if (!sel.fields.length) { setStatus('Pick at least one column.', 'err'); return; }
+  setStatus('Opening FormatFX…', 'busy');
+  const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
+  await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
+  await chrome.tabs.create({ url: 'https://formatfx.dev' });
+  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''} — FormatFX is opening with it loaded.`, 'ok');
+}
+
+async function onPickerCopy(): Promise<void> {
+  const sel = selectedSnapshot();
+  if (!sel.fields.length) { setStatus('Pick at least one column.', 'err'); return; }
+  await navigator.clipboard.writeText(JSON.stringify(sel, null, 1));
+  setStatus(`Copied ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}. Paste into FormatFX → Data → Import schema.`, 'ok');
+}
+
+function onPickerCancel(): void {
+  showPicker(false);
+  setStatus('', 'idle');
 }
 
 /** Run the apply against the list tab from a payload string, then report. */
@@ -137,4 +213,9 @@ async function refreshStagedButton(): Promise<void> {
 document.getElementById('extract')!.addEventListener('click', onExtract);
 document.getElementById('apply')!.addEventListener('click', onApply);
 document.getElementById('apply-staged')!.addEventListener('click', onApplyStaged);
+document.getElementById('picker-open')!.addEventListener('click', onPickerOpen);
+document.getElementById('picker-copy')!.addEventListener('click', onPickerCopy);
+document.getElementById('picker-cancel')!.addEventListener('click', onPickerCancel);
+document.getElementById('picker-all')!.addEventListener('click', () => setAllFields(true));
+document.getElementById('picker-none')!.addEventListener('click', () => setAllFields(false));
 void refreshStagedButton();

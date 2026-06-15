@@ -13,3 +13,15 @@ export interface StagedApply {
   payload: ApplyPayload;
   stagedAt: string;
 }
+
+/**
+ * Extract-push: a captured snapshot the popup hands off for an opening
+ * formatfx.dev tab to pick up and auto-load. web.ts (on formatfx.dev) reads
+ * it; nothing on a tenant ever touches it.
+ */
+export const PUSH_KEY = 'formatfx.pushedSnapshot';
+
+export interface PushedSnapshot {
+  snapshotJson: string;
+  pushedAt: string;
+}

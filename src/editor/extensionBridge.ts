@@ -18,6 +18,9 @@ let detected = false;
 let detectedVersion = EXT_CHANNEL_VERSION;
 const readyListeners = new Set<(version: number) => void>();
 
+let pushedHandler: ((snapshotJson: string) => void) | null = null;
+let pendingSnapshot: string | null = null; // arrived before a handler registered
+
 // The extension's content script posts a `ready` when it loads; we also ping
 // in case the page's listener attached after that. Either path flips presence.
 window.addEventListener('message', (ev: MessageEvent) => {
@@ -28,8 +31,24 @@ window.addEventListener('message', (ev: MessageEvent) => {
     detected = true;
     detectedVersion = data.version;
     for (const cb of readyListeners) cb(data.version);
+  } else if (data.kind === 'snapshot') {
+    if (pushedHandler) pushedHandler(data.text);
+    else pendingSnapshot = data.text; // buffer until the app registers a handler
   }
 });
+
+/**
+ * Register the handler for a snapshot pushed from the extension (extract-push).
+ * If one already arrived (fresh-tab race), it flushes immediately.
+ */
+export function onPushedSnapshot(cb: (snapshotJson: string) => void): void {
+  pushedHandler = cb;
+  if (pendingSnapshot !== null) {
+    const text = pendingSnapshot;
+    pendingSnapshot = null;
+    cb(text);
+  }
+}
 
 /** Register a callback fired when the extension announces itself (or already has). */
 export function onExtensionReady(cb: (version: number) => void): void {

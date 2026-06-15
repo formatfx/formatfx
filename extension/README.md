@@ -71,9 +71,18 @@ on the list tab, so there's still no standing tenant permission and click-only
 safety holds. When the extension isn't installed, FormatFX hides the button and
 behaves exactly as before.
 
+## Extract-push (clipboard-free capture)
+
+Extract opens a **column/view picker** (all columns + the current view
+pre-checked). **Open in FormatFX** filters the capture, stashes it, and opens a
+fresh formatfx.dev tab that **auto-loads** it — `web.ts` hands the snapshot to
+the page and the app imports it through its normal guarded path (a fresh tab
+has nothing to clobber). **Copy to clipboard** remains as a fallback. The
+current view is detected from the page URL (`?viewid=`), falling back to the
+list's default view, and rides along flagged so it loads as the main document.
+
 ## Status
 
-v0.1 — Extract/Apply in the popup, clipboard **or** the page channel for apply,
-one batched confirm. Follow-ups (CONNECTIVITY §4): extract-push (list tab → an
-open FormatFX tab), the continuous live-preview channel, and an in-Data-tab
-affordance.
+v0.1 — Extract (picker → push to a new tab, or clipboard) and Apply (page
+channel or clipboard), one batched confirm. Follow-up (CONNECTIVITY §4): the
+continuous live-preview channel.
