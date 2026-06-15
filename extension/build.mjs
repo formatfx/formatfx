@@ -13,7 +13,7 @@ const outdir = 'dist';
 await mkdir(outdir, { recursive: true });
 
 await build({
-  entryPoints: ['src/popup.ts', 'src/inject.ts'],
+  entryPoints: ['src/popup.ts', 'src/inject.ts', 'src/web.ts'],
   outdir,
   bundle: true,
   format: 'esm',

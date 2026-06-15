@@ -5,6 +5,10 @@ import {
   buildApplyPayload, parseApplyPayload, serializeApplyPayload, APPLY_PAYLOAD_VERSION,
 } from './applyPayload';
 import { captureSnapshot, applyFormatters, type ApplyHooks } from './spClient';
+import {
+  isPageToExt, isExtToPage, pingMessage, stageApplyMessage, ackMessage,
+  readyMessage, validateStagedPayload, EXT_CHANNEL_VERSION,
+} from './extChannel';
 import { importSchema } from '../core/schemaImport';
 import type { PersonValue, LookupValue } from '../core/types';
 
@@ -426,5 +430,38 @@ describe('spClient.applyFormatters (extension runtime)', () => {
     });
     await applyFormatters(p, okConfirm());
     expect(calls[0].url).toContain("lists/getByTitle('Bob''s%20Tasks')");
+  });
+});
+
+describe('extChannel (page ↔ extension protocol)', () => {
+  it('guards accept their own direction and reject foreign/garbage messages', () => {
+    expect(isPageToExt(pingMessage('a'))).toBe(true);
+    expect(isPageToExt(stageApplyMessage('b', buildApplyPayload([
+      { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+    ])))).toBe(true);
+    expect(isExtToPage(readyMessage())).toBe(true);
+    expect(isExtToPage(ackMessage('b', { ok: true, staged: 1 }))).toBe(true);
+
+    // wrong direction, wrong channel, and non-objects are all rejected
+    expect(isPageToExt(readyMessage())).toBe(false);
+    expect(isExtToPage(pingMessage('a'))).toBe(false);
+    expect(isPageToExt({ channel: 'someone-else', dir: 'page->ext', kind: 'ping', id: 'x' })).toBe(false);
+    expect(isPageToExt(null)).toBe(false);
+    expect(isPageToExt({ channel: 'formatfx-channel', dir: 'page->ext', kind: 'ping' })).toBe(false); // no id
+  });
+
+  it('readyMessage carries the protocol version', () => {
+    expect(readyMessage().version).toBe(EXT_CHANNEL_VERSION);
+  });
+
+  it('validateStagedPayload re-checks an off-the-wire object with the real parser', () => {
+    const good = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    expect(validateStagedPayload(good).targets[0].name).toBe('Status');
+
+    // the same teaching refusals as the clipboard path, now over the channel
+    expect(() => validateStagedPayload({ formatfx: 'apply', version: 1, targets: [] })).toThrow(/no targets/);
+    expect(() => validateStagedPayload({ formatfx: 'apply', version: EXT_CHANNEL_VERSION + 99, targets: [] }))
+      .toThrow(/newer than this extension understands/);
+    expect(() => validateStagedPayload({ nope: true })).toThrow(/not a FormatFX apply payload/);
   });
 });

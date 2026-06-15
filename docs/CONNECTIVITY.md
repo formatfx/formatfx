@@ -174,10 +174,22 @@ both node-tested in `bridge.test.ts` alongside the snippets. Minimal
 permissions: `activeTab` + `scripting`, so the user's click authorizes the
 current tab — no standing host grant. The app produces the apply payload via
 JSON tab → Deploy… → **Copy for extension** (lint-gated like the deploy
-snippet). v0.1 is clipboard-only and one batched confirm; the live
-FormatFX↔tab channel and an in-Data-tab affordance are the follow-ups. The
+snippet). v0.1 is clipboard-only and one batched confirm; an in-Data-tab
+affordance is a follow-up. The
 live write path needs the one-time on-tenant checklist (extension/README.md),
 the same unverifiable-from-CI gap as the Tier-0 deploy snippet.
+
+**Status (page channel, 2026-06-15):** the clipboard hop for *apply* is now
+optional. A content script on formatfx.dev (the app's own origin, not a
+tenant) speaks `src/bridge/extChannel.ts` over `window.postMessage`: FormatFX's
+JSON tab → Deploy… → **Send to extension** stages the apply payload into the
+extension (`chrome.storage.local`), and the popup's **Apply staged** writes it
+on the list tab. Deliberately, the channel only *stages* — the write stays
+gesture-bound under `activeTab`, no standing tenant host grant, click-safety
+preserved. The payload is re-validated off the wire (`validateStagedPayload`).
+Detection is feature-gated: no extension → the app is unchanged. Still to come:
+extract-push (SP tab → an open FormatFX tab) and the continuous live-preview
+channel (sp-formatter's pattern).
 
 ## 5. Tier 2 — lists-as-code (design only)
 

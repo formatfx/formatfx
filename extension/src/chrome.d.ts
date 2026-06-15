@@ -26,4 +26,12 @@ declare namespace chrome {
   namespace permissions {
     function request(p: { origins?: string[] }): Promise<boolean>;
   }
+  namespace storage {
+    interface StorageArea {
+      get(keys?: string | string[] | null): Promise<Record<string, unknown>>;
+      set(items: Record<string, unknown>): Promise<void>;
+      remove(keys: string | string[]): Promise<void>;
+    }
+    const local: StorageArea;
+  }
 }

@@ -55,8 +55,25 @@ real tenant. One-time checklist on a list you can edit:
 - [ ] A multi-column payload applies all targets; a 403 on one is reported without blocking the rest.
 - [ ] On a non-list page, both buttons teach instead of failing silently.
 
+## The page channel (clipboard-free apply)
+
+A content script on **formatfx.dev** (`src/web.ts`, the app's own origin — not
+a tenant) lets FormatFX hand a payload to the extension without the clipboard:
+
+- In FormatFX: JSON tab → Deploy… → **Send to extension** — stages the apply
+  payload into `chrome.storage.local` (protocol: `src/bridge/extChannel.ts`,
+  re-validated on arrival).
+- On your list tab: open the popup → **Apply staged** — the same gesture-bound
+  write as the clipboard path, just sourced from the channel instead.
+
+The channel only *stages*; it never writes. The write stays under `activeTab`
+on the list tab, so there's still no standing tenant permission and click-only
+safety holds. When the extension isn't installed, FormatFX hides the button and
+behaves exactly as before.
+
 ## Status
 
-v0.1 scaffold — clipboard-only (no live FormatFX↔tab channel yet), one batched
-confirm, Apply/Extract surfaced here in the popup. The live-preview channel and
-the in-app "Apply with extension" affordance are follow-ups (CONNECTIVITY §4).
+v0.1 — Extract/Apply in the popup, clipboard **or** the page channel for apply,
+one batched confirm. Follow-ups (CONNECTIVITY §4): extract-push (list tab → an
+open FormatFX tab), the continuous live-preview channel, and an in-Data-tab
+affordance.

@@ -10,10 +10,18 @@
   "permissions": [
     "scripting",
     "activeTab",
+    "storage",
     "clipboardRead",
     "clipboardWrite"
   ],
   "optional_host_permissions": [
     "https://*.sharepoint.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://formatfx.dev/*", "https://*.formatfx.dev/*"],
+      "js": ["web.js"],
+      "run_at": "document_idle"
+    }
   ]
 }
