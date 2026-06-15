@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "FormatFX companion",
+  "description": "One-click: extract a SharePoint list's formatting into FormatFX, or apply formatters from FormatFX back onto its columns and views — using your own page session, no app registration.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FormatFX companion"
+  },
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "clipboardRead",
+    "clipboardWrite"
+  ],
+  "optional_host_permissions": [
+    "https://*.sharepoint.com/*"
+  ]
+}

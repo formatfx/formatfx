@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildExtractSnippet, EXPAND_CAP } from './extractSnippet';
 import { buildDeploySnippet } from './deploySnippet';
+import {
+  buildApplyPayload, parseApplyPayload, serializeApplyPayload, APPLY_PAYLOAD_VERSION,
+} from './applyPayload';
+import { captureSnapshot, applyFormatters, type ApplyHooks } from './spClient';
 import { importSchema } from '../core/schemaImport';
 import type { PersonValue, LookupValue } from '../core/types';
 
@@ -270,5 +274,157 @@ describe('deploy snippet', () => {
     stubEnvironment({ routes: deployRoutes });
     await run(buildDeploySnippet({ target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER }));
     expect(calls[0].url).toContain("views/getByTitle('All%20Items')");
+  });
+});
+
+describe('apply payload (extension wire format)', () => {
+  it('builds v1, preserves target order, refuses an empty set', () => {
+    const p = buildApplyPayload([
+      { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER },
+    ]);
+    expect(p.formatfx).toBe('apply');
+    expect(p.version).toBe(APPLY_PAYLOAD_VERSION);
+    expect(p.targets.map((t) => t.name)).toEqual(['Status', 'All Items']);
+    expect(() => buildApplyPayload([])).toThrow(/at least one/);
+  });
+
+  it('round-trips through serialize → parse', () => {
+    const p = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }], {
+      listTitle: 'Tasks',
+    });
+    const back = parseApplyPayload(serializeApplyPayload(p));
+    expect(back.listTitle).toBe('Tasks');
+    expect(back.targets[0]).toEqual({ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER });
+  });
+
+  it('refuses a newer version (friendly, never a silent misread)', () => {
+    const future = JSON.stringify({ formatfx: 'apply', version: APPLY_PAYLOAD_VERSION + 1, targets: [] });
+    expect(() => parseApplyPayload(future)).toThrow(/newer than this extension understands/);
+  });
+
+  it('every malformed input is a teaching error', () => {
+    expect(() => parseApplyPayload('not json')).toThrow(/not FormatFX apply data/);
+    expect(() => parseApplyPayload(JSON.stringify({ formatfx: 'list-snapshot', version: 1 }))).toThrow(/no "apply" marker/);
+    expect(() => parseApplyPayload(JSON.stringify({ formatfx: 'apply', version: 1, targets: [] }))).toThrow(/no targets/);
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 1, targets: [{ target: 'column', name: 'X', formatterJson: '{}' }],
+    }))).toThrow(/neither a column nor a view/);
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 1, targets: [{ target: 'field', name: '', formatterJson: '{}' }],
+    }))).toThrow(/missing a column\/view name/);
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 1, targets: [{ target: 'field', name: 'Status' }],
+    }))).toThrow(/carries no formatter/);
+  });
+});
+
+describe('spClient.captureSnapshot (extension runtime)', () => {
+  it('captures GET-only and round-trips through importSchema()', async () => {
+    stubEnvironment({ routes: extractRoutes });
+    const snap = await captureSnapshot();
+    expect(snap.formatfx).toBe('list-snapshot');
+    expect(snap.version).toBe(1);
+    for (const c of calls) expect(c.init?.method).toBeUndefined(); // every request a plain GET
+    expect(calls[0].url).toContain("lists(guid'11111111-2222-3333-4444-555555555555')");
+
+    const schema = importSchema(JSON.stringify(snap));
+    expect(schema.listName).toBe('Tasks');
+    expect(schema.fields.map((f) => f.name))
+      .toEqual(['Title', 'Status', 'DueDate', 'AssignedTo', 'Project', 'Done']);
+    expect(schema.columnFormatters?.Status?.elmType).toBe('div');
+    expect(schema.views![0].customFormatter).toBe(VIEW_FORMATTER);
+  });
+
+  it('teaches when run off a SharePoint page', async () => {
+    stubEnvironment({ routes: extractRoutes, pageCtx: null });
+    await expect(captureSnapshot()).rejects.toThrow(/SharePoint page/);
+  });
+});
+
+describe('spClient.applyFormatters (extension runtime)', () => {
+  const okConfirm = (sink?: string[]): ApplyHooks => ({
+    confirm: (m: string) => { sink?.push(m); return true; },
+  });
+  const applyRoutes = (url: string, init?: RequestInit): unknown => {
+    if (url.includes('/_api/contextinfo')) return { FormDigestValue: 'digest-123' };
+    if ((init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE') return 204;
+    if (url.includes('CustomFormatter')) return { CustomFormatter: '' };
+    throw new Error(`unexpected fetch: ${url}`);
+  };
+  const batch = () => buildApplyPayload([
+    { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+    { target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER },
+  ]);
+
+  it('one confirm lists every target; digest precedes the MERGEs; bodies are right', async () => {
+    stubEnvironment({ routes: applyRoutes });
+    const prompts: string[] = [];
+    const outcomes = await applyFormatters(batch(), okConfirm(prompts));
+
+    expect(outcomes.every((o) => o.applied)).toBe(true);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('column [Status]');
+    expect(prompts[0]).toContain('view "All Items"');
+
+    const merges = calls.filter((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE');
+    expect(merges).toHaveLength(2);
+    const digestCall = calls.find((c) => c.url.includes('contextinfo'))!;
+    expect(calls.indexOf(digestCall)).toBeLessThan(calls.indexOf(merges[0]));
+    expect(JSON.parse(merges[0].init!.body as string)).toEqual({ CustomFormatter: STATUS_FORMATTER });
+    expect(JSON.parse(merges[1].init!.body as string)).toEqual({ CustomFormatter: VIEW_FORMATTER });
+  });
+
+  it('a declined confirm writes nothing', async () => {
+    stubEnvironment({ routes: applyRoutes });
+    const outcomes = await applyFormatters(batch(), { confirm: () => false });
+    expect(outcomes.every((o) => !o.applied)).toBe(true);
+    expect(calls.some((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE')).toBe(false);
+  });
+
+  it('a per-target 403 is reported but its siblings still apply', async () => {
+    stubEnvironment({
+      routes: (url, init) => {
+        if (url.includes('contextinfo')) return { FormDigestValue: 'd' };
+        if ((init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE') {
+          return url.includes("getByInternalNameOrTitle('Status')") ? 403 : 204;
+        }
+        return { CustomFormatter: '' };
+      },
+    });
+    const outcomes = await applyFormatters(batch(), okConfirm());
+    const status = outcomes.find((o) => o.name === 'Status')!;
+    const view = outcomes.find((o) => o.name === 'All Items')!;
+    expect(status.applied).toBe(false);
+    expect(status.error).toMatch(/Manage Lists/);
+    expect(view.applied).toBe(true);
+  });
+
+  it('a stale digest (412) is refreshed once and the write retried', async () => {
+    let merges = 0;
+    let digests = 0;
+    stubEnvironment({
+      routes: (url, init) => {
+        if (url.includes('contextinfo')) { digests++; return { FormDigestValue: 'd' + digests }; }
+        if ((init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE') {
+          merges++; return merges === 1 ? 412 : 204;
+        }
+        return { CustomFormatter: '' };
+      },
+    });
+    const single = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    const outcomes = await applyFormatters(single, okConfirm());
+    expect(outcomes[0].applied).toBe(true);
+    expect(merges).toBe(2);
+    expect(digests).toBe(2); // initial + one refresh
+  });
+
+  it('a cross-list payload resolves the named list by title', async () => {
+    stubEnvironment({ routes: applyRoutes });
+    const p = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }], {
+      listTitle: "Bob's Tasks",
+    });
+    await applyFormatters(p, okConfirm());
+    expect(calls[0].url).toContain("lists/getByTitle('Bob''s%20Tasks')");
   });
 });

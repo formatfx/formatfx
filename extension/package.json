@@ -1,0 +1,15 @@
+{
+  "name": "formatfx-companion",
+  "description": "FormatFX companion browser extension (Tier 1): one-click extract/apply for SharePoint list formatting. Its own package — exempt from the app's zero-dependency rule.",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "~6.0.2"
+  }
+}
