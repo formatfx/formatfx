@@ -10,13 +10,28 @@
  * payload from the page into local storage.
  */
 
-import { isPageToExt, readyMessage, ackMessage, validateStagedPayload } from '../../src/bridge/extChannel';
-import { STAGE_KEY, type StagedApply } from './staging';
+import { isPageToExt, readyMessage, ackMessage, snapshotMessage, validateStagedPayload } from '../../src/bridge/extChannel';
+import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 
 const origin = window.location.origin;
 
+/**
+ * Deliver a pushed snapshot (extract-push) to the page, then clear it so it
+ * loads exactly once. Called on load (the popup wrote it before opening this
+ * tab) and on each ping (covers the fresh-tab race where the page's listener
+ * attaches after we'd otherwise have posted).
+ */
+async function deliverPushedSnapshot(): Promise<void> {
+  const got = await chrome.storage.local.get(PUSH_KEY);
+  const pushed = got[PUSH_KEY] as PushedSnapshot | undefined;
+  if (!pushed) return;
+  await chrome.storage.local.remove(PUSH_KEY);
+  window.postMessage(snapshotMessage(pushed.snapshotJson), origin);
+}
+
 // Announce on load; the page also pings, which we answer below.
 window.postMessage(readyMessage(), origin);
+void deliverPushedSnapshot();
 
 window.addEventListener('message', async (ev: MessageEvent) => {
   if (ev.source !== window) return;
@@ -25,6 +40,7 @@ window.addEventListener('message', async (ev: MessageEvent) => {
 
   if (data.kind === 'ping') {
     window.postMessage(readyMessage(), origin);
+    void deliverPushedSnapshot();
     return;
   }
 

@@ -20,6 +20,57 @@ import type { CellValue, FieldType, MockField, PersonValue, LookupValue, SPEleme
 import type { FormatterDocument } from '../core/types';
 import exportScript from '../../tools/Export-ListSchema.ps1?raw';
 
+/**
+ * Apply an imported schema / List Snapshot (raw JSON or CSV text) into the
+ * app state. Shared by the Data-tab import form and the companion-extension
+ * push handler. Returns true on success. On a fresh, untouched grid it loads
+ * the snapshot's default-view row formatting (the extraction magic moment)
+ * under the pure-grid guard; otherwise it rebuilds the grid around the new
+ * schema — never clobbering someone's layout work, always one undo step.
+ */
+export function applyImportedSchema(raw: string, toast: (m: string) => void): boolean {
+  try {
+    const schema = importSchema(raw);
+    state.fields = schema.fields;
+    state.rows = schema.rows ?? buildSampleRows(schema.fields, 3);
+    if (schema.columnFormatters) {
+      Object.assign(state.columnRefs, schema.columnFormatters);
+    }
+    state.importedViews = schema.views ?? [];
+    if (!state.fields.some((f) => f.name === state.currentFieldName)) {
+      state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
+    }
+    let loadedView: string | null = null;
+    if (state.activeDocKey === 'main' && state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+      const dv = schema.views?.find((v) => v.isDefault && v.customFormatter);
+      let viewDoc: FormatterDocument | null = null;
+      if (dv) {
+        try { viewDoc = importJson(dv.customFormatter!); } catch { /* fall back to the grid rebuild */ }
+      }
+      if (viewDoc) {
+        state.loadDocument(viewDoc);
+        loadedView = dv!.title;
+      } else {
+        state.mutateDocument(() => {
+          state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+        });
+      }
+    }
+    state.emit('data');
+    const cfCount = Object.keys(schema.columnFormatters ?? {}).length;
+    const vCount = schema.views?.length ?? 0;
+    toast(`Imported ${schema.fields.length} fields${schema.listName ? ` from "${schema.listName}"` : ''}`
+      + `${schema.rows ? ` + ${schema.rows.length} rows` : ''}`
+      + `${cfCount ? ` + ${cfCount} live column formatters (registered as references)` : ''}`
+      + `${vCount ? ` + ${vCount} views` : ''}`
+      + `${loadedView ? ` — "${loadedView}" row formatting loaded as the main document (Ctrl+Z restores the grid)` : ''}`);
+    return true;
+  } catch (e) {
+    toast(`Schema import failed: ${(e as Error).message}`);
+    return false;
+  }
+}
+
 /** Accept a bare element or any wrapper shape and return the element tree. */
 function importSchemaJsonToTree(text: string): SPElement {
   return importJson(text).root;
@@ -130,7 +181,9 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     host.appendChild(bar);
 
     if (showAddField) host.appendChild(addFieldForm(() => { showAddField = false; render(); }));
-    if (showImport) host.appendChild(importForm(onToast, () => { showImport = false; }));
+    // done re-renders so the form closes immediately (matching addFieldForm),
+    // rather than relying on a later state.emit('data') to drop it.
+    if (showImport) host.appendChild(importForm(onToast, () => { showImport = false; render(); }));
 
     host.appendChild(dataGrid());
     if (state.importedViews.length) host.appendChild(viewsSection());
@@ -394,53 +447,9 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     form.className = 'wb-schema-form';
 
     const applySchema = (raw: string): void => {
-      try {
-        const schema = importSchema(raw);
-        state.fields = schema.fields;
-        state.rows = schema.rows ?? buildSampleRows(schema.fields, 3);
-        if (schema.columnFormatters) {
-          Object.assign(state.columnRefs, schema.columnFormatters);
-        }
-        state.importedViews = schema.views ?? [];
-        if (!state.fields.some((f) => f.name === state.currentFieldName)) {
-          state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
-        }
-        // grid-first: an untouched grid (every column still column-ish)
-        // rebuilds around the imported schema so the user sees THEIR list —
-        // imported formatters render as pills etc. immediately. A grid with
-        // groups is someone's layout work; never clobber it (one undo step
-        // covers the rebuild case anyway). When a snapshot brought the
-        // default view's OWN row formatting, load THAT instead — the
-        // extraction magic moment — under the exact same guard and still
-        // as a single undoable step.
-        let loadedView: string | null = null;
-        if (state.activeDocKey === 'main' && state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
-          const dv = schema.views?.find((v) => v.isDefault && v.customFormatter);
-          let viewDoc: FormatterDocument | null = null;
-          if (dv) {
-            try { viewDoc = importJson(dv.customFormatter!); } catch { /* fall back to the grid rebuild */ }
-          }
-          if (viewDoc) {
-            state.loadDocument(viewDoc);
-            loadedView = dv!.title;
-          } else {
-            state.mutateDocument(() => {
-              state.doc.root = buildGridRoot(state.fields, state.columnRefs);
-            });
-          }
-        }
-        done();
-        state.emit('data');
-        const cfCount = Object.keys(schema.columnFormatters ?? {}).length;
-        const vCount = schema.views?.length ?? 0;
-        toast(`Imported ${schema.fields.length} fields${schema.listName ? ` from "${schema.listName}"` : ''}`
-          + `${schema.rows ? ` + ${schema.rows.length} rows` : ''}`
-          + `${cfCount ? ` + ${cfCount} live column formatters (registered as references)` : ''}`
-          + `${vCount ? ` + ${vCount} views` : ''}`
-          + `${loadedView ? ` — "${loadedView}" row formatting loaded as the main document (Ctrl+Z restores the grid)` : ''}`);
-      } catch (e) {
-        toast(`Schema import failed: ${(e as Error).message}`);
-      }
+      // grid-first behaviour and teaching toasts live in the shared helper;
+      // the form just closes itself on a successful import.
+      if (applyImportedSchema(raw, toast)) done();
     };
 
     // zero-install live path: an auditable GET-only snippet run on the list

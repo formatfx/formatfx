@@ -17,14 +17,39 @@
     #status.busy { opacity: 0.7; }
     #status.ok { color: #16794a; }
     #status.err { color: #b42318; }
+    #picker { margin: 4px 0 0; }
+    #picker h2 { font-size: 12px; margin: 6px 0; opacity: 0.75; font-weight: 600; }
+    #picker-fields { max-height: 220px; overflow: auto; border: 1px solid #8883; border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
+    #picker label { display: block; padding: 2px 0; font-size: 12px; cursor: pointer; }
+    #picker label .iname { opacity: 0.5; }
+    .picker-tools { display: flex; gap: 8px; margin: 0 0 8px; }
+    .picker-tools button { margin: 0; padding: 4px 8px; font-size: 11px; }
+    #picker-view-row { margin: 0 0 8px; padding: 6px 8px; border: 1px dashed #8884; border-radius: 6px; font-size: 12px; }
   </style>
 </head>
 <body>
   <h1>FormatFX companion</h1>
   <p class="lede">On a SharePoint list page:</p>
-  <button id="apply-staged" hidden>✓ Apply staged</button>
-  <button id="extract">⚡ Extract this list → clipboard</button>
-  <button id="apply" class="secondary">⬆ Apply formatters from clipboard</button>
+
+  <div id="main">
+    <button id="apply-staged" hidden>✓ Apply staged</button>
+    <button id="extract">⚡ Extract this list…</button>
+    <button id="apply" class="secondary">⬆ Apply formatters from clipboard</button>
+  </div>
+
+  <div id="picker" hidden>
+    <h2>Columns to capture</h2>
+    <div class="picker-tools">
+      <button id="picker-all" class="secondary">Select all</button>
+      <button id="picker-none" class="secondary">Select none</button>
+    </div>
+    <div id="picker-fields"></div>
+    <label id="picker-view-row"><input type="checkbox" id="picker-view"> <span id="picker-view-label">Include current view</span></label>
+    <button id="picker-open">Open in FormatFX ↗</button>
+    <button id="picker-copy" class="secondary">Copy to clipboard</button>
+    <button id="picker-cancel" class="secondary">Cancel</button>
+  </div>
+
   <div id="status"></div>
   <script type="module" src="popup.js"></script>
 </body>

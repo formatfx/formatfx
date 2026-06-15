@@ -4,10 +4,13 @@ import { buildDeploySnippet } from './deploySnippet';
 import {
   buildApplyPayload, parseApplyPayload, serializeApplyPayload, APPLY_PAYLOAD_VERSION,
 } from './applyPayload';
-import { captureSnapshot, applyFormatters, type ApplyHooks } from './spClient';
+import {
+  captureSnapshot, applyFormatters, selectFromSnapshot, detectCurrentViewId,
+  type ApplyHooks, type ListSnapshot,
+} from './spClient';
 import {
   isPageToExt, isExtToPage, pingMessage, stageApplyMessage, ackMessage,
-  readyMessage, validateStagedPayload, EXT_CHANNEL_VERSION,
+  readyMessage, snapshotMessage, validateStagedPayload, EXT_CHANNEL_VERSION,
 } from './extChannel';
 import { importSchema } from '../core/schemaImport';
 import type { PersonValue, LookupValue } from '../core/types';
@@ -463,5 +466,54 @@ describe('extChannel (page ↔ extension protocol)', () => {
     expect(() => validateStagedPayload({ formatfx: 'apply', version: EXT_CHANNEL_VERSION + 99, targets: [] }))
       .toThrow(/newer than this extension understands/);
     expect(() => validateStagedPayload({ nope: true })).toThrow(/not a FormatFX apply payload/);
+  });
+
+  it('snapshotMessage is an ext→page message carrying raw text', () => {
+    const m = snapshotMessage('{"formatfx":"list-snapshot"}');
+    expect(isExtToPage(m)).toBe(true);
+    expect(isPageToExt(m)).toBe(false);
+    expect(m.kind).toBe('snapshot');
+    expect(m.text).toContain('list-snapshot');
+  });
+});
+
+describe('extract-push selection (spClient)', () => {
+  const SNAP: ListSnapshot = {
+    formatfx: 'list-snapshot', version: 1, capturedAt: 't', siteUrl: 's',
+    fields: [
+      { internalName: 'Title', displayName: 'Task', type: 'Text', readOnly: false, hidden: false },
+      { internalName: 'Status', displayName: 'Status', type: 'Choice', readOnly: false, hidden: false, customFormatter: STATUS_FORMATTER },
+    ],
+    views: [
+      { title: 'All Items', id: 'v1', isDefault: true, viewFields: ['Title'], customFormatter: VIEW_FORMATTER },
+      { title: 'Board', id: 'v2', isDefault: false, viewFields: ['Status'] },
+    ],
+    rows: [{ Title: 'a', Status: 'Done' }, { Title: 'b', Status: 'New' }],
+    currentViewId: 'v2',
+  };
+
+  it('keeps only the chosen columns and their row cells, and drops views when unticked', () => {
+    const out = selectFromSnapshot(SNAP, { fieldNames: ['Status'], includeCurrentView: false });
+    expect(out.fields.map((f) => f.internalName)).toEqual(['Status']);
+    expect(out.rows).toEqual([{ Status: 'Done' }, { Status: 'New' }]);
+    expect(out.views).toEqual([]);
+  });
+
+  it('includes just the current view, flagged isDefault so it auto-loads', () => {
+    const out = selectFromSnapshot(SNAP, { fieldNames: ['Title', 'Status'], includeCurrentView: true });
+    expect(out.views).toHaveLength(1);
+    expect(out.views[0].title).toBe('Board');     // the current view (v2), not the default
+    expect(out.views[0].isDefault).toBe(true);
+  });
+
+  it('falls back to the default view when no current view is known', () => {
+    const out = selectFromSnapshot({ ...SNAP, currentViewId: undefined }, { fieldNames: ['Title'], includeCurrentView: true });
+    expect(out.views[0].title).toBe('All Items');
+  });
+
+  it('detectCurrentViewId reads ?viewid=, else the default view', () => {
+    expect(detectCurrentViewId(SNAP.views)).toBe('v1'); // no URL in node → default
+    vi.stubGlobal('location', { search: '?env=WebView&viewid=V2' });
+    expect(detectCurrentViewId(SNAP.views)).toBe('v2'); // matched, case-insensitive
   });
 });

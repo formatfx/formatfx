@@ -187,9 +187,19 @@ extension (`chrome.storage.local`), and the popup's **Apply staged** writes it
 on the list tab. Deliberately, the channel only *stages* — the write stays
 gesture-bound under `activeTab`, no standing tenant host grant, click-safety
 preserved. The payload is re-validated off the wire (`validateStagedPayload`).
-Detection is feature-gated: no extension → the app is unchanged. Still to come:
-extract-push (SP tab → an open FormatFX tab) and the continuous live-preview
-channel (sp-formatter's pattern).
+Detection is feature-gated: no extension → the app is unchanged.
+
+**Status (extract-push, 2026-06-15):** the capture direction is now clipboard-
+free too. The popup's Extract opens a **column/view picker** (all columns +
+the current view pre-checked; the current view is detected from `?viewid=`,
+else the default view — `detectCurrentViewId`). On confirm it `selectFromSnapshot`-
+filters the capture, writes it to `chrome.storage.local`, and **opens a fresh
+formatfx.dev tab** that auto-loads it: `web.ts` delivers the pushed snapshot to
+the page (`snapshot` channel message), and the app routes it through the same
+guarded `applyImportedSchema` as a paste — a fresh tab has no work to clobber,
+so it auto-loads (the included current view rides in flagged `isDefault`).
+Clipboard stays as a fallback in the picker. Still to come: the continuous
+live-preview channel (sp-formatter's pattern).
 
 ## 5. Tier 2 — lists-as-code (design only)
 

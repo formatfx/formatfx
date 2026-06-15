@@ -26,10 +26,11 @@ export type PageToExt =
   | { channel: typeof EXT_CHANNEL; dir: 'page->ext'; kind: 'ping'; id: string }
   | { channel: typeof EXT_CHANNEL; dir: 'page->ext'; kind: 'stageApply'; id: string; payload: ApplyPayload };
 
-/** Extension → page. */
+/** Extension → page. `snapshot` carries a captured List Snapshot (raw JSON). */
 export type ExtToPage =
   | { channel: typeof EXT_CHANNEL; dir: 'ext->page'; kind: 'ready'; version: number }
-  | { channel: typeof EXT_CHANNEL; dir: 'ext->page'; kind: 'ack'; id: string; ok: boolean; staged?: number; error?: string };
+  | { channel: typeof EXT_CHANNEL; dir: 'ext->page'; kind: 'ack'; id: string; ok: boolean; staged?: number; error?: string }
+  | { channel: typeof EXT_CHANNEL; dir: 'ext->page'; kind: 'snapshot'; text: string };
 
 function isChannelMessage(data: unknown): data is Record<string, unknown> {
   return !!data && typeof data === 'object' && (data as Record<string, unknown>).channel === EXT_CHANNEL;
@@ -42,7 +43,7 @@ export function isPageToExt(data: unknown): data is PageToExt {
 
 export function isExtToPage(data: unknown): data is ExtToPage {
   return isChannelMessage(data) && data.dir === 'ext->page'
-    && (data.kind === 'ready' || data.kind === 'ack');
+    && (data.kind === 'ready' || data.kind === 'ack' || data.kind === 'snapshot');
 }
 
 export function readyMessage(): Extract<ExtToPage, { kind: 'ready' }> {
@@ -59,6 +60,10 @@ export function stageApplyMessage(id: string, payload: ApplyPayload): Extract<Pa
 
 export function ackMessage(id: string, result: { ok: boolean; staged?: number; error?: string }): Extract<ExtToPage, { kind: 'ack' }> {
   return { channel: EXT_CHANNEL, dir: 'ext->page', kind: 'ack', id, ...result };
+}
+
+export function snapshotMessage(text: string): Extract<ExtToPage, { kind: 'snapshot' }> {
+  return { channel: EXT_CHANNEL, dir: 'ext->page', kind: 'snapshot', text };
 }
 
 /**

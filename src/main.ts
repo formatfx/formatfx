@@ -14,7 +14,8 @@ import { mountTree } from './editor/treeView';
 import { mountCanvas } from './editor/canvas';
 import { mountInspector } from './editor/inspector';
 import { mountJsonPanel } from './editor/jsonPanel';
-import { mountDataPanel } from './editor/dataPanel';
+import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
+import { onPushedSnapshot } from './editor/extensionBridge';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
@@ -426,6 +427,11 @@ const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
 mountInspector(document.getElementById('wb-tab-inspector')!);
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
+
+// extract-push: a snapshot sent from the companion extension lands through the
+// same guarded import as a paste (a fresh tab auto-loads it; existing work is
+// protected by the pure-grid guard).
+onPushedSnapshot((snapshotJson) => { applyImportedSchema(snapshotJson, toast); });
 
 // debug outlines
 (document.getElementById('wb-outlines') as HTMLInputElement).addEventListener('change', (e) => {

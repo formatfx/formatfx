@@ -54,6 +54,8 @@ export interface ListSnapshot {
   fields: SnapshotField[];
   views: SnapshotView[];
   rows: Record<string, unknown>[];
+  /** The view the page is showing (from ?viewid=, else the default view). */
+  currentViewId?: string;
 }
 
 /** Read SharePoint's page context, or null when not on an SP page. */
@@ -66,6 +68,26 @@ export function readPageContext(): SpPageContext | null {
 /** `'` doubles inside SP REST string literals; the rest percent-encodes. */
 function restTitleSegment(title: string): string {
   return encodeURIComponent(title.replace(/'/g, "''"));
+}
+
+const normalizeGuid = (g: string): string => g.replace(/[{}]/g, '').toLowerCase();
+
+/**
+ * Which view is the page showing? Best-effort: the `viewid` in the URL (how
+ * SharePoint marks a non-default view), matched against the captured views;
+ * otherwise the default view. Node-safe (no URL → default).
+ */
+export function detectCurrentViewId(views: SnapshotView[]): string | undefined {
+  const search = (globalThis as { location?: { search?: string } }).location?.search;
+  if (search) {
+    const raw = new URLSearchParams(search).get('viewid');
+    if (raw) {
+      const want = normalizeGuid(decodeURIComponent(raw));
+      const hit = views.find((v) => v.id && normalizeGuid(v.id) === want);
+      if (hit) return hit.id;
+    }
+  }
+  return views.find((v) => v.isDefault)?.id ?? views[0]?.id;
 }
 
 function listPathFor(ctx: SpPageContext, listTitle?: string): string {
@@ -176,7 +198,35 @@ export async function captureSnapshot(opts: { listTitle?: string } = {}): Promis
     fields,
     views,
     rows,
+    currentViewId: detectCurrentViewId(views),
   };
+}
+
+/**
+ * Narrow a captured snapshot to a user's picker choice (extract-push): keep
+ * only the chosen columns (and their row cells), and — when asked — keep just
+ * the current view, flagged isDefault so it auto-loads as the main document
+ * on arrival. With the view excluded, no views travel and the columns import
+ * as a grid. Pure; node-tested.
+ */
+export function selectFromSnapshot(
+  snap: ListSnapshot,
+  opts: { fieldNames: string[]; includeCurrentView: boolean },
+): ListSnapshot {
+  const keep = new Set(opts.fieldNames);
+  const fields = snap.fields.filter((f) => keep.has(f.internalName));
+  const rows = snap.rows.map((r) => {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(r)) if (keep.has(k)) out[k] = r[k];
+    return out;
+  });
+  let views: SnapshotView[] = [];
+  if (opts.includeCurrentView) {
+    const current = snap.views.find((v) => v.id && v.id === snap.currentViewId)
+      ?? snap.views.find((v) => v.isDefault);
+    if (current) views = [{ ...current, isDefault: true }];
+  }
+  return { ...snap, fields, rows, views };
 }
 
 export interface ApplyOutcome {

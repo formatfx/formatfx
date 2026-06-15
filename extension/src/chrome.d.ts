@@ -8,6 +8,7 @@ declare namespace chrome {
   namespace tabs {
     interface Tab { id?: number; url?: string }
     function query(info: { active: boolean; currentWindow: boolean }): Promise<Tab[]>;
+    function create(props: { url: string; active?: boolean }): Promise<Tab>;
   }
   namespace scripting {
     interface InjectionTarget { tabId: number }
