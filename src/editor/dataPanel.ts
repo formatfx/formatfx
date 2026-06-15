@@ -181,7 +181,9 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     host.appendChild(bar);
 
     if (showAddField) host.appendChild(addFieldForm(() => { showAddField = false; render(); }));
-    if (showImport) host.appendChild(importForm(onToast, () => { showImport = false; }));
+    // done re-renders so the form closes immediately (matching addFieldForm),
+    // rather than relying on a later state.emit('data') to drop it.
+    if (showImport) host.appendChild(importForm(onToast, () => { showImport = false; render(); }));
 
     host.appendChild(dataGrid());
     if (state.importedViews.length) host.appendChild(viewsSection());
