@@ -10,6 +10,8 @@
  */
 
 import type { ListSnapshot, ApplyOutcome } from '../../src/bridge/spClient';
+import { serializeApplyPayload } from '../../src/bridge/applyPayload';
+import { STAGE_KEY, type StagedApply } from './staging';
 
 interface WorkerResponse {
   ok: boolean;
@@ -77,25 +79,62 @@ async function onExtract(): Promise<void> {
   }
 }
 
+/** Run the apply against the list tab from a payload string, then report. */
+async function applyText(text: string): Promise<boolean> {
+  const res = await runInPage({ action: 'apply', text });
+  if (!res.ok || !res.outcomes) throw new Error(res.error || 'Apply failed or was cancelled.');
+  const applied = res.outcomes.filter((o) => o.applied);
+  const failed = res.outcomes.filter((o) => !o.applied && o.error);
+  if (!applied.length && !failed.length) {
+    setStatus('Cancelled — nothing was written.', 'idle');
+    return false;
+  }
+  const parts = [`Applied ${applied.length} of ${res.outcomes.length}. Refresh the list to see it.`];
+  for (const f of failed) parts.push(`✗ ${f.name}: ${f.error}`);
+  setStatus(parts.join('\n'), failed.length ? 'err' : 'ok');
+  return applied.length > 0 && failed.length === 0;
+}
+
 async function onApply(): Promise<void> {
   setStatus('Reading clipboard…', 'busy');
   try {
-    const text = await navigator.clipboard.readText();
-    const res = await runInPage({ action: 'apply', text });
-    if (!res.ok || !res.outcomes) throw new Error(res.error || 'Apply failed or was cancelled.');
-    const applied = res.outcomes.filter((o) => o.applied);
-    const failed = res.outcomes.filter((o) => !o.applied && o.error);
-    if (!applied.length && !failed.length) {
-      setStatus('Cancelled — nothing was written.', 'idle');
-      return;
-    }
-    const parts = [`Applied ${applied.length} of ${res.outcomes.length}. Refresh the list to see it.`];
-    for (const f of failed) parts.push(`✗ ${f.name}: ${f.error}`);
-    setStatus(parts.join('\n'), failed.length ? 'err' : 'ok');
+    await applyText(await navigator.clipboard.readText());
   } catch (e) {
     setStatus(e instanceof Error ? e.message : String(e), 'err');
   }
 }
 
+async function readStaged(): Promise<StagedApply | null> {
+  const got = await chrome.storage.local.get(STAGE_KEY);
+  return (got[STAGE_KEY] as StagedApply | undefined) ?? null;
+}
+
+async function onApplyStaged(): Promise<void> {
+  setStatus('Applying staged formatter…', 'busy');
+  try {
+    const staged = await readStaged();
+    if (!staged) { setStatus('Nothing staged — send one from FormatFX first.', 'idle'); return; }
+    const clean = await applyText(serializeApplyPayload(staged.payload));
+    if (clean) await chrome.storage.local.remove(STAGE_KEY); // consume only on a clean apply
+  } catch (e) {
+    setStatus(e instanceof Error ? e.message : String(e), 'err');
+  }
+}
+
+/** Reveal the "Apply staged" button when FormatFX has sent something. */
+async function refreshStagedButton(): Promise<void> {
+  const btn = document.getElementById('apply-staged') as HTMLButtonElement;
+  const staged = await readStaged();
+  if (staged) {
+    const n = staged.payload.targets.length;
+    btn.textContent = `✓ Apply staged (${n} formatter${n === 1 ? '' : 's'})`;
+    btn.hidden = false;
+  } else {
+    btn.hidden = true;
+  }
+}
+
 document.getElementById('extract')!.addEventListener('click', onExtract);
 document.getElementById('apply')!.addEventListener('click', onApply);
+document.getElementById('apply-staged')!.addEventListener('click', onApplyStaged);
+void refreshStagedButton();

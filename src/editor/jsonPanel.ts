@@ -12,6 +12,7 @@ import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
 import { buildApplyPayload, serializeApplyPayload } from '../bridge/applyPayload';
+import { onExtensionReady, stageApplyToExtension } from './extensionBridge';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -35,6 +36,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
       <input id="wb-deploy-list" placeholder="List title (blank = the list you run it on)" title="Usually leave blank and run the snippet on the list's own page">
       <button id="wb-deploy-copy">Copy deploy snippet</button>
       <button id="wb-deploy-apply-ext" title="Copy for the FormatFX companion extension: on your list tab, click the extension → Apply from clipboard">Copy for extension</button>
+      <button id="wb-deploy-send-ext" hidden title="Send straight to the FormatFX companion extension (no clipboard): then click the extension on your list tab to apply">⚡ Send to extension</button>
       <div class="wb-deploy-note">Paste the snippet into the console (F12) on your SharePoint list page.
 It reads the target, shows you exactly what changes, and asks before the ONE write.
 Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).
@@ -160,6 +162,25 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     );
     await navigator.clipboard.writeText(serializeApplyPayload(payload));
     onToast(`Copied for the extension (${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`}) — on your list tab, click the FormatFX extension → Apply from clipboard`);
+  });
+
+  // ── live channel: when the companion extension is present, offer a
+  // clipboard-free hand-off. The write still happens on the list tab. ──
+  const sendExtBtn = host.querySelector('#wb-deploy-send-ext') as HTMLButtonElement;
+  onExtensionReady(() => { sendExtBtn.hidden = false; });
+  sendExtBtn.addEventListener('click', async () => {
+    if (!passesLintGate()) return;
+    const t = deployTarget();
+    const payload = buildApplyPayload(
+      [{ target: t.target, name: t.name, formatterJson: currentFormatterJson() }],
+      deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {},
+    );
+    try {
+      const { staged } = await stageApplyToExtension(payload);
+      onToast(`Sent to the extension (${staged} formatter) — switch to your SharePoint list tab and click the FormatFX extension → Apply staged`);
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : String(e));
+    }
   });
 
   const renderLint = (runtime: RenderIssue[]) => {
