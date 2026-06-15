@@ -24,7 +24,7 @@
 | Tier | Setup | Capability | Status |
 |---|---|---|---|
 | **0 — snippet bridge** | none | extract a list into FormatFX / deploy a formatter back, via pasted devtools snippets | **SHIPPED 2026-06-12** |
-| **1 — companion extension** | one install | same, single-click, plus a live channel later | design (§4) — after Sheet stage 3 |
+| **1 — companion extension** | one install | same, single-click, plus a live channel later | design (§4) — **next up** (reordered ahead of all remaining Sheet stages, 2026-06-15) |
 | **2 — lists-as-code** | Entra app (org) | generated PnP.PowerShell + CI recipe for formatting AND structure | design (§5) |
 | **npm `formatfx`** | — | core engine as a library + CLI linter | prep next (§6) |
 
@@ -155,8 +155,17 @@ the formatfx.dev tab via extension messaging; the protocol is the List
 Snapshot format plus an `apply` message (same payloads the snippets use —
 Tier 0 is the dress rehearsal). `optional_host_permissions` so users
 grant only their tenant. Later: a live-preview channel (sp-formatter's
-proven pattern). Build after Sheet stage 3 — "Apply from FormatFX"
-deserves the Sheet surface.
+proven pattern).
+
+**Sequencing (reordered 2026-06-15, owner decision):** the extension is now
+the immediate next work, **ahead of Sheet stages 2 and 3** — not gated
+behind the Sheet shell. The original gate ("Apply from FormatFX" deserves
+the Sheet surface) is consciously traded away: the Apply/Extract UI ships in
+today's Basic/Advanced surface and migrates into the Sheet shell when stage
+3 lands. This is clean because the extension reuses the shipped Tier-0
+bridge contracts (`src/bridge/`) and needs neither the transpiler nor the
+shell. The Sheet stages still run 1 → 2 → 3 in `docs/SHEET-MODE.md`; only
+the extension's position relative to them changed.
 
 ## 5. Tier 2 — lists-as-code (design only)
 
@@ -204,3 +213,7 @@ pnp/List-Formatting outreach.
   its auth guidance modernized (own ClientId), not deleted.
 - Snippets stay self-contained, commented, auditable; `src/bridge` stays
   dependency-free and node-tested (house rule, also in CLAUDE.md).
+- **2026-06-15:** Tier 1 (companion extension) reordered **ahead of Sheet
+  stages 2 and 3** — it is now the immediate next work, no longer gated
+  behind the Sheet shell (§4). Accepted consequence: the Apply/Extract UI
+  ships in today's surface and migrates into the Sheet shell later.
