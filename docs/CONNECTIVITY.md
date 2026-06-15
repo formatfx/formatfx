@@ -167,6 +167,18 @@ bridge contracts (`src/bridge/`) and needs neither the transpiler nor the
 shell. The Sheet stages still run 1 → 2 → 3 in `docs/SHEET-MODE.md`; only
 the extension's position relative to them changed.
 
+**Status (v0.1 scaffold, 2026-06-15):** `extension/` exists — MV3, esbuild,
+own package. The runtime is `src/bridge/spClient.ts` (`captureSnapshot` +
+`applyFormatters`) and the `apply` wire format is `src/bridge/applyPayload.ts`,
+both node-tested in `bridge.test.ts` alongside the snippets. Minimal
+permissions: `activeTab` + `scripting`, so the user's click authorizes the
+current tab — no standing host grant. The app produces the apply payload via
+JSON tab → Deploy… → **Copy for extension** (lint-gated like the deploy
+snippet). v0.1 is clipboard-only and one batched confirm; the live
+FormatFX↔tab channel and an in-Data-tab affordance are the follow-ups. The
+live write path needs the one-time on-tenant checklist (extension/README.md),
+the same unverifiable-from-CI gap as the Tier-0 deploy snippet.
+
 ## 5. Tier 2 — lists-as-code (design only)
 
 Owner decision: **formatter-first**. The project file does NOT become the

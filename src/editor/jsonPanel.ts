@@ -11,6 +11,7 @@ import { state } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
+import { buildApplyPayload, serializeApplyPayload } from '../bridge/applyPayload';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -33,9 +34,11 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
       <input id="wb-deploy-view" placeholder="View title, exactly as on the list" value="All Items" title="The (shared) view that receives this row formatting">
       <input id="wb-deploy-list" placeholder="List title (blank = the list you run it on)" title="Usually leave blank and run the snippet on the list's own page">
       <button id="wb-deploy-copy">Copy deploy snippet</button>
+      <button id="wb-deploy-apply-ext" title="Copy for the FormatFX companion extension: on your list tab, click the extension → Apply from clipboard">Copy for extension</button>
       <div class="wb-deploy-note">Paste the snippet into the console (F12) on your SharePoint list page.
 It reads the target, shows you exactly what changes, and asks before the ONE write.
-Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).</div>
+Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).
+Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
     <textarea id="wb-json-text" spellcheck="false"></textarea>
     <div id="wb-lint" class="wb-lint"></div>
@@ -116,8 +119,9 @@ Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit
     refreshDeployPanel();
   });
 
-  host.querySelector('#wb-deploy-copy')!.addEventListener('click', async () => {
-    // refuse-and-teach: SP would accept a broken write and render blank
+  // both deploy paths refuse-and-teach on lint errors: SP would accept a
+  // broken write and render blank. Same gate as buildDeploySnippet expects.
+  const passesLintGate = (): boolean => {
     const errors = lintDocument(
       state.doc,
       state.fields.map((f) => f.name),
@@ -125,18 +129,37 @@ Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit
     ).filter((i) => i.severity === 'error');
     if (errors.length) {
       onToast(`Not deploying with ${errors.length} lint error${errors.length === 1 ? '' : 's'} — SP would accept the write and render blank. Fix the red items below first.`);
-      return;
+      return false;
     }
+    return true;
+  };
+
+  // never csomSafe here: REST (snippet MERGE and the extension alike) stores the raw string
+  const currentFormatterJson = (): string =>
+    exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked });
+
+  host.querySelector('#wb-deploy-copy')!.addEventListener('click', async () => {
+    if (!passesLintGate()) return;
     const t = deployTarget();
     const snippet = buildDeploySnippet({
       target: t.target,
       name: t.name,
-      // never csomSafe: REST stores the raw string
-      formatterJson: exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }),
+      formatterJson: currentFormatterJson(),
       ...(deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {}),
     });
     await navigator.clipboard.writeText(snippet);
     onToast(`Deploy snippet copied for ${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`} — run it in the console on your list page; it confirms before writing`);
+  });
+
+  host.querySelector('#wb-deploy-apply-ext')!.addEventListener('click', async () => {
+    if (!passesLintGate()) return;
+    const t = deployTarget();
+    const payload = buildApplyPayload(
+      [{ target: t.target, name: t.name, formatterJson: currentFormatterJson() }],
+      deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {},
+    );
+    await navigator.clipboard.writeText(serializeApplyPayload(payload));
+    onToast(`Copied for the extension (${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`}) — on your list tab, click the FormatFX extension → Apply from clipboard`);
   });
 
   const renderLint = (runtime: RenderIssue[]) => {
