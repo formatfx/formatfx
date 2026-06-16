@@ -26,18 +26,16 @@ export interface FxSlot {
   kind: FxSlotKind;
   /** Style property name when kind === 'style'. */
   prop?: string;
-  /** One-line guidance — always says "every row" and "formatting only". */
+  /** One-line guidance for the slot. */
   hint: string;
 }
 
 /** Elements that render text (so "Text shown" is offered). */
 const TEXT_CAPABLE = new Set(['div', 'span', 'a', 'p', 'button']);
 
-const TEXT_HINT =
-  'The text shown in every row of this cell — formatting only; the column’s stored value never changes.';
+const TEXT_HINT = 'The text shown in every row of this cell.';
 
-const paintHint = (what: string): string =>
-  `Paints the ${what} of every row — formatting only; it never changes the stored value.`;
+const paintHint = (what: string): string => `Paints the ${what} of every row.`;
 
 /** The everyday paint surfaces, in the order makers reach for them. */
 const CURATED: Array<Omit<FxSlot, 'kind' | 'hint'> & { prop: string; hint: string }> = [

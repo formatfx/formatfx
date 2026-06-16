@@ -96,7 +96,7 @@ app.innerHTML = `
       <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span>
         <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to preview the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       </h2>
-      <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties in Excel-style formulas. It formats how every row looks; it never changes stored values."></div>
+      <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties with Excel-style formulas."></div>
       <div id="wb-canvas" class="wb-canvas"></div>
     </section>
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>

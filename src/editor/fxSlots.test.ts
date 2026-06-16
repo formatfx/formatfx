@@ -33,10 +33,9 @@ describe('slotsFor — element/type-aware catalog', () => {
     expect(bySlot(slots, 'style:width').label).toBe('Width');
   });
 
-  it('hints always say "every row" and "formatting only"', () => {
+  it('hints describe the slot in "every row" terms', () => {
     for (const s of slotsFor({ elmType: 'div' })) {
       expect(s.hint).toMatch(/every row/i);
-      expect(s.hint).toMatch(/formatting only|never changes/i);
     }
   });
 });

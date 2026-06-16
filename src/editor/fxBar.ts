@@ -8,12 +8,10 @@
  * out toward Excel and accepts Excel-ish input back, with type-aware
  * suggestions (fxSuggest.ts) that always round-trip cleanly.
  *
- * The bar FORMATS, it never sets values — that's said out loud in the chrome
- * and in every slot hint ("every row · formatting only"). The dialect module
- * is refuse-don't-guess, so invalid input is rejected and NEVER committed: a
- * misclick or typo can't corrupt the formatter. Advanced mode keeps the raw SP
- * dialect (the inspector); a formula outside the Excel subset shows read-only
- * here with a "edit in Advanced" pointer.
+ * The dialect module is refuse-don't-guess, so invalid input is rejected and
+ * NEVER committed: a misclick or typo can't corrupt the formatter. Advanced
+ * mode keeps the raw SP dialect (the inspector); a formula outside the Excel
+ * subset shows read-only here with a "edit in Advanced" pointer.
  *
  * Comfort: the ⤢ button detaches the editor into a roomy floating panel so it's
  * never a cramped single line. One commit = one undoable document mutation.
@@ -60,11 +58,11 @@ export function mountFxBar(host: HTMLElement): void {
     const slot = slots.find((s) => s.id === currentSlotId) ?? slots[0];
     currentSlotId = slot.id;
 
-    // ── ƒx badge — the "formats, never sets values" promise ──
+    // ── ƒx badge ──
     const badge = document.createElement('span');
     badge.className = 'wb-fx-badge';
     badge.textContent = 'ƒx';
-    badge.title = 'The formula bar paints how every row LOOKS. It never changes a column’s stored value.';
+    badge.title = 'Write an Excel-style formula for the selected property.';
 
     // ── slot picker (left-edge property dropdown) ──
     const picker = document.createElement('select');
