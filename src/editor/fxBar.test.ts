@@ -40,10 +40,19 @@ describe('fxBar', () => {
     state.select([]);
   });
 
-  it('lists the slots for the selected element', () => {
+  it('lists the slots for the selected element (with set/unset markers)', () => {
     const host = mountWith({ elmType: 'div' });
-    const labels = [...host.querySelectorAll('.wb-fx-slot option')].map((o) => o.textContent);
+    const labels = [...host.querySelectorAll('.wb-fx-slot option')]
+      .map((o) => o.textContent!.replace(/^[●○]\s/, ''));
     expect(labels).toEqual(expect.arrayContaining(['Text shown', 'Fill color', 'Text color']));
+  });
+
+  it('marks slots that already have a value with ● and the rest with ○', () => {
+    const host = mountWith({ elmType: 'div', style: { color: '#000' } });
+    const opt = (label: string) => [...host.querySelectorAll('.wb-fx-slot option')]
+      .find((o) => o.textContent!.endsWith(label))!.textContent!;
+    expect(opt('Text color')).toMatch(/^●/); // color is set
+    expect(opt('Fill color')).toMatch(/^○/); // background-color is not
   });
 
   it('transpiles Excel input to stored SP in one undoable mutation', () => {

@@ -26,9 +26,9 @@ describe('fxSuggestions — type-aware per slot', () => {
     expect(s.some((x) => x.includes('TODAY()'))).toBe(true); // date overdue
   });
 
-  it('the text slot offers field references and display templates', () => {
+  it('the text slot offers field references (transpilable) and display templates', () => {
     const s = fxSuggestions(slot('text'), FIELDS);
-    expect(s).toEqual(expect.arrayContaining(['[Task name]', '[Due date]']));
+    expect(s).toEqual(expect.arrayContaining(['=[Task name]', '=[Due date]']));
     expect(s.some((x) => x.includes('&'))).toBe(true); // concat template
   });
 
@@ -40,6 +40,18 @@ describe('fxSuggestions — type-aware per slot', () => {
   it('a border slot offers border idioms', () => {
     const s = fxSuggestions(slot('leftBorder'), FIELDS);
     expect(s.some((x) => /solid/.test(x))).toBe(true);
+  });
+
+  it('pulls in the style playground value vocabulary for a slot', () => {
+    // text-align values come straight from STYLE_VALUE_SUGGESTIONS
+    expect(fxSuggestions(slot('align'), FIELDS)).toEqual(expect.arrayContaining(['left', 'center', 'right']));
+    // corner radius likewise
+    expect(fxSuggestions(slot('radius'), FIELDS)).toEqual(expect.arrayContaining(['2px', '50%']));
+  });
+
+  it('attribute slots suggest column references to bind to', () => {
+    const src = slotsFor({ elmType: 'img' }).find((x) => x.id === 'src')!;
+    expect(fxSuggestions(src, FIELDS)).toEqual(expect.arrayContaining(['=[Task name]']));
   });
 
   it('degrades gracefully with no schema', () => {
@@ -58,13 +70,19 @@ describe('fxSuggestions — type-aware per slot', () => {
 });
 
 describe('every suggested formula round-trips through the transpiler (no refusals)', () => {
-  it('holds for every slot of an element', () => {
-    const node = { elmType: 'div' as const, style: { 'border-radius': '4px', width: '120px' } };
-    for (const s of slotsFor(node)) {
-      for (const sug of fxSuggestions(s, FIELDS)) {
-        if (!sug.startsWith('=')) continue; // literals are stored as-is
-        const r = excelToSp(sug, FIELDS);
-        expect(r.ok, `refused: ${sug} (${r.ok ? '' : r.reason})`).toBe(true);
+  it('holds for every slot of several element kinds', () => {
+    const nodes = [
+      { elmType: 'div' as const, style: { 'border-radius': '4px', width: '120px' } },
+      { elmType: 'img' as const },
+      { elmType: 'a' as const },
+    ];
+    for (const node of nodes) {
+      for (const s of slotsFor(node)) {
+        for (const sug of fxSuggestions(s, FIELDS)) {
+          if (!sug.startsWith('=')) continue; // literals are stored as-is
+          const r = excelToSp(sug, FIELDS);
+          expect(r.ok, `refused: ${sug} (${r.ok ? '' : r.reason})`).toBe(true);
+        }
       }
     }
   });
