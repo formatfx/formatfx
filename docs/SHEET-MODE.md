@@ -23,20 +23,21 @@ product; it is earned by never generating something that silently fails.
 
 ## Decisions
 
-- **Rename Basic → Sheet** — executed together with the stage-3 shell
-  (renaming the label before the surface earns it would overpromise).
-  Label only: the persisted `uiPrefs.mode` value `'basic'` and every
-  localStorage key stay frozen, per the standing rename rule.
+- **Rename Basic → Sheet — DONE 2026-06-16** (stage 3). The mode button,
+  its tooltip and the mode toast now read "Sheet"; the e2e specs that
+  locate the button by text were updated with it. Label only: the persisted
+  `uiPrefs.mode` value `'basic'` and the `wb-basic` body class stay frozen,
+  per the standing rename rule, so the rename never wipes autosaved prefs.
 - **Ribbon: yes** — it signals "sheet things live here"; it does not have
   to clone Excel's. Comfort and ribbon are not in tension. The current
   Basic palette becomes a ribbon tab (Insert-flavored).
 - **No flanking panels in Sheet mode** — the grid is front and center,
   full-bleed. Palette/Structure/Inspector are Advanced (studio) furniture.
-  *Status (2026-06-13): the shell visual landed early in Basic — palette →
-  ribbon, inspector dropped, preview widened. Per the owner the Structure
-  pane is kept (a useful map; not strictly full-bleed) and the rename to
-  "Sheet" is still deferred to the finished stage 3. See HANDOFF "Basic/
-  advanced mode".*
+  *Status (2026-06-16): SHIPPED. The shell visual landed early in Basic —
+  palette → ribbon, inspector dropped, preview widened — the fx bar (stage
+  2) sits above the grid, and the Basic → Sheet rename has now landed. Per
+  the owner the Structure pane is kept (a useful map; not strictly
+  full-bleed). See HANDOFF "Basic/advanced mode".*
 - **fx bar: yes, but not Excel-literal.** The known discomforts are design
   inputs, not features to copy:
   - It must be structurally clear that the bar **formats, never sets
@@ -115,9 +116,14 @@ column-settings path. Out of scope for stages 1–3; recorded so nobody
    undoable mutation. Bad input is refused, never written (a misclick/typo
    can't corrupt the formatter); a formula outside the Excel subset shows
    read-only with an "edit in Advanced" pointer. Advanced keeps showing the
-   raw SP dialect (the inspector). *Next within this stage: type-aware
-   per-slot suggestions and the floating/detached editor; both are additive
-   to the bar that's now in place.*
-3. **The shell.** Sheet mode proper: single surface, grid front and
-   center, ribbon (palette as a tab), dialogs from stages 1–2 as the
-   editing vocabulary — and the Basic → Sheet rename lands here.
+   raw SP dialect (the inspector). The two additive comforts also landed
+   2026-06-16: **type-aware per-slot suggestions** (`fxSuggest.ts` — the
+   datalist offers values that fit the slot and the schema's field types,
+   and every suggested formula is one the transpiler accepts) and the
+   **floating/detached editor** (the fx bar's ⤢ opens a roomy popup so it's
+   never a cramped single line).
+3. **The shell — SHIPPED 2026-06-16.** Sheet mode proper: single surface,
+   grid front and center, ribbon (palette as a tab), the stage 1–2 dialogs
+   and the fx bar as the editing vocabulary — and the Basic → Sheet rename
+   landed here (label only; the `'basic'` value and `wb-basic` class stay
+   frozen).
