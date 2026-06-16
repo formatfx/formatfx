@@ -1199,6 +1199,17 @@ body.wb-basic #wb-fxbar { display: block; }
 .wb-fx-feedback[data-tone="raw"] { color: #ca5010; }
 .wb-fx-empty { font-size: 12px; color: var(--wb-text-2); padding: 4px 0 4px 2px; }
 
+/* visible value choices (chips) — a datalist can't attach to a <textarea> */
+.wb-fx-sugs { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 0 26px; }
+.wb-fx-float .wb-fx-sugs { margin: 6px 0 0; max-height: 92px; overflow-y: auto; }
+.wb-fx-sug {
+  font: 11px Consolas, monospace; padding: 2px 8px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 11px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-fx-sug:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
 /* ── fx bar: the floating / detached editor ──────────────────────────────── */
 .wb-fx-float {
   position: fixed; z-index: 50; width: 360px; max-width: calc(100vw - 16px);

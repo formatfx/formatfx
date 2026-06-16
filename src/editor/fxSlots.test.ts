@@ -49,10 +49,14 @@ describe('slotsFor — element/type-aware catalog', () => {
     expect(bySlot(slots, 'style:width').label).toBe('Width');
   });
 
-  it('hints describe the slot in "every row" terms', () => {
+  it('hints are useful and never use the "every row" phrasing', () => {
     for (const s of slotsFor({ elmType: 'div' })) {
-      expect(s.hint).toMatch(/every row/i);
+      expect(s.hint.length).toBeGreaterThan(10);
+      expect(s.hint).not.toMatch(/every row/i);
     }
+    // hints carry value guidance, e.g. the opacity hint explains the range
+    const opacity = slotsFor({ elmType: 'div' }).find((s) => s.id === 'opacity')!;
+    expect(opacity.hint).toMatch(/1 is solid|0\.6|invisible/);
   });
 });
 

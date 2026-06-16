@@ -47,7 +47,7 @@ export function mountFxBar(host: HTMLElement): void {
     host.innerHTML = '';
     const node = state.selectedNode;
     if (!node) {
-      host.appendChild(message('Select a cell to format how every row looks.'));
+      host.appendChild(message('Select a cell to format it.'));
       return;
     }
     const slots = slotsFor(node);
@@ -82,9 +82,8 @@ export function mountFxBar(host: HTMLElement): void {
     // ── the editor (Excel dialect) ──
     const stored = readSlot(node, slot);
     const view = toEditorView(stored);
-    const placeholder = slot.kind === 'text'
-      ? 'Plain text, or =IF([Status]="Done","Done ✓","")'
-      : '=IF([Status]="Done","#107c10","#d13438")  ·  or a plain value';
+    const suggestions = fxSuggestions(slot, state.fields);
+    const placeholder = slotPlaceholder(slot, suggestions);
 
     const editor = document.createElement('textarea');
     editor.className = 'wb-fx-editor';
@@ -93,16 +92,6 @@ export function mountFxBar(host: HTMLElement): void {
     editor.value = view.text;
     editor.placeholder = placeholder;
     editor.readOnly = view.readOnly;
-
-    // type-aware suggestions that fit this slot (and round-trip cleanly)
-    const dl = document.createElement('datalist');
-    dl.id = `wb-fx-dl-${slotKeyId(slot)}`;
-    for (const value of fxSuggestions(slot, state.fields)) {
-      const o = document.createElement('option');
-      o.value = value;
-      dl.appendChild(o);
-    }
-    editor.setAttribute('list', dl.id);
 
     // ── feedback line: the slot promise, or an error / raw-only note ──
     const feedback = document.createElement('div');
@@ -130,7 +119,7 @@ export function mountFxBar(host: HTMLElement): void {
       selfCommit = true;
       state.mutateDocument(() => writeSlot(node, slot, spValue));
       selfCommit = false;
-      setFb('✓ Applied to every row.', 'ok');
+      setFb('✓ Applied.', 'ok');
       return true;
     };
 
@@ -141,6 +130,14 @@ export function mountFxBar(host: HTMLElement): void {
       });
     }
 
+    // ── visible value choices: click a chip to drop it in (and apply) ──
+    // Datalist can't attach to a <textarea>, so the suggestions are real chips
+    // — discoverable without typing, the playground's pick-a-value feel.
+    const chips = buildChips(suggestions, view.readOnly, (value) => {
+      editor.value = value;
+      if (applyText(value, setFeedback)) editor.focus();
+    });
+
     // ── ⤢ detach into a roomy floating editor (never a cramped single line) ──
     const expand = document.createElement('button');
     expand.className = 'wb-fx-expand';
@@ -149,13 +146,14 @@ export function mountFxBar(host: HTMLElement): void {
     expand.title = 'Open a roomy editor — more space to write and read a longer formula';
     expand.addEventListener('click', () => {
       closeFloat();
-      float = openFloat(expand, slot, editor.value, view, dl.id, placeholder, applyText, () => render());
+      float = openFloat(expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render());
     });
 
     const bar = document.createElement('div');
     bar.className = 'wb-fx-row';
-    bar.append(badge, picker, editor, dl, expand);
+    bar.append(badge, picker, editor, expand);
     host.append(bar, feedback);
+    if (chips) host.append(chips);
   };
 
   state.subscribe((reason) => {
@@ -173,7 +171,7 @@ function openFloat(
   slot: FxSlot,
   initial: string,
   view: EditorView,
-  listId: string,
+  suggestions: string[],
   placeholder: string,
   applyText: (text: string, setFb: SetFeedback) => boolean,
   onApplied: () => void,
@@ -192,13 +190,15 @@ function openFloat(
   ta.value = initial;
   ta.placeholder = placeholder;
   ta.readOnly = view.readOnly;
-  ta.setAttribute('list', listId);
 
   const fb = document.createElement('div');
   fb.className = 'wb-fx-feedback';
   const setFb: SetFeedback = (text, tone = 'hint') => { fb.textContent = text; fb.dataset.tone = tone; };
   if (view.readOnly) setFb(`Read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
   else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
+
+  // chips fill the editor (the Apply button commits) — visible value choices
+  const chips = buildChips(suggestions, view.readOnly, (value) => { ta.value = value; ta.focus(); });
 
   const foot = document.createElement('div');
   foot.className = 'wb-fx-float-foot';
@@ -213,7 +213,9 @@ function openFloat(
   apply.disabled = view.readOnly;
   foot.append(cancel, apply);
 
-  panel.append(head, ta, fb, foot);
+  panel.append(head, ta, fb);
+  if (chips) panel.append(chips);
+  panel.append(foot);
   document.body.appendChild(panel);
 
   // position under the anchor, kept on-screen
@@ -260,8 +262,37 @@ function toEditorView(stored: SPExpr | undefined): EditorView {
   return { text: stored, readOnly: false, note: '' }; // a plain literal
 }
 
-function slotKeyId(slot: FxSlot): string {
-  return slot.id.replace(/[^a-z0-9]/gi, '-');
+/** A row of clickable value choices for the slot, or null when there are none. */
+function buildChips(
+  suggestions: string[],
+  readOnly: boolean,
+  onPick: (value: string) => void,
+): HTMLElement | null {
+  if (readOnly || suggestions.length === 0) return null;
+  const row = document.createElement('div');
+  row.className = 'wb-fx-sugs';
+  for (const value of suggestions.slice(0, 10)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'wb-fx-sug';
+    chip.textContent = value;
+    chip.title = value.startsWith('=') ? `Use this formula: ${value}` : `Use the value ${value}`;
+    chip.addEventListener('click', () => onPick(value));
+    row.appendChild(chip);
+  }
+  return row;
+}
+
+/** A slot-specific placeholder: a real example value for THIS property. */
+function slotPlaceholder(slot: FxSlot, suggestions: string[]): string {
+  const formula = suggestions.find((s) => s.startsWith('='));
+  const literal = suggestions.find((s) => !s.startsWith('='));
+  if (slot.kind === 'text') return formula ? `Plain text, or ${formula}` : 'Plain text';
+  if (slot.kind === 'attr') return formula ? `A URL, or ${formula}` : 'A web address (URL)';
+  if (literal && formula) return `${literal}, or a formula`;
+  if (literal) return `e.g. ${literal}`;
+  if (formula) return formula;
+  return 'A value, or a formula';
 }
 
 function message(text: string): HTMLElement {

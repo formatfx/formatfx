@@ -19,6 +19,7 @@
  */
 
 import type { SPElement, SPExpr } from '../core/types';
+import { STYLE_VALUE_SUGGESTIONS } from '../core/schema';
 
 export type FxSlotKind = 'text' | 'style' | 'attr';
 
@@ -32,41 +33,40 @@ export interface FxSlot {
   prop?: string;
   /** Attribute name when kind === 'attr'. */
   attr?: string;
-  /** One-line guidance for the slot. */
+  /** One-line guidance: what the property does and what value it takes. */
   hint: string;
 }
 
 /** Elements that render text (so text + type slots are offered). */
 const TEXT_CAPABLE = new Set(['div', 'span', 'a', 'p', 'button']);
 
-const TEXT_HINT = 'The text shown in every row of this cell.';
-const paintHint = (what: string): string => `Paints the ${what} of every row.`;
+const TEXT_HINT = 'The text shown in the cell — plain words, a column’s value, or a formula.';
 
 type StyleDef = { id: string; label: string; prop: string; hint: string };
 
-/** Box/paint slots — offered on every element. */
+/** Box/paint slots — offered on every element. Each hint says what value it takes. */
 const BOX_SLOTS: StyleDef[] = [
-  { id: 'fill', label: 'Fill color', prop: 'background-color', hint: paintHint('fill colour') },
-  { id: 'leftBorder', label: 'Left border', prop: 'border-left', hint: paintHint('left border') },
-  { id: 'radius', label: 'Corner radius', prop: 'border-radius', hint: paintHint('corner radius') },
-  { id: 'opacity', label: 'Opacity', prop: 'opacity', hint: paintHint('opacity') },
+  { id: 'fill', label: 'Fill color', prop: 'background-color', hint: 'Background colour — a hex like #107c10, or a theme name.' },
+  { id: 'leftBorder', label: 'Left border', prop: 'border-left', hint: 'A coloured bar down the left edge — e.g. 3px solid #d13438.' },
+  { id: 'radius', label: 'Corner radius', prop: 'border-radius', hint: 'Rounds the corners — a length like 4px, or 50% for a circle.' },
+  { id: 'opacity', label: 'Opacity', prop: 'opacity', hint: 'How see-through it is — 1 is solid, 0 is invisible (try 0.6).' },
 ];
 
 /** Type slots — only where the element renders text. */
 const TYPE_SLOTS: StyleDef[] = [
-  { id: 'ink', label: 'Text color', prop: 'color', hint: paintHint('text colour') },
-  { id: 'weight', label: 'Bold / weight', prop: 'font-weight', hint: paintHint('text weight') },
-  { id: 'fontSize', label: 'Text size', prop: 'font-size', hint: paintHint('text size') },
-  { id: 'align', label: 'Text align', prop: 'text-align', hint: paintHint('text alignment') },
+  { id: 'ink', label: 'Text color', prop: 'color', hint: 'Text colour — a hex like #d13438, or a theme name.' },
+  { id: 'weight', label: 'Bold / weight', prop: 'font-weight', hint: 'How bold the text is — 400 normal, 600 semibold, 700 bold.' },
+  { id: 'fontSize', label: 'Text size', prop: 'font-size', hint: 'Text size — a length like 12px or 16px.' },
+  { id: 'align', label: 'Text align', prop: 'text-align', hint: 'Text alignment — left, center or right.' },
 ];
 
 /** Element-specific attribute slots (only shown where they apply). */
 function attrSlotsFor(elmType: string): FxSlot[] {
   if (elmType === 'img') {
-    return [{ id: 'src', label: 'Image URL', kind: 'attr', attr: 'src', hint: 'The image shown in every row.' }];
+    return [{ id: 'src', label: 'Image URL', kind: 'attr', attr: 'src', hint: 'The image address (URL) — usually a formula off a column.' }];
   }
   if (elmType === 'a') {
-    return [{ id: 'href', label: 'Link URL', kind: 'attr', attr: 'href', hint: 'The link target for every row.' }];
+    return [{ id: 'href', label: 'Link URL', kind: 'attr', attr: 'href', hint: 'The link address (URL) — usually a formula off a column.' }];
   }
   return [];
 }
@@ -75,6 +75,14 @@ function attrSlotsFor(elmType: string): FxSlot[] {
 export function humanizeProp(prop: string): string {
   const words = prop.replace(/^-+/, '').replace(/-/g, ' ').trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Hint for an arbitrary CSS property, seeded with playground value examples. */
+function genericHint(prop: string): string {
+  const examples = (STYLE_VALUE_SUGGESTIONS[prop] ?? []).filter((v) => !v.startsWith('=')).slice(0, 3);
+  return examples.length
+    ? `${humanizeProp(prop)} — e.g. ${examples.join(', ')}.`
+    : `${humanizeProp(prop)} — a CSS value, or a formula.`;
 }
 
 const asStyle = (d: StyleDef): FxSlot => ({ id: d.id, label: d.label, kind: 'style', prop: d.prop, hint: d.hint });
@@ -95,7 +103,7 @@ export function slotsFor(node: SPElement): FxSlot[] {
   for (const prop of Object.keys(node.style ?? {})) {
     if (covered.has(prop)) continue;
     covered.add(prop);
-    out.push({ id: `style:${prop}`, label: humanizeProp(prop), kind: 'style', prop, hint: paintHint(prop) });
+    out.push({ id: `style:${prop}`, label: humanizeProp(prop), kind: 'style', prop, hint: genericHint(prop) });
   }
   return out;
 }

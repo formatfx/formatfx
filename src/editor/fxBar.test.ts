@@ -110,12 +110,30 @@ describe('fxBar', () => {
     expect(state.selectedNode!.txtContent).toBeUndefined();
   });
 
-  it('offers type-aware suggestions in the slot datalist', () => {
+  it('offers type-aware suggestions as visible, clickable chips', () => {
     const host = mountWith({ elmType: 'div' });
     setSlot(host, 'fill');
-    const opts = [...host.querySelectorAll('.wb-fx-row datalist option')].map((o) => (o as HTMLOptionElement).value);
-    expect(opts).toEqual(expect.arrayContaining(['#107c10'])); // palette colour
-    expect(opts.some((v) => v.startsWith('=IF('))).toBe(true); // a colour-by-condition template
+    const chips = [...host.querySelectorAll('.wb-fx-sug')].map((c) => c.textContent);
+    expect(chips).toEqual(expect.arrayContaining(['#107c10'])); // palette colour
+    expect(chips.some((v) => v!.startsWith('=IF('))).toBe(true); // a colour-by-condition template
+  });
+
+  it('clicking a suggestion chip fills the editor and applies it', () => {
+    const host = mountWith({ elmType: 'div' });
+    setSlot(host, 'fill');
+    const chip = [...host.querySelectorAll<HTMLButtonElement>('.wb-fx-sug')]
+      .find((c) => c.textContent === '#107c10')!;
+    chip.dispatchEvent(new Event('click'));
+    expect(state.selectedNode!.style!['background-color']).toBe('#107c10');
+  });
+
+  it('the placeholder is specific to the selected property', () => {
+    const host = mountWith({ elmType: 'div' });
+    const ph = (): string => $<HTMLTextAreaElement>(host, '.wb-fx-editor').placeholder;
+    setSlot(host, 'weight');
+    expect(ph()).toContain('bold'); // weight example, not a colour formula
+    setSlot(host, 'align');
+    expect(ph().toLowerCase()).toContain('left'); // alignment example
   });
 
   describe('floating / detached editor', () => {
