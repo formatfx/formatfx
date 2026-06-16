@@ -12,6 +12,7 @@ import { applyTheme, setCustomPalette } from './core/theme';
 import { mountPalette } from './editor/palette';
 import { mountTree } from './editor/treeView';
 import { mountCanvas } from './editor/canvas';
+import { mountFxBar } from './editor/fxBar';
 import { mountInspector } from './editor/inspector';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
@@ -95,6 +96,7 @@ app.innerHTML = `
       <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span>
         <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to preview the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       </h2>
+      <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties in Excel-style formulas. It formats how every row looks; it never changes stored values."></div>
       <div id="wb-canvas" class="wb-canvas"></div>
     </section>
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>
@@ -424,6 +426,7 @@ for (const btn of app.querySelectorAll<HTMLButtonElement>('.wb-tabs button[data-
 mountPalette(document.getElementById('wb-palette')!);
 mountTree(document.getElementById('wb-tree')!);
 const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
+mountFxBar(document.getElementById('wb-fxbar')!);
 mountInspector(document.getElementById('wb-tab-inspector')!);
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);

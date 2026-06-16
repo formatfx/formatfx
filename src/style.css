@@ -1160,3 +1160,41 @@ body.wb-basic .wb-ribbon {
 .wb-fc-ok:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
 .wb-fc-ok:not(:disabled):hover { color: #fff !important; }
 .wb-fc-foot button:disabled { opacity: .45; cursor: default; }
+
+/* ── Sheet fx bar — the formula bar (Basic/Sheet mode only) ───────────────── */
+/* Hidden in Advanced: there the inspector edits raw SP. The bar formats how
+   every row looks via the Excel dialect; it never sets stored values. */
+#wb-fxbar { display: none; }
+body.wb-basic #wb-fxbar { display: block; }
+.wb-fxbar { padding: 6px 2px 4px; border-bottom: 1px solid var(--wb-border); margin-bottom: 8px; }
+.wb-fx-row { display: flex; align-items: flex-start; gap: 6px; }
+.wb-fx-badge {
+  flex: none; font-style: italic; font-weight: 700; font-size: 14px;
+  color: var(--wb-accent); padding: 4px 2px 0; cursor: help; user-select: none;
+}
+.wb-fx-slot {
+  flex: none; max-width: 150px; padding: 4px 6px; font-size: 12px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text);
+}
+.wb-fx-editor {
+  flex: 1 1 auto; min-width: 0; padding: 5px 8px;
+  font-family: 'Cascadia Code', Consolas, monospace; font-size: 12.5px; line-height: 1.5;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text);
+  resize: none; white-space: pre; overflow-x: auto;
+}
+.wb-fx-editor:focus { outline: none; border-color: var(--wb-accent); }
+.wb-fx-editor:read-only { background: var(--wb-bg); color: var(--wb-text-2); font-style: italic; }
+.wb-fx-editor.wb-fx-expanded { white-space: pre-wrap; overflow: auto; resize: vertical; }
+.wb-fx-expand {
+  flex: none; padding: 4px 7px; font-size: 13px; line-height: 1;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text-2); cursor: pointer;
+}
+.wb-fx-expand:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-fx-feedback { font-size: 11px; color: var(--wb-text-2); margin: 4px 0 0 26px; min-height: 14px; }
+.wb-fx-feedback[data-tone="error"] { color: #d13438; }
+.wb-fx-feedback[data-tone="ok"] { color: #107c10; }
+.wb-fx-feedback[data-tone="raw"] { color: #ca5010; }
+.wb-fx-empty { font-size: 12px; color: var(--wb-text-2); padding: 4px 0 4px 2px; }

@@ -105,9 +105,19 @@ column-settings path. Out of scope for stages 1–3; recorded so nobody
    patch) on header menus and the right-click menu; conditional formatting
    can watch a **different column** than the one it paints (type-labeled
    dropdown, no typing); "every row" said out loud in both dialogs.
-2. **The transpiler + fx bar.** The dialect module (pure, tested, both
-   directions, refuse-don't-guess) surfaced as the fx bar with the
-   property-slot dropdown. Advanced keeps showing raw SP dialect.
+2. **The transpiler + fx bar — LANDED 2026-06-16.** The dialect module
+   (`src/editor/dialect.ts`: pure, tested, both directions,
+   refuse-don't-guess) surfaced as the fx bar in Basic/Sheet mode. The
+   left-edge property-slot dropdown (`src/editor/fxSlots.ts`) picks what's
+   painted — "Text shown", "Fill color", "Left border" and any expression
+   the element already carries; the editor shows the stored SP formula
+   parsed out toward Excel and accepts Excel-ish input back, committing one
+   undoable mutation. Bad input is refused, never written (a misclick/typo
+   can't corrupt the formatter); a formula outside the Excel subset shows
+   read-only with an "edit in Advanced" pointer. Advanced keeps showing the
+   raw SP dialect (the inspector). *Next within this stage: type-aware
+   per-slot suggestions and the floating/detached editor; both are additive
+   to the bar that's now in place.*
 3. **The shell.** Sheet mode proper: single surface, grid front and
    center, ribbon (palette as a tab), dialogs from stages 1–2 as the
    editing vocabulary — and the Basic → Sheet rename lands here.
