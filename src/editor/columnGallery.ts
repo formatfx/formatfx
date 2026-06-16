@@ -66,6 +66,8 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
     panel.appendChild(empty);
   }
 
+  // up to 3 sample rows; `|| 1` keeps a single empty-context preview if the
+  // maker has cleared all mock rows, so the card still shows the formatter
   const rowCount = Math.min(state.rows.length || 1, 3);
   for (const name of names) {
     const field = state.fields.find((f) => f.name === name);

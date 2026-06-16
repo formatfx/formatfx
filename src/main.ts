@@ -290,7 +290,10 @@ dataSplit.addEventListener('pointerdown', (e) => {
   const startH = dataDock.getBoundingClientRect().height;
   if (uiPrefs.dataMode !== 'normal') { uiPrefs.dataMode = 'normal'; applyDataDock(); }
   const move = (ev: PointerEvent) => {
-    uiPrefs.dataH = Math.max(90, Math.min(window.innerHeight - 220, startH - (ev.clientY - startY)));
+    // clamp against the center column the dock lives in (leave room for the
+    // preview above), not the window — so it can't outgrow its container
+    const paneH = dataDock.parentElement?.clientHeight ?? window.innerHeight;
+    uiPrefs.dataH = Math.max(90, Math.min(paneH - 160, startH - (ev.clientY - startY)));
     dataDock.style.setProperty('--wb-data-h', `${uiPrefs.dataH}px`);
   };
   const up = () => {

@@ -271,12 +271,17 @@ function buildChips(
   if (readOnly || suggestions.length === 0) return null;
   const row = document.createElement('div');
   row.className = 'wb-fx-sugs';
+  // Cap the chips so the bar stays one tidy row; the editor + datalist-style
+  // typeahead still reach the long tail. (Deliberate — not a paging bug.)
   for (const value of suggestions.slice(0, 10)) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'wb-fx-sug';
     chip.textContent = value;
     chip.title = value.startsWith('=') ? `Use this formula: ${value}` : `Use the value ${value}`;
+    // Don't let the mousedown blur the editor first — otherwise a typed-but-
+    // uncommitted value would commit on blur, then the chip again = two undos.
+    chip.addEventListener('mousedown', (e) => e.preventDefault());
     chip.addEventListener('click', () => onPick(value));
     row.appendChild(chip);
   }
