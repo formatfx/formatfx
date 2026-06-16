@@ -33,6 +33,8 @@ export interface FxSlot {
   prop?: string;
   /** Attribute name when kind === 'attr'. */
   attr?: string;
+  /** A richer value chooser this slot prefers (e.g. the Fluent icon gallery). */
+  picker?: 'icon';
   /** One-line guidance: what the property does and what value it takes. */
   hint: string;
 }
@@ -98,6 +100,14 @@ export function slotsFor(node: SPElement): FxSlot[] {
   out.push(...BOX_SLOTS.map(asStyle));
   if (textCapable) out.push(...TYPE_SLOTS.map(asStyle));
   out.push(...attrSlotsFor(node.elmType));
+  // an element carrying a Fluent icon gets an Icon slot (gallery-backed), so the
+  // iconName attribute is editable from the fx bar like any other property
+  if (node.attributes?.iconName !== undefined) {
+    out.push({
+      id: 'attr:iconName', label: 'Icon', kind: 'attr', attr: 'iconName', picker: 'icon',
+      hint: 'The Fluent icon shown in this cell — pick from the gallery (with previews) or type a name.',
+    });
+  }
 
   const covered = new Set(out.filter((s) => s.prop).map((s) => s.prop!));
   for (const prop of Object.keys(node.style ?? {})) {

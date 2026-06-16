@@ -36,6 +36,17 @@ describe('slotsFor — element/type-aware catalog', () => {
     expect(slotsFor({ elmType: 'div' }).some((s) => s.kind === 'attr')).toBe(false);
   });
 
+  it('offers a gallery-backed Icon slot only when the element carries an iconName', () => {
+    const withIcon = slotsFor({ elmType: 'span', attributes: { iconName: 'CheckMark' } });
+    const icon = withIcon.find((s) => s.id === 'attr:iconName');
+    expect(icon).toBeTruthy();
+    expect(icon!.kind).toBe('attr');
+    expect(icon!.attr).toBe('iconName');
+    expect(icon!.picker).toBe('icon');
+    // no iconName attribute → no Icon slot
+    expect(slotsFor({ elmType: 'span' }).some((s) => s.id === 'attr:iconName')).toBe(false);
+  });
+
   it('surfaces existing style properties as their own slots, without duplicating curated ones', () => {
     const node: SPElement = {
       elmType: 'div',
