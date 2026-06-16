@@ -54,6 +54,14 @@ describe('fxSuggestions — type-aware per slot', () => {
     expect(fxSuggestions(src, FIELDS)).toEqual(expect.arrayContaining(['=[Task name]']));
   });
 
+  it('the Icon slot offers known Fluent icon names (literals, no transpile)', () => {
+    const icon = slotsFor({ elmType: 'span', attributes: { iconName: 'CheckMark' } })
+      .find((x) => x.id === 'attr:iconName')!;
+    const s = fxSuggestions(icon, FIELDS);
+    expect(s).toEqual(expect.arrayContaining(['CheckMark', 'Flag']));
+    expect(s.every((x) => !x.startsWith('='))).toBe(true); // applied as-is
+  });
+
   it('degrades gracefully with no schema', () => {
     const s = fxSuggestions(slot('fill'), []);
     expect(s).toEqual(expect.arrayContaining(['#107c10'])); // still offers the palette

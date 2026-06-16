@@ -9,6 +9,7 @@
  */
 
 import { GUIDE_PAGES, GUIDE_CHAPTERS, type GuidePage } from './guideContent';
+import { renderIconGrid } from './iconPicker';
 
 let overlay: HTMLElement | null = null;
 let escHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -171,6 +172,21 @@ export function openGuide(pageId?: string): void {
       foot.appendChild(b);
     }
     article.appendChild(foot);
+
+    // pages can embed live widgets via a known mount point — the icon gallery
+    const iconWall = article.querySelector<HTMLElement>('#wb-guide-iconwall');
+    if (iconWall) {
+      const note = document.createElement('div');
+      note.className = 'wb-guide-iconwall-note';
+      renderIconGrid(iconWall, {
+        verb: 'Copy',
+        onPick: (name) => {
+          void navigator.clipboard?.writeText(name).catch(() => { /* clipboard blocked */ });
+          note.textContent = `Copied “${name}” — paste it into an iconName.`;
+        },
+      });
+      iconWall.appendChild(note);
+    }
 
     renderNav();
     renderRail();

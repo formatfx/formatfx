@@ -21,6 +21,7 @@ import { state } from './state';
 import { slotsFor, readSlot, writeSlot, type FxSlot } from './fxSlots';
 import { fxSuggestions } from './fxSuggest';
 import { excelToSp, spToExcel } from './dialect';
+import { openIconPicker } from './iconPicker';
 import type { SPExpr } from '../core/types';
 
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
@@ -133,10 +134,15 @@ export function mountFxBar(host: HTMLElement): void {
     // ── visible value choices: click a chip to drop it in (and apply) ──
     // Datalist can't attach to a <textarea>, so the suggestions are real chips
     // — discoverable without typing, the playground's pick-a-value feel.
-    const chips = buildChips(suggestions, view.readOnly, (value) => {
+    const onPickValue = (value: string): void => {
       editor.value = value;
       if (applyText(value, setFeedback)) editor.focus();
-    });
+    };
+    // the Icon slot gets preview chips + a one-click gallery of every SP icon
+    const currentIcon = typeof stored === 'string' && !stored.startsWith('=') ? stored : undefined;
+    const chips = slot.picker === 'icon'
+      ? buildIconChips(suggestions, view.readOnly, currentIcon, onPickValue)
+      : buildChips(suggestions, view.readOnly, onPickValue);
 
     // ── ⤢ detach into a roomy floating editor (never a cramped single line) ──
     const expand = document.createElement('button');
@@ -285,6 +291,44 @@ function buildChips(
     chip.addEventListener('click', () => onPick(value));
     row.appendChild(chip);
   }
+  return row;
+}
+
+/**
+ * The Icon slot's chips: a few common icons shown WITH their preview glyph,
+ * plus a "Browse all icons" button that opens the full searchable gallery.
+ */
+function buildIconChips(
+  suggestions: string[],
+  readOnly: boolean,
+  current: string | undefined,
+  onPick: (value: string) => void,
+): HTMLElement | null {
+  if (readOnly) return null;
+  const row = document.createElement('div');
+  row.className = 'wb-fx-sugs wb-fx-iconsugs';
+
+  for (const name of suggestions.slice(0, 12)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'wb-fx-sug wb-fx-iconsug' + (name === current ? ' selected' : '');
+    chip.innerHTML = `<i class="ms-Icon ms-Icon--${name}" aria-hidden="true"></i><span>${name}</span>`;
+    chip.title = `Use the ${name} icon`;
+    chip.addEventListener('mousedown', (e) => e.preventDefault());
+    chip.addEventListener('click', () => onPick(name));
+    row.appendChild(chip);
+  }
+
+  const browse = document.createElement('button');
+  browse.type = 'button';
+  browse.className = 'wb-fx-sug wb-fx-iconbrowse';
+  browse.textContent = '⊞ All icons…';
+  browse.title = 'Browse and search every icon SharePoint can render — with previews';
+  browse.addEventListener('mousedown', (e) => e.preventDefault());
+  browse.addEventListener('click', () => {
+    openIconPicker({ anchor: browse, current, title: 'Pick an icon', onPick });
+  });
+  row.appendChild(browse);
   return row;
 }
 

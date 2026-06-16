@@ -370,3 +370,53 @@ test('side pane: maximize widens the pane', async ({ page }) => {
   await expect(page.locator('#wb-side-max')).toHaveClass(/active/);
   await page.click('#wb-side-max');
 });
+
+test('Structure pane: view + column sections collapse independently', async ({ page }) => {
+  // both sections live side-by-side: the view formatter on top, columns below
+  await expect(page.locator('#wb-tree-view .wb-doc-header', { hasText: 'View formatter' })).toBeVisible();
+  await expect(page.locator('#wb-tree-cols .wb-doc-header', { hasText: '[$Status]' })).toBeVisible();
+  // collapse the top section — its body hides, the columns stay
+  await page.click('#wb-tree-view-head');
+  await expect(page.locator('#wb-tree-view')).toBeHidden();
+  await expect(page.locator('#wb-tree-cols')).toBeVisible();
+  await page.click('#wb-tree-view-head'); // restore
+  await expect(page.locator('#wb-tree-view')).toBeVisible();
+  // collapse the bottom section independently
+  await page.click('#wb-tree-cols-head');
+  await expect(page.locator('#wb-tree-cols')).toBeHidden();
+  await expect(page.locator('#wb-tree-view')).toBeVisible();
+});
+
+test('Structure pane: a ⤷ chip opens & selects that column formatter below', async ({ page }) => {
+  // the grid's Status column renders another column's formatter (⤷ chip)
+  const statusRow = page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Status' }) });
+  // clicking the chip (not the row) slips over to the column section and selects it
+  await statusRow.locator('.wb-chip-cfr').click();
+  await expect(page.locator('#wb-tree-cols .wb-doc-header.active')).toContainText('[$Status]');
+  await expect(page.locator('.wb-current-chip')).toContainText('@currentField → Status');
+});
+
+test('Structure pane: a ⤷ chip for an unregistered ref lands on the missing row', async ({ page }) => {
+  // a view referencing a column with no registered formatter
+  await openTab(page, 'json');
+  await page.fill('#wb-json-text', JSON.stringify({
+    rowFormatter: {
+      elmType: 'div',
+      children: [{ elmType: 'div', columnFormatterReference: '[$Ghost]' }],
+    },
+  }));
+  await page.click('#wb-json-apply');
+  await openTab(page, 'inspector');
+  // the unresolved reference shows in the column section
+  const missing = page.locator('#wb-tree-cols .wb-doc-missing[data-missing-ref="Ghost"]');
+  await expect(missing).toBeVisible();
+  // collapse the column section, then click the ⤷ chip — it should re-expand
+  await page.click('#wb-tree-cols-head');
+  await expect(page.locator('#wb-tree-cols')).toBeHidden();
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-chip-cfr') }).first()
+    .locator('.wb-chip-cfr').click();
+  // the section re-expands and the click lands on the missing row (no active doc switch)
+  await expect(page.locator('#wb-tree-cols')).toBeVisible();
+  await expect(missing).toBeVisible();
+  await expect(page.locator('#wb-tree-cols .wb-doc-header.active')).toHaveCount(0);
+});

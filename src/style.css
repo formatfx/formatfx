@@ -160,6 +160,12 @@ body.wb-basic .wb-ribbon {
   border: 1px dashed var(--wb-border); border-radius: 4px;
   padding: 4px 7px; margin: 4px 0;
 }
+/* brief attention pulse when a ⤷ jump lands on an unresolved reference */
+.wb-doc-missing.wb-flash { animation: wb-flash 1s ease-out; }
+@keyframes wb-flash {
+  0% { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 22%, transparent); }
+  100% { border-color: var(--wb-border); background: transparent; }
+}
 
 /* ── tree ────────────────────────────────────────────────── */
 .wb-tree-row {
@@ -173,6 +179,8 @@ body.wb-basic .wb-ribbon {
   font-family: Consolas, monospace; font-size: 11px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
   display: inline-flex; align-items: center; gap: 4px;
+  /* own the row's width so its center is a select target, not a hover button */
+  flex: 1 1 auto; min-width: 0;
 }
 .wb-tree-elmicon { font-size: 11px; color: var(--wb-text-2); }
 .wb-tree-row.selected .wb-tree-elmicon { color: inherit; }
@@ -196,13 +204,57 @@ body.wb-basic .wb-ribbon {
 .wb-chip-card { background: #5c2d91; }
 .wb-chip-cfr { background: #038387; }
 .wb-chip-edit { background: #767676; }
-.wb-tree-actions { display: none; gap: 2px; }
+/* Compact, right-pinned hover actions: the label (flex:1) keeps the row's
+   center, so a center-click on a narrow split row lands on the label and
+   selects rather than tripping an action button (misclick safety). */
+.wb-tree-actions { display: none; gap: 1px; flex: 0 0 auto; }
 .wb-tree-row:hover .wb-tree-actions { display: inline-flex; }
 .wb-tree-actions button {
   border: none; background: transparent; cursor: pointer; color: inherit;
-  padding: 1px 3px; font-size: 10px;
+  padding: 0 1px; font-size: 10px;
 }
 .wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
+.wb-chip-link { cursor: pointer; }
+.wb-chip-link:hover { outline: 1px solid #fff; outline-offset: -1px; }
+
+/* ── Structure pane split: view section (top) + columns section (bottom) ──── */
+/* the pane becomes a flex column so the two sections can share its height */
+.wb-pane-tree { display: flex; flex-direction: column; overflow: hidden; }
+.wb-pane-tree > h2 { flex: 0 0 auto; }
+.wb-tree-split { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.wb-tree-sec {
+  display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--wb-border); border-radius: 4px; overflow: hidden;
+}
+#wb-tree-sec-view { flex: 0 0 var(--wb-tree-view-h, 240px); }
+#wb-tree-sec-cols { flex: 1 1 auto; }
+.wb-tree-sec-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 4px 7px; cursor: pointer; user-select: none;
+  background: var(--wb-bg); border-bottom: 1px solid var(--wb-border);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2);
+}
+.wb-tree-sec-head:hover { color: var(--wb-accent); }
+.wb-tree-sec-min {
+  border: none; background: transparent; color: inherit; cursor: pointer;
+  font-size: 11px; padding: 0 2px; line-height: 1;
+}
+.wb-tree-sec-body { flex: 1 1 auto; overflow: auto; min-height: 0; padding: 6px; }
+.wb-tree-vsplit {
+  flex: 0 0 auto; height: 6px; margin: 1px 0; cursor: row-resize;
+  background: transparent; touch-action: none;
+}
+.wb-tree-vsplit:hover, .wb-tree-vsplit:active { background: var(--wb-accent); opacity: .5; }
+/* minimized sections collapse to just their head */
+.wb-tree-split.wb-tv-min #wb-tree-sec-view { flex: 0 0 auto; }
+.wb-tree-split.wb-tv-min #wb-tree-view { display: none; }
+.wb-tree-split.wb-tv-min #wb-tree-view-head { border-bottom: none; }
+.wb-tree-split.wb-tc-min #wb-tree-sec-cols { flex: 0 0 auto; }
+.wb-tree-split.wb-tc-min #wb-tree-cols { display: none; }
+.wb-tree-split.wb-tc-min #wb-tree-sec-view { flex: 1 1 auto; }
+.wb-tree-split.wb-tv-min .wb-tree-vsplit,
+.wb-tree-split.wb-tc-min .wb-tree-vsplit { display: none; }
 
 /* ── canvas ──────────────────────────────────────────────── */
 /* the center column is a flex stack: header · fx bar · preview · data dock */
@@ -1224,6 +1276,63 @@ body.wb-basic #wb-fxbar { display: block; }
   max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .wb-fx-sug:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* ── fx bar: Icon slot chips (preview glyph + name) + gallery button ──────── */
+.wb-fx-iconsug { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; }
+.wb-fx-iconsug .ms-Icon { font-size: 14px; }
+.wb-fx-iconsug.selected { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-fx-iconbrowse { font-weight: 600; border-style: dashed; }
+
+/* ── the Fluent icon gallery (fx bar popover + Field guide embed) ─────────── */
+.wb-iconpicker {
+  position: fixed; z-index: 60; width: 360px; max-width: calc(100vw - 16px);
+  display: flex; flex-direction: column; padding: 10px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 8px; box-shadow: 0 14px 40px rgba(0, 0, 0, .34);
+}
+.wb-iconpicker-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); margin-bottom: 8px;
+}
+.wb-iconpicker-x {
+  border: none; background: transparent; color: var(--wb-text-2);
+  cursor: pointer; font-size: 13px; padding: 0 4px;
+}
+.wb-icongrid { display: flex; flex-direction: column; min-height: 0; }
+.wb-icongrid-search {
+  font: 12px inherit; padding: 6px 9px; border-radius: 5px;
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-icongrid-search:focus { outline: none; border-color: var(--wb-accent); }
+.wb-icongrid-count { font-size: 10.5px; color: var(--wb-text-2); margin: 5px 2px; }
+.wb-icongrid-scroll { overflow-y: auto; max-height: 300px; min-height: 0; }
+.wb-iconpicker .wb-icongrid-scroll { max-height: 50vh; }
+.wb-icongrid-group {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin: 8px 2px 4px; position: sticky; top: 0;
+  background: var(--wb-surface); padding: 2px 0;
+}
+.wb-icongrid-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 4px; }
+.wb-iconcell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 3px 5px; border: 1px solid transparent; border-radius: 5px;
+  background: var(--wb-bg); color: var(--wb-text); cursor: pointer; overflow: hidden;
+}
+.wb-iconcell .ms-Icon { font-size: 18px; line-height: 1; height: 1em; color: var(--wb-text); }
+.wb-iconcell span {
+  font-size: 9px; color: var(--wb-text-2); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-iconcell:hover { border-color: var(--wb-accent); }
+.wb-iconcell:hover .ms-Icon, .wb-iconcell:hover span { color: var(--wb-accent); }
+.wb-iconcell.selected { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 12%, transparent); }
+.wb-iconcell-nopreview .ms-Icon { opacity: .35; }
+
+/* the guide's embedded wall is wider and taller than the popover */
+.wb-guide-iconwall { margin: 10px 0; }
+.wb-guide-iconwall .wb-icongrid-scroll { max-height: 420px; }
+.wb-guide-iconwall .wb-icongrid-cells { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+.wb-guide-iconwall-note { font-size: 12px; color: var(--wb-accent); min-height: 18px; margin-top: 6px; }
 
 /* ── fx bar: the floating / detached editor ──────────────────────────────── */
 .wb-fx-float {

@@ -650,6 +650,36 @@ XML-escaped operators — go straight to <a href="#" data-guide-page="gotchas">t
   },
 
   {
+    id: 'icons',
+    chapter: 'The JSON layer',
+    title: 'The icon gallery',
+    body: `
+<h1>Icons: the <code>iconName</code> attribute</h1>
+<p class="wb-guide-lede">SharePoint renders a Fluent UI (MDL2) icon wherever an element carries an
+<code>iconName</code> attribute — <code>{ "elmType": "span", "attributes": { "iconName": "CheckMark" } }</code>.
+No image, no URL, no upload: a single name pulls a crisp, theme-coloured glyph from the font the
+list UI already ships.</p>
+
+<h2 id="ic-use">How to use one</h2>
+<p>Add an <strong>Icon</strong> from the palette (or set <code>iconName</code> on any element), then
+select it and open the <strong>Icon</strong> slot in the fx bar — the chips show common icons with a
+live preview, and <em>⊞ All icons…</em> opens the full searchable gallery below. Always pair an icon
+with a <code>title</code> so it has an accessible tooltip.</p>
+<div class="wb-guide-gotcha">${sev('info')}<h3>Every icon here is verified to render in SharePoint</h3>
+<p>The gallery is the exact set whose names resolve on a real list — pick from it and the formatter
+is guaranteed to show the glyph, not an empty box. Names are case-sensitive and map 1:1 to the
+Fabric <code>ms-Icon--&lt;Name&gt;</code> class used for the previews.</p></div>
+
+<h2 id="ic-gallery">Browse the full set</h2>
+<p>Search by name (e.g. <em>check</em>, <em>arrow</em>, <em>person</em>) or scan by theme. Click any
+icon to copy its name to the clipboard, ready to paste into <code>iconName</code>.</p>
+<div id="wb-guide-iconwall" class="wb-guide-iconwall"></div>
+<p class="wb-guide-foot-note">Reference: ${ext(MS.syntaxRef, 'formatting syntax reference')} ·
+${ext('https://developer.microsoft.com/en-us/fluentui#/styles/web/icons', 'Fluent UI icon list')}.</p>
+`,
+  },
+
+  {
     id: 'actions',
     chapter: 'The JSON layer',
     title: 'Commands & actions',

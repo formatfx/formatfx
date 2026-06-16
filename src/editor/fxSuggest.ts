@@ -17,7 +17,7 @@
  */
 
 import type { MockField } from '../core/types';
-import { STYLE_VALUE_SUGGESTIONS } from '../core/schema';
+import { STYLE_VALUE_SUGGESTIONS, ICON_SUGGESTIONS } from '../core/schema';
 import type { FxSlot } from './fxSlots';
 import { COND_COLORS, suggestChoiceColors, condColor } from './condRules';
 
@@ -64,6 +64,12 @@ export function fxSuggestions(slot: FxSlot, fields: MockField[]): string[] {
     if (fields[0]) out.push(`=IF(${fieldRef(fields[0])} = "", "—", ${fieldRef(fields[0])})`);
     out.push(...refs);
     return dedupe(out);
+  }
+
+  if (slot.picker === 'icon') {
+    // a handful of common icons as quick chips; the full gallery is one click
+    // away in the bar. (Literals — applied as-is, no transpile needed.)
+    return [...ICON_SUGGESTIONS];
   }
 
   if (slot.kind === 'attr') {
