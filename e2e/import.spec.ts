@@ -15,8 +15,16 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<void> {
+async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
+}
+
+/** The Data editor is a dock below the preview; reveal it (it starts collapsed). */
+async function openDataDock(page: Page): Promise<void> {
+  const dock = page.locator('#wb-data-dock');
+  if (await dock.evaluate((el) => el.classList.contains('wb-min'))) {
+    await page.click('#wb-data-min');
+  }
 }
 
 /** Minimal synthetic native export: schema header + CSV body. */
@@ -35,7 +43,7 @@ function listSchemaCsv(): string {
 }
 
 async function importExport(page: Page): Promise<void> {
-  await openTab(page, 'data');
+  await openDataDock(page);
   await page.click('button:has-text("Import schema…")');
   await page.fill('.wb-schema-form textarea', listSchemaCsv());
   await page.click('button:has-text("Import pasted text")');
@@ -106,7 +114,7 @@ function listSnapshot(opts: { defaultViewFormatter?: boolean } = {}): string {
 }
 
 test('list snapshot import: fields + views land; the default view\'s row formatting auto-loads on a pure grid', async ({ page }) => {
-  await openTab(page, 'data');
+  await openDataDock(page);
   await page.click('button:has-text("Import schema…")');
   // the live block advertises the zero-install path
   await expect(page.locator('.wb-live-extract')).toContainText('Live from SharePoint');
@@ -125,7 +133,7 @@ test('list snapshot import: fields + views land; the default view\'s row formatt
 });
 
 test('list snapshot without a default-view formatter rebuilds the grid; Load-as-main works from the views section', async ({ page }) => {
-  await openTab(page, 'data');
+  await openDataDock(page);
   await page.click('button:has-text("Import schema…")');
   await page.fill('.wb-schema-form textarea', listSnapshot());
   await page.click('button:has-text("Import pasted text")');

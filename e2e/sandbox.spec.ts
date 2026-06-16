@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<void> {
+async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
 }
 
@@ -109,35 +109,39 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('basic mode (the default) is the Sheet shell — ribbon, no palette/inspector panes', async ({ page }) => {
-  // fresh prefs → basic mode is the landing default
+test('Sheet mode (the default) — full palette pane + Structure, no Properties pane', async ({ page }) => {
+  // fresh prefs → Sheet mode is the landing default
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator('#wb-mode button', { hasText: 'Sheet' })).toHaveClass(/active/);
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
   await expect(page.locator('#wb-activedoc')).toBeHidden();
 
-  // the flanking studio panes are gone: palette → ribbon, inspector hidden.
-  // Structure stays as the map of what you're building; the preview widens.
-  await expect(page.locator('#wb-pane-palette')).toBeHidden();
+  // the palette is a far-left pane and Structure stays; only the studio
+  // Properties/JSON pane is dropped, and the preview widens.
+  await expect(page.locator('#wb-pane-palette')).toBeVisible();
   await expect(page.locator('#wb-pane-side')).toBeHidden();
   await expect(page.locator('.wb-pane-tree')).toBeVisible();
 
-  // outlines lives in the ☰ menu and IS part of basic
+  // outlines lives in the ☰ menu and IS part of Sheet
   await page.click('#wb-menu-btn');
   await expect(page.locator('#wb-outlines')).toBeVisible();
   await page.click('#wb-menu-btn');
 
-  // the palette now lives in the ribbon — still only the curated basic tier,
-  // no actions, no shells, no forEach presets
+  // the palette pane shows the FULL set now — basics AND actions/people/shells
+  const palette = page.locator('#wb-pane-palette');
+  await expect(palette.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
+  await expect(palette.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeVisible();
+  await expect(palette.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeVisible();
+  await expect(palette.locator('.wb-palette-group', { hasText: 'Actions' })).toBeVisible();
+
+  // the ribbon is a slim Sheet toolbar (the Formatted-columns picker), not a palette
   const ribbon = page.locator('#wb-ribbon');
   await expect(ribbon).toBeVisible();
-  await expect(ribbon.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
-  await expect(ribbon.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeHidden();
-  await expect(ribbon.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeHidden();
-  await expect(ribbon.locator('.wb-palette-group', { hasText: 'Actions' })).toBeHidden();
+  await expect(ribbon.locator('#wb-ribbon-cols')).toBeVisible();
+  await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
 
-  // switching to advanced restores the studio surface, and it persists
+  // switching to advanced restores the studio Properties pane, and it persists
   await page.locator('#wb-mode button', { hasText: 'Advanced' }).click();
   await expect(ribbon).toBeHidden();
   await expect(page.locator('#wb-pane-palette')).toBeVisible();
