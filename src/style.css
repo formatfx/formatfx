@@ -173,6 +173,8 @@ body.wb-basic .wb-ribbon {
   font-family: Consolas, monospace; font-size: 11px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
   display: inline-flex; align-items: center; gap: 4px;
+  /* own the row's width so its center is a select target, not a hover button */
+  flex: 1 1 auto; min-width: 0;
 }
 .wb-tree-elmicon { font-size: 11px; color: var(--wb-text-2); }
 .wb-tree-row.selected .wb-tree-elmicon { color: inherit; }
@@ -196,13 +198,57 @@ body.wb-basic .wb-ribbon {
 .wb-chip-card { background: #5c2d91; }
 .wb-chip-cfr { background: #038387; }
 .wb-chip-edit { background: #767676; }
-.wb-tree-actions { display: none; gap: 2px; }
+/* Compact, right-pinned hover actions: the label (flex:1) keeps the row's
+   center, so a center-click on a narrow split row lands on the label and
+   selects rather than tripping an action button (misclick safety). */
+.wb-tree-actions { display: none; gap: 1px; flex: 0 0 auto; }
 .wb-tree-row:hover .wb-tree-actions { display: inline-flex; }
 .wb-tree-actions button {
   border: none; background: transparent; cursor: pointer; color: inherit;
-  padding: 1px 3px; font-size: 10px;
+  padding: 0 1px; font-size: 10px;
 }
 .wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
+.wb-chip-link { cursor: pointer; }
+.wb-chip-link:hover { outline: 1px solid #fff; outline-offset: -1px; }
+
+/* ── Structure pane split: view section (top) + columns section (bottom) ──── */
+/* the pane becomes a flex column so the two sections can share its height */
+.wb-pane-tree { display: flex; flex-direction: column; overflow: hidden; }
+.wb-pane-tree > h2 { flex: 0 0 auto; }
+.wb-tree-split { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.wb-tree-sec {
+  display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--wb-border); border-radius: 4px; overflow: hidden;
+}
+#wb-tree-sec-view { flex: 0 0 var(--wb-tree-view-h, 240px); }
+#wb-tree-sec-cols { flex: 1 1 auto; }
+.wb-tree-sec-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 4px 7px; cursor: pointer; user-select: none;
+  background: var(--wb-bg); border-bottom: 1px solid var(--wb-border);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2);
+}
+.wb-tree-sec-head:hover { color: var(--wb-accent); }
+.wb-tree-sec-min {
+  border: none; background: transparent; color: inherit; cursor: pointer;
+  font-size: 11px; padding: 0 2px; line-height: 1;
+}
+.wb-tree-sec-body { flex: 1 1 auto; overflow: auto; min-height: 0; padding: 6px; }
+.wb-tree-vsplit {
+  flex: 0 0 auto; height: 6px; margin: 1px 0; cursor: row-resize;
+  background: transparent; touch-action: none;
+}
+.wb-tree-vsplit:hover, .wb-tree-vsplit:active { background: var(--wb-accent); opacity: .5; }
+/* minimized sections collapse to just their head */
+.wb-tree-split.wb-tv-min #wb-tree-sec-view { flex: 0 0 auto; }
+.wb-tree-split.wb-tv-min #wb-tree-view { display: none; }
+.wb-tree-split.wb-tv-min #wb-tree-view-head { border-bottom: none; }
+.wb-tree-split.wb-tc-min #wb-tree-sec-cols { flex: 0 0 auto; }
+.wb-tree-split.wb-tc-min #wb-tree-cols { display: none; }
+.wb-tree-split.wb-tc-min #wb-tree-sec-view { flex: 1 1 auto; }
+.wb-tree-split.wb-tv-min .wb-tree-vsplit,
+.wb-tree-split.wb-tc-min .wb-tree-vsplit { display: none; }
 
 /* ── canvas ──────────────────────────────────────────────── */
 /* the center column is a flex stack: header · fx bar · preview · data dock */

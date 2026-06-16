@@ -24,56 +24,92 @@ function nodeHint(el: SPElement): string {
   return hint;
 }
 
-/** Small colored chips for behaviors attached to the element. */
-function nodeChips(el: SPElement): HTMLElement[] {
+/** The bare column name behind a columnFormatterReference (strips `[$…]`). */
+function cfrName(ref: string): string {
+  return ref.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+}
+
+/**
+ * Small colored chips for behaviors attached to the element. When `onCfr` is
+ * given, the ⤷ "renders another column" chip becomes a link that jumps to —
+ * and selects — that column's formatter in the bottom section of the pane.
+ * Only the chip is clickable; the row's own select handler is untouched.
+ */
+function nodeChips(el: SPElement, onCfr?: (name: string) => void): HTMLElement[] {
   const chips: HTMLElement[] = [];
-  const mk = (text: string, cls: string, title: string) => {
+  const mk = (text: string, cls: string, title: string): HTMLElement => {
     const c = document.createElement('span');
     c.className = `wb-chip ${cls}`;
     c.textContent = text;
     c.title = title;
     chips.push(c);
+    return c;
   };
   if (el.forEach) mk('⟳', 'wb-chip-loop', `Repeats per item: ${el.forEach}`);
   if (el.customRowAction) mk('▶', 'wb-chip-action', `Click action: ${el.customRowAction.action || '(no-op)'}`);
   if (el.customCardProps) mk('▣', 'wb-chip-card', 'Opens a hover/click card (nested below)');
-  if (el.columnFormatterReference) mk('⤷', 'wb-chip-cfr', `Renders another column's formatter: ${el.columnFormatterReference}`);
+  if (el.columnFormatterReference) {
+    const name = cfrName(el.columnFormatterReference);
+    const chip = mk('⤷', 'wb-chip-cfr',
+      onCfr
+        ? `Renders ${el.columnFormatterReference} — click to open & select that column formatter below`
+        : `Renders another column's formatter: ${el.columnFormatterReference}`);
+    if (onCfr) {
+      chip.classList.add('wb-chip-link');
+      // stop the row's click from also firing — jump just for this one icon
+      chip.addEventListener('click', (e) => { e.stopPropagation(); onCfr(name); });
+    }
+  }
   if (el.inlineEditField) mk('✎', 'wb-chip-edit', `Inline edit: ${el.inlineEditField}`);
   return chips;
 }
 
-export function mountTree(host: HTMLElement): void {
+/**
+ * The Structure pane, split into two independently-collapsible sections that
+ * share the pane's height (a draggable splitter between them lives in main.ts):
+ *   • `viewHost`  — the view (main) formatter, exactly as shown before.
+ *   • `colsHost`  — the column formatters, exactly as shown before.
+ * `onRevealColumn` is called after a ⤷ chip opens a column, so the host can
+ * un-minimize the bottom section and scroll the now-active column into view.
+ */
+export function mountTree(
+  viewHost: HTMLElement,
+  colsHost: HTMLElement,
+  onRevealColumn?: (name: string) => void,
+): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click
   let renamePath: NodePath | null = null;
 
+  // Open + select another column's formatter, then let the host reveal it.
+  const jumpToColumn = (name: string) => {
+    state.openColumnRef(name);
+    onRevealColumn?.(name);
+  };
+
   const render = () => {
-    host.innerHTML = '';
+    viewHost.innerHTML = '';
+    colsHost.innerHTML = '';
     const referenced = state.referencedColumns();
 
-    // ── the workspace: main formatter + every column formatter ──
-    host.appendChild(docHeader(
+    // ── top section: the view (main) formatter ──
+    viewHost.appendChild(docHeader(
       'main',
       state.mainDocLabel(),
       state.activeDocKey === 'main',
       `${referenced.size} column reference${referenced.size === 1 ? '' : 's'}`,
     ));
     if (state.activeDocKey === 'main') {
-      host.appendChild(renderNode(state.doc.root, []));
+      viewHost.appendChild(renderNode(state.doc.root, []));
     }
 
+    // ── bottom section: every column formatter ──
     const names = Object.keys(state.columnRefs);
-    if (names.length) {
-      const group = document.createElement('div');
-      group.className = 'wb-doc-group';
-      group.textContent = 'Column formatters';
-      host.appendChild(group);
-      for (const name of names) {
-        const badge = referenced.has(name) ? '⤷ in view' : 'unused';
-        host.appendChild(docHeader(name, `[$${name}]`, state.activeDocKey === name, badge));
-        if (state.activeDocKey === name) {
-          host.appendChild(renderNode(state.doc.root, []));
-        }
+    for (const name of names) {
+      const badge = referenced.has(name) ? '⤷ in view' : 'unused';
+      colsHost.appendChild(docHeader(name, `[$${name}]`, state.activeDocKey === name, badge));
+      if (state.activeDocKey === name) {
+        colsHost.appendChild(renderNode(state.doc.root, []));
       }
     }
     // unresolved references the main formatter uses but the workspace lacks
@@ -83,11 +119,18 @@ export function mountTree(host: HTMLElement): void {
         miss.className = 'wb-doc-missing';
         miss.textContent = `[$${name}] — referenced but not in the workspace`;
         miss.title = 'The main formatter has a columnFormatterReference to this column, but its formatter isn\'t registered. Import the list export or register it in the Data tab to render and edit it.';
-        host.appendChild(miss);
+        colsHost.appendChild(miss);
       }
     }
+    if (!names.length && !referenced.size) {
+      const none = document.createElement('div');
+      none.className = 'wb-doc-group';
+      none.textContent = 'No column formatters registered.';
+      colsHost.appendChild(none);
+    }
     // focus after attach — the rename input is created during the tree walk
-    const renameInp = host.querySelector<HTMLInputElement>('.wb-tree-rename');
+    const renameInp = (viewHost.querySelector<HTMLInputElement>('.wb-tree-rename')
+      ?? colsHost.querySelector<HTMLInputElement>('.wb-tree-rename'));
     if (renameInp) { renameInp.focus(); renameInp.select(); }
   };
 
@@ -139,7 +182,7 @@ export function mountTree(host: HTMLElement): void {
     const typeName = document.createElement('span');
     typeName.className = 'wb-tree-elmtype' + (el._elmName ? ' wb-tree-elmtype-dim' : '');
     typeName.textContent = el.elmType ?? '?';
-    label.append(typeName, ...nodeChips(el));
+    label.append(typeName, ...nodeChips(el, jumpToColumn));
     const hint = el._elmName ? '' : nodeHint(el);
     if (hint) {
       const h = document.createElement('span');

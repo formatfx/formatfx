@@ -92,7 +92,23 @@ app.innerHTML = `
       <h2><span>Structure</span>
         <button id="wb-tree-peek" title="Auto-hide: shrink Structure to a rail; hover the rail to open it, click anywhere else to close">📌</button>
       </h2>
-      <div id="wb-tree"></div>
+      <div id="wb-tree" class="wb-tree-split">
+        <section class="wb-tree-sec" id="wb-tree-sec-view">
+          <div class="wb-tree-sec-head" id="wb-tree-view-head" title="The view formatter on the canvas — click to collapse">
+            <button class="wb-tree-sec-min" id="wb-tree-view-min" title="Collapse / expand the view formatter">▾</button>
+            <span>View formatter</span>
+          </div>
+          <div class="wb-tree-sec-body" id="wb-tree-view"></div>
+        </section>
+        <div class="wb-tree-vsplit" id="wb-tree-vsplit" title="Drag to share space between the two sections"></div>
+        <section class="wb-tree-sec" id="wb-tree-sec-cols">
+          <div class="wb-tree-sec-head" id="wb-tree-cols-head" title="Column formatters in the workspace — click to collapse">
+            <button class="wb-tree-sec-min" id="wb-tree-cols-min" title="Collapse / expand the column formatters">▾</button>
+            <span>Column formatters</span>
+          </div>
+          <div class="wb-tree-sec-body" id="wb-tree-cols"></div>
+        </section>
+      </div>
     </aside>
     <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
     <section class="wb-pane wb-pane-canvas">
@@ -137,6 +153,10 @@ interface UiPrefs {
   sideMode: 'normal' | 'peek' | 'max';
   /** Structure pane auto-hide (pin to a rail), mirroring the side pane. */
   treeMode: 'normal' | 'peek';
+  /** Structure pane split: top (view) section height (px) and per-section minimize. */
+  treeViewH: number;
+  treeViewMin: boolean;
+  treeColsMin: boolean;
   /** The center Data dock: its height (px) and minimize/maximize state. */
   dataH: number;
   dataMode: 'normal' | 'min' | 'max';
@@ -148,6 +168,9 @@ const uiPrefs: UiPrefs = {
   paletteCollapsed: false,
   sideMode: 'normal',
   treeMode: 'normal',
+  treeViewH: 240,
+  treeViewMin: false,
+  treeColsMin: false,
   dataH: 220,
   dataMode: 'min',
   mode: 'basic',
@@ -250,6 +273,64 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
   });
 }
 applyLayout();
+
+// ─── Structure pane: two stacked sections (view + columns) ──────────────────
+// The top section is the view formatter, the bottom is the column formatters.
+// Each minimizes independently; a splitter between them shares the height.
+const treeSplit = document.getElementById('wb-tree')!;
+const treeVSplit = document.getElementById('wb-tree-vsplit')!;
+const treeViewMinBtn = document.getElementById('wb-tree-view-min') as HTMLButtonElement;
+const treeColsMinBtn = document.getElementById('wb-tree-cols-min') as HTMLButtonElement;
+const applyTreeSplit = () => {
+  treeSplit.classList.toggle('wb-tv-min', uiPrefs.treeViewMin);
+  treeSplit.classList.toggle('wb-tc-min', uiPrefs.treeColsMin);
+  treeSplit.style.setProperty('--wb-tree-view-h', `${uiPrefs.treeViewH}px`);
+  treeViewMinBtn.textContent = uiPrefs.treeViewMin ? '▸' : '▾';
+  treeColsMinBtn.textContent = uiPrefs.treeColsMin ? '▸' : '▾';
+};
+const toggleSec = (which: 'view' | 'cols') => {
+  if (which === 'view') uiPrefs.treeViewMin = !uiPrefs.treeViewMin;
+  else uiPrefs.treeColsMin = !uiPrefs.treeColsMin;
+  applyTreeSplit();
+  saveUiPrefs();
+};
+// the head toggles, but its minimize button does too (so don't double-fire)
+treeViewMinBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSec('view'); });
+treeColsMinBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSec('cols'); });
+document.getElementById('wb-tree-view-head')!.addEventListener('click', () => toggleSec('view'));
+document.getElementById('wb-tree-cols-head')!.addEventListener('click', () => toggleSec('cols'));
+// drag the splitter to share height (dragging down grows the view section)
+treeVSplit.addEventListener('pointerdown', (e) => {
+  if (uiPrefs.treeViewMin || uiPrefs.treeColsMin) return; // nothing to share
+  e.preventDefault();
+  treeVSplit.setPointerCapture(e.pointerId);
+  const startY = e.clientY;
+  const startH = uiPrefs.treeViewH;
+  const move = (ev: PointerEvent) => {
+    const splitH = treeSplit.clientHeight;
+    uiPrefs.treeViewH = Math.max(60, Math.min(splitH - 120, startH + (ev.clientY - startY)));
+    treeSplit.style.setProperty('--wb-tree-view-h', `${uiPrefs.treeViewH}px`);
+  };
+  const up = () => {
+    treeVSplit.removeEventListener('pointermove', move);
+    treeVSplit.removeEventListener('pointerup', up);
+    saveUiPrefs();
+  };
+  treeVSplit.addEventListener('pointermove', move);
+  treeVSplit.addEventListener('pointerup', up);
+});
+applyTreeSplit();
+
+// Clicking a ⤷ chip opens that column formatter; make sure the bottom section
+// is expanded and scroll the now-active column into view.
+function revealColumnSection(): void {
+  if (uiPrefs.treeColsMin) { uiPrefs.treeColsMin = false; applyTreeSplit(); saveUiPrefs(); }
+  // the re-render from openColumnRef has already run synchronously; scroll next frame
+  requestAnimationFrame(() => {
+    document.querySelector('#wb-tree-cols .wb-doc-header.active')
+      ?.scrollIntoView({ block: 'nearest' });
+  });
+}
 
 // ─── center Data dock: collapse / maximize / drag-resize ────────────────────
 // The Data editor lives below the preview (both modes), as its own panel with a
@@ -521,7 +602,11 @@ for (const btn of app.querySelectorAll<HTMLButtonElement>('.wb-tabs button[data-
 
 // panels
 mountPalette(document.getElementById('wb-palette')!);
-mountTree(document.getElementById('wb-tree')!);
+mountTree(
+  document.getElementById('wb-tree-view')!,
+  document.getElementById('wb-tree-cols')!,
+  revealColumnSection,
+);
 const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
 mountFxBar(document.getElementById('wb-fxbar')!);
 mountInspector(document.getElementById('wb-tab-inspector')!);
