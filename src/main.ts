@@ -17,6 +17,7 @@ import { mountInspector } from './editor/inspector';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
 import { onPushedSnapshot } from './editor/extensionBridge';
+import { openColumnGallery } from './editor/columnGallery';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
@@ -78,6 +79,7 @@ app.innerHTML = `
   <div class="wb-ribbon" id="wb-ribbon" title="Insert — the basic palette, one click drops a ready-made piece onto the selected container">
     <span class="wb-ribbon-tab">Insert</span>
     <div class="wb-ribbon-palette" id="wb-ribbon-palette"></div>
+    <button id="wb-ribbon-cols" class="wb-ribbon-cols" title="Browse the columns that already have a formatter — by what they look like — and open one to edit">▦ Formatted columns</button>
   </div>
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
@@ -87,8 +89,11 @@ app.innerHTML = `
       <div id="wb-palette"></div>
     </aside>
     <div class="wb-resizer" data-col="palette" title="Drag to resize"></div>
-    <aside class="wb-pane wb-pane-tree">
-      <h2>Structure</h2>
+    <aside class="wb-pane wb-pane-tree" id="wb-pane-tree">
+      <div class="wb-tree-rail" id="wb-tree-rail" title="Hover to open Structure — it stays open until you click somewhere else">⬚<span>structure</span></div>
+      <h2><span>Structure</span>
+        <button id="wb-tree-peek" title="Auto-hide: shrink Structure to a rail; hover the rail to open it, click anywhere else to close">📌</button>
+      </h2>
       <div id="wb-tree"></div>
     </aside>
     <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
@@ -123,6 +128,8 @@ interface UiPrefs {
   cols: { palette: number; tree: number; side: number };
   paletteCollapsed: boolean;
   sideMode: 'normal' | 'peek' | 'max';
+  /** Structure pane auto-hide (pin to a rail), mirroring the side pane. */
+  treeMode: 'normal' | 'peek';
   mode: 'basic' | 'advanced';
   titleCol: boolean;
 }
@@ -130,6 +137,7 @@ const uiPrefs: UiPrefs = {
   cols: { palette: 220, tree: 250, side: 360 },
   paletteCollapsed: false,
   sideMode: 'normal',
+  treeMode: 'normal',
   mode: 'basic',
   titleCol: true,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
@@ -138,18 +146,21 @@ const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
 const sidePane = document.getElementById('wb-pane-side')!;
+const treePane = document.getElementById('wb-pane-tree')!;
 const applyLayout = () => {
   const p = uiPrefs.paletteCollapsed ? 58 : uiPrefs.cols.palette;
   const side = uiPrefs.sideMode === 'peek' ? 30
     : uiPrefs.sideMode === 'max' ? Math.max(560, Math.round(window.innerWidth * 0.62))
     : uiPrefs.cols.side;
+  // Structure can auto-hide to a rail (pinned) just like the side pane.
+  const tree = uiPrefs.treeMode === 'peek' ? 30 : uiPrefs.cols.tree;
   // Basic is the Sheet shell: the palette becomes the ribbon and the
   // inspector is studio-only, so the grid drops both their columns (and
   // their resizers, hidden in CSS). Structure stays — it's the cheap,
   // useful map of what you're building.
   layout.style.gridTemplateColumns = uiPrefs.mode === 'basic'
-    ? `${uiPrefs.cols.tree}px 5px 1fr`
-    : `${p}px 5px ${uiPrefs.cols.tree}px 5px 1fr 5px ${side}px`;
+    ? `${tree}px 5px 1fr`
+    : `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`;
   document.getElementById('wb-pane-palette')!.classList.toggle('wb-collapsed', uiPrefs.paletteCollapsed);
   (document.getElementById('wb-palette-toggle') as HTMLButtonElement).textContent = uiPrefs.paletteCollapsed ? '⮞' : '⮜';
   sidePane.classList.toggle('wb-peek', uiPrefs.sideMode === 'peek');
@@ -157,6 +168,10 @@ const applyLayout = () => {
   sidePane.style.setProperty('--wb-side-w', `${uiPrefs.cols.side}px`);
   document.getElementById('wb-side-peek')!.classList.toggle('active', uiPrefs.sideMode === 'peek');
   document.getElementById('wb-side-max')!.classList.toggle('active', uiPrefs.sideMode === 'max');
+  treePane.classList.toggle('wb-peek', uiPrefs.treeMode === 'peek');
+  if (uiPrefs.treeMode !== 'peek') treePane.classList.remove('wb-peek-open');
+  treePane.style.setProperty('--wb-tree-w', `${uiPrefs.cols.tree}px`);
+  document.getElementById('wb-tree-peek')!.classList.toggle('active', uiPrefs.treeMode === 'peek');
 };
 window.addEventListener('resize', applyLayout);
 
@@ -179,6 +194,20 @@ document.addEventListener('pointerdown', (e) => {
     sidePane.classList.remove('wb-peek-open');
   }
 });
+// Structure pane: pin/auto-hide to a rail, mirroring the side pane
+document.getElementById('wb-tree-peek')!.addEventListener('click', () => {
+  uiPrefs.treeMode = uiPrefs.treeMode === 'peek' ? 'normal' : 'peek';
+  applyLayout();
+  saveUiPrefs();
+});
+treePane.addEventListener('mouseenter', () => {
+  if (uiPrefs.treeMode === 'peek') treePane.classList.add('wb-peek-open');
+});
+document.addEventListener('pointerdown', (e) => {
+  if (uiPrefs.treeMode === 'peek' && !treePane.contains(e.target as Node)) {
+    treePane.classList.remove('wb-peek-open');
+  }
+});
 document.getElementById('wb-palette-toggle')!.addEventListener('click', () => {
   uiPrefs.paletteCollapsed = !uiPrefs.paletteCollapsed;
   applyLayout();
@@ -192,6 +221,7 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
     const startX = e.clientX;
     const startW = uiPrefs.cols[col];
     if (col === 'palette' && uiPrefs.paletteCollapsed) return;
+    if (col === 'tree' && uiPrefs.treeMode === 'peek') return;
     const move = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
       // the side pane grows leftwards
@@ -265,6 +295,10 @@ document.addEventListener('pointerdown', (e) => {
 menuPanel.addEventListener('click', (e) => {
   // button actions close the menu; the outlines checkbox keeps it open
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
+});
+document.getElementById('wb-ribbon-cols')!.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openColumnGallery(e.currentTarget as HTMLElement, toast);
 });
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());
