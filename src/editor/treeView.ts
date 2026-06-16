@@ -82,6 +82,9 @@ export function mountTree(
   let renamePath: NodePath | null = null;
 
   // Open + select another column's formatter, then let the host reveal it.
+  // If the column isn't registered, openColumnRef is a no-op and the host
+  // scrolls to that name's "referenced but not in the workspace" row instead,
+  // so the click always lands somewhere meaningful.
   const jumpToColumn = (name: string) => {
     state.openColumnRef(name);
     onRevealColumn?.(name);
@@ -117,6 +120,7 @@ export function mountTree(
       if (!(name in state.columnRefs)) {
         const miss = document.createElement('div');
         miss.className = 'wb-doc-missing';
+        miss.dataset.missingRef = name; // so a ⤷ jump can land on it
         miss.textContent = `[$${name}] — referenced but not in the workspace`;
         miss.title = 'The main formatter has a columnFormatterReference to this column, but its formatter isn\'t registered. Import the list export or register it in the Data tab to render and edit it.';
         colsHost.appendChild(miss);

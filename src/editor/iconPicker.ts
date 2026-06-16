@@ -40,15 +40,17 @@ export function renderIconGrid(host: HTMLElement, opts: IconGridOptions): { focu
   const scroll = document.createElement('div');
   scroll.className = 'wb-icongrid-scroll';
 
-  // build every group + item once; keep handles for fast filtering
-  const items: { btn: HTMLElement; name: string; lc: string }[] = [];
-  const groupEls: { head: HTMLElement; grid: HTMLElement }[] = [];
+  // build every group + item once; keep handles (grouped) for fast filtering
+  interface GroupView { head: HTMLElement; grid: HTMLElement; cells: { btn: HTMLElement; lc: string }[]; }
+  const groupViews: GroupView[] = [];
+  let total = 0;
   for (const group of ICON_GROUPS) {
     const head = document.createElement('div');
     head.className = 'wb-icongrid-group';
     head.textContent = group.name;
     const grid = document.createElement('div');
     grid.className = 'wb-icongrid-cells';
+    const cells: GroupView['cells'] = [];
     for (const name of group.icons) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -60,28 +62,31 @@ export function renderIconGrid(host: HTMLElement, opts: IconGridOptions): { focu
       btn.innerHTML = `<i class="ms-Icon ms-Icon--${glyph}" aria-hidden="true"></i><span>${name}</span>`;
       btn.addEventListener('click', () => opts.onPick(name));
       grid.appendChild(btn);
-      items.push({ btn, name, lc: name.toLowerCase() });
+      cells.push({ btn, lc: name.toLowerCase() });
     }
     scroll.append(head, grid);
-    groupEls.push({ head, grid });
+    groupViews.push({ head, grid, cells });
+    total += cells.length;
   }
 
   const apply = () => {
     const q = search.value.trim().toLowerCase();
     let shown = 0;
-    for (const it of items) {
-      const hit = q === '' || it.lc.includes(q);
-      it.btn.style.display = hit ? '' : 'none';
-      if (hit) shown++;
-    }
-    // hide a group whose every cell is filtered out
-    for (const g of groupEls) {
-      const anyVisible = g.grid.querySelector<HTMLElement>('.wb-iconcell:not([style*="display: none"])');
-      const visible = !!anyVisible;
+    for (const g of groupViews) {
+      let groupShown = 0;
+      for (const cell of g.cells) {
+        const hit = q === '' || cell.lc.includes(q);
+        cell.btn.style.display = hit ? '' : 'none';
+        if (hit) groupShown++;
+      }
+      // hide a group header+grid whose every cell is filtered out — counted
+      // inline, no per-keystroke DOM querying or inline-style string matching
+      const visible = groupShown > 0;
       g.head.style.display = visible ? '' : 'none';
       g.grid.style.display = visible ? '' : 'none';
+      shown += groupShown;
     }
-    count.textContent = q ? `${shown} match${shown === 1 ? '' : 'es'}` : `${items.length} icons · ${ICON_GROUPS.length} groups`;
+    count.textContent = q ? `${shown} match${shown === 1 ? '' : 'es'}` : `${total} icons · ${ICON_GROUPS.length} groups`;
   };
   search.addEventListener('input', apply);
 

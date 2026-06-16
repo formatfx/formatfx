@@ -160,6 +160,12 @@ body.wb-basic .wb-ribbon {
   border: 1px dashed var(--wb-border); border-radius: 4px;
   padding: 4px 7px; margin: 4px 0;
 }
+/* brief attention pulse when a ⤷ jump lands on an unresolved reference */
+.wb-doc-missing.wb-flash { animation: wb-flash 1s ease-out; }
+@keyframes wb-flash {
+  0% { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 22%, transparent); }
+  100% { border-color: var(--wb-border); background: transparent; }
+}
 
 /* ── tree ────────────────────────────────────────────────── */
 .wb-tree-row {

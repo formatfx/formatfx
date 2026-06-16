@@ -2,15 +2,12 @@
  * editor/iconData.ts — the Fluent UI (MDL2) icon set that SharePoint's
  * `iconName` attribute actually renders, grouped by theme for the picker.
  *
- * GENERATED DATA — do not hand-edit. Every name here was verified to render
- * in SharePoint (the source export's "Renders In SP" column); the icon-name
- * picker (iconPicker.ts) and the fx bar's "Icon" slot draw from this list, so
- * a maker can only ever pick an icon that definitely works on a real list.
- * Names map 1:1 to the Fabric font class `ms-Icon--<Name>` used for previews.
- *
- * NO_PREVIEW_ICONS are the few SP-valid names the bundled Fabric icon font
- * (office-ui-fabric-core) can't draw — still pickable, shown with a neutral
- * placeholder instead of an empty box.
+ * GENERATED DATA — do not hand-edit. Regenerate with tools/gen-icons.mjs.
+ * Source of truth: the icon export's "Renders In SP" column (every name here
+ * is verified to render on a real list). Preview coverage is computed against
+ * office-ui-fabric-core@11.0.0 (the version index.html loads); names it
+ * can't draw are listed in NO_PREVIEW_ICONS and shown with a placeholder.
+ * Names map 1:1 to the Fabric font class `ms-Icon--<Name>`.
  */
 
 export interface IconGroup { name: string; icons: string[]; }

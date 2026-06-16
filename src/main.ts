@@ -322,13 +322,25 @@ treeVSplit.addEventListener('pointerdown', (e) => {
 applyTreeSplit();
 
 // Clicking a ⤷ chip opens that column formatter; make sure the bottom section
-// is expanded and scroll the now-active column into view.
-function revealColumnSection(): void {
+// is expanded and scroll the target into view. For a registered column that's
+// the now-active header; for an unregistered reference (a no-op open) it's that
+// name's "referenced but not in the workspace" row, briefly highlighted — so
+// the click always lands somewhere meaningful.
+function revealColumnSection(name: string): void {
   if (uiPrefs.treeColsMin) { uiPrefs.treeColsMin = false; applyTreeSplit(); saveUiPrefs(); }
   // the re-render from openColumnRef has already run synchronously; scroll next frame
   requestAnimationFrame(() => {
-    document.querySelector('#wb-tree-cols .wb-doc-header.active')
-      ?.scrollIntoView({ block: 'nearest' });
+    const cols = document.getElementById('wb-tree-cols');
+    if (!cols) return;
+    const active = cols.querySelector<HTMLElement>('.wb-doc-header.active');
+    if (active) { active.scrollIntoView({ block: 'nearest' }); return; }
+    const missing = [...cols.querySelectorAll<HTMLElement>('.wb-doc-missing')]
+      .find((el) => el.dataset.missingRef === name);
+    if (missing) {
+      missing.scrollIntoView({ block: 'nearest' });
+      missing.classList.add('wb-flash');
+      setTimeout(() => missing.classList.remove('wb-flash'), 1000);
+    }
   });
 }
 
