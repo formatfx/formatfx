@@ -17,6 +17,7 @@ import { mountInspector } from './editor/inspector';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
 import { onPushedSnapshot } from './editor/extensionBridge';
+import { openColumnGallery } from './editor/columnGallery';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
@@ -75,9 +76,8 @@ app.innerHTML = `
       </div>
     </div>
   </header>
-  <div class="wb-ribbon" id="wb-ribbon" title="Insert — the basic palette, one click drops a ready-made piece onto the selected container">
-    <span class="wb-ribbon-tab">Insert</span>
-    <div class="wb-ribbon-palette" id="wb-ribbon-palette"></div>
+  <div class="wb-ribbon" id="wb-ribbon" title="Sheet actions">
+    <button id="wb-ribbon-cols" class="wb-ribbon-cols" title="Browse the columns that already have a formatter — by what they look like — and open one to edit">▦ Formatted columns</button>
   </div>
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
@@ -87,8 +87,11 @@ app.innerHTML = `
       <div id="wb-palette"></div>
     </aside>
     <div class="wb-resizer" data-col="palette" title="Drag to resize"></div>
-    <aside class="wb-pane wb-pane-tree">
-      <h2>Structure</h2>
+    <aside class="wb-pane wb-pane-tree" id="wb-pane-tree">
+      <div class="wb-tree-rail" id="wb-tree-rail" title="Hover to open Structure — it stays open until you click somewhere else">⬚<span>structure</span></div>
+      <h2><span>Structure</span>
+        <button id="wb-tree-peek" title="Auto-hide: shrink Structure to a rail; hover the rail to open it, click anywhere else to close">📌</button>
+      </h2>
       <div id="wb-tree"></div>
     </aside>
     <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
@@ -96,22 +99,31 @@ app.innerHTML = `
       <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span>
         <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to preview the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       </h2>
-      <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties in Excel-style formulas. It formats how every row looks; it never changes stored values."></div>
+      <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties with Excel-style formulas."></div>
       <div id="wb-canvas" class="wb-canvas"></div>
+      <div class="wb-data-split" id="wb-data-split" title="Drag to resize the data panel"></div>
+      <section class="wb-data-dock" id="wb-data-dock">
+        <div class="wb-data-dock-head" id="wb-data-dock-head" title="Mock rows &amp; columns — click the title to collapse">
+          <span class="wb-data-title">Data — mock rows &amp; columns</span>
+          <span class="wb-data-dock-actions">
+            <button id="wb-data-min" title="Collapse / expand the data panel">▾</button>
+            <button id="wb-data-max" title="Maximize the data panel">⛶</button>
+          </span>
+        </div>
+        <div id="wb-tab-data" class="wb-data-body"></div>
+      </section>
     </section>
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>
     <aside class="wb-pane wb-pane-side" id="wb-pane-side">
       <div class="wb-side-rail" title="Hover to open the panel — it stays open until you click somewhere else">◧<span>panel</span></div>
       <nav class="wb-tabs">
-        <button data-tab="inspector" class="active">Inspector</button>
+        <button data-tab="inspector" class="active">Properties</button>
         <button data-tab="json" class="wb-adv">JSON</button>
-        <button data-tab="data">Data</button>
         <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close">📌</button>
-        <button id="wb-side-max" title="Maximize this pane — room for editing data and JSON">⛶</button>
+        <button id="wb-side-max" title="Maximize this pane — room for editing JSON">⛶</button>
       </nav>
       <div id="wb-tab-inspector" class="wb-tab active"></div>
       <div id="wb-tab-json" class="wb-tab"></div>
-      <div id="wb-tab-data" class="wb-tab"></div>
     </aside>
   </main>
   <div id="wb-toast" class="wb-toast" hidden></div>
@@ -123,6 +135,11 @@ interface UiPrefs {
   cols: { palette: number; tree: number; side: number };
   paletteCollapsed: boolean;
   sideMode: 'normal' | 'peek' | 'max';
+  /** Structure pane auto-hide (pin to a rail), mirroring the side pane. */
+  treeMode: 'normal' | 'peek';
+  /** The center Data dock: its height (px) and minimize/maximize state. */
+  dataH: number;
+  dataMode: 'normal' | 'min' | 'max';
   mode: 'basic' | 'advanced';
   titleCol: boolean;
 }
@@ -130,6 +147,9 @@ const uiPrefs: UiPrefs = {
   cols: { palette: 220, tree: 250, side: 360 },
   paletteCollapsed: false,
   sideMode: 'normal',
+  treeMode: 'normal',
+  dataH: 220,
+  dataMode: 'min',
   mode: 'basic',
   titleCol: true,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
@@ -138,18 +158,20 @@ const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
 const sidePane = document.getElementById('wb-pane-side')!;
+const treePane = document.getElementById('wb-pane-tree')!;
 const applyLayout = () => {
   const p = uiPrefs.paletteCollapsed ? 58 : uiPrefs.cols.palette;
   const side = uiPrefs.sideMode === 'peek' ? 30
     : uiPrefs.sideMode === 'max' ? Math.max(560, Math.round(window.innerWidth * 0.62))
     : uiPrefs.cols.side;
-  // Basic is the Sheet shell: the palette becomes the ribbon and the
-  // inspector is studio-only, so the grid drops both their columns (and
-  // their resizers, hidden in CSS). Structure stays — it's the cheap,
-  // useful map of what you're building.
+  // Structure can auto-hide to a rail (pinned) just like the side pane.
+  const tree = uiPrefs.treeMode === 'peek' ? 30 : uiPrefs.cols.tree;
+  // Sheet keeps the palette (far left) and Structure; only the studio
+  // inspector pane and its resizer are dropped (hidden in CSS). Advanced adds
+  // the inspector pane back on the right.
   layout.style.gridTemplateColumns = uiPrefs.mode === 'basic'
-    ? `${uiPrefs.cols.tree}px 5px 1fr`
-    : `${p}px 5px ${uiPrefs.cols.tree}px 5px 1fr 5px ${side}px`;
+    ? `${p}px 5px ${tree}px 5px 1fr`
+    : `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`;
   document.getElementById('wb-pane-palette')!.classList.toggle('wb-collapsed', uiPrefs.paletteCollapsed);
   (document.getElementById('wb-palette-toggle') as HTMLButtonElement).textContent = uiPrefs.paletteCollapsed ? '⮞' : '⮜';
   sidePane.classList.toggle('wb-peek', uiPrefs.sideMode === 'peek');
@@ -157,6 +179,10 @@ const applyLayout = () => {
   sidePane.style.setProperty('--wb-side-w', `${uiPrefs.cols.side}px`);
   document.getElementById('wb-side-peek')!.classList.toggle('active', uiPrefs.sideMode === 'peek');
   document.getElementById('wb-side-max')!.classList.toggle('active', uiPrefs.sideMode === 'max');
+  treePane.classList.toggle('wb-peek', uiPrefs.treeMode === 'peek');
+  if (uiPrefs.treeMode !== 'peek') treePane.classList.remove('wb-peek-open');
+  treePane.style.setProperty('--wb-tree-w', `${uiPrefs.cols.tree}px`);
+  document.getElementById('wb-tree-peek')!.classList.toggle('active', uiPrefs.treeMode === 'peek');
 };
 window.addEventListener('resize', applyLayout);
 
@@ -179,6 +205,20 @@ document.addEventListener('pointerdown', (e) => {
     sidePane.classList.remove('wb-peek-open');
   }
 });
+// Structure pane: pin/auto-hide to a rail, mirroring the side pane
+document.getElementById('wb-tree-peek')!.addEventListener('click', () => {
+  uiPrefs.treeMode = uiPrefs.treeMode === 'peek' ? 'normal' : 'peek';
+  applyLayout();
+  saveUiPrefs();
+});
+treePane.addEventListener('mouseenter', () => {
+  if (uiPrefs.treeMode === 'peek') treePane.classList.add('wb-peek-open');
+});
+document.addEventListener('pointerdown', (e) => {
+  if (uiPrefs.treeMode === 'peek' && !treePane.contains(e.target as Node)) {
+    treePane.classList.remove('wb-peek-open');
+  }
+});
 document.getElementById('wb-palette-toggle')!.addEventListener('click', () => {
   uiPrefs.paletteCollapsed = !uiPrefs.paletteCollapsed;
   applyLayout();
@@ -192,6 +232,7 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
     const startX = e.clientX;
     const startW = uiPrefs.cols[col];
     if (col === 'palette' && uiPrefs.paletteCollapsed) return;
+    if (col === 'tree' && uiPrefs.treeMode === 'peek') return;
     const move = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
       // the side pane grows leftwards
@@ -210,29 +251,78 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
 }
 applyLayout();
 
+// ─── center Data dock: collapse / maximize / drag-resize ────────────────────
+// The Data editor lives below the preview (both modes), as its own panel with a
+// draggable height and minimize/maximize — not a tab in the studio side pane.
+const dataDock = document.getElementById('wb-data-dock')!;
+const dataSplit = document.getElementById('wb-data-split')!;
+const dataMinBtn = document.getElementById('wb-data-min') as HTMLButtonElement;
+const dataMaxBtn = document.getElementById('wb-data-max') as HTMLButtonElement;
+const applyDataDock = () => {
+  dataDock.classList.toggle('wb-min', uiPrefs.dataMode === 'min');
+  dataDock.classList.toggle('wb-max', uiPrefs.dataMode === 'max');
+  dataDock.style.setProperty('--wb-data-h', `${uiPrefs.dataH}px`);
+  dataSplit.style.display = uiPrefs.dataMode === 'min' ? 'none' : '';
+  dataMinBtn.textContent = uiPrefs.dataMode === 'min' ? '▸' : '▾';
+  dataMinBtn.title = uiPrefs.dataMode === 'min' ? 'Expand the data panel' : 'Collapse the data panel';
+  dataMaxBtn.classList.toggle('active', uiPrefs.dataMode === 'max');
+};
+dataMinBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  uiPrefs.dataMode = uiPrefs.dataMode === 'min' ? 'normal' : 'min';
+  applyDataDock(); saveUiPrefs();
+});
+dataMaxBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  uiPrefs.dataMode = uiPrefs.dataMode === 'max' ? 'normal' : 'max';
+  applyDataDock(); saveUiPrefs();
+});
+document.getElementById('wb-data-dock-head')!.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('button')) return; // buttons handle themselves
+  uiPrefs.dataMode = uiPrefs.dataMode === 'min' ? 'normal' : 'min';
+  applyDataDock(); saveUiPrefs();
+});
+// drag the splitter to set the dock height (dragging up grows it)
+dataSplit.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  dataSplit.setPointerCapture(e.pointerId);
+  const startY = e.clientY;
+  const startH = dataDock.getBoundingClientRect().height;
+  if (uiPrefs.dataMode !== 'normal') { uiPrefs.dataMode = 'normal'; applyDataDock(); }
+  const move = (ev: PointerEvent) => {
+    // clamp against the center column the dock lives in (leave room for the
+    // preview above), not the window — so it can't outgrow its container
+    const paneH = dataDock.parentElement?.clientHeight ?? window.innerHeight;
+    uiPrefs.dataH = Math.max(90, Math.min(paneH - 160, startH - (ev.clientY - startY)));
+    dataDock.style.setProperty('--wb-data-h', `${uiPrefs.dataH}px`);
+  };
+  const up = () => {
+    dataSplit.removeEventListener('pointermove', move);
+    dataSplit.removeEventListener('pointerup', up);
+    saveUiPrefs();
+  };
+  dataSplit.addEventListener('pointermove', move);
+  dataSplit.addEventListener('pointerup', up);
+});
+applyDataDock();
+
 // ─── Sheet / Advanced mode ──────────────────────────────────────────────────
 // The label is "Sheet" but the persisted uiPrefs.mode value stays 'basic' and
 // the body class stays `wb-basic` — both frozen so the rename never wipes a
 // maker's autosaved prefs (the standing rename rule).
-// Sheet (the default) is the single surface: the palette moves to a ribbon, the
-// left palette pane and the right inspector pane are dropped (studio
-// furniture), and the preview widens to fill them. The Structure pane stays.
-// On top of that it still hides the power-user surface marked `.wb-adv` (raw
-// JSON tab, doc switcher, advanced palette items / inspector sections);
-// `.wb-adv-active` elements stay visible so nothing becomes uneditable.
-// Editing in basic happens through the Format-cells dialog (right-click / the
-// grid header menu), not the inspector.
-const ribbonPalette = document.getElementById('wb-ribbon-palette')!;
+// Sheet (the default) keeps the full palette (far-left pane) and the Structure
+// pane; only the right Properties/JSON pane is dropped (studio furniture) and
+// the preview widens to fill it. The Data dock sits below the preview in both
+// modes. Sheet still hides the power-user surface marked `.wb-adv` (raw JSON
+// tab, doc switcher, advanced inspector sections); `.wb-adv-active` elements
+// stay visible so nothing becomes uneditable.
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#wb-mode button')];
 const applyMode = () => {
   const basic = uiPrefs.mode === 'basic';
   document.body.classList.toggle('wb-basic', basic);
   for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === uiPrefs.mode);
-  // the palette has two homes: the ribbon in basic, the left studio pane in
-  // advanced. Keep only one populated so a selector never matches both.
-  if (basic) mountPalette(ribbonPalette);
-  else ribbonPalette.innerHTML = '';
-  // the grid template drops the palette/inspector columns in basic
+  // the full palette lives in the far-left pane in both modes now
+  // the grid template drops only the inspector column in basic
   applyLayout();
   // never leave a hidden tab active — fall back to the inspector
   const activeTab = app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab].active');
@@ -265,6 +355,10 @@ document.addEventListener('pointerdown', (e) => {
 menuPanel.addEventListener('click', (e) => {
   // button actions close the menu; the outlines checkbox keeps it open
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
+});
+document.getElementById('wb-ribbon-cols')!.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openColumnGallery(e.currentTarget as HTMLElement, toast);
 });
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());

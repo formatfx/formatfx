@@ -17,27 +17,46 @@ describe('slotsFor — element/type-aware catalog', () => {
 
   it('always offers the curated paint set', () => {
     const ids = slotsFor({ elmType: 'div' }).map((s) => s.id);
-    expect(ids).toEqual(expect.arrayContaining(['text', 'fill', 'ink', 'weight', 'leftBorder']));
+    expect(ids).toEqual(expect.arrayContaining(['text', 'fill', 'ink', 'weight', 'leftBorder', 'radius', 'opacity']));
+  });
+
+  it('is element-aware: box slots everywhere, type slots only where text renders', () => {
+    const img = slotsFor({ elmType: 'img' }).map((s) => s.id);
+    // box/paint slots apply to an image…
+    expect(img).toEqual(expect.arrayContaining(['fill', 'leftBorder', 'radius', 'opacity']));
+    // …but text/type slots and "Text shown" do not
+    expect(img).not.toContain('ink');
+    expect(img).not.toContain('weight');
+    expect(img).not.toContain('text');
+  });
+
+  it('offers attribute slots only where they apply (img → src, a → href)', () => {
+    expect(slotsFor({ elmType: 'img' }).some((s) => s.id === 'src')).toBe(true);
+    expect(slotsFor({ elmType: 'a' }).some((s) => s.id === 'href')).toBe(true);
+    expect(slotsFor({ elmType: 'div' }).some((s) => s.kind === 'attr')).toBe(false);
   });
 
   it('surfaces existing style properties as their own slots, without duplicating curated ones', () => {
     const node: SPElement = {
       elmType: 'div',
-      style: { 'background-color': '#fff', 'border-radius': '12px', 'width': '120px' },
+      style: { 'background-color': '#fff', 'box-shadow': '0 1px 2px #0003', 'width': '120px' },
     };
     const slots = slotsFor(node);
     // background-color is curated (fill) — not a second slot
     expect(slots.filter((s) => s.prop === 'background-color')).toHaveLength(1);
-    // border-radius / width appear as their own humanized slots
-    expect(bySlot(slots, 'style:border-radius').label).toBe('Border radius');
+    // non-curated props appear as their own humanized slots
+    expect(bySlot(slots, 'style:box-shadow').label).toBe('Box shadow');
     expect(bySlot(slots, 'style:width').label).toBe('Width');
   });
 
-  it('hints always say "every row" and "formatting only"', () => {
+  it('hints are useful and never use the "every row" phrasing', () => {
     for (const s of slotsFor({ elmType: 'div' })) {
-      expect(s.hint).toMatch(/every row/i);
-      expect(s.hint).toMatch(/formatting only|never changes/i);
+      expect(s.hint.length).toBeGreaterThan(10);
+      expect(s.hint).not.toMatch(/every row/i);
     }
+    // hints carry value guidance, e.g. the opacity hint explains the range
+    const opacity = slotsFor({ elmType: 'div' }).find((s) => s.id === 'opacity')!;
+    expect(opacity.hint).toMatch(/1 is solid|0\.6|invisible/);
   });
 });
 
@@ -69,6 +88,16 @@ describe('readSlot / writeSlot', () => {
     const node: SPElement = { elmType: 'div', style: { color: '#000' } };
     writeSlot(node, bySlot(slotsFor(node), 'fill'), '#fff');
     expect(node.style).toEqual({ color: '#000', 'background-color': '#fff' });
+  });
+
+  it('reads/writes attribute slots, tidying an empty attributes object', () => {
+    const node: SPElement = { elmType: 'img' };
+    const src = bySlot(slotsFor(node), 'src');
+    expect(readSlot(node, src)).toBeUndefined();
+    writeSlot(node, src, '=getUserImage([$Owner.email])');
+    expect(node.attributes!['src']).toBe('=getUserImage([$Owner.email])');
+    writeSlot(node, src, '');
+    expect(node.attributes).toBeUndefined();
   });
 });
 

@@ -57,39 +57,20 @@ body {
 /* basic hides the power-user surface — except where the design already uses it */
 body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
 
-/* ── Sheet shell (basic): palette → ribbon, no palette/inspector panes ───── */
-/* The palette moves to the ribbon and the inspector is studio-only, so basic
-   drops both their grid columns and their resizers. Structure stays. */
-body.wb-basic #wb-pane-palette,
+/* ── Sheet shell (basic): full palette + Structure, no Properties pane ────── */
+/* Sheet keeps the palette (far left) and Structure; only the studio
+   Properties/JSON pane and its resizer are dropped. */
 body.wb-basic #wb-pane-side,
-body.wb-basic .wb-resizer[data-col="palette"],
 body.wb-basic .wb-resizer[data-col="side"] { display: none !important; }
 body.wb-basic .wb-pane-canvas { border-right: none; }
 
-/* ── ribbon (basic only) ─────────────────────────────────────────────────── */
+/* ── ribbon: a slim Sheet toolbar (basic only) ───────────────────────────── */
 .wb-ribbon { display: none; }
 body.wb-basic .wb-ribbon {
-  display: flex; align-items: stretch; gap: 4px;
+  display: flex; align-items: center; gap: 4px;
   padding: 6px 12px; background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border); overflow-x: auto;
 }
-.wb-ribbon-tab {
-  display: flex; align-items: center; align-self: stretch;
-  font-size: 11px; font-weight: 600; color: var(--wb-accent);
-  text-transform: uppercase; letter-spacing: .06em;
-  padding-right: 12px; margin-right: 8px; border-right: 1px solid var(--wb-border);
-}
-.wb-ribbon-palette { display: flex; align-items: stretch; }
-/* each group: items on top, group caption beneath (column-reverse), divided */
-.wb-ribbon .wb-palette-group-wrap {
-  display: flex; flex-direction: column-reverse; align-items: center; gap: 4px;
-  padding: 0 12px; border-right: 1px solid var(--wb-border);
-}
-.wb-ribbon .wb-palette-group-wrap:last-child { border-right: none; }
-.wb-ribbon .wb-palette-group { margin: 0; }
-.wb-ribbon .wb-palette-grid { display: flex; gap: 6px; }
-.wb-ribbon .wb-palette-item { width: 62px; padding: 5px 4px; font-size: 10px; }
-.wb-ribbon .wb-palette-item .ms-Icon { font-size: 15px; }
 
 /* ── topbar ☰ menu ───────────────────────────────────────── */
 .wb-menu { position: relative; }
@@ -224,9 +205,43 @@ body.wb-basic .wb-ribbon {
 .wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
 
 /* ── canvas ──────────────────────────────────────────────── */
-.wb-pane-canvas { background: var(--wb-canvas-bg); }
+/* the center column is a flex stack: header · fx bar · preview · data dock */
+.wb-pane-canvas { background: var(--wb-canvas-bg); display: flex; flex-direction: column; overflow: hidden; }
+.wb-pane-canvas > #wb-canvas { flex: 1 1 0; min-height: 140px; overflow: auto; }
 .wb-canvas { min-height: 300px; padding: 12px; border-radius: 6px; }
 .wb-canvas.wb-canvas-drop { outline: 2px dashed var(--wb-accent); }
+
+/* ── center Data dock (below the preview) ────────────────── */
+.wb-data-split {
+  flex: 0 0 auto; height: 6px; margin: 2px 0; cursor: row-resize;
+  background: transparent; touch-action: none;
+}
+.wb-data-split:hover, .wb-data-split:active { background: var(--wb-accent); opacity: .5; }
+.wb-data-dock {
+  flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
+  height: var(--wb-data-h, 220px);
+  border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface);
+}
+.wb-data-dock.wb-min { height: auto; }
+.wb-data-dock.wb-max { flex: 1 1 auto; height: auto; }
+.wb-data-dock-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 5px 8px; cursor: pointer; border-bottom: 1px solid var(--wb-border);
+}
+.wb-data-dock.wb-min .wb-data-dock-head { border-bottom: none; }
+.wb-data-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--wb-text-2);
+}
+.wb-data-dock-actions { display: flex; gap: 4px; }
+.wb-data-dock-actions button {
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text-2);
+  cursor: pointer; font-size: 11px; border-radius: 3px; padding: 1px 7px; line-height: 1.5;
+}
+.wb-data-dock-actions button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-data-dock-actions button.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-data-body { flex: 1 1 auto; overflow: auto; min-height: 0; padding: 8px; }
+.wb-data-dock.wb-min .wb-data-body { display: none; }
 
 .wb-mock-list { background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 4px; }
 .wb-mock-row { display: flex; border-bottom: 1px solid var(--wb-border); align-items: center; min-height: 38px; }
@@ -1199,6 +1214,17 @@ body.wb-basic #wb-fxbar { display: block; }
 .wb-fx-feedback[data-tone="raw"] { color: #ca5010; }
 .wb-fx-empty { font-size: 12px; color: var(--wb-text-2); padding: 4px 0 4px 2px; }
 
+/* visible value choices (chips) — a datalist can't attach to a <textarea> */
+.wb-fx-sugs { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 0 26px; }
+.wb-fx-float .wb-fx-sugs { margin: 6px 0 0; max-height: 92px; overflow-y: auto; }
+.wb-fx-sug {
+  font: 11px Consolas, monospace; padding: 2px 8px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 11px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-fx-sug:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
 /* ── fx bar: the floating / detached editor ──────────────────────────────── */
 .wb-fx-float {
   position: fixed; z-index: 50; width: 360px; max-width: calc(100vw - 16px);
@@ -1225,3 +1251,60 @@ body.wb-basic #wb-fxbar { display: block; }
 .wb-fx-float-cancel:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-fx-float-apply:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
 .wb-fx-float-apply:disabled { opacity: .45; cursor: default; }
+
+/* ── ribbon: "Formatted columns" picker button ───────────────────────────── */
+.wb-ribbon-cols {
+  align-self: center; flex: none;
+  padding: 6px 12px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text);
+}
+.wb-ribbon-cols:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* ── formatted-columns gallery (floating preview picker) ─────────────────── */
+.wb-colgal {
+  position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 16px);
+  max-height: 70vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+}
+.wb-colgal-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
+.wb-colgal-empty { font-size: 12px; color: var(--wb-text-2); line-height: 1.5; }
+.wb-colgal-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px; text-align: left;
+  border: 1px solid var(--wb-border); border-radius: 6px;
+  background: var(--wb-bg); color: var(--wb-text); cursor: pointer;
+}
+.wb-colgal-card:hover { border-color: var(--wb-accent); }
+.wb-colgal-label { font-size: 12px; font-weight: 600; }
+.wb-colgal-preview { display: flex; flex-direction: column; gap: 4px; }
+.wb-colgal-cell {
+  display: flex; align-items: center; min-height: 22px; padding: 2px 4px;
+  background: var(--wb-surface); border-radius: 3px; overflow: hidden;
+}
+
+/* ── Structure pane: auto-hide (pin) to a rail, like the side pane ────────── */
+.wb-pane-tree h2 { display: flex; align-items: center; justify-content: space-between; }
+#wb-tree-peek {
+  flex: 0 0 auto; padding: 2px 6px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+}
+#wb-tree-peek.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-tree-rail {
+  display: none; flex-direction: column; align-items: center; gap: 6px;
+  color: var(--wb-text-2); font-size: 12px; cursor: pointer; padding-top: 8px;
+}
+.wb-tree-rail span { writing-mode: vertical-rl; letter-spacing: .12em; text-transform: uppercase; font-size: 10px; }
+.wb-pane-tree.wb-peek:not(.wb-peek-open) > :not(.wb-tree-rail) { display: none; }
+.wb-pane-tree.wb-peek:not(.wb-peek-open) { padding: 4px 2px; }
+.wb-pane-tree.wb-peek:not(.wb-peek-open) .wb-tree-rail { display: flex; }
+.wb-pane-tree.wb-peek.wb-peek-open {
+  position: fixed; left: 0; top: 49px; bottom: 0;
+  width: var(--wb-tree-w, 250px); z-index: 600;
+  background: var(--wb-surface);
+  box-shadow: 10px 0 28px rgba(0, 0, 0, .28);
+  border-right: 1px solid var(--wb-border);
+}

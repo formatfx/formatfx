@@ -371,6 +371,7 @@ export const STYLE_VALUE_SUGGESTIONS: Record<string, string[]> = {
   'box-shadow': ['0 1.6px 3.6px rgba(0,0,0,.13)', '0 6.4px 14.4px rgba(0,0,0,.13)'],
   'object-fit': ['cover', 'contain'],
   'visibility': ['visible', 'hidden'],
+  'opacity': ['1', '0.85', '0.6', '0.4', '0.2'],
 };
 
 const COLOR_CLASS_TOKENS = [
