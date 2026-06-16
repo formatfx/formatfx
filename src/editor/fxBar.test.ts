@@ -100,4 +100,53 @@ describe('fxBar', () => {
     type(host, '');
     expect(state.selectedNode!.txtContent).toBeUndefined();
   });
+
+  it('offers type-aware suggestions in the slot datalist', () => {
+    const host = mountWith({ elmType: 'div' });
+    setSlot(host, 'fill');
+    const opts = [...host.querySelectorAll('.wb-fx-row datalist option')].map((o) => (o as HTMLOptionElement).value);
+    expect(opts).toEqual(expect.arrayContaining(['#107c10'])); // palette colour
+    expect(opts.some((v) => v.startsWith('=IF('))).toBe(true); // a colour-by-condition template
+  });
+
+  describe('floating / detached editor', () => {
+    const openFloat = (host: HTMLElement): HTMLElement => {
+      $<HTMLButtonElement>(host, '.wb-fx-expand').dispatchEvent(new Event('click'));
+      const panel = document.querySelector<HTMLElement>('.wb-fx-float');
+      if (!panel) throw new Error('float did not open');
+      return panel;
+    };
+
+    it('⤢ opens a roomy editor; Apply transpiles and closes it', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'ink');
+      const panel = openFloat(host);
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      ta.value = '=IF([Status] = "Blocked", "#d13438", "")';
+      $<HTMLButtonElement>(panel, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
+      expect(state.selectedNode!.style!['color']).toBe("=if([$Status] == 'Blocked', '#d13438', '')");
+      expect(document.querySelector('.wb-fx-float')).toBeNull(); // closed after apply
+    });
+
+    it('Cancel closes without mutating', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#000000';
+      $<HTMLButtonElement>(panel, '.wb-fx-float-cancel').dispatchEvent(new Event('click'));
+      expect(state.selectedNode!.style).toBeUndefined();
+      expect(document.querySelector('.wb-fx-float')).toBeNull();
+    });
+
+    it('refused input in the float keeps it open and leaves the doc untouched', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '=NOPE([Status]';
+      $<HTMLButtonElement>(panel, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
+      expect(state.selectedNode!.style).toBeUndefined();
+      expect(document.querySelector('.wb-fx-float')).not.toBeNull(); // stays open
+      expect($(panel, '.wb-fx-feedback').getAttribute('data-tone')).toBe('error');
+    });
+  });
 });
