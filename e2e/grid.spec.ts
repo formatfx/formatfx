@@ -211,7 +211,7 @@ test('✨ a color for each choice: one rule per choice, smart colors, formula-re
 test('basic mode lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('#wb-mode button', { hasText: 'Basic' })).toHaveClass(/active/);
+  await expect(page.locator('#wb-mode button', { hasText: 'Sheet' })).toHaveClass(/active/);
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
   // header menu works in basic
   await header(page, 'Status').click();

@@ -32,8 +32,8 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
-      <div class="wb-mode" id="wb-mode" title="Basic shows the everyday tools — presets, visual editing, your data. Advanced adds the raw JSON tab, loops, row actions, hover cards, CFRs and tenant themes.">
-        <button data-mode="basic">Basic</button>
+      <div class="wb-mode" id="wb-mode" title="Sheet — Excel-style formatting with the everyday tools: presets, visual editing, the formula bar, your data. Advanced adds the raw JSON tab, loops, row actions, hover cards, CFRs and tenant themes.">
+        <button data-mode="basic">Sheet</button>
         <button data-mode="advanced">Advanced</button>
       </div>
       <label class="wb-adv" title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
@@ -210,8 +210,11 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
 }
 applyLayout();
 
-// ─── basic / advanced mode ──────────────────────────────────────────────────
-// Basic (the default) is the Sheet shell: the palette moves to a ribbon, the
+// ─── Sheet / Advanced mode ──────────────────────────────────────────────────
+// The label is "Sheet" but the persisted uiPrefs.mode value stays 'basic' and
+// the body class stays `wb-basic` — both frozen so the rename never wipes a
+// maker's autosaved prefs (the standing rename rule).
+// Sheet (the default) is the single surface: the palette moves to a ribbon, the
 // left palette pane and the right inspector pane are dropped (studio
 // furniture), and the preview widens to fill them. The Structure pane stays.
 // On top of that it still hides the power-user surface marked `.wb-adv` (raw
@@ -244,7 +247,7 @@ for (const b of modeButtons) {
     applyMode();
     saveUiPrefs();
     toast(uiPrefs.mode === 'basic'
-      ? 'Basic mode — drop in ready-made pieces and arrange them. Everything is click-only and undoable.'
+      ? 'Sheet mode — drop in ready-made pieces, arrange them, and paint with the formula bar. Everything is click-only and undoable.'
       : 'Advanced mode — full surface: every preset, all properties, JSON tab, loops, actions, cards, CFRs, tenant theme.');
   });
 }

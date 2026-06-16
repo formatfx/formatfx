@@ -113,7 +113,7 @@ test('basic mode (the default) is the Sheet shell — ribbon, no palette/inspect
   // fresh prefs → basic mode is the landing default
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('#wb-mode button', { hasText: 'Basic' })).toHaveClass(/active/);
+  await expect(page.locator('#wb-mode button', { hasText: 'Sheet' })).toHaveClass(/active/);
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
   await expect(page.locator('#wb-activedoc')).toBeHidden();
 
