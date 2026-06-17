@@ -224,9 +224,12 @@ document.getElementById('picker-none')!.addEventListener('click', () => setAllFi
 async function initPageState(): Promise<void> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const kind = classifyUrl(tab?.url);
-  (document.getElementById('main') as HTMLElement).hidden = kind !== 'sharepoint';
-  (document.getElementById('state-formatfx') as HTMLElement).hidden = kind !== 'formatfx';
-  (document.getElementById('state-other') as HTMLElement).hidden = kind !== 'other';
+  const main = document.getElementById('main') as HTMLElement;
+  const fxState = document.getElementById('state-formatfx') as HTMLElement;
+  const otherState = document.getElementById('state-other') as HTMLElement;
+  main.hidden = kind !== 'sharepoint';
+  fxState.hidden = kind !== 'formatfx';
+  otherState.hidden = kind !== 'other';
   if (kind === 'sharepoint') void refreshStagedButton();
 }
 
