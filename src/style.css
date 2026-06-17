@@ -49,24 +49,8 @@ body {
 }
 .wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
-/* ── basic / advanced mode ───────────────────────────────── */
-.wb-mode { display: flex; border: 1px solid var(--wb-border); border-radius: 3px; overflow: hidden; }
-.wb-topbar-controls .wb-mode button { border: 0; border-radius: 0; padding: 4px 10px; color: var(--wb-text-2); }
-.wb-topbar-controls .wb-mode button.active { background: var(--wb-accent); color: #fff; cursor: default; }
-.wb-topbar-controls .wb-mode button.active:hover { color: #fff; }
-/* basic hides the power-user surface — except where the design already uses it */
-body.wb-basic .wb-adv:not(.wb-adv-active) { display: none !important; }
-
-/* ── Sheet shell (basic): full palette + Structure, no Properties pane ────── */
-/* Sheet keeps the palette (far left) and Structure; only the studio
-   Properties/JSON pane and its resizer are dropped. */
-body.wb-basic #wb-pane-side,
-body.wb-basic .wb-resizer[data-col="side"] { display: none !important; }
-body.wb-basic .wb-pane-canvas { border-right: none; }
-
-/* ── ribbon: a slim Sheet toolbar (basic only) ───────────────────────────── */
-.wb-ribbon { display: none; }
-body.wb-basic .wb-ribbon {
+/* ── ribbon: a slim toolbar (the Formatted-columns picker) ───────────────── */
+.wb-ribbon {
   display: flex; align-items: center; gap: 4px;
   padding: 6px 12px; background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border); overflow-x: auto;
@@ -1231,8 +1215,7 @@ body.wb-basic .wb-ribbon {
 /* ── Sheet fx bar — the formula bar (Basic/Sheet mode only) ───────────────── */
 /* Hidden in Advanced: there the inspector edits raw SP. The bar formats how
    every row looks via the Excel dialect; it never sets stored values. */
-#wb-fxbar { display: none; }
-body.wb-basic #wb-fxbar { display: block; }
+#wb-fxbar { display: block; }
 .wb-fxbar { padding: 6px 2px 4px; border-bottom: 1px solid var(--wb-border); margin-bottom: 8px; }
 .wb-fx-row { display: flex; align-items: flex-start; gap: 6px; }
 .wb-fx-badge {

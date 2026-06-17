@@ -33,11 +33,7 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
-      <div class="wb-mode" id="wb-mode" title="Sheet — Excel-style formatting with the everyday tools: presets, visual editing, the formula bar, your data. Advanced adds the raw JSON tab, loops, row actions, hover cards, CFRs and tenant themes.">
-        <button data-mode="basic">Sheet</button>
-        <button data-mode="advanced">Advanced</button>
-      </div>
-      <label class="wb-adv" title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
+      <label title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
         <select id="wb-activedoc"><option value="main">Main formatter</option></select>
       </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
@@ -160,7 +156,6 @@ interface UiPrefs {
   /** The center Data dock: its height (px) and minimize/maximize state. */
   dataH: number;
   dataMode: 'normal' | 'min' | 'max';
-  mode: 'basic' | 'advanced';
   titleCol: boolean;
 }
 const uiPrefs: UiPrefs = {
@@ -173,7 +168,6 @@ const uiPrefs: UiPrefs = {
   treeColsMin: false,
   dataH: 220,
   dataMode: 'min',
-  mode: 'basic',
   titleCol: true,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
@@ -189,12 +183,9 @@ const applyLayout = () => {
     : uiPrefs.cols.side;
   // Structure can auto-hide to a rail (pinned) just like the side pane.
   const tree = uiPrefs.treeMode === 'peek' ? 30 : uiPrefs.cols.tree;
-  // Sheet keeps the palette (far left) and Structure; only the studio
-  // inspector pane and its resizer are dropped (hidden in CSS). Advanced adds
-  // the inspector pane back on the right.
-  layout.style.gridTemplateColumns = uiPrefs.mode === 'basic'
-    ? `${p}px 5px ${tree}px 5px 1fr`
-    : `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`;
+  // One unified surface: palette (far left), Structure, the preview/grid, and
+  // the Properties/JSON pane on the right — every tool is always present.
+  layout.style.gridTemplateColumns = `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`;
   document.getElementById('wb-pane-palette')!.classList.toggle('wb-collapsed', uiPrefs.paletteCollapsed);
   (document.getElementById('wb-palette-toggle') as HTMLButtonElement).textContent = uiPrefs.paletteCollapsed ? '⮞' : '⮜';
   sidePane.classList.toggle('wb-peek', uiPrefs.sideMode === 'peek');
@@ -398,43 +389,6 @@ dataSplit.addEventListener('pointerdown', (e) => {
   dataSplit.addEventListener('pointerup', up);
 });
 applyDataDock();
-
-// ─── Sheet / Advanced mode ──────────────────────────────────────────────────
-// The label is "Sheet" but the persisted uiPrefs.mode value stays 'basic' and
-// the body class stays `wb-basic` — both frozen so the rename never wipes a
-// maker's autosaved prefs (the standing rename rule).
-// Sheet (the default) keeps the full palette (far-left pane) and the Structure
-// pane; only the right Properties/JSON pane is dropped (studio furniture) and
-// the preview widens to fill it. The Data dock sits below the preview in both
-// modes. Sheet still hides the power-user surface marked `.wb-adv` (raw JSON
-// tab, doc switcher, advanced inspector sections); `.wb-adv-active` elements
-// stay visible so nothing becomes uneditable.
-const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('#wb-mode button')];
-const applyMode = () => {
-  const basic = uiPrefs.mode === 'basic';
-  document.body.classList.toggle('wb-basic', basic);
-  for (const b of modeButtons) b.classList.toggle('active', b.dataset.mode === uiPrefs.mode);
-  // the full palette lives in the far-left pane in both modes now
-  // the grid template drops only the inspector column in basic
-  applyLayout();
-  // never leave a hidden tab active — fall back to the inspector
-  const activeTab = app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab].active');
-  if (basic && activeTab?.classList.contains('wb-adv')) {
-    app.querySelector<HTMLButtonElement>('.wb-tabs button[data-tab="inspector"]')!.click();
-  }
-};
-for (const b of modeButtons) {
-  b.addEventListener('click', () => {
-    if (uiPrefs.mode === b.dataset.mode) return;
-    uiPrefs.mode = b.dataset.mode as UiPrefs['mode'];
-    applyMode();
-    saveUiPrefs();
-    toast(uiPrefs.mode === 'basic'
-      ? 'Sheet mode — drop in ready-made pieces, arrange them, and paint with the formula bar. Everything is click-only and undoable.'
-      : 'Advanced mode — full surface: every preset, all properties, JSON tab, loops, actions, cards, CFRs, tenant theme.');
-  });
-}
-applyMode();
 
 // ─── topbar ☰ menu (save/open/theme/outlines/reset live here) ───────────────
 const menuEl = document.getElementById('wb-menu')!;

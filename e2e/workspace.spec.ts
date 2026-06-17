@@ -7,11 +7,7 @@ import { test, expect, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => { void d.accept(); });
   await page.goto('/');
-  await page.evaluate(() => {
-    localStorage.clear();
-    // most specs exercise the full surface — run them in advanced mode
-    localStorage.setItem('wb-ui-prefs', JSON.stringify({ mode: 'advanced' }));
-  });
+  await page.evaluate(() => localStorage.clear());
   await page.reload();
 });
 

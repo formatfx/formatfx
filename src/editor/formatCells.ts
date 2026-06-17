@@ -175,7 +175,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
     head.innerHTML = `<span class="wb-fc-title">Format cells — ${nameOf(node)}</span>
-      <span class="wb-fc-sub">every row gets these · nothing changes until OK (then Ctrl+Z undoes)</span>`;
+      <span class="wb-fc-sub">nothing changes until you Apply (then Ctrl+Z undoes)</span>`;
     const close = document.createElement('button');
     close.className = 'wb-fc-close';
     close.textContent = '✕';
@@ -356,7 +356,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     foot.appendChild(cancel);
     const ok = document.createElement('button');
     ok.className = 'wb-fc-ok';
-    ok.textContent = 'OK — apply to every row';
+    ok.textContent = 'Apply';
     ok.title = 'Apply everything staged here as one undoable change';
     ok.disabled = Object.keys(patch).length === 0;
     ok.addEventListener('click', () => {
@@ -369,7 +369,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
         if (Object.keys(node.style).length === 0) delete node.style;
       });
       closeFormatCells();
-      onToast(`Format applied to ${nameOf(node)} — every row wears it (Ctrl+Z undoes)`);
+      onToast(`Format applied to ${nameOf(node)} (Ctrl+Z undoes)`);
     });
     foot.appendChild(ok);
     panel.appendChild(foot);

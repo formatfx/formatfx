@@ -10,10 +10,7 @@ test.beforeEach(async ({ page }) => {
   // accept dialogs: applying name-less JSON over a named design now asks first
   page.on('dialog', (d) => { void d.accept(); });
   await page.goto('/');
-  await page.evaluate(() => {
-    localStorage.clear();
-    localStorage.setItem('wb-ui-prefs', JSON.stringify({ mode: 'advanced' }));
-  });
+  await page.evaluate(() => localStorage.clear());
   await page.reload();
 });
 
@@ -208,17 +205,16 @@ test('✨ a color for each choice: one rule per choice, smart colors, formula-re
   await expect(cf.locator('.wb-cf-note')).toContainText('replaces the formula');
 });
 
-test('basic mode lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
+test('the app lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('#wb-mode button', { hasText: 'Sheet' })).toHaveClass(/active/);
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
-  // header menu works in basic
+  // header menu works
   await header(page, 'Status').click();
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Edit its formatter' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.wb-grid-menu')).toBeHidden();
-  // grouping works in basic
+  // grouping works
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
   await expect(page.locator('.wb-tree-name', { hasText: 'Status + DueDate group' })).toBeVisible();
 });
