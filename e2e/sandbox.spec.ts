@@ -11,11 +11,7 @@ test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => { lastDialog = d.message(); void d.accept(); });
   await page.goto('/');
   // a fresh run each time — clear the autosaved project
-  await page.evaluate(() => {
-    localStorage.clear();
-    // most specs exercise the full surface — run them in advanced mode
-    localStorage.setItem('wb-ui-prefs', JSON.stringify({ mode: 'advanced' }));
-  });
+  await page.evaluate(() => localStorage.clear());
   await page.reload();
 });
 
@@ -109,48 +105,43 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('Sheet mode (the default) — full palette pane + Structure, no Properties pane', async ({ page }) => {
-  // fresh prefs → Sheet mode is the landing default
+test('one unified surface — palette + Structure + Properties/JSON, ribbon and fx bar all present', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.locator('#wb-mode button', { hasText: 'Sheet' })).toHaveClass(/active/);
-  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeHidden();
-  await expect(page.locator('#wb-activedoc')).toBeHidden();
 
-  // the palette is a far-left pane and Structure stays; only the studio
-  // Properties/JSON pane is dropped, and the preview widens.
+  // there is no mode toggle anymore — everything is on screen at once
+  await expect(page.locator('#wb-mode')).toHaveCount(0);
+
+  // the full surface: palette, Structure, the Properties/JSON pane, JSON tab,
+  // the doc switcher and the fx bar are all visible together
   await expect(page.locator('#wb-pane-palette')).toBeVisible();
-  await expect(page.locator('#wb-pane-side')).toBeHidden();
   await expect(page.locator('.wb-pane-tree')).toBeVisible();
+  await expect(page.locator('#wb-pane-side')).toBeVisible();
+  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
+  await expect(page.locator('#wb-activedoc')).toBeVisible();
+  await expect(page.locator('#wb-fxbar')).toBeVisible();
 
-  // outlines lives in the ☰ menu and IS part of Sheet
+  // outlines lives in the ☰ menu
   await page.click('#wb-menu-btn');
   await expect(page.locator('#wb-outlines')).toBeVisible();
   await page.click('#wb-menu-btn');
 
-  // the palette pane shows the FULL set now — basics AND actions/people/shells
+  // the palette pane shows the FULL set — basics AND actions/people/shells
   const palette = page.locator('#wb-pane-palette');
   await expect(palette.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
   await expect(palette.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeVisible();
   await expect(palette.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeVisible();
   await expect(palette.locator('.wb-palette-group', { hasText: 'Actions' })).toBeVisible();
 
-  // the ribbon is a slim Sheet toolbar (the Formatted-columns picker), not a palette
+  // the ribbon keeps the Formatted-columns picker (not a palette of items)
   const ribbon = page.locator('#wb-ribbon');
   await expect(ribbon).toBeVisible();
   await expect(ribbon.locator('#wb-ribbon-cols')).toBeVisible();
   await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
 
-  // switching to advanced restores the studio Properties pane, and it persists
-  await page.locator('#wb-mode button', { hasText: 'Advanced' }).click();
-  await expect(ribbon).toBeHidden();
-  await expect(page.locator('#wb-pane-palette')).toBeVisible();
-  await expect(page.locator('#wb-pane-side')).toBeVisible();
-  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
+  // the Properties pane edits the selected element
   await page.locator('.wb-tree-row').first().click();
   await expect(page.locator('#wb-tab-inspector').locator('textarea').first()).toBeVisible();
-  await page.reload();
-  await expect(page.locator('#wb-mode button', { hasText: 'Advanced' })).toHaveClass(/active/);
 });
 
 test('applying name-less JSON over a named design warns before dropping names', async ({ page }) => {

@@ -139,29 +139,20 @@ Key structural invariants:
   via the JSON tab's "names" checkbox (default checked). The JSON tab's
   textarea always keeps them so Apply-to-canvas round-trips losslessly.
   Project save/autosave keep names (raw stringify).
-- **Basic/advanced mode**: `uiPrefs.mode` in `wb-ui-prefs`, **default
-  `basic`** — that's the landing experience, deliberately. Basic is the
-  **Sheet shell** (SHEET-MODE.md's "no flanking panels", brought forward
-  without the rename): the palette moves to a horizontal **ribbon**
-  (`#wb-ribbon`, an Insert-flavoured strip mounted by `applyMode`; the same
-  `mountPalette` renders it, so only the basic tier shows), the left palette
-  pane and the right inspector pane are **dropped** (studio furniture), and
-  the preview widens to fill them. The **Structure** pane stays — a cheap,
-  useful map. `applyLayout` builds a 3-column grid template
-  (`tree 5 1fr`) in basic vs the full 7-column one in advanced; CSS hides
-  the palette/inspector panes and their resizers. Editing in basic is the
-  **Format-cells dialog** (right-click / grid header menu), *not* the
-  inspector — so nothing is hand-editable from a pane in basic, by design.
-  On top of the shell, `body.wb-basic` still hides every `.wb-adv` element
-  *unless* it also has `.wb-adv-active`: the JSON tab, doc switcher,
-  advanced palette items (`PaletteItem.basic` gates the tier) and advanced
-  inspector sections. `.wb-adv-active` is only used on the data side (CFR
-  registry when references are unresolved, tenant theme when one is active)
-  where hiding would strand live state. Mode is a UI pref, not project
-  state: it never touches the document or autosave. E2E specs seed
-  `{ mode: 'advanced' }` in `beforeEach` because they exercise the full
-  surface; the shell itself is covered by the basic-mode specs in
-  `sandbox.spec.ts` and `grid.spec.ts`.
+- **One unified surface** (the Sheet/Advanced split was removed 2026-06-17
+  at the owner's request — there is no mode toggle, no `uiPrefs.mode`):
+  every tool is on screen at once. The palette pane (far left), the
+  **Structure** pane, the preview/grid with the **fx bar** and the
+  **ribbon** (`#wb-ribbon` — the Formatted-columns picker), the center Data
+  dock, and the right Properties/JSON pane all coexist. `applyLayout` builds
+  the full 7-column grid template unconditionally; the ribbon (`.wb-ribbon`)
+  and fx bar (`#wb-fxbar`) are shown by default in CSS. Editing happens both
+  ways now — the **Format-cells dialog** (right-click / grid header menu)
+  *and* the inspector pane. The `.wb-adv` / `.wb-adv-active` class markers
+  remain in the markup but no longer hide anything (the `body.wb-basic`
+  rules are gone); they're harmless and can be cleaned up opportunistically.
+  E2E `beforeEach` just clears `localStorage`; the unified surface is
+  asserted in `sandbox.spec.ts`.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -402,7 +393,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   probe), `grid.spec.ts` (grid-first workspace: header menus, right-click
   context menus, conditional formatting incl. cross-column watching, the
   Format cells dialog, format-column round trip, hide/add,
-  drag-to-group/reorder, basic mode), `guide.spec.ts` (field guide),
+  drag-to-group/reorder), `guide.spec.ts` (field guide),
   plus the snapshot-import/views/deploy-panel specs in `import.spec.ts`.
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
