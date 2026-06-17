@@ -66,15 +66,18 @@ export function mountFxBar(host: HTMLElement): void {
     badge.title = 'Write an Excel-style formula for the selected property.';
 
     // ── slot picker (left-edge property dropdown) ──
-    // ● marks slots that already carry a value on this element, ○ those that
-    // don't — an at-a-glance map of what's set without opening each one.
+    // Slots that already carry a value on this element are shown in heavy bold,
+    // the rest in the normal weight — an at-a-glance map of what's set.
     const picker = document.createElement('select');
     picker.className = 'wb-fx-slot';
-    picker.title = 'Which property this formula paints. ● = already has a value on this cell · ○ = not set. The list changes with what you’ve selected.';
+    picker.title = 'Which property this formula paints. Bold = already has a value on this cell. The list changes with what you have selected.';
     for (const s of slots) {
       const o = document.createElement('option');
       o.value = s.id;
-      o.textContent = `${readSlot(node, s) === undefined ? '○' : '●'} ${s.label}`;
+      o.textContent = s.label;
+      // heavy bold marks a slot that already carries a value (native <option>
+      // honors font-weight in Chromium/Firefox)
+      if (readSlot(node, s) !== undefined) o.style.fontWeight = '800';
       if (s.id === slot.id) o.selected = true;
       picker.appendChild(o);
     }

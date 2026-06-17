@@ -40,19 +40,18 @@ describe('fxBar', () => {
     state.select([]);
   });
 
-  it('lists the slots for the selected element (with set/unset markers)', () => {
+  it('lists the slots for the selected element by plain label', () => {
     const host = mountWith({ elmType: 'div' });
-    const labels = [...host.querySelectorAll('.wb-fx-slot option')]
-      .map((o) => o.textContent!.replace(/^[●○]\s/, ''));
+    const labels = [...host.querySelectorAll('.wb-fx-slot option')].map((o) => o.textContent);
     expect(labels).toEqual(expect.arrayContaining(['Text shown', 'Fill color', 'Text color']));
   });
 
-  it('marks slots that already have a value with ● and the rest with ○', () => {
+  it('marks slots that already have a value with heavy bold, the rest normal', () => {
     const host = mountWith({ elmType: 'div', style: { color: '#000' } });
-    const opt = (label: string) => [...host.querySelectorAll('.wb-fx-slot option')]
-      .find((o) => o.textContent!.endsWith(label))!.textContent!;
-    expect(opt('Text color')).toMatch(/^●/); // color is set
-    expect(opt('Fill color')).toMatch(/^○/); // background-color is not
+    const opt = (label: string) => [...host.querySelectorAll<HTMLOptionElement>('.wb-fx-slot option')]
+      .find((o) => o.textContent === label)!;
+    expect(opt('Text color').style.fontWeight).toBe('800'); // color is set
+    expect(opt('Fill color').style.fontWeight).toBe(''); // background-color is not
   });
 
   it('transpiles Excel input to stored SP in one undoable mutation', () => {
