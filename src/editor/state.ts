@@ -354,7 +354,11 @@ export class EditorState {
   // ─── Mutations (all snapshot for undo) ────────────────────────────────────
 
   snapshot(): void {
-    this.undoStack.push(JSON.stringify({ doc: this.doc }));
+    this.pushUndo(JSON.stringify({ doc: this.doc }));
+  }
+
+  private pushUndo(state: string): void {
+    this.undoStack.push(state);
     if (this.undoStack.length > 100) this.undoStack.shift();
     this.redoStack = [];
   }
@@ -387,8 +391,13 @@ export class EditorState {
   }
 
   mutateDocument(fn: () => void): void {
-    this.snapshot();
+    // Snapshot the pre-mutation state, but only commit it if fn actually changed
+    // the document — a no-op gesture (rename to the same value, arrow-step that
+    // re-commits the current value on blur) must not push a phantom undo step.
+    const before = JSON.stringify({ doc: this.doc });
     fn();
+    if (JSON.stringify({ doc: this.doc }) === before) return;
+    this.pushUndo(before);
     this.emit('document');
   }
 
@@ -554,6 +563,7 @@ export class EditorState {
   }
 
   setKind(kind: DocumentKind): void {
+    if (this.doc.kind === kind) return; // no-op: don't snapshot an unchanged kind
     this.snapshot();
     this.doc.kind = kind;
     if (kind === 'tile') {
@@ -564,6 +574,12 @@ export class EditorState {
   }
 
   loadDocument(doc: FormatterDocument): void {
+    // NOTE: when a column formatter is open, this intentionally applies to that
+    // open doc — the JSON tab's "Apply to canvas" edits whichever formatter is
+    // on the canvas, and emit('load') live-syncs it back into columnRefs. That
+    // is the JSON-edit-a-column path (see e2e workspace.spec "CFR round-trip" /
+    // grid.spec "header menu formats an unformatted column"). Callers that mean
+    // "replace the MAIN doc" (e.g. schema import) call openMain() first.
     this.snapshot();
     this.doc = doc;
     this.selection = [];

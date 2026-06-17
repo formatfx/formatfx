@@ -116,3 +116,32 @@ describe('card-segment paths', () => {
     expect(s2.columnRefs['StatusUI'].txtContent).toBe('[$Status]');
   });
 });
+
+describe('undo integrity', () => {
+  it('mutateDocument does not push an undo step for a no-op gesture', () => {
+    const s = withCard();
+    const original = JSON.stringify(s.doc);
+    s.mutateDocument(() => { s.doc.root._elmName = 'NoOpProbe'; }); // real change
+    s.mutateDocument(() => { s.doc.root._elmName = 'NoOpProbe'; }); // no-op (rename to same value)
+    s.undo(); // a single undo should restore the original — no phantom step
+    expect(JSON.stringify(s.doc)).toBe(original);
+  });
+
+  it('setKind does not push an undo step when the kind is unchanged', () => {
+    const s = withCard();
+    const original = JSON.stringify(s.doc);
+    s.mutateDocument(() => { s.doc.root._elmName = 'NoOpProbe'; }); // real change
+    s.setKind(s.doc.kind); // same kind → no-op
+    s.undo(); // a single undo should restore the original
+    expect(JSON.stringify(s.doc)).toBe(original);
+  });
+
+  it('setKind still snapshots a real kind change so undo reverts it', () => {
+    const s = withCard();
+    const k0 = s.doc.kind;
+    s.setKind('tile');
+    expect(s.doc.kind).toBe('tile');
+    s.undo();
+    expect(s.doc.kind).toBe(k0);
+  });
+});
