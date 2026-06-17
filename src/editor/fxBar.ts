@@ -312,7 +312,9 @@ function buildIconChips(
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'wb-fx-sug wb-fx-iconsug' + (name === current ? ' selected' : '');
-    chip.innerHTML = `<i class="ms-Icon ms-Icon--${name}" aria-hidden="true"></i><span>${name}</span>`;
+    // name first, then a colon, then the glyph — reads as "this is the Edit
+    // icon", not an Edit button that does something when clicked
+    chip.innerHTML = `<span>${name}:</span><i class="ms-Icon ms-Icon--${name}" aria-hidden="true"></i>`;
     chip.title = `Use the ${name} icon`;
     chip.addEventListener('mousedown', (e) => e.preventDefault());
     chip.addEventListener('click', () => onPick(name));
