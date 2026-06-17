@@ -27,7 +27,7 @@ import type { SPExpr } from '../core/types';
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
 type SetFeedback = (text: string, tone?: Tone) => void;
 
-export function mountFxBar(host: HTMLElement): void {
+export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } = {}): void {
   host.classList.add('wb-fxbar');
   /** Which slot is being edited — kept across selections so "Fill color" sticks. */
   let currentSlotId: string | null = null;
@@ -43,17 +43,24 @@ export function mountFxBar(host: HTMLElement): void {
     float = null;
   };
 
+  // The accessory (Title-column toggle) rides on the edit bar; re-home it on
+  // every rebuild so it survives the host.innerHTML reset.
+  const placeAccessory = (): void => { if (opts.accessory) host.appendChild(opts.accessory); };
+
   const render = (): void => {
-    closeFloat();
+    // The detached editor is a free-floating tool window now — it stays put
+    // across selections and clicks elsewhere, so render() leaves it alone.
     host.innerHTML = '';
     const node = state.selectedNode;
     if (!node) {
       host.appendChild(message('Select a cell to format it.'));
+      placeAccessory();
       return;
     }
     const slots = slotsFor(node);
     if (!slots.length) {
       host.appendChild(message('This element has no formattable slots.'));
+      placeAccessory();
       return;
     }
     const slot = slots.find((s) => s.id === currentSlotId) ?? slots[0];
@@ -155,12 +162,13 @@ export function mountFxBar(host: HTMLElement): void {
     expand.title = 'Open a roomy editor — more space to write and read a longer formula';
     expand.addEventListener('click', () => {
       closeFloat();
-      float = openFloat(expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render());
+      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render());
     });
 
     const bar = document.createElement('div');
     bar.className = 'wb-fx-row';
     bar.append(badge, picker, editor, expand);
+    if (opts.accessory) bar.append(opts.accessory);
     host.append(bar, feedback);
     if (chips) host.append(chips);
   };
@@ -175,7 +183,22 @@ export function mountFxBar(host: HTMLElement): void {
 
 // ─── the floating / detached editor ──────────────────────────────────────────
 
+/** A readable label for the float head — which element & property it edits. */
+function nameOfNode(node: { _elmName?: string; elmType?: string }, slot: FxSlot): string {
+  const el = node._elmName ?? `<${node.elmType ?? 'element'}>`;
+  return `${el} · ${slot.label}`;
+}
+
+/**
+ * Unapplied float text, stashed per element + slot. Dismissing the window with
+ * ✕ keeps what you typed (without committing it) so reopening resumes it — only
+ * Apply touches the formatter.
+ */
+const floatStash = new WeakMap<object, Record<string, string>>();
+
 function openFloat(
+  node: object,
+  targetLabel: string,
   anchor: HTMLElement,
   slot: FxSlot,
   initial: string,
@@ -188,15 +211,25 @@ function openFloat(
   const panel = document.createElement('div');
   panel.className = 'wb-fx-float';
 
+  // ── draggable head, with a non-destructive ✕ dismiss ──
   const head = document.createElement('div');
   head.className = 'wb-fx-float-head';
-  head.innerHTML = `<span class="wb-fx-badge">ƒx</span> ${slot.label}`;
+  const title = document.createElement('span');
+  title.className = 'wb-fx-float-title';
+  title.innerHTML = `<span class="wb-fx-badge">ƒx</span> ${targetLabel}`;
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'wb-fx-float-dismiss';
+  dismiss.textContent = '✕';
+  dismiss.title = 'Dismiss this window — what you typed is kept (unapplied) until you reopen it. Use Apply to commit.';
+  head.append(title, dismiss);
 
   const ta = document.createElement('textarea');
   ta.className = 'wb-fx-float-editor';
   ta.rows = 8;
   ta.spellcheck = false;
-  ta.value = initial;
+  // resume any stash for this element + slot, falling back to the live value
+  ta.value = floatStash.get(node)?.[slot.id] ?? initial;
   ta.placeholder = placeholder;
   ta.readOnly = view.readOnly;
 
@@ -211,16 +244,12 @@ function openFloat(
 
   const foot = document.createElement('div');
   foot.className = 'wb-fx-float-foot';
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'wb-fx-float-cancel';
-  cancel.textContent = 'Cancel';
   const apply = document.createElement('button');
   apply.type = 'button';
   apply.className = 'wb-fx-float-apply';
   apply.textContent = 'Apply';
   apply.disabled = view.readOnly;
-  foot.append(cancel, apply);
+  foot.append(apply);
 
   panel.append(head, ta, fb);
   if (chips) panel.append(chips);
@@ -233,21 +262,61 @@ function openFloat(
   panel.style.left = `${Math.max(8, Math.min(r.left - 360, window.innerWidth - 380))}px`;
 
   let done = false;
-  const close = (): void => { if (!done) { done = true; cleanup(); panel.remove(); } };
-  const doApply = (): void => { if (applyText(ta.value, setFb)) { onApplied(); /* render() removes panel */ } };
+  // Dismiss keeps the typed text (unapplied) so it resumes on reopen; clearing
+  // the box clears the stash, so a wiped editor doesn't haunt the next open.
+  const dismissWin = (): void => {
+    if (done) return;
+    done = true;
+    if (!view.readOnly) {
+      const stash = floatStash.get(node) ?? {};
+      if (ta.value.trim() === initial.trim()) delete stash[slot.id];
+      else stash[slot.id] = ta.value;
+      if (Object.keys(stash).length) floatStash.set(node, stash);
+      else floatStash.delete(node);
+    }
+    cleanup();
+    panel.remove();
+  };
+  const doApply = (): void => {
+    if (!applyText(ta.value, setFb)) return;
+    // committed — it's no longer an unapplied stash
+    const stash = floatStash.get(node);
+    if (stash) { delete stash[slot.id]; if (!Object.keys(stash).length) floatStash.delete(node); }
+    onApplied(); // refresh the inline bar; the window stays open
+  };
 
   apply.addEventListener('click', doApply);
-  cancel.addEventListener('click', close);
+  dismiss.addEventListener('click', dismissWin);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doApply(); }
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Escape') { e.preventDefault(); dismissWin(); }
   });
-  const onOutside = (e: PointerEvent): void => {
-    if (!panel.contains(e.target as Node) && e.target !== anchor) close();
+
+  // ── drag by the head (anywhere but the ✕) ──
+  let drag: { dx: number; dy: number } | null = null;
+  const onMove = (e: PointerEvent): void => {
+    if (!drag) return;
+    const x = Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, e.clientX - drag.dx));
+    const y = Math.max(8, Math.min(window.innerHeight - 40, e.clientY - drag.dy));
+    panel.style.left = `${x}px`;
+    panel.style.top = `${y}px`;
   };
-  // defer so the opening click doesn't immediately close it
-  setTimeout(() => document.addEventListener('pointerdown', onOutside), 0);
-  const cleanup = (): void => document.removeEventListener('pointerdown', onOutside);
+  const onUp = (e: PointerEvent): void => {
+    drag = null;
+    head.releasePointerCapture(e.pointerId);
+    document.removeEventListener('pointermove', onMove);
+  };
+  head.addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement).closest('.wb-fx-float-dismiss')) return;
+    e.preventDefault();
+    const box = panel.getBoundingClientRect();
+    drag = { dx: e.clientX - box.left, dy: e.clientY - box.top };
+    head.setPointerCapture(e.pointerId);
+    document.addEventListener('pointermove', onMove);
+  });
+  head.addEventListener('pointerup', onUp);
+
+  const cleanup = (): void => document.removeEventListener('pointermove', onMove);
 
   ta.focus();
   return { panel, cleanup };

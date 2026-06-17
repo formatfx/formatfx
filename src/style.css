@@ -8,6 +8,10 @@
   --wb-text-2: #605e5c;
   --wb-accent: #0078d4;
   --wb-canvas-bg: #f3f2f1;
+  --wb-scroll-thumb: #c8c6c4;
+  --wb-scroll-thumb-hover: #a19f9d;
+  /* tells the browser to paint native scrollbars & form controls light */
+  color-scheme: light;
 }
 
 body.wb-dark {
@@ -18,6 +22,10 @@ body.wb-dark {
   --wb-text-2: #c8c6c4;
   --wb-accent: #2899f5;
   --wb-canvas-bg: #141312;
+  --wb-scroll-thumb: #4a4948;
+  --wb-scroll-thumb-hover: #5f5e5c;
+  /* …and dark in dark mode (covers Firefox + native widgets) */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -29,6 +37,21 @@ body {
   color: var(--wb-text);
   font-size: 13px;
 }
+
+/* ── theme-aware scrollbars ───────────────────────────────────
+   Firefox uses scrollbar-color; WebKit/Blink use the ::-webkit-*
+   pseudo-elements. Both ride the theme variables so they flip with
+   the light/dark toggle (color-scheme above handles native widgets). */
+* { scrollbar-color: var(--wb-scroll-thumb) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--wb-scroll-thumb);
+  border: 3px solid var(--wb-bg);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--wb-scroll-thumb-hover); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 #app { display: flex; flex-direction: column; height: 100vh; }
 
@@ -93,7 +116,11 @@ body {
   color: var(--wb-text-2); margin: 2px 0 10px;
 }
 .wb-hint { font-weight: 400; text-transform: none; letter-spacing: 0; }
-.wb-preview-titlecol { display: inline-flex; float: right; text-transform: none; letter-spacing: 0; font-weight: 400; }
+/* the Title-column view toggle now rides on the right edge of the fx (edit) bar */
+.wb-preview-titlecol {
+  display: inline-flex; flex: none; align-self: center; white-space: nowrap;
+  text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; color: var(--wb-text-2);
+}
 /* hide the Title context cells (header + rows) when toggled off */
 .wb-canvas.wb-no-titlecol .wb-mock-cell:not(.wb-mock-cell-fmt) { display: none; }
 
@@ -1325,8 +1352,19 @@ body {
   border: 1px solid var(--wb-border); border-radius: 8px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
 }
-.wb-fx-float-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
+.wb-fx-float-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--wb-text-2);
+  cursor: move; touch-action: none; user-select: none;
+}
+.wb-fx-float-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-fx-float-head .wb-fx-badge { padding: 0 4px 0 0; font-size: 13px; }
+.wb-fx-float-dismiss {
+  flex: none; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 6px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+}
+.wb-fx-float-dismiss:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-fx-float-editor {
   width: 100%; box-sizing: border-box; padding: 8px;
   font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.6;

@@ -361,10 +361,29 @@ function mount(opts: Opts): void {
       const n = state.nodeAt(p);
       if (n) tree.appendChild(row(n, p, d, 'ancestor'));
     }
-    tree.appendChild(row(targetNode, null, targetPath.length, 'target'));
-    (targetNode.children ?? []).forEach((child, i) => {
-      tree.appendChild(row(child, [...targetPath, i], targetPath.length + 1, 'child'));
+
+    // the target shown AMONG ITS SIBLINGS (the parent's whole child list), with
+    // its own children nested under it — so grouped elements (title ⇄ icon) stay
+    // reachable from each other without climbing back up to the group first. The
+    // formatter root and a card root (no sibling list) just show alone.
+    const targetKids = () => (targetNode.children ?? []).forEach((child, ci) => {
+      tree.appendChild(row(child, [...targetPath, ci], targetPath.length + 1, 'child'));
     });
+    const parentInfo = state.parentOf(targetPath);
+    if (parentInfo) {
+      const parentPath = targetPath.slice(0, -1);
+      parentInfo.parent.children!.forEach((sib, i) => {
+        if (i === parentInfo.index) {
+          tree.appendChild(row(targetNode, null, targetPath.length, 'target'));
+          targetKids();
+        } else {
+          tree.appendChild(row(sib, [...parentPath, i], targetPath.length, 'child'));
+        }
+      });
+    } else {
+      tree.appendChild(row(targetNode, null, targetPath.length, 'target'));
+      targetKids();
+    }
 
     // CFR slot: its content comes from a registered column formatter —
     // offer to open THAT formatter in the playground (switches the

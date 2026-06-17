@@ -108,10 +108,8 @@ app.innerHTML = `
     </aside>
     <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
     <section class="wb-pane wb-pane-canvas">
-      <h2>Preview <span class="wb-hint">click an element to select · drag palette items in</span>
-        <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to preview the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
-      </h2>
       <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties with Excel-style formulas."></div>
+      <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to show the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       <div id="wb-canvas" class="wb-canvas"></div>
       <div class="wb-data-split" id="wb-data-split" title="Drag to resize the data panel"></div>
       <section class="wb-data-dock" id="wb-data-dock">
@@ -574,7 +572,8 @@ mountTree(
   revealColumnSection,
 );
 const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
-mountFxBar(document.getElementById('wb-fxbar')!);
+// the Title-column view toggle rides on the right edge of the fx (edit) bar
+mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElementById('wb-titlecol-label')! });
 mountInspector(document.getElementById('wb-tab-inspector')!);
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);

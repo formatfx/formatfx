@@ -3,7 +3,7 @@
  * what's edited, Excel input is transpiled to SP in one undoable mutation, and
  * refuse-don't-guess input is rejected without ever touching the document.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountFxBar } from './fxBar';
 import { state } from './state';
 import type { SPElement } from '../core/types';
@@ -38,6 +38,12 @@ describe('fxBar', () => {
   beforeEach(() => {
     state.loadDocument({ kind: 'column', root: { elmType: 'div' } });
     state.select([]);
+  });
+
+  // the detached editor is a persistent tool window — sweep any left open so
+  // one test's float can't bleed into the next
+  afterEach(() => {
+    document.querySelectorAll('.wb-fx-float').forEach((p) => p.remove());
   });
 
   it('lists the slots for the selected element by plain label', () => {
@@ -143,7 +149,7 @@ describe('fxBar', () => {
       return panel;
     };
 
-    it('⤢ opens a roomy editor; Apply transpiles and closes it', () => {
+    it('⤢ opens a roomy editor; Apply transpiles and keeps the window open', () => {
       const host = mountWith({ elmType: 'div' });
       setSlot(host, 'ink');
       const panel = openFloat(host);
@@ -151,17 +157,22 @@ describe('fxBar', () => {
       ta.value = '=IF([Status] = "Blocked", "#d13438", "")';
       $<HTMLButtonElement>(panel, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
       expect(state.selectedNode!.style!['color']).toBe("=if([$Status] == 'Blocked', '#d13438', '')");
-      expect(document.querySelector('.wb-fx-float')).toBeNull(); // closed after apply
+      // it's a free-floating tool window now — it stays open after Apply
+      expect(document.querySelector('.wb-fx-float')).not.toBeNull();
     });
 
-    it('Cancel closes without mutating', () => {
+    it('✕ dismisses without mutating, keeping the typed text unapplied for reopen', () => {
       const host = mountWith({ elmType: 'div' });
       setSlot(host, 'fill');
       const panel = openFloat(host);
       $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#000000';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-cancel').dispatchEvent(new Event('click'));
-      expect(state.selectedNode!.style).toBeUndefined();
+      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
+      expect(state.selectedNode!.style).toBeUndefined(); // dismiss never commits
       expect(document.querySelector('.wb-fx-float')).toBeNull();
+      // reopening on the same cell/slot resumes the unapplied text
+      const reopened = openFloat(host);
+      expect($<HTMLTextAreaElement>(reopened, '.wb-fx-float-editor').value).toBe('#000000');
+      expect(state.selectedNode!.style).toBeUndefined(); // still uncommitted
     });
 
     it('refused input in the float keeps it open and leaves the doc untouched', () => {
