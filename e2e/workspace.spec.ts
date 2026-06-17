@@ -105,7 +105,7 @@ test('style editor explains properties: ⓘ opens a doc card with clickable exam
   await card.locator('.wb-doccard-gloss .wb-doccard-rel', { hasText: 'align-items' }).click();
   await expect(card.locator('.wb-doccard-prop')).toHaveText('align-items');
   // clicking elsewhere closes the card
-  await page.locator('.wb-pane-canvas h2').click();
+  await page.locator('.wb-pane-palette .wb-pane-title').click();
   await expect(card).toBeHidden();
 });
 
