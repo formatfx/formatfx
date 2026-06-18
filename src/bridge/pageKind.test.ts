@@ -18,6 +18,9 @@ describe('classifyUrl', () => {
     expect(classifyUrl('https://contoso.sharepoint.com/sites/Team')).toBe('other'); // site home
     expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx')).toBe('other'); // modern page
     expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/_layouts/15/viewlsts.aspx')).toBe('other'); // site contents
+    // only /Lists/ and /Forms/ count: a bare viewid or AllItems without the folder is not enough
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx?viewid=8c1a...')).toBe('other');
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/AllItems.aspx')).toBe('other');
   });
 
   it('returns "formatfx" for formatfx.dev URLs', () => {

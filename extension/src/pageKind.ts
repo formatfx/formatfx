@@ -10,20 +10,14 @@ export type PageKind = 'sharepoint' | 'formatfx' | 'other';
  * only pages where Extract/Apply can actually do anything?
  *
  * SharePoint encodes the page kind in the path: list views sit under a
- * `/Lists/` segment, library views under a `/Forms/` folder, both default to
- * `AllItems.aspx`, and any saved view carries a `viewid` (or `viewpath`)
- * query param. Site pages (`/SitePages/…`), settings (`/_layouts/…`), and the
- * site root match none of these — so they fall through to 'other'.
+ * `/Lists/` segment and document-library views under a `/Forms/` folder. We
+ * match only those two structural segments — site pages (`/SitePages/…`),
+ * settings (`/_layouts/…`), and the site root have neither, so they fall
+ * through to 'other'.
  */
 function isListOrLibraryView(u: URL): boolean {
   const path = u.pathname.toLowerCase();
-  return (
-    path.includes('/lists/') ||
-    path.includes('/forms/') ||
-    path.endsWith('/allitems.aspx') ||
-    u.searchParams.has('viewid') ||
-    u.searchParams.has('viewpath')
-  );
+  return path.includes('/lists/') || path.includes('/forms/');
 }
 
 /** Classify a URL string (from `chrome.tabs.query`) into a page kind. */
