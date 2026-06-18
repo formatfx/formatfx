@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { evaluate, evalAny, parseForEach, evaluateForEachList, type EvalContext } from './expressions';
-import { lintDocument, stripExpressionWhitespace } from './linter';
+import { lintDocument, stripExpressionWhitespace, hasUnsafeWhitespace } from './linter';
 import { importJson, exportJson } from './serializer';
 import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES, STYLE_PROP_DOCS, ATTRIBUTE_DOCS } from './schema';
 import { importSchema, mapSpFieldType, buildSampleRows } from './schemaImport';
@@ -71,6 +71,31 @@ describe('expression engine', () => {
   it('strips whitespace outside quoted literals', () => {
     expect(stripExpressionWhitespace("=if([$Status] == 'In Progress', 'a b', 'c')"))
       .toBe("=if([$Status]=='In Progress','a b','c')");
+  });
+});
+
+describe('expression edge cases', () => {
+  it('rejects a malformed multi-dot number instead of silently truncating it', () => {
+    // tokenizer used to grab "1.2.3" as one number, then parseFloat → 1.2 (silent)
+    expect(() => evaluate('=1.2.3', ctx)).toThrow(/number/i);
+    // a normal decimal still parses
+    expect(evaluate('=1.5+0.5', ctx)).toBe(2);
+  });
+
+  it("hasUnsafeWhitespace flags a stray '\\r' (matching the stripper)", () => {
+    expect(hasUnsafeWhitespace('=1\r+2')).toBe(true);
+    // and the stripper already removes it — detector and stripper must agree
+    expect(stripExpressionWhitespace('=1\r+2')).toBe('=1+2');
+  });
+
+  it("'+' treats a blank operand as 0 so a running sum keeps adding", () => {
+    const bctx: EvalContext = { ...ctx, row: { ...ctx.row, Blank: '' } as never };
+    // a blank number cell ('') in the middle of a sum must not concat-cascade
+    expect(evaluate('=5+[$Blank]+3', bctx)).toBe(8);
+    // genuine string concat with a non-empty string is preserved (SP overload)
+    expect(evaluate("='$'+5", ctx)).toBe('$5');
+    // an object operand still concatenates via toStr (person → title)
+    expect(evaluate('=[$Owner]+5', ctx)).toBe('Ada Lovelace5');
   });
 });
 
