@@ -239,7 +239,7 @@ test('element playground marks CFR slots and can enter the referenced formatter'
   await expect(pg.locator('.wb-pgx-child[data-pgx-name="Progress ⤷ [$Progress]"]')).toBeVisible();
   // descend into the slot — the structure tree offers to open the referenced formatter
   await pg.locator('.wb-pg-tree-child', { hasText: 'Progress' }).first().click();
-  await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('content comes from the [$Progress] column formatter');
+  await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('content is rendered by the [$Progress] column formatter');
   await pg.locator('.wb-pg-navcfr').click(); // confirm() auto-accepted
   // the playground now targets the column formatter's root…
   await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Progress bar');
