@@ -329,6 +329,30 @@ describe('serializer', () => {
     expect(out.hideSelection).toBe(true);
   });
 
+  it('preserves footer/group/commandBar siblings of a rowFormatter across import → export', () => {
+    const doc = importJson(JSON.stringify({
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      hideSelection: true,
+      footerFormatter: { elmType: 'div', txtContent: "='Total: '+[$Amount]" },
+      groupProps: { menuActionOverrides: [{ key: 'collapseAll' }] },
+      commandBarProps: { commands: [{ key: 'new', hide: true }] },
+      additionalRowClass: 'my-row-class',
+      hideListHeader: true,
+      rowFormatter: { elmType: 'div', txtContent: '[$Title]' },
+    }));
+    expect(doc.kind).toBe('row');
+    const out = JSON.parse(exportJson(doc));
+    // the editable parts still work
+    expect(out.rowFormatter.txtContent).toBe('[$Title]');
+    expect(out.hideSelection).toBe(true);
+    // the parts we cannot edit survive verbatim instead of being dropped
+    expect(out.footerFormatter).toEqual({ elmType: 'div', txtContent: "='Total: '+[$Amount]" });
+    expect(out.groupProps).toEqual({ menuActionOverrides: [{ key: 'collapseAll' }] });
+    expect(out.commandBarProps).toEqual({ commands: [{ key: 'new', hide: true }] });
+    expect(out.additionalRowClass).toBe('my-row-class');
+    expect(out.hideListHeader).toBe(true);
+  });
+
   it('CSOM-safe export escapes & and <', () => {
     const doc = importJson(JSON.stringify({ height: 200, width: 300, formatter: { elmType: 'div', txtContent: "=if([$A]>1&&[$B]<2,'x','y')" } }));
     const csom = exportJson(doc, { csomSafe: true });
