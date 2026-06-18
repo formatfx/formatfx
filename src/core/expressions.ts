@@ -70,7 +70,13 @@ function tokenize(src: string): Tok[] {
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) {
       let j = i;
       while (j < src.length && /[0-9.]/.test(src[j])) j++;
-      toks.push({ type: 'num', value: src.slice(i, j) });
+      const raw = src.slice(i, j);
+      // a second dot means it's not a number — parseFloat would silently
+      // truncate '1.2.3' to 1.2, so refuse it instead of miscompiling
+      if ((raw.match(/\./g)?.length ?? 0) > 1) {
+        throw new ExpressionError(`Malformed number '${raw}' at ${i} — a number can have at most one decimal point.`);
+      }
+      toks.push({ type: 'num', value: raw });
       i = j; continue;
     }
     const two = src.slice(i, i + 2);
@@ -430,8 +436,17 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
 function applyBinary(op: string, l: SPValue, r: SPValue): SPValue {
   switch (op) {
     case '+': {
-      if (typeof l === 'string' || typeof r === 'string') return toStr(l) + toStr(r);
-      const nl = toNum(l), nr = toNum(r);
+      // A blank operand (null/undefined/'' — how an empty number cell arrives)
+      // is the additive identity, so a running sum keeps adding instead of
+      // silently cascading into string concatenation. A NON-empty string still
+      // concatenates (SP overloads + for concat: '$' + 5 → '$5').
+      const lEmpty = isEmptyValue(l), rEmpty = isEmptyValue(r);
+      if ((typeof l === 'string' && !lEmpty) || (typeof r === 'string' && !rEmpty)) {
+        return toStr(l) + toStr(r);
+      }
+      const nl = lEmpty ? 0 : toNum(l);
+      const nr = rEmpty ? 0 : toNum(r);
+      // a genuinely non-numeric operand (e.g. a person/lookup object) still concatenates
       if (Number.isNaN(nl) || Number.isNaN(nr)) return toStr(l) + toStr(r);
       return nl + nr;
     }

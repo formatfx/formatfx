@@ -278,7 +278,7 @@ function mount(opts: Opts): void {
       ? 'children are masked with their names — click one to restyle it instead · '
       : '')
       + (targetNode.columnFormatterReference
-        ? `content comes from the ${targetNode.columnFormatterReference} column formatter (⤷ in the structure opens it) · `
+        ? `This element's content is rendered by the ${targetNode.columnFormatterReference} column formatter — you're in the view formatter now; click ⤷ in the Structure pane to switch to that column's formatter · `
         : '')
       + 'rendered with row 1 of your data';
     stage.appendChild(lab);
@@ -391,10 +391,10 @@ function mount(opts: Opts): void {
       const enter = document.createElement('button');
       enter.className = 'wb-pg-tree-row wb-pg-tree-child wb-pg-navcfr';
       enter.style.paddingLeft = `${6 + (targetPath.length + 1) * 12}px`;
-      enter.textContent = `⤷ open [$${cfrName}] formatter`;
-      enter.title = 'The content inside this slot is the referenced column formatter — open it in the playground';
+      enter.textContent = `⤷ switch to [$${cfrName}] column formatter`;
+      enter.title = `You're editing the view formatter. This slot's content comes from the [$${cfrName}] column formatter — click to switch to that column's formatter in the playground.`;
       enter.addEventListener('click', () => {
-        if (!confirm(`This slot pulls in the [$${cfrName}] column formatter.\n\nOpen that formatter in the playground? The workspace switches to editing [$${cfrName}] (the Structure tree switches back anytime).`)) return;
+        if (!confirm(`This slot's content comes from the [$${cfrName}] column formatter.\n\nYou're currently editing the view formatter. Switch the playground to the [$${cfrName}] column formatter instead?\n\n(Use the Structure pane or the Editing switcher in the toolbar to come back.)`)) return;
         stashCurrent();
         state.openColumnRef(cfrName);
         openElementPlayground([]);

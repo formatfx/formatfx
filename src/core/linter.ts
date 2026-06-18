@@ -82,7 +82,7 @@ export function hasUnsafeWhitespace(expr: string): boolean {
   for (let i = 1; i < expr.length; i++) {
     const c = expr[i];
     if (c === "'") inQuote = !inQuote;
-    else if (!inQuote && (c === ' ' || c === '\t' || c === '\n')) return true;
+    else if (!inQuote && (c === ' ' || c === '\t' || c === '\n' || c === '\r')) return true;
   }
   return false;
 }
