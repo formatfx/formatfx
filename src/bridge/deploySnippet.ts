@@ -33,9 +33,16 @@ export function buildDeploySnippet(opts: DeploySnippetOptions): string {
   const targetPath = JSON.stringify(opts.target === 'field'
     ? `/fields/getByInternalNameOrTitle('${restTitleSegment(opts.name)}')`
     : `/views/getByTitle('${restTitleSegment(opts.name)}')`);
+  // `what` is embedded in the snippet's /* ... */ banner comment. A name
+  // containing the comment terminator (e.g. a crafted, free-text view title)
+  // must never be able to close the banner early and turn trailing text into
+  // executable JS in the maker's console — break any '*/' sequence. The
+  // executable interpolations (TARGET_PATH/TARGET_LIST/FORMATTER) are already
+  // JSON.stringify'd; this guards the one human-readable interpolation.
+  const safeName = opts.name.replace(/\*\//g, '* /');
   const what = opts.target === 'field'
-    ? `the [$${opts.name}] column`
-    : `the "${opts.name}" view (row formatting)`;
+    ? `the [$${safeName}] column`
+    : `the "${safeName}" view (row formatting)`;
   return `/* FormatFX — deploy formatter to ${what}.
  *
  * 1. Open the SharePoint LIST page this formatter belongs to.
