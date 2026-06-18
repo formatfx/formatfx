@@ -128,6 +128,20 @@ describe('linter', () => {
     expect(rules).not.toContain('cfr-in-card');
     expect(rules).not.toContain('inline-edit-foreach');
   });
+
+  it("no-bang-operator fires on a standalone '!' but never on '!='", () => {
+    // §3.1: there is no logical NOT. A standalone '!' before (, [$Field] or @token
+    // must be flagged; '!=' (not-equals) is a different, fully-legal operator.
+    const bang: FormatterDocument = {
+      kind: 'column', root: { elmType: 'div', txtContent: '=![$Flag]' },
+    };
+    expect(lintDocument(bang).map((i) => i.rule)).toContain('no-bang-operator');
+
+    const notEq: FormatterDocument = {
+      kind: 'column', root: { elmType: 'div', txtContent: "=if([$Status]!='Done','a','b')" },
+    };
+    expect(lintDocument(notEq).map((i) => i.rule)).not.toContain('no-bang-operator');
+  });
 });
 
 describe('AST (object) expression syntax', () => {
@@ -186,6 +200,19 @@ describe('AST (object) expression syntax', () => {
     };
     const out = JSON.parse(exportJson(doc));
     expect(out.txtContent).toEqual({ operator: 'toString()', operands: ['@currentField'] });
+  });
+
+  it("'&&' and '||' short-circuit and '||' yields the first truthy operand", () => {
+    // boom would throw (no logical NOT in the AST form) if it were ever reached —
+    // its survival proves the later operands are not evaluated.
+    const boom = { operator: '!', operands: [true] };
+
+    // || returns the first TRUTHY operand value (not a coerced boolean) and skips the rest
+    expect(evalAny({ operator: '||', operands: [false, 'first', boom] } as never, ctx)).toBe('first');
+    // && returns false at the first falsy operand and skips the rest
+    expect(evalAny({ operator: '&&', operands: [false, boom] } as never, ctx)).toBe(false);
+    // sanity: the throwing operand really would throw if evaluated
+    expect(() => evalAny(boom as never, ctx)).toThrow(/no logical NOT/);
   });
 });
 

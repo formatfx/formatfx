@@ -117,6 +117,80 @@ describe('card-segment paths', () => {
   });
 });
 
+describe('undo/redo', () => {
+  it('redo restores an undone mutation; a fresh mutation invalidates the redo', () => {
+    const s = new EditorState();
+    const before = JSON.stringify(s.doc);
+
+    s.insertNode({ elmType: 'span', txtContent: 'new' });
+    const afterInsert = JSON.stringify(s.doc);
+    expect(afterInsert).not.toBe(before);
+
+    s.undo();
+    expect(JSON.stringify(s.doc)).toBe(before);
+
+    s.redo();
+    expect(JSON.stringify(s.doc)).toBe(afterInsert); // redo replays the mutation
+
+    // undo again, then make a NEW mutation — the redo branch must be discarded
+    s.undo();
+    expect(JSON.stringify(s.doc)).toBe(before);
+    s.insertNode({ elmType: 'div', txtContent: 'other' });
+    const afterOther = JSON.stringify(s.doc);
+
+    s.redo(); // no redo to do — must be a no-op, not resurrect the old branch
+    expect(JSON.stringify(s.doc)).toBe(afterOther);
+  });
+});
+
+describe('reparentNode', () => {
+  it('adjusts the destination index after the source removal shifts it', () => {
+    const s = new EditorState();
+    s.doc = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'span', _elmName: 'A' },
+          { elmType: 'div', _elmName: 'B', children: [] },
+          { elmType: 'div', _elmName: 'C', children: [] },
+        ],
+      },
+    };
+    // move A (index 0) into C (index 2). Removing A shifts C to index 1, so the
+    // destination path must be decremented or A lands in the wrong container.
+    s.reparentNode([0], [2]);
+    expect(s.doc.root.children!.map((c) => c._elmName)).toEqual(['B', 'C']);
+    const c = s.doc.root.children![1];
+    expect(c._elmName).toBe('C');
+    expect(c.children!.map((x) => x._elmName)).toEqual(['A']);
+  });
+
+  it('refuses to drop a node into its own subtree (no-op)', () => {
+    const s = new EditorState();
+    s.doc = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'div', _elmName: 'A', children: [{ elmType: 'span', _elmName: 'B' }] },
+        ],
+      },
+    };
+    const before = JSON.stringify(s.doc);
+    s.reparentNode([0], [0, 0]); // try to move A into its own child B
+    expect(JSON.stringify(s.doc)).toBe(before);
+  });
+});
+
+describe('STORAGE_KEY is frozen', () => {
+  it('matches the literal that protects existing autosaved work', () => {
+    // HANDOFF §1: these keys deliberately never change on rename — a rename
+    // here would orphan every user's autosaved project. This test must fail.
+    expect(EditorState.STORAGE_KEY).toBe('list-formatting-sandbox.project.v1');
+  });
+});
+
 describe('undo integrity', () => {
   it('mutateDocument does not push an undo step for a no-op gesture', () => {
     const s = withCard();
