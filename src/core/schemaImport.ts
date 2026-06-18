@@ -262,8 +262,12 @@ export function parseCsv(text: string): string[][] {
 }
 
 function coerceCell(raw: string, field: MockField, rowIndex: number): CellValue {
+  if (field.type === 'personMulti' || field.type === 'lookupMulti') {
+    // SP's "Export to CSV with schema" writes an empty multi-value cell as the
+    // literal string "[]" (HANDOFF §3.5); '' covers the hand-CSV case.
+    if (raw === '' || raw === '[]') return [];
+  }
   if (raw === '') {
-    if (field.type === 'personMulti' || field.type === 'lookupMulti') return [];
     // empty Date cells are null, not '' — SP's =='' comparison distinguishes them
     if (field.type === 'date') return null;
     return '';
