@@ -231,7 +231,9 @@ export function mountTree(
     const mk = (icon: string, title: string, fn: () => void) => {
       const b = document.createElement('button');
       b.title = title;
-      b.innerHTML = `<i class="ms-Icon ms-Icon--${icon}"></i>`;
+      // icon-only button: the glyph is decorative, so name the button itself
+      b.setAttribute('aria-label', title);
+      b.innerHTML = `<i class="ms-Icon ms-Icon--${icon}" aria-hidden="true"></i>`;
       b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
       actions.appendChild(b);
     };
