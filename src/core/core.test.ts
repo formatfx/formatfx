@@ -474,6 +474,23 @@ describe('schema import', () => {
     expect(out.columnFormatters?.Progress.txtContent).toBe('@currentField');
   });
 
+  it('coerces an empty multi-value cell exported as the literal "[]" to []', () => {
+    const fieldXml = (s: string) => s.replace(/'/g, '"');
+    const schema = {
+      schemaXmlList: [
+        fieldXml("<Field Type='UserMulti' Name='Team' DisplayName='Team' />"),
+        fieldXml("<Field Type='LookupMulti' Name='Projects' DisplayName='Projects' />"),
+      ],
+    };
+    // SP exports an empty multi-lookup/multi-user as the literal string "[]"
+    const text = `ListSchema=${JSON.stringify(schema)}\n` +
+      '"Team","Projects"\n' +
+      '"[]","[]"\n';
+    const out = importSchema(text);
+    expect(out.rows?.[0].Team).toEqual([]);
+    expect(out.rows?.[0].Projects).toEqual([]);
+  });
+
   // the List Snapshot happy path (incl. OData row coercion and the
   // generator→parser round trip) lives in src/bridge/bridge.test.ts —
   // these are the parser's edges
