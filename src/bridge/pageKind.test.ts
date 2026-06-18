@@ -2,9 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { classifyUrl } from '../../extension/src/pageKind';
 
 describe('classifyUrl', () => {
-  it('returns "sharepoint" for *.sharepoint.com URLs', () => {
-    expect(classifyUrl('https://contoso.sharepoint.com/sites/myList/AllItems.aspx')).toBe('sharepoint');
-    expect(classifyUrl('https://tenant.sharepoint.com/')).toBe('sharepoint');
+  it('returns "sharepoint" for list and document-library view URLs', () => {
+    // classic + modern list views live under /Lists/
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/Lists/MyList/AllItems.aspx')).toBe('sharepoint');
+    // a saved, non-default list view (named .aspx under /Lists/)
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/Lists/MyList/By%20Status.aspx')).toBe('sharepoint');
+    // document-library views live under a /Forms/ folder
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/Shared%20Documents/Forms/AllItems.aspx')).toBe('sharepoint');
+    // a custom library, deep-linked into a folder with a viewid
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/Docs/Forms/AllItems.aspx?id=%2Fsites%2FTeam%2FDocs%2FSub&viewid=8c1a...')).toBe('sharepoint');
+  });
+
+  it('returns "other" for SharePoint pages that are not a list or library', () => {
+    expect(classifyUrl('https://tenant.sharepoint.com/')).toBe('other'); // site root
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team')).toBe('other'); // site home
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx')).toBe('other'); // modern page
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/_layouts/15/viewlsts.aspx')).toBe('other'); // site contents
   });
 
   it('returns "formatfx" for formatfx.dev URLs', () => {
