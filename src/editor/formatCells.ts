@@ -15,6 +15,7 @@
 import type { NodePath, SPElement, SPExpr } from '../core/types';
 import { state } from './state';
 import { COND_COLORS } from './condRules';
+import { createOverlay, type OverlayHandle } from './overlay';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -40,13 +41,11 @@ const MANAGED = [
   'text-align', 'white-space', 'overflow', 'text-overflow', 'padding-left',
 ];
 
-let overlay: HTMLElement | null = null;
-let escHandler: ((e: KeyboardEvent) => void) | null = null;
+let handle: OverlayHandle | null = null;
 
 export function closeFormatCells(): void {
-  overlay?.remove();
-  overlay = null;
-  if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null; }
+  handle?.close();
+  handle = null;
 }
 
 /** The element's committed plain value for a prop ('' = none/formula). */
@@ -117,11 +116,8 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     render();
   };
 
-  overlay = document.createElement('div');
-  overlay.className = 'wb-fc-overlay';
-  overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) closeFormatCells(); });
-  escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeFormatCells(); };
-  document.addEventListener('keydown', escHandler);
+  handle = createOverlay('wb-fc-overlay', closeFormatCells);
+  const overlay = handle.overlay;
 
   const panel = document.createElement('div');
   panel.className = 'wb-fc';

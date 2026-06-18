@@ -27,6 +27,7 @@ import { renderElement } from '../core/renderer';
 import { cfrFieldName } from '../core/refs';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
 import { state, CARD_SEGMENT } from './state';
+import { createOverlay, type OverlayHandle } from './overlay';
 
 const FAMILY_ORDER: StyleFamily[] = [
   'box', 'flex-container', 'flex-child', 'paint', 'type', 'place', 'fit', 'svg', 'table', 'misc',
@@ -130,13 +131,11 @@ const QUICK_LOOKS: Array<{
 /** Unapplied picks, per real document node — survive close/reopen ("stash"). */
 const stashes = new WeakMap<SPElement, Record<string, string>>();
 
-let overlay: HTMLElement | null = null;
-let escHandler: ((e: KeyboardEvent) => void) | null = null;
+let handle: OverlayHandle | null = null;
 
 export function closePlayground(): void {
-  overlay?.remove();
-  overlay = null;
-  if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null; }
+  handle?.close();
+  handle = null;
 }
 
 export function openPlayground(initialProp = 'padding'): void {
@@ -177,11 +176,8 @@ function mount(opts: Opts): void {
     render();
   };
 
-  overlay = document.createElement('div');
-  overlay.className = 'wb-pg-overlay';
-  overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) closePlayground(); });
-  escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closePlayground(); };
-  document.addEventListener('keydown', escHandler);
+  handle = createOverlay('wb-pg-overlay', closePlayground);
+  const overlay = handle.overlay;
 
   const panel = document.createElement('div');
   panel.className = 'wb-pg';
@@ -628,7 +624,7 @@ function mount(opts: Opts): void {
           node.style = { ...(node.style ?? {}), ...shelfStyle, ...chipStyle };
         });
         apply.textContent = 'Applied ✓ (Ctrl+Z undoes)';
-        window.setTimeout(() => { if (overlay) apply.textContent = 'Apply to selected element'; }, 1600);
+        window.setTimeout(() => { if (handle) apply.textContent = 'Apply to selected element'; }, 1600);
       });
       foot.appendChild(apply);
     }

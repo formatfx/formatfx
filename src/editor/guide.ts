@@ -10,16 +10,15 @@
 
 import { GUIDE_PAGES, GUIDE_CHAPTERS, type GuidePage } from './guideContent';
 import { renderIconGrid } from './iconPicker';
+import { createOverlay, type OverlayHandle } from './overlay';
 
-let overlay: HTMLElement | null = null;
-let escHandler: ((e: KeyboardEvent) => void) | null = null;
+let handle: OverlayHandle | null = null;
 /** Session memory: reopening the guide resumes where you left off. */
 let lastPageId = GUIDE_PAGES[0].id;
 
 export function closeGuide(): void {
-  overlay?.remove();
-  overlay = null;
-  if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null; }
+  handle?.close();
+  handle = null;
 }
 
 export function openGuide(pageId?: string): void {
@@ -29,10 +28,8 @@ export function openGuide(pageId?: string): void {
     GUIDE_PAGES.find((p) => p.id === (pageId ?? lastPageId)) ?? GUIDE_PAGES[0];
   let filter = '';
 
-  overlay = document.createElement('div');
-  overlay.className = 'wb-guide-overlay';
-  escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeGuide(); };
-  document.addEventListener('keydown', escHandler);
+  handle = createOverlay('wb-guide-overlay', closeGuide);
+  const overlay = handle.overlay;
 
   // ── chrome: header bar ──
   const head = document.createElement('div');
