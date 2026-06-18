@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { evaluate, evalAny, parseForEach, evaluateForEachList, type EvalContext } from './expressions';
 import { lintDocument, stripExpressionWhitespace, hasUnsafeWhitespace } from './linter';
 import { importJson, exportJson } from './serializer';
-import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES, STYLE_PROP_DOCS, ATTRIBUTE_DOCS } from './schema';
+import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES, STYLE_PROP_DOCS, ATTRIBUTE_DOCS, SP_FUNCTIONS, SP_FUNCTION_DOCS } from './schema';
 import { importSchema, mapSpFieldType, buildSampleRows } from './schemaImport';
 import { renderElement } from './renderer';
 import type { FormatterDocument, SPElement } from './types';
@@ -166,6 +166,80 @@ describe('linter', () => {
       kind: 'column', root: { elmType: 'div', txtContent: "=if([$Status]!='Done','a','b')" },
     };
     expect(lintDocument(notEq).map((i) => i.rule)).not.toContain('no-bang-operator');
+  });
+});
+
+describe('linter — function catalog (arg-count + unknown name)', () => {
+  const lint = (expr: string) =>
+    lintDocument({ kind: 'column', root: { elmType: 'div', txtContent: expr } }).map((i) => i.rule);
+
+  it('flags a known function called with too few arguments', () => {
+    expect(lint('=pow(2)')).toContain('fn-arg-count');
+    expect(lint("=if([$Status]=='Done')")).toContain('fn-arg-count');
+  });
+
+  it('flags a known function called with too many arguments', () => {
+    expect(lint("=substring('DogFood',3,6,9)")).toContain('fn-arg-count');
+  });
+
+  it('accepts valid arity, including documented optional arguments', () => {
+    expect(lint("=if([$Status]=='Done','#107c10','#a80000')")).not.toContain('fn-arg-count');
+    expect(lint("=substring('DogFood',3)")).not.toContain('fn-arg-count'); // end is optional (2–3)
+    expect(lint("=padStart('7',3)")).not.toContain('fn-arg-count');        // pad string optional (2–3)
+  });
+
+  it('flags an unknown / miscapitalized function name', () => {
+    expect(lint("=upper('x')")).toContain('fn-unknown');        // it is toUpperCase
+    expect(lint("=Substring('x',0,1)")).toContain('fn-unknown'); // case-sensitive
+  });
+
+  it('leaves valid calls (and the dedicated not() rule) alone', () => {
+    expect(lint("=toUpperCase('x')")).not.toContain('fn-unknown');
+    expect(lint("=join(@currentField,', ')")).not.toContain('fn-arg-count');
+    // not() is owned by no-not-function, not double-reported as fn-unknown
+    const notRules = lint("=not([$Flag])");
+    expect(notRules).toContain('no-not-function');
+    expect(notRules).not.toContain('fn-unknown');
+  });
+
+  it('checks nested calls too', () => {
+    expect(lint("=if([$x]=='a',toUpperCase('y','z'),'')")).toContain('fn-arg-count');
+  });
+});
+
+describe('schema docs — function catalog', () => {
+  it('every SP_FUNCTIONS name has a catalog entry, and vice-versa', () => {
+    for (const fn of SP_FUNCTIONS) {
+      expect(SP_FUNCTION_DOCS[fn], `missing SP_FUNCTION_DOCS entry for "${fn}"`).toBeTruthy();
+    }
+    for (const fn of Object.keys(SP_FUNCTION_DOCS)) {
+      expect((SP_FUNCTIONS as readonly string[]).includes(fn), `SP_FUNCTION_DOCS has "${fn}" but SP_FUNCTIONS does not`).toBe(true);
+    }
+  });
+
+  it('every entry has a signature, summary, example and a sane arity range', () => {
+    for (const [fn, doc] of Object.entries(SP_FUNCTION_DOCS)) {
+      expect(doc.signature, `${fn} signature`).toBeTruthy();
+      expect(doc.summary, `${fn} summary`).toBeTruthy();
+      expect(doc.example.startsWith('='), `${fn} example should be an =expression`).toBe(true);
+      expect(doc.minArgs, `${fn} minArgs`).toBeGreaterThanOrEqual(1);
+      expect(doc.maxArgs, `${fn} maxArgs`).toBeGreaterThanOrEqual(doc.minArgs);
+    }
+  });
+
+  it('summary prose carries no word-internal apostrophes (the example-chip parser splits on them)', () => {
+    for (const [fn, doc] of Object.entries(SP_FUNCTION_DOCS)) {
+      expect(/[A-Za-z]'[A-Za-z]/.test(doc.summary), `"${fn}" summary has a prose apostrophe: ${doc.summary}`).toBe(false);
+    }
+  });
+
+  it('every catalog example lints clean (no syntax, arity or unknown-name errors)', () => {
+    for (const [fn, doc] of Object.entries(SP_FUNCTION_DOCS)) {
+      const rules = lintDocument({ kind: 'column', root: { elmType: 'div', txtContent: doc.example } }).map((i) => i.rule);
+      for (const bad of ['expr-syntax', 'fn-arg-count', 'fn-unknown']) {
+        expect(rules, `"${fn}" example "${doc.example}" should not raise ${bad}`).not.toContain(bad);
+      }
+    }
   });
 });
 
