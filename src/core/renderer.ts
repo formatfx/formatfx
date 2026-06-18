@@ -6,7 +6,7 @@
  */
 
 import type { SPElement, SPExpr, NodePath } from './types';
-import { ALLOWED_STYLES } from './schema';
+import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES } from './schema';
 import {
   evaluate, evaluateToString, toStr, parseForEach, evaluateForEachList,
   type EvalContext, type SPValue,
@@ -52,6 +52,31 @@ function tagName(elmType: string): string {
   }
 }
 
+const ATTR_ALLOW = new Set<string>(ALLOWED_ATTRIBUTES);
+
+/** SP only honors a fixed set of attributes (plus aria-*); everything else —
+ *  notably on* event handlers — is ignored. We mirror that so an imported or
+ *  pasted formatter can't inject a handler into the preview's DOM. */
+function isAllowedAttribute(key: string): boolean {
+  return ATTR_ALLOW.has(key) || key.startsWith('aria-');
+}
+
+/** URL guard for href/src: permit relative URLs, http(s)/mailto/tel, and inert
+ *  image data URIs (the avatar generator emits data:image/svg+xml). Drop
+ *  javascript:/vbscript:/data:text-html and anything else that could execute.
+ *  Returns the value to set, or null to drop. Control chars are stripped first
+ *  because browsers ignore them when resolving the scheme (java\nscript:…). */
+function safeUrl(value: string): string | null {
+  const v = value.replace(/[\x00-\x1F]/g, '').trim();
+  if (v === '') return value;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(v);
+  if (!scheme) return value; // relative path, anchor or query — no scheme
+  const s = scheme[1].toLowerCase();
+  if (s === 'http' || s === 'https' || s === 'mailto' || s === 'tel') return value;
+  if (s === 'data') return /^data:image\//i.test(v) ? value : null;
+  return null; // javascript:, vbscript:, file:, data:text/html, …
+}
+
 export function renderElement(
   el: SPElement,
   ctx: EvalContext,
@@ -72,6 +97,9 @@ export function renderElement(
   if (el.attributes) {
     for (const [key, raw] of Object.entries(el.attributes)) {
       if (raw === undefined || raw === null) continue;
+      // Ignore attributes SP wouldn't honor (esp. on* event handlers) — the
+      // renderer drops them just as it drops non-allow-listed styles below.
+      if (!isAllowedAttribute(key)) continue;
       const value = safeEvalString(raw, ctx, opts, path, `attributes.${key}`);
       if (key === 'class') {
         for (const cls of value.split(/\s+/).filter(Boolean)) node.classList.add(cls);
@@ -83,7 +111,8 @@ export function renderElement(
           node.insertBefore(icon, node.firstChild);
         }
       } else if (key === 'href' || key === 'src') {
-        node.setAttribute(key, value);
+        const url = safeUrl(value);
+        if (url !== null) node.setAttribute(key, url);
         if (key === 'href') node.setAttribute('rel', 'noopener noreferrer');
       } else {
         try { node.setAttribute(key, value); } catch { /* invalid attr name */ }

@@ -561,4 +561,41 @@ describe('renderer (happy-dom)', () => {
     expect(issues.length).toBe(1);
     expect(issues[0].message).toMatch(/bogusFn/);
   });
+
+  it('drops attributes outside the SP allow-list, including on* event handlers', () => {
+    const el: SPElement = {
+      elmType: 'div',
+      txtContent: 'hi',
+      attributes: {
+        onclick: 'alert(1)', onerror: 'alert(2)', onmouseover: 'alert(3)',
+        title: 'kept', class: 'kept-class', 'aria-label': 'Status',
+      },
+    };
+    const node = renderElement(el, ctx) as HTMLElement;
+    // event-handler attributes never reach the DOM
+    expect(node.getAttribute('onclick')).toBeNull();
+    expect(node.getAttribute('onerror')).toBeNull();
+    expect(node.getAttribute('onmouseover')).toBeNull();
+    // allow-listed attributes (and aria-*) still render
+    expect(node.getAttribute('title')).toBe('kept');
+    expect(node.classList.contains('kept-class')).toBe(true);
+    expect(node.getAttribute('aria-label')).toBe('Status');
+  });
+
+  it('blocks javascript:/data:text URLs in href and src but keeps safe and image-data ones', () => {
+    const js: SPElement = { elmType: 'a', txtContent: 'go', attributes: { href: 'javascript:alert(1)' } };
+    expect((renderElement(js, ctx) as HTMLElement).getAttribute('href')).toBeNull();
+    // control-char obfuscation of the scheme is defeated too
+    const obf: SPElement = { elmType: 'a', txtContent: 'go', attributes: { href: 'java\nscript:alert(1)' } };
+    expect((renderElement(obf, ctx) as HTMLElement).getAttribute('href')).toBeNull();
+    const htmlData: SPElement = { elmType: 'img', attributes: { src: 'data:text/html,<script>alert(1)</script>' } };
+    expect((renderElement(htmlData, ctx) as HTMLElement).getAttribute('src')).toBeNull();
+    // safe URLs survive: absolute, relative, and the avatar generator's image data URI
+    const https: SPElement = { elmType: 'a', txtContent: 'go', attributes: { href: 'https://example.com/x' } };
+    expect((renderElement(https, ctx) as HTMLElement).getAttribute('href')).toBe('https://example.com/x');
+    const rel: SPElement = { elmType: 'a', txtContent: 'go', attributes: { href: '/sites/team/page.aspx' } };
+    expect((renderElement(rel, ctx) as HTMLElement).getAttribute('href')).toBe('/sites/team/page.aspx');
+    const avatar: SPElement = { elmType: 'img', attributes: { src: 'data:image/svg+xml,%3Csvg%3E%3C/svg%3E' } };
+    expect((renderElement(avatar, ctx) as HTMLElement).getAttribute('src')).toContain('data:image/svg+xml');
+  });
 });
