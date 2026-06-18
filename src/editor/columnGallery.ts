@@ -13,6 +13,7 @@ import { state } from './state';
 import { renderElement } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
 import type { SPElement } from '../core/types';
+import { cfrFieldName } from '../core/refs';
 
 /** Column names that currently carry a formatter, in registry order. */
 export function formattedColumnNames(): string[] {
@@ -29,7 +30,7 @@ export function closeColumnGallery(): void {
 }
 
 const resolveColumnRef = (fieldRef: string): SPElement | null => {
-  const name = fieldRef.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+  const name = cfrFieldName(fieldRef);
   return state.columnRefs[name] ?? null;
 };
 

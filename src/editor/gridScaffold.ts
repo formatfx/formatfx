@@ -10,6 +10,7 @@
  */
 
 import type { SPElement, MockField } from '../core/types';
+import { cfrFieldName } from '../core/refs';
 
 /** User-facing label for a field: display name when it differs. */
 export function fieldLabel(field: MockField): string {
@@ -106,11 +107,6 @@ export function defaultColumnFormatter(field: MockField): SPElement {
     );
   }
   return tree;
-}
-
-/** Field name a CFR string targets: '[$Status]' / '$Status' / 'Status'. */
-export function cfrFieldName(refText: string): string {
-  return refText.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
 }
 
 /** Every `[$Field]` reference (and CFR/inline-edit target) in a subtree. */

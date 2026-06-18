@@ -5,6 +5,7 @@
 
 import type { SPElement, NodePath } from '../core/types';
 import { state, samePath, CARD_SEGMENT } from './state';
+import { cfrFieldName } from '../core/refs';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 
@@ -22,11 +23,6 @@ function nodeHint(el: SPElement): string {
   else if (typeof el.attributes?.class === 'string') hint = `.${el.attributes.class.split(/\s+/)[0]}`;
   if (hint.length > 26) hint = hint.slice(0, 26) + '…';
   return hint;
-}
-
-/** The bare column name behind a columnFormatterReference (strips `[$…]`). */
-function cfrName(ref: string): string {
-  return ref.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
 }
 
 /**
@@ -49,7 +45,7 @@ function nodeChips(el: SPElement, onCfr?: (name: string) => void): HTMLElement[]
   if (el.customRowAction) mk('▶', 'wb-chip-action', `Click action: ${el.customRowAction.action || '(no-op)'}`);
   if (el.customCardProps) mk('▣', 'wb-chip-card', 'Opens a hover/click card (nested below)');
   if (el.columnFormatterReference) {
-    const name = cfrName(el.columnFormatterReference);
+    const name = cfrFieldName(el.columnFormatterReference);
     const chip = mk('⤷', 'wb-chip-cfr',
       onCfr
         ? `Renders ${el.columnFormatterReference} — click to open & select that column formatter below`

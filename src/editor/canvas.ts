@@ -15,6 +15,7 @@ import { instantiate } from './presets';
 import { renderGrid } from './gridView';
 import { installPreviewContextMenu } from './contextMenu';
 import type { NodePath, SPElement } from '../core/types';
+import { cfrFieldName } from '../core/refs';
 
 export interface CanvasApi {
   getRuntimeIssues: () => RenderIssue[];
@@ -39,7 +40,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   let runtimeIssues: RenderIssue[] = [];
 
   const resolveColumnRef = (fieldRef: string): SPElement | null => {
-    const name = fieldRef.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+    const name = cfrFieldName(fieldRef);
     return state.columnRefs[name] ?? null;
   };
 
