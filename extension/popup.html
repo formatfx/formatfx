@@ -29,12 +29,20 @@
 </head>
 <body>
   <h1>FormatFX companion</h1>
-  <p class="lede">On a SharePoint list page:</p>
 
-  <div id="main">
+  <div id="main" hidden>
+    <p class="lede">On a SharePoint list page:</p>
     <button id="apply-staged" hidden>✓ Apply staged</button>
     <button id="extract">⚡ Extract this list…</button>
     <button id="apply" class="secondary">⬆ Apply formatters from clipboard</button>
+  </div>
+
+  <div id="state-formatfx" hidden>
+    <p>You're on FormatFX — use the app to stage formatters, then open the popup on your SharePoint list tab to apply them.</p>
+  </div>
+
+  <div id="state-other" hidden>
+    <p>Navigate to a SharePoint list page to extract or apply formatters.</p>
   </div>
 
   <div id="picker" hidden>

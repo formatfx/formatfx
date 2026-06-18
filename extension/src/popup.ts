@@ -13,6 +13,7 @@ import type { ListSnapshot, ApplyOutcome } from '../../src/bridge/spClient';
 import { selectFromSnapshot } from '../../src/bridge/spClient';
 import { serializeApplyPayload } from '../../src/bridge/applyPayload';
 import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
+import { classifyUrl } from './pageKind';
 
 interface WorkerResponse {
   ok: boolean;
@@ -218,4 +219,18 @@ document.getElementById('picker-copy')!.addEventListener('click', onPickerCopy);
 document.getElementById('picker-cancel')!.addEventListener('click', onPickerCancel);
 document.getElementById('picker-all')!.addEventListener('click', () => setAllFields(true));
 document.getElementById('picker-none')!.addEventListener('click', () => setAllFields(false));
-void refreshStagedButton();
+
+/** Show the right panel based on the active tab's URL. */
+async function initPageState(): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const kind = classifyUrl(tab?.url);
+  const main = document.getElementById('main') as HTMLElement;
+  const fxState = document.getElementById('state-formatfx') as HTMLElement;
+  const otherState = document.getElementById('state-other') as HTMLElement;
+  main.hidden = kind !== 'sharepoint';
+  fxState.hidden = kind !== 'formatfx';
+  otherState.hidden = kind !== 'other';
+  if (kind === 'sharepoint') void refreshStagedButton();
+}
+
+void initPageState();
