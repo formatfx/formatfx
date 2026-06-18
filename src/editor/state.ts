@@ -7,6 +7,7 @@ import type {
   FormatterDocument, SPElement, NodePath, MockField, MockRow, PersonValue, DocumentKind,
 } from '../core/types';
 import type { ImportedView } from '../core/schemaImport';
+import { cfrFieldName } from '../core/refs';
 import { buildGridRoot } from './gridScaffold';
 
 export type ChangeReason =
@@ -227,7 +228,7 @@ export class EditorState {
     const walk = (el: SPElement | undefined): void => {
       if (!el) return;
       if (el.columnFormatterReference) {
-        out.add(el.columnFormatterReference.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, ''));
+        out.add(cfrFieldName(el.columnFormatterReference));
       }
       el.children?.forEach(walk);
       if (el.customCardProps?.formatter) walk(el.customCardProps.formatter);

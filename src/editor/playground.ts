@@ -24,6 +24,7 @@ import {
   styleFamilyOf, type StyleFamily,
 } from '../core/schema';
 import { renderElement } from '../core/renderer';
+import { cfrFieldName } from '../core/refs';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
 import { state, CARD_SEGMENT } from './state';
 
@@ -232,7 +233,7 @@ function mount(opts: Opts): void {
         issues: [],
         tagPaths: true,
         resolveColumnRef: (ref: string) => {
-          const n = ref.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+          const n = cfrFieldName(ref);
           return state.columnRefs[n] ?? null;
         },
         onAction: () => { /* inert in the playground */ },
@@ -389,7 +390,7 @@ function mount(opts: Opts): void {
     // offer to open THAT formatter in the playground (switches the
     // workspace, exactly like clicking the column in the Structure tree)
     const cfr = targetNode.columnFormatterReference;
-    const cfrName = cfr?.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+    const cfrName = cfr ? cfrFieldName(cfr) : undefined;
     if (cfrName && state.columnRefs[cfrName]) {
       const enter = document.createElement('button');
       enter.className = 'wb-pg-tree-row wb-pg-tree-child wb-pg-navcfr';

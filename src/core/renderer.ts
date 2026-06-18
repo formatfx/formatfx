@@ -7,6 +7,7 @@
 
 import type { SPElement, SPExpr, NodePath } from './types';
 import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES } from './schema';
+import { cfrFieldName } from './refs';
 import {
   evaluate, evaluateToString, toStr, parseForEach, evaluateForEachList,
   type EvalContext, type SPValue,
@@ -151,7 +152,7 @@ export function renderElement(
     const refTree = cyclic ? null : opts.resolveColumnRef?.(refName) ?? null;
     if (refTree) {
       // inside the referenced formatter, @currentField is the REFERENCED column
-      const refField = refName.replace(/^\[\$?/, '').replace(/\]$/, '').replace(/^\$/, '');
+      const refField = cfrFieldName(refName);
       const refCtx: EvalContext = { ...ctx, currentFieldName: refField };
       node.appendChild(renderElement(refTree, refCtx, {
         ...opts, tagPaths: false, cfrStack: [...stack, refName],
