@@ -239,6 +239,19 @@ describe('deploy snippet', () => {
     expect(s).toContain("getByInternalNameOrTitle('Status')");
   });
 
+  it('neutralizes a comment-break sequence in the target name (no code injection)', () => {
+    // A crafted view title (free text, attacker-influenceable on a shared list)
+    // must not close the snippet's /* ... */ banner early and turn the trailing
+    // text into executable JS in the maker's authenticated console.
+    const evil = 'Sprint */;globalThis.__pwned=1;/*';
+    const s = buildDeploySnippet({ target: 'view', name: evil, formatterJson: '{}' });
+    // The banner runs to its real terminator: its 'Permissions:' line appears
+    // BEFORE the first '*/' in the snippet (the banner's own close).
+    expect(s.indexOf('Permissions:')).toBeLessThan(s.indexOf('*/'));
+    // The payload never appears as an un-commented, executable sequence.
+    expect(s).not.toContain('*/;globalThis.__pwned=1');
+  });
+
   it('executes: digest before MERGE, right headers, right body, verify after', async () => {
     stubEnvironment({ routes: deployRoutes });
     const result = await run(buildDeploySnippet({
