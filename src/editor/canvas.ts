@@ -72,7 +72,15 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
       table.className = 'wb-mock-list';
       const header = document.createElement('div');
       header.className = 'wb-mock-row wb-mock-header';
-      header.innerHTML = `<div class="wb-mock-cell">Title</div><div class="wb-mock-cell wb-mock-cell-fmt">${state.currentFieldName} (formatted)</div>`;
+      const headTitle = document.createElement('div');
+      headTitle.className = 'wb-mock-cell';
+      headTitle.textContent = 'Title';
+      const headFmt = document.createElement('div');
+      headFmt.className = 'wb-mock-cell wb-mock-cell-fmt';
+      // textContent, not innerHTML — currentFieldName is an imported internal
+      // name and must never be parsed as HTML (matches the body cells below).
+      headFmt.textContent = `${state.currentFieldName} (formatted)`;
+      header.append(headTitle, headFmt);
       table.appendChild(header);
       state.rows.forEach((row, i) => {
         const tr = document.createElement('div');
