@@ -37,11 +37,17 @@ export function importJson(text: string): FormatterDocument {
 
   // View (row) formatter wrapper
   if ('rowFormatter' in parsed) {
+    // Keep any wrapper siblings the editor can't represent (footerFormatter,
+    // groupProps, commandBarProps, additionalRowClass, hideListHeader, …) so a
+    // tweak-and-re-export of the rowFormatter doesn't silently discard them.
+    const { rowFormatter, hideSelection, hideColumnHeader, $schema, ...extras } = parsed;
+    void $schema; // export emits its own $schema
     return {
       kind: 'row',
-      root: parsed.rowFormatter as SPElement,
-      hideSelection: parsed.hideSelection as boolean | undefined,
-      hideColumnHeader: parsed.hideColumnHeader as boolean | undefined,
+      root: rowFormatter as SPElement,
+      hideSelection: hideSelection as boolean | undefined,
+      hideColumnHeader: hideColumnHeader as boolean | undefined,
+      ...(Object.keys(extras).length ? { viewExtras: extras } : {}),
     };
   }
   // Tile formatter wrapper
@@ -105,6 +111,7 @@ export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): st
         $schema: SCHEMA_URLS.row,
         ...(doc.hideSelection !== undefined ? { hideSelection: doc.hideSelection } : {}),
         ...(doc.hideColumnHeader !== undefined ? { hideColumnHeader: doc.hideColumnHeader } : {}),
+        ...(doc.viewExtras ?? {}), // verbatim passthrough of unmodeled wrapper keys
         rowFormatter: root,
       };
       break;

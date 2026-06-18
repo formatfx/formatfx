@@ -90,6 +90,11 @@ export interface FormatterDocument {
   /** row formatter extras */
   hideSelection?: boolean;
   hideColumnHeader?: boolean;
+  /** Unmodeled view-formatter wrapper keys (footerFormatter, groupProps,
+   *  commandBarProps, additionalRowClass, hideListHeader, …) carried verbatim
+   *  through import → export so editing the rowFormatter never silently drops
+   *  the parts the editor can't represent. */
+  viewExtras?: Record<string, unknown>;
   /** tile formatter extras */
   tileWidth?: number;
   tileHeight?: number;
