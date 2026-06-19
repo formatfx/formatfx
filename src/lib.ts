@@ -38,7 +38,8 @@ export {
 // allow-lists and vocabulary
 export {
   ELM_TYPES, ALLOWED_ATTRIBUTES, ALLOWED_STYLES, KNOWN_UNSUPPORTED_STYLES,
-  SP_FUNCTIONS, SPECIAL_TOKENS,
+  SP_FUNCTIONS, SP_FUNCTION_DOCS, SPECIAL_TOKENS,
+  type SPFunctionDoc,
 } from './core/schema';
 
 // list schema import — all four formats, incl. the List Snapshot
