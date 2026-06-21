@@ -16,6 +16,45 @@ import { renderGrid } from './gridView';
 import { installPreviewContextMenu } from './contextMenu';
 import type { NodePath, SPElement } from '../core/types';
 import { cfrFieldName } from '../core/refs';
+import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
+
+/** The Stage-3 row-view toolbar: density (Roomy/Compact) + back to the grid.
+ *  Per-area sizing lives on each area's right-click menu (independent weights). */
+function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'wb-rowview-bar';
+  const label = document.createElement('span');
+  label.className = 'wb-rowview-bar-label';
+  label.textContent = state.doc.kind === 'tile' ? 'Tile layout' : 'Row view';
+  bar.appendChild(label);
+
+  const density = rowDensityOf(state.doc.root);
+  const group = document.createElement('span');
+  group.className = 'wb-rowview-density';
+  group.append('Density:');
+  for (const d of ['roomy', 'compact'] as RowDensity[]) {
+    const b = document.createElement('button');
+    b.className = 'wb-rowview-bar-btn' + (density === d ? ' active' : '');
+    b.textContent = DENSITY_LABEL[d];
+    b.title = `${DENSITY_LABEL[d]} spacing for the whole row (a separate knob from per-area sizing)`;
+    b.addEventListener('click', () => { state.setRowDensity(d); onToast(`Row density: ${DENSITY_LABEL[d]}`); });
+    group.appendChild(b);
+  }
+  bar.appendChild(group);
+
+  const hint = document.createElement('span');
+  hint.className = 'wb-rowview-bar-hint';
+  hint.textContent = 'right-click an area to size it';
+  bar.appendChild(hint);
+
+  const back = document.createElement('button');
+  back.className = 'wb-rowview-bar-btn wb-rowview-back';
+  back.textContent = '◧ Back to grid';
+  back.title = 'Return to the column grid — the same elements, shown column by column';
+  back.addEventListener('click', () => { state.setKind('grid'); onToast('Back to the grid'); });
+  bar.appendChild(back);
+  return bar;
+}
 
 export interface CanvasApi {
   getRuntimeIssues: () => RenderIssue[];
@@ -105,6 +144,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
       // the grid-first workspace: root children as Lists-style view columns
       renderGrid(host, { opts, ctxForRow, onToast });
     } else if (kind === 'row') {
+      host.appendChild(rowViewToolbar(onToast));
       state.rows.forEach((_row, i) => {
         const rowHost = document.createElement('div');
         rowHost.className = 'wb-mock-viewrow';
@@ -117,6 +157,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
         host.appendChild(rowHost);
       });
     } else {
+      host.appendChild(rowViewToolbar(onToast));
       const deck = document.createElement('div');
       deck.className = 'wb-mock-deck';
       state.rows.forEach((_row, i) => {

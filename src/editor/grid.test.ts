@@ -201,6 +201,106 @@ describe('grid document mutations (one undo step each)', () => {
   });
 });
 
+describe('row-view builder (stage 3, one undo step each)', () => {
+  function gridState(): EditorState {
+    const s = new EditorState();
+    s.doc = {
+      kind: 'grid',
+      root: buildGridRoot(FIELDS, REFS, ['Title', 'Status', 'DueDate', 'Project']),
+    };
+    return s;
+  }
+
+  it('makeRowView graduates the grid to a row layout in one undo step', () => {
+    const s = gridState();
+    s.makeRowView();
+    expect(s.doc.kind).toBe('row');
+    expect(s.doc.root.children).toHaveLength(4);
+    expect(s.doc.root.children!.every((c) => c.style?.['flex'] !== undefined)).toBe(true);
+    s.undo();
+    expect(s.doc.kind).toBe('grid');
+  });
+
+  it('makeRowView curates a column subset, in selection order', () => {
+    const s = gridState();
+    s.makeRowView([3, 1]); // Project, Status
+    expect(s.doc.kind).toBe('row');
+    expect(s.doc.root.children!.map((c) => c._elmName)).toEqual(['Project', 'Status']);
+  });
+
+  it('makeRowView(kind=tile) is an explicit tile pick with default dims', () => {
+    const s = gridState();
+    s.makeRowView(undefined, 'tile');
+    expect(s.doc.kind).toBe('tile');
+    expect(s.doc.tileWidth).toBe(254);
+    expect(s.doc.tileHeight).toBe(220);
+  });
+
+  it('setAreaWeight changes only the named area; setRowDensity is one undo step', () => {
+    const s = gridState();
+    s.makeRowView();
+    s.setAreaWeight([1], 'widest');
+    expect(s.doc.root.children![1].style?.['flex']).toBe('3');
+    expect(s.doc.root.children![0].style?.['flex']).toBe('1'); // neighbor untouched
+    s.setRowDensity('compact');
+    expect(s.doc.root.style?.['gap']).toBe('8px');
+    s.undo(); // undo density
+    expect(s.doc.root.style?.['gap']).not.toBe('8px');
+    s.undo(); // undo weight
+    expect(s.doc.root.children![1].style?.['flex']).toBe('1');
+  });
+});
+
+describe('CFR linked instances (stage 4, one undo step each)', () => {
+  function gridState(): EditorState {
+    const s = new EditorState();
+    s.columnRefs = { Status: { elmType: 'div', _elmName: 'Status pill', txtContent: '@currentField' } };
+    s.doc = {
+      kind: 'grid',
+      root: buildGridRoot(FIELDS, s.columnRefs, ['Title', 'Status', 'DueDate']),
+    };
+    return s;
+  }
+
+  it('forkCfr makes a linked cell local in one undo step', () => {
+    const s = gridState();
+    expect(s.doc.root.children![1].columnFormatterReference).toBe('[$Status]');
+    s.forkCfr([1]);
+    const cell = s.doc.root.children![1];
+    expect(cell.columnFormatterReference).toBeUndefined();
+    expect(cell.txtContent).toBe('[$Status]'); // @currentField → [$Status]
+    expect(cell.style?.['flex']).toBe('1'); // grid layout preserved
+    expect(cell._elmName).toBe('Status'); // grid column name kept
+    s.undo();
+    expect(s.doc.root.children![1].columnFormatterReference).toBe('[$Status]');
+  });
+
+  it('forkCfr is a no-op on a non-CFR cell', () => {
+    const s = gridState();
+    const before = JSON.stringify(s.doc);
+    s.forkCfr([0]); // Title is a plain local cell
+    expect(JSON.stringify(s.doc)).toBe(before);
+  });
+
+  it('promoteToColumn registers a local cell as the shared format and relinks it', () => {
+    const s = gridState();
+    expect('Title' in s.columnRefs).toBe(false);
+    const field = s.promoteToColumn([0]); // Title is a plain [$Title] cell
+    expect(field).toBe('Title');
+    expect('Title' in s.columnRefs).toBe(true);
+    expect(s.columnRefs.Title.txtContent).toBe('@currentField'); // [$Title] → @currentField
+    expect(s.doc.root.children![0].columnFormatterReference).toBe('[$Title]'); // relinked
+    // undo restores the local cell
+    s.undo();
+    expect(s.doc.root.children![0].columnFormatterReference).toBeUndefined();
+  });
+
+  it('promoteToColumn refuses an already-linked cell', () => {
+    const s = gridState();
+    expect(s.promoteToColumn([1])).toBeNull(); // Status is already a CFR
+  });
+});
+
 describe('grid wrapper semantics', () => {
   it('exports as a view (row) formatter — the grid is editor presentation', () => {
     const doc = {
