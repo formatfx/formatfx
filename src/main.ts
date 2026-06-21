@@ -58,6 +58,7 @@ app.innerHTML = `
       </label>
       <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
+      <button id="wb-studio-toggle" title="Show the studio: Palette, Structure, and the Properties/JSON pane"><i class="ms-Icon ms-Icon--DeveloperTools"></i> Studio</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
@@ -156,6 +157,8 @@ interface UiPrefs {
   dataH: number;
   dataMode: 'normal' | 'min' | 'max';
   titleCol: boolean;
+  /** When false (default), the studio panes are hidden — grid-first maker view. */
+  studioOpen: boolean;
 }
 const uiPrefs: UiPrefs = {
   cols: { palette: 220, tree: 250, side: 360 },
@@ -168,6 +171,7 @@ const uiPrefs: UiPrefs = {
   dataH: 220,
   dataMode: 'min',
   titleCol: true,
+  studioOpen: false,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
@@ -184,7 +188,11 @@ const applyLayout = () => {
   const tree = uiPrefs.treeMode === 'peek' ? 30 : uiPrefs.cols.tree;
   // One unified surface: palette (far left), Structure, the preview/grid, and
   // the Properties/JSON pane on the right — every tool is always present.
-  layout.style.gridTemplateColumns = `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`;
+  layout.classList.toggle('wb-maker', !uiPrefs.studioOpen);
+  document.getElementById('wb-studio-toggle')!.classList.toggle('active', uiPrefs.studioOpen);
+  layout.style.gridTemplateColumns = uiPrefs.studioOpen
+    ? `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`
+    : '1fr';
   document.getElementById('wb-pane-palette')!.classList.toggle('wb-collapsed', uiPrefs.paletteCollapsed);
   (document.getElementById('wb-palette-toggle') as HTMLButtonElement).textContent = uiPrefs.paletteCollapsed ? '⮞' : '⮜';
   sidePane.classList.toggle('wb-peek', uiPrefs.sideMode === 'peek');
@@ -234,6 +242,11 @@ document.addEventListener('pointerdown', (e) => {
 });
 document.getElementById('wb-palette-toggle')!.addEventListener('click', () => {
   uiPrefs.paletteCollapsed = !uiPrefs.paletteCollapsed;
+  applyLayout();
+  saveUiPrefs();
+});
+document.getElementById('wb-studio-toggle')!.addEventListener('click', () => {
+  uiPrefs.studioOpen = !uiPrefs.studioOpen;
   applyLayout();
   saveUiPrefs();
 });
