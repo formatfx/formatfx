@@ -23,6 +23,12 @@ async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
 }
 
+// the example/sample loader now lives in the ☰ menu — open it, then pick
+async function loadExample(page: Page, value: string): Promise<void> {
+  await page.click('#wb-menu-btn');
+  await page.selectOption('#wb-example', value);
+}
+
 test('first load shows the grid-first workspace: Lists-style grid, formatted columns resolve', async ({ page }) => {
   // default is a grid — one column per view column, real headers
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
@@ -43,7 +49,7 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
 });
 
 test('status pill example renders colored pills per row', async ({ page }) => {
-  await page.selectOption('#wb-example', 'status-pill');
+  await loadExample(page, 'status-pill');
   const cells = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt');
   await expect(cells.nth(0)).toContainText('In Progress');
   await expect(cells.nth(1)).toContainText('Blocked');
@@ -55,7 +61,7 @@ test('status pill example renders colored pills per row', async ({ page }) => {
 
 test('palette click inserts an element, selects it and toasts', async ({ page }) => {
   await openStudio(page);
-  await page.selectOption('#wb-example', 'status-pill'); // column-kind canvas
+  await loadExample(page, 'status-pill'); // column-kind canvas
   await page.locator('.wb-palette-item', { hasText: 'Traffic light' }).click();
   await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('In Progress');
   await expect(page.locator('.wb-tree-row.selected')).toHaveCount(1);
@@ -88,7 +94,7 @@ test('lint panel teaches: nested = gets a verbose, positioned error', async ({ p
 
 test('hover card opens as flyout and its content is selectable', async ({ page }) => {
   await openStudio(page);
-  await page.selectOption('#wb-example', 'status-pill');
+  await loadExample(page, 'status-pill');
   await page.locator('.wb-palette-item', { hasText: 'Hover card' }).click();
   await page.locator('.wb-mock-cell-fmt .wb-has-card').first().click();
   const flyout = page.locator('.wb-flyout');
@@ -100,7 +106,7 @@ test('hover card opens as flyout and its content is selectable', async ({ page }
 });
 
 test('dark mode (the default) keeps the row card readable (theme classes, not hex)', async ({ page }) => {
-  await page.selectOption('#wb-example', 'row-card');
+  await loadExample(page, 'row-card');
   await expect(page.locator('body')).toHaveClass(/wb-dark/);
   const card = page.locator('.wb-mock-viewrow .ms-bgColor-white').first();
   // dark palette maps the "white" token to near-black — not #fff
@@ -169,7 +175,7 @@ test('applying name-less JSON over a named design warns before dropping names', 
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {
   await openStudio(page);
-  await page.selectOption('#wb-example', 'status-pill');
+  await loadExample(page, 'status-pill');
   const source = page.locator('.wb-palette-item', { hasText: 'Icon' }).first();
   const target = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt [data-sp-path]').first();
   await source.dragTo(target);

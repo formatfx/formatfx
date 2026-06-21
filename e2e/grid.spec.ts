@@ -63,6 +63,18 @@ test('"Format this column" offers type-aware presets (facepile for a people colu
   await expect(page.locator('.wb-mock-cell-fmt img').first()).toBeVisible();
 });
 
+test('drilling into a column formatter shows a Back affordance that returns to the view', async ({ page }) => {
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
+  await expect(page.locator('#wb-activedoc')).toHaveValue('Status');
+  // the shown view (the column preview) offers a way back to where you came from
+  const back = page.locator('.wb-back-bar .wb-rowview-back');
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page.locator('#wb-activedoc')).toHaveValue('main');
+  await expect(page.locator('.wb-grid-header-label').first()).toBeVisible();
+});
+
 test('hide column is one undoable mutation; "+ column" re-adds fields, formatted ones stay formatted', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Hide column' }).click();
