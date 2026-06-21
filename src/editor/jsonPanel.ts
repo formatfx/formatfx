@@ -28,9 +28,9 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
       <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
       <button id="wb-json-download" title="Download .json">Download</button>
       <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
-      <button id="wb-json-deploy" class="wb-adv" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, no install, no app registration">🚀 Deploy…</button>
+      <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
     </div>
-    <div id="wb-deploy-panel" class="wb-deploy wb-adv" hidden>
+    <div id="wb-deploy-panel" class="wb-deploy" hidden>
       <div id="wb-deploy-target" class="wb-deploy-target"></div>
       <input id="wb-deploy-view" placeholder="View title, exactly as on the list" value="All Items" title="The (shared) view that receives this row formatting">
       <input id="wb-deploy-list" placeholder="List title (blank = the list you run it on)" title="Usually leave blank and run the snippet on the list's own page">

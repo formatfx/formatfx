@@ -52,7 +52,7 @@ app.innerHTML = `
       </label>
       <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
-      <button id="wb-studio-toggle" title="Show the studio: Palette, Structure, and the Properties/JSON pane"><i class="ms-Icon ms-Icon--DeveloperTools"></i> Studio</button>
+      <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
@@ -124,7 +124,7 @@ app.innerHTML = `
       <div class="wb-side-rail" title="Hover to open the panel — it stays open until you click somewhere else">◧<span>panel</span></div>
       <nav class="wb-tabs">
         <button data-tab="inspector" class="active">Properties</button>
-        <button data-tab="json" class="wb-adv">JSON</button>
+        <button data-tab="json" title="The validated-JSON escape hatch — paste/apply any formatter, copy the compiled output, or Deploy">JSON</button>
         <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close">📌</button>
         <button id="wb-side-max" title="Maximize this pane — room for editing JSON">⛶</button>
       </nav>
@@ -249,10 +249,22 @@ document.getElementById('wb-palette-toggle')!.addEventListener('click', () => {
   saveUiPrefs();
 });
 document.getElementById('wb-studio-toggle')!.addEventListener('click', () => {
-  uiPrefs.studioOpen = !uiPrefs.studioOpen;
+  const opening = !uiPrefs.studioOpen;
+  uiPrefs.studioOpen = opening;
   applyLayout();
   saveUiPrefs();
+  // the single Advanced door opens on the validated-JSON view (the escape
+  // hatch); Palette/Structure/Properties stay one click away in the studio.
+  if (opening) activateSideTab('json');
 });
+
+/** Activate one of the side-pane tabs (Properties / JSON) programmatically. */
+function activateSideTab(tab: 'inspector' | 'json'): void {
+  app.querySelectorAll('.wb-tabs button[data-tab]').forEach((b) => b.classList.remove('active'));
+  app.querySelectorAll('.wb-tab').forEach((t) => t.classList.remove('active'));
+  document.querySelector(`.wb-tabs button[data-tab="${tab}"]`)?.classList.add('active');
+  document.getElementById(`wb-tab-${tab}`)?.classList.add('active');
+}
 for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
   const col = resizer.dataset.col as keyof UiPrefs['cols'];
   resizer.addEventListener('pointerdown', (e) => {

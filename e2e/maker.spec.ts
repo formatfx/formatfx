@@ -29,6 +29,15 @@ test('Studio toggle reveals the panes and persists', async ({ page }) => {
   await expect(page.locator('.wb-pane-palette')).toBeVisible();
 });
 
+test('the single Advanced door is labeled Advanced and opens on the validated-JSON view', async ({ page }) => {
+  await expect(page.locator('#wb-studio-toggle')).toContainText('Advanced');
+  await page.click('#wb-studio-toggle');
+  // opens straight to the JSON escape hatch; Properties stays one click away
+  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toHaveClass(/active/);
+  await expect(page.locator('#wb-tab-json')).toHaveClass(/active/);
+  await expect(page.locator('.wb-tabs button[data-tab="inspector"]')).not.toHaveClass(/active/);
+});
+
 test('topbar shows the emergent destination chip, not a Type dropdown', async ({ page }) => {
   // the old upfront Type dropdown is gone from the topbar
   await expect(page.locator('.wb-topbar #wb-kind')).toHaveCount(0);

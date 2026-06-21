@@ -26,6 +26,7 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius } from './cfr';
+import { columnPresetsFor, buildColumnPreset } from './columnPresets';
 import { cfrFieldName } from '../core/refs';
 import type { SPElement, NodePath, MockField } from '../core/types';
 
@@ -62,6 +63,48 @@ function formatColumn(col: GridColumn, field: MockField, onToast: (m: string) =>
   onToast(existed
     ? `Editing the ${name} column formatter — switch back via the topbar or Structure pane`
     : `Started a formatter for ${name} — you're editing it now; the grid renders it live`);
+}
+
+/** Register `tree` as the column's formatter, CFR-wire the grid cell (ONE
+ *  document mutation), then open it for editing. Shared by every "Format this
+ *  column" path — the manual default and each preset. */
+function applyColumnFormatter(col: GridColumn, field: MockField, tree: SPElement, onToast: (m: string) => void, msg: string): void {
+  state.columnRefs[field.name] = tree;
+  if (!col.el.columnFormatterReference && col.path.length > 0) {
+    const p = state.parentOf(col.path);
+    if (p?.parent.children) {
+      state.mutateDocument(() => {
+        const cell = gridCellForField(field, state.columnRefs);
+        if (col.el._elmName) cell._elmName = col.el._elmName;
+        p.parent.children![p.index] = cell;
+      });
+    }
+  }
+  state.openColumnRef(field.name);
+  onToast(msg);
+}
+
+/** "Format this column" → a type-aware preset picker (the system thinks for the
+ *  maker), then "format manually". With no fitting preset, go straight to manual. */
+function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLElement, onToast: (m: string) => void): void {
+  const presets = columnPresetsFor(field.type);
+  const manual = (): void => applyColumnFormatter(col, field, defaultColumnFormatter(field), onToast,
+    `Started a formatter for ${field.name} — you're editing it now; the grid renders it live`);
+  if (presets.length === 0) { manual(); return; }
+  const items: MenuItem[] = presets.map((p) => ({
+    icon: p.icon,
+    label: p.label,
+    title: p.description,
+    fn: () => applyColumnFormatter(col, field, buildColumnPreset(p.id, field)!, onToast,
+      `Started a ${p.label} for ${field.name} — you're editing it; the grid renders it live. Restyle or Ctrl+Z to undo.`),
+  }));
+  items.push({
+    icon: 'Brush',
+    label: 'Format this column manually',
+    title: 'Start from the plain value and style it yourself',
+    fn: manual,
+  });
+  openMenu(header, `Format ${fieldLabel(field)}`, items);
 }
 
 function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: string) => void): void {
@@ -103,14 +146,19 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
           : `Edit the shared ${field.name} column format`,
         fn: () => formatColumn(col, field, onToast),
       });
+    } else if (registered) {
+      items.push({
+        icon: 'Edit',
+        label: 'Edit its formatter',
+        title: `Open the [$${field.name}] column formatter on the canvas`,
+        fn: () => formatColumn(col, field, onToast),
+      });
     } else {
       items.push({
-        icon: registered ? 'Edit' : 'Brush',
-        label: registered ? 'Edit its formatter' : 'Format this column',
-        title: registered
-          ? `Open the [$${field.name}] column formatter on the canvas`
-          : 'Start a column formatter for this column and open it — the grid keeps rendering it live',
-        fn: () => formatColumn(col, field, onToast),
+        icon: 'Brush',
+        label: 'Format this column',
+        title: 'Pick a ready-made look that fits this column — or format it manually',
+        fn: () => openFormatColumnMenu(col, field, header, onToast),
       });
       items.push({
         icon: 'Link',

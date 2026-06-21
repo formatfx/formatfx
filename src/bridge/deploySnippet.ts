@@ -58,6 +58,7 @@ export function buildDeploySnippet(opts: DeploySnippetOptions): string {
   // baked by FormatFX at copy time:
   var TARGET_LIST = ${bakedList}; // null = the list this page shows
   var TARGET_PATH = ${targetPath};
+  var TARGET_KIND = ${JSON.stringify(opts.target)}; // 'field' (one column) | 'view' (the WHOLE view)
   var FORMATTER = ${JSON.stringify(opts.formatterJson)};
 
   var ctx = window._spPageContextInfo;
@@ -96,13 +97,24 @@ export function buildDeploySnippet(opts: DeploySnippetOptions): string {
   if (!pre.ok) throw new Error('FormatFX deploy: could not read the target (' + explain(pre.status) + ')');
   var current = (await pre.json()).CustomFormatter || '';
 
-  // 2) say exactly what changes, then ask
+  // 2) say exactly what changes, then ask. The clobber guard: writing a VIEW
+  // formatter replaces the ENTIRE view's formatting — including a layout someone
+  // else built — so an existing view formatter gets a pointed, foreign-clobber
+  // warning, not the mild field-level "it will be replaced".
+  var viewClobber = TARGET_KIND === 'view' && !!current && current.length > 0;
+  var change = current
+    ? (viewClobber
+        ? '\\u26a0 This VIEW ALREADY HAS a formatter (' + current.length + ' chars).\\n'
+          + 'Deploying REPLACES THE ENTIRE view formatter \\u2014 any row/column layout, grouping or\\n'
+          + 'command-bar setup it has now (including formatting other people or tools created)\\n'
+          + 'will be lost. There is no merge and no undo on the list.'
+        : 'It CURRENTLY HAS a formatter (' + current.length + ' chars) \\u2014 it will be REPLACED.')
+    : 'It currently has no formatter.';
   var msg = 'FormatFX deploy to ' + (TARGET_LIST || ctx.listTitle || 'this list') + '\\n'
     + 'Target: ' + decodeURIComponent(TARGET_PATH) + '\\n\\n'
-    + (current
-      ? 'It CURRENTLY HAS a formatter (' + current.length + ' chars) \\u2014 it will be REPLACED.'
-      : 'It currently has no formatter.')
-    + '\\n\\nApply the new formatter (' + FORMATTER.length + ' chars)?';
+    + change
+    + '\\n\\n' + (viewClobber ? 'Replace the whole view formatter' : 'Apply the new formatter')
+    + ' (' + FORMATTER.length + ' chars)?';
   if (!confirm(msg)) {
     console.log('FormatFX deploy: cancelled \\u2014 nothing was written.');
     return { applied: false };
