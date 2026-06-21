@@ -3,8 +3,8 @@ import { formatterDestination } from './formatterDestination';
 
 describe('formatterDestination', () => {
   it('a column formatter with a known field names the column', () => {
-    const d = formatterDestination('column', '[$Status]');
-    expect(d.label).toBe('Saves to the [$Status] column');
+    const d = formatterDestination('column', 'Status');
+    expect(d.label).toBe('Saves to the Status column');
     expect(d.title).toMatch(/column's CustomFormatter/);
   });
   it('a column formatter with no known field is generic', () => {
