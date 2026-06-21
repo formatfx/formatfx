@@ -186,8 +186,8 @@ const applyLayout = () => {
     : uiPrefs.cols.side;
   // Structure can auto-hide to a rail (pinned) just like the side pane.
   const tree = uiPrefs.treeMode === 'peek' ? 30 : uiPrefs.cols.tree;
-  // One unified surface: palette (far left), Structure, the preview/grid, and
-  // the Properties/JSON pane on the right — every tool is always present.
+  // Layout modes: maker view (grid-first, studio panes hidden) vs studio open
+  // (palette + Structure + preview/grid + Properties/JSON pane visible).
   layout.classList.toggle('wb-maker', !uiPrefs.studioOpen);
   document.getElementById('wb-studio-toggle')!.classList.toggle('active', uiPrefs.studioOpen);
   layout.style.gridTemplateColumns = uiPrefs.studioOpen
