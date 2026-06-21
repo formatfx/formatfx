@@ -24,6 +24,7 @@ import { openPlayground } from './editor/playground';
 import { openGuide } from './editor/guide';
 import { themeToggleView } from './editor/themeToggle';
 import type { DocumentKind, FormatterDocument } from './core/types';
+import { formatterDestination } from './editor/formatterDestination';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -38,14 +39,7 @@ app.innerHTML = `
         <select id="wb-activedoc"><option value="main">Main formatter</option></select>
       </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
-      <label title="What kind of formatter you're building: the grid shows your view column-by-column (drag headers together to start a row layout); a column formatter lives on ONE column; row/tile formatters lay out the whole item and can embed column formatters via references">Type
-        <select id="wb-kind">
-          <option value="grid">Grid — view columns</option>
-          <option value="column">Column formatter</option>
-          <option value="row">View (row) formatter</option>
-          <option value="tile">Tile / Gallery</option>
-        </select>
-      </label>
+      <span id="wb-dest-chip" class="wb-dest-chip" title=""></span>
       <label>Example
         <select id="wb-example">
           <option value="">— load —</option>
@@ -134,6 +128,15 @@ app.innerHTML = `
         <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close">📌</button>
         <button id="wb-side-max" title="Maximize this pane — room for editing JSON">⛶</button>
       </nav>
+      <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
+        <span>Formatter type</span>
+        <select id="wb-kind">
+          <option value="grid">Grid — view columns</option>
+          <option value="column">Column formatter</option>
+          <option value="row">View (row) formatter</option>
+          <option value="tile">Tile / Gallery</option>
+        </select>
+      </div>
       <div id="wb-tab-inspector" class="wb-tab active"></div>
       <div id="wb-tab-json" class="wb-tab"></div>
     </aside>
@@ -466,8 +469,23 @@ kindSel.addEventListener('change', () => {
     ? 'Grid view: the same tree, column by column — click a header for actions, drag one onto another to group them into a row layout.'
     : `Same element tree, new wrapper: this formatter now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
+
+const destChip = document.getElementById('wb-dest-chip')!;
+const updateDestChip = () => {
+  // a registered column formatter is keyed by its field name; the main doc's
+  // field (if it is a column kind) is not separately tracked, so pass null there.
+  const columnField = state.activeDocKey !== 'main' ? state.activeDocKey : null;
+  const d = formatterDestination(state.doc.kind, columnField);
+  destChip.textContent = `→ ${d.label}`;
+  destChip.title = d.title;
+};
+updateDestChip();
+
 state.subscribe((reason) => {
-  if (reason === 'load' || reason === 'kind') kindSel.value = state.doc.kind;
+  if (reason === 'load' || reason === 'kind') {
+    kindSel.value = state.doc.kind;
+    updateDestChip();
+  }
 });
 
 // workspace switcher: main formatter ⇄ registered column formatters
@@ -497,7 +515,10 @@ activeDocSel.addEventListener('change', () => {
     : `Editing the ${activeDocSel.value} column formatter`);
 });
 state.subscribe((reason) => {
-  if (reason === 'data' || reason === 'load' || reason === 'kind') refreshActiveDocSel();
+  if (reason === 'data' || reason === 'load' || reason === 'kind') {
+    refreshActiveDocSel();
+    updateDestChip();
+  }
 });
 
 // one-click copy of whatever is being edited
