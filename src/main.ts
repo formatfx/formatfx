@@ -22,6 +22,7 @@ import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
 import { openGuide } from './editor/guide';
+import { themeToggleView } from './editor/themeToggle';
 import type { DocumentKind, FormatterDocument } from './core/types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -62,7 +63,7 @@ app.innerHTML = `
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
           <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
-          <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon ms-Icon--Light"></i> <span id="wb-theme-label">Switch to light mode</span></button>
+          <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon" id="wb-theme-icon"></i> <span id="wb-theme-label"></span></button>
           <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
           <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
           <button id="wb-guide" title="What lists really are (SQL under React), the column type system and its constraints, the formatting JSON layer, and the field-tested gotchas — written for developers">📖 Field guide</button>
@@ -428,8 +429,9 @@ const applyAppTheme = () => {
   setCustomPalette(state.customTheme);
   document.body.classList.toggle('wb-dark', state.themeMode === 'dark');
   applyTheme(state.themeMode);
-  document.getElementById('wb-theme-label')!.textContent =
-    state.themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  const tv = themeToggleView(state.themeMode);
+  document.getElementById('wb-theme-icon')!.className = `ms-Icon ms-Icon--${tv.icon}`;
+  document.getElementById('wb-theme-label')!.textContent = tv.label;
 };
 applyAppTheme();
 document.getElementById('wb-theme')!.addEventListener('click', () => {
