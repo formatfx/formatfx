@@ -5,6 +5,12 @@ async function openStudio(page: import('@playwright/test').Page): Promise<void> 
   await page.click('#wb-studio-toggle');
 }
 
+// the example/sample loader now lives in the ☰ menu — open it, then pick
+async function loadExample(page: import('@playwright/test').Page, value: string): Promise<void> {
+  await page.click('#wb-menu-btn');
+  await page.selectOption('#wb-example', value);
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
@@ -38,6 +44,12 @@ test('the single Advanced door is labeled Advanced and opens on the validated-JS
   await expect(page.locator('.wb-tabs button[data-tab="inspector"]')).not.toHaveClass(/active/);
 });
 
+test('the example/sample loader lives in the ☰ menu, not the topbar', async ({ page }) => {
+  await expect(page.locator('.wb-topbar-controls > #wb-example')).toHaveCount(0);
+  await page.click('#wb-menu-btn');
+  await expect(page.locator('#wb-menu-panel #wb-example')).toBeVisible();
+});
+
 test('topbar shows the emergent destination chip, not a Type dropdown', async ({ page }) => {
   // the old upfront Type dropdown is gone from the topbar
   await expect(page.locator('.wb-topbar #wb-kind')).toHaveCount(0);
@@ -50,6 +62,6 @@ test('the kind control lives in the Studio, and loading a column example updates
   await openStudio(page);
   await expect(page.locator('.wb-pane-side #wb-kind')).toBeVisible();
   // a column-kind example flips the chip to a column destination, naming the column it targets
-  await page.selectOption('#wb-example', 'status-pill');
+  await loadExample(page, 'status-pill');
   await expect(page.locator('#wb-dest-chip')).toContainText('Saves to the Status column');
 });

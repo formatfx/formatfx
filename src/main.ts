@@ -40,16 +40,6 @@ app.innerHTML = `
       </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
       <span id="wb-dest-chip" class="wb-dest-chip" title=""></span>
-      <label>Example
-        <select id="wb-example">
-          <option value="">— load —</option>
-          <option value="status-pill">Status pill column</option>
-          <option value="facepile">Facepile column</option>
-          <option value="data-bar">Progress data bar</option>
-          <option value="row-card">Row card view</option>
-          <option value="tile-card">Gallery tile (3-layer)</option>
-        </select>
-      </label>
       <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
       <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
@@ -58,6 +48,16 @@ app.innerHTML = `
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
           <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
+          <label class="wb-menu-row" title="Load a ready-made example formatter to start from"><i class="ms-Icon ms-Icon--Lightbulb"></i> Load example
+            <select id="wb-example">
+              <option value="">— pick one —</option>
+              <option value="status-pill">Status pill column</option>
+              <option value="facepile">Facepile column</option>
+              <option value="data-bar">Progress data bar</option>
+              <option value="row-card">Row card view</option>
+              <option value="tile-card">Gallery tile (3-layer)</option>
+            </select>
+          </label>
           <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon" id="wb-theme-icon"></i> <span id="wb-theme-label"></span></button>
           <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
           <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
@@ -556,6 +556,7 @@ exampleSel.addEventListener('change', () => {
   const doc: FormatterDocument = { kind, root: instantiate(item, state.fields) };
   if (kind === 'tile') { doc.tileWidth = 254; doc.tileHeight = 220; }
   state.loadDocument(doc);
+  (document.getElementById('wb-menu-panel') as HTMLDivElement).hidden = true; // close the ☰ menu
   toast(`Loaded example: ${item.label}`);
 });
 

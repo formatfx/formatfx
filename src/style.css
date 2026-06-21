@@ -112,6 +112,8 @@ body {
 }
 .wb-topbar-controls .wb-menu-panel button:hover { background: var(--wb-bg); color: var(--wb-accent); }
 .wb-menu-panel .wb-check { padding: 6px 8px; font-size: 12px; }
+.wb-menu-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 12px; }
+.wb-menu-row select { flex: 1; min-width: 0; }
 .wb-menu-panel hr { border: none; border-top: 1px solid var(--wb-border); margin: 3px 0; width: 100%; }
 
 /* ── layout ──────────────────────────────────────────────── */
@@ -439,6 +441,7 @@ body {
 .wb-rowview-bar-btn.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
 .wb-rowview-bar-hint { font-size: 11px; color: var(--wb-text-2); font-style: italic; margin-left: auto; }
 .wb-rowview-back { margin-left: 0; }
+.wb-back-bar .wb-rowview-back { font-weight: 600; }
 
 /* selection + emulation affordances inside the preview.
    Deliberately NOT a solid border: dashed, offset away from the element and

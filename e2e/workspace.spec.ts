@@ -18,6 +18,12 @@ async function openStudio(page: Page): Promise<void> {
   await page.click('.wb-tabs button[data-tab="inspector"]');
 }
 
+// the example/sample loader now lives in the ☰ menu — open it, then pick
+async function loadExample(page: Page, value: string): Promise<void> {
+  await page.click('#wb-menu-btn');
+  await page.selectOption('#wb-example', value);
+}
+
 async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<void> {
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
 }
@@ -74,7 +80,7 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toBeVisible();
   await expect(page.locator('.wb-tree-name', { hasText: 'DueDate' })).toBeVisible();
   // a fresh preset arrives named after its palette label
-  await page.selectOption('#wb-example', 'status-pill');
+  await loadExample(page, 'status-pill');
   await expect(page.locator('.wb-tree-name', { hasText: 'Status pill' })).toBeVisible();
   // double-click renames inline
   await page.locator('.wb-tree-row').first().dblclick();
@@ -265,14 +271,14 @@ test('element playground marks CFR slots and can enter the referenced formatter'
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
-  await page.selectOption('#wb-example', 'status-pill');
+  await loadExample(page, 'status-pill');
   await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
   await page.uncheck('#wb-titlecol');
   await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeHidden();
   await page.check('#wb-titlecol');
   await expect(page.locator('.wb-mock-cell:not(.wb-mock-cell-fmt)').first()).toBeVisible();
   // the toggle only appears for column-kind previews
-  await page.selectOption('#wb-example', 'row-card');
+  await loadExample(page, 'row-card');
   await expect(page.locator('#wb-titlecol')).toBeHidden();
 });
 
