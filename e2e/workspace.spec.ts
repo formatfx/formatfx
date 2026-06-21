@@ -13,6 +13,9 @@ test.beforeEach(async ({ page }) => {
 
 async function openStudio(page: Page): Promise<void> {
   await page.click('#wb-studio-toggle');
+  // the Advanced door now opens on the validated-JSON tab; these specs drive
+  // the Properties pane, so land there explicitly.
+  await page.click('.wb-tabs button[data-tab="inspector"]');
 }
 
 async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<void> {

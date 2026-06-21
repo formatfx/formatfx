@@ -396,9 +396,22 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    offers "Change everywhere" (edit the shared format, blast radius named) and
    "Override here" (fork local, default fork-local), and a plain column
    promotes via "Save as the column's format" (cfr.ts; state.forkCfr /
-   promoteToColumn, one undo step each). Still open: **Stage 5** — deploy
-   clobber guard + validated-JSON as the single Advanced door + retire the old
-   panes. e2e: `areas.spec.ts`, `cfr.spec.ts`.
+   promoteToColumn, one undo step each). **Stage 5: safety + the single
+   Advanced door.** (a) **Deploy clobber guard** — the deploy snippet bakes the
+   target kind and, before replacing an EXISTING *view* formatter, shows a
+   pointed foreign-clobber warning ("REPLACES THE ENTIRE view formatter…",
+   deploySnippet.ts); columns keep the mild field-level prompt. (b) **Validated
+   JSON as the single Advanced door** — the topbar toggle is relabeled
+   **Advanced** and opens straight to the JSON tab (the escape hatch, with
+   Deploy); Palette/Structure/Properties stay reachable, de-emphasized
+   (consolidate, not delete — per the owner). (c) **"Format this column" preset
+   picker** (owner request) — columnPresets.ts maps a field type to the palette
+   presets that fit it (Facepile for people, data bar for number, status pill
+   for choice…) and `buildColumnPreset` turns the pick into a real
+   @currentField column formatter; the header menu shows the presets then
+   "Format this column manually". The dead `.wb-adv` markers (no CSS since the
+   2026-06-17 unification) are being removed opportunistically. e2e:
+   `areas.spec.ts`, `cfr.spec.ts`, plus grid/maker/bridge coverage.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class

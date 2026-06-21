@@ -30,6 +30,9 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   const menu = page.locator('.wb-grid-menu');
   await expect(menu.locator('.wb-grid-menu-title')).toHaveText('DueDate');
   await menu.locator('button', { hasText: 'Format this column' }).click();
+  // a date column offers presets first; take the manual escape hatch here
+  await expect(menu.locator('.wb-grid-menu-title')).toHaveText('Format DueDate');
+  await menu.locator('button', { hasText: 'Format this column manually' }).click();
   // we land in the column-formatter editing context, scaffolded on @currentField
   await expect(page.locator('.wb-doc-header', { hasText: '[$DueDate]' })).toHaveClass(/active/);
   await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
@@ -44,6 +47,20 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   // the cell became a reference — resolved, not a placeholder chip
   await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
   // and a single undo removes the cell swap (the one document mutation)
+});
+
+test('"Format this column" offers type-aware presets (facepile for a people column)', async ({ page }) => {
+  await header(page, 'AssignedTo').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
+  // the system thinks for the maker: a multi-person column → people looks
+  await expect(page.locator('.wb-grid-menu-title')).toHaveText('Format AssignedTo');
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Member count' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this column manually' })).toBeVisible();
+  await page.locator('.wb-grid-menu button', { hasText: 'Facepile' }).click();
+  // editing the AssignedTo column formatter now; the preview renders avatars
+  await expect(page.locator('#wb-activedoc')).toHaveValue('AssignedTo');
+  await expect(page.locator('#wb-dest-chip')).toContainText('Saves to the AssignedTo column');
+  await expect(page.locator('.wb-mock-cell-fmt img').first()).toBeVisible();
 });
 
 test('hide column is one undoable mutation; "+ column" re-adds fields, formatted ones stay formatted', async ({ page }) => {

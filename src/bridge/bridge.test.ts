@@ -88,6 +88,7 @@ let clipboard: string | null = null;
 function stubEnvironment(opts: {
   routes: (url: string, init?: RequestInit) => unknown;
   confirmResult?: boolean;
+  confirmSink?: string[];
   pageCtx?: Record<string, unknown> | null;
   clipboardFails?: boolean;
 }): void {
@@ -96,7 +97,7 @@ function stubEnvironment(opts: {
   const ctx = opts.pageCtx === undefined ? PAGE_CTX : opts.pageCtx;
   vi.stubGlobal('_spPageContextInfo', ctx ?? undefined);
   (window as unknown as Record<string, unknown>)['_spPageContextInfo'] = ctx ?? undefined;
-  vi.stubGlobal('confirm', () => opts.confirmResult ?? true);
+  vi.stubGlobal('confirm', (m: string) => { opts.confirmSink?.push(m); return opts.confirmResult ?? true; });
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     const body = opts.routes(url, init);
@@ -294,6 +295,46 @@ describe('deploy snippet', () => {
     stubEnvironment({ routes: deployRoutes });
     await run(buildDeploySnippet({ target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER }));
     expect(calls[0].url).toContain("views/getByTitle('All%20Items')");
+  });
+
+  it('clobber guard: overwriting an EXISTING view formatter warns about the whole-view replace', async () => {
+    const sink: string[] = [];
+    stubEnvironment({
+      routes: (url, init) => {
+        if (url.includes('/_api/contextinfo')) return { FormDigestValue: 'd' };
+        if (init?.method === 'POST') return 204;
+        if (url.includes('CustomFormatter')) return { CustomFormatter: '{"rowFormatter":{"elmType":"div"}}' }; // a foreign formatter is already there
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+      confirmSink: sink,
+    });
+    await run(buildDeploySnippet({ target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER }));
+    expect(sink).toHaveLength(1);
+    expect(sink[0]).toContain('REPLACES THE ENTIRE view formatter');
+  });
+
+  it('clobber guard: a column deploy over existing content gets the mild field-level prompt, not the view warning', async () => {
+    const sink: string[] = [];
+    stubEnvironment({
+      routes: (url, init) => {
+        if (url.includes('/_api/contextinfo')) return { FormDigestValue: 'd' };
+        if (init?.method === 'POST') return 204;
+        if (url.includes('CustomFormatter')) return { CustomFormatter: STATUS_FORMATTER };
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+      confirmSink: sink,
+    });
+    await run(buildDeploySnippet({ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }));
+    expect(sink[0]).toContain('it will be REPLACED');
+    expect(sink[0]).not.toContain('ENTIRE view');
+  });
+
+  it('clobber guard: a brand-new (empty) view target is NOT a clobber', async () => {
+    const sink: string[] = [];
+    stubEnvironment({ routes: deployRoutes, confirmSink: sink }); // deployRoutes returns empty CustomFormatter
+    await run(buildDeploySnippet({ target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER }));
+    expect(sink[0]).toContain('no formatter');
+    expect(sink[0]).not.toContain('ENTIRE view');
   });
 });
 

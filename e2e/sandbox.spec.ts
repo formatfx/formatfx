@@ -150,7 +150,9 @@ test('one unified surface — palette + Structure + Properties/JSON, ribbon and 
   await expect(ribbon.locator('#wb-ribbon-cols')).toBeVisible();
   await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
 
-  // the Properties pane edits the selected element
+  // the Properties pane edits the selected element (the Advanced door opens on
+  // JSON; Properties is one click away)
+  await page.click('.wb-tabs button[data-tab="inspector"]');
   await page.locator('.wb-tree-row').first().click();
   await expect(page.locator('#wb-tab-inspector').locator('textarea').first()).toBeVisible();
 });
