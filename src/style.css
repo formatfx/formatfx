@@ -72,6 +72,23 @@ body {
 }
 .wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
+/* emergent destination chip — read-only; replaces the old Type dropdown */
+.wb-dest-chip {
+  font-size: 12px; color: var(--wb-text-2);
+  border: 1px solid var(--wb-border); border-radius: 11px;
+  padding: 3px 10px; white-space: nowrap; cursor: help;
+}
+/* Studio: the relocated "Advanced: formatter type" control */
+.wb-side-adv {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  font-size: 11px; color: var(--wb-text-2);
+}
+.wb-side-adv select {
+  flex: 1 1 auto; font-size: 12px; padding: 3px 6px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+
 /* ── ribbon: a slim toolbar (the Formatted-columns picker) ───────────────── */
 .wb-ribbon {
   display: flex; align-items: center; gap: 4px;

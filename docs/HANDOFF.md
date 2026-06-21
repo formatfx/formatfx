@@ -156,7 +156,11 @@ Key structural invariants:
   view** (`#wb-layout.wb-maker`): the Palette, Structure, and Properties/JSON panes
   are hidden on first load and revealed via the topbar **Studio** toggle
   (pref `studioOpen` in `wb-ui-prefs`, default `false`); the panes are not
-  removed, only hidden.
+  removed, only hidden. The topbar no longer has a "Type" dropdown — the
+  formatter type is shown by a read-only **destination chip** (`#wb-dest-chip`,
+  derived via `formatterDestination()`); the kind-switching `#wb-kind` select
+  moved into the Studio side pane as "Advanced: formatter type" (`setKind`
+  semantics unchanged).
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
