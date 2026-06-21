@@ -2,8 +2,8 @@ import type { DocumentKind } from '../core/types';
 
 /**
  * Where the formatter currently being edited will be saved — derived from its
- * kind, not chosen up front. `columnField` is the field internal-name (e.g.
- * "[$Status]") when a column formatter's target is known, else null.
+ * kind, not chosen up front. `columnField` is the field name (e.g. "Status")
+ * when a column formatter's target is known, else null.
  */
 export function formatterDestination(
   kind: DocumentKind,
