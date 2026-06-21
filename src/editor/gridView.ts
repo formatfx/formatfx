@@ -25,6 +25,8 @@ import {
   gridCellForField, defaultColumnFormatter, gridColumnField, gridColumnLabel,
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
+import { cfrBlastRadius } from './cfr';
+import { cfrFieldName } from '../core/refs';
 import type { SPElement, NodePath, MockField } from '../core/types';
 
 interface GridDeps {
@@ -82,14 +84,46 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
 
   if (field) {
     const registered = field.name in state.columnRefs;
-    items.push({
-      icon: registered ? 'Edit' : 'Brush',
-      label: registered ? 'Edit its formatter' : 'Format this column',
-      title: registered
-        ? `Open the [$${field.name}] column formatter on the canvas`
-        : 'Start a column formatter for this column and open it — the grid keeps rendering it live',
-      fn: () => formatColumn(col, field, onToast),
-    });
+    const isLinked = !!col.el.columnFormatterReference;
+    if (isLinked) {
+      // a linked instance of the column's shared format (the Figma model):
+      // fork-local by default, or edit the shared format for everyone.
+      const blast = cfrBlastRadius(field.name, state.doc.root, state.columnRefs);
+      items.push({
+        icon: 'BranchFork2',
+        label: 'Override here — make local',
+        title: `Fork this linked cell into a local copy you can restyle on its own, without changing the ${field.name} format anywhere else`,
+        fn: () => { state.forkCfr(col.path); onToast(`"${label}" is local now — your edits stay here. Ctrl+Z to relink.`); },
+      });
+      items.push({
+        icon: 'Edit',
+        label: 'Change everywhere — edit the format',
+        title: blast.count > 1
+          ? `Edit the shared ${field.name} format — applies to all ${blast.count} linked places (${blast.places.join(', ')})`
+          : `Edit the shared ${field.name} column format`,
+        fn: () => formatColumn(col, field, onToast),
+      });
+    } else {
+      items.push({
+        icon: registered ? 'Edit' : 'Brush',
+        label: registered ? 'Edit its formatter' : 'Format this column',
+        title: registered
+          ? `Open the [$${field.name}] column formatter on the canvas`
+          : 'Start a column formatter for this column and open it — the grid keeps rendering it live',
+        fn: () => formatColumn(col, field, onToast),
+      });
+      items.push({
+        icon: 'Link',
+        label: `Save as the ${field.name} column's format`,
+        title: `Register this cell's design as the ${field.name} column formatter and link this cell to it — then reuse it anywhere via "+ column" or a reference`,
+        fn: () => {
+          const f = state.promoteToColumn(col.path);
+          onToast(f
+            ? `Saved as the ${f} column format — this cell is linked to it now. Ctrl+Z to undo.`
+            : 'Could not save this cell as a column format.');
+        },
+      });
+    }
     items.push({
       icon: 'LightningBolt',
       label: 'Conditional formatting…',
@@ -273,10 +307,23 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     const label = document.createElement('span');
     label.className = 'wb-grid-header-label';
     label.textContent = gridColumnLabel(col.el, state.fields);
+    h.append(label);
+    // teal link badge: this column is a LINKED INSTANCE of a shared column format
+    if (col.el.columnFormatterReference) {
+      const linkField = cfrFieldName(col.el.columnFormatterReference);
+      const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
+      const badge = document.createElement('i');
+      badge.className = 'ms-Icon ms-Icon--Link wb-cfr-link';
+      badge.setAttribute('aria-hidden', 'true');
+      badge.title = blast.count > 1
+        ? `Linked to the ${linkField} column format — shared with ${blast.count} places. "Change everywhere" edits them all; "Override here" makes this one local.`
+        : `Linked to the ${linkField} column format. "Change everywhere" edits the shared format; "Override here" makes this one local.`;
+      h.append(badge);
+    }
     const caret = document.createElement('span');
     caret.className = 'wb-grid-header-caret';
     caret.textContent = '⌄';
-    h.append(label, caret);
+    h.append(caret);
 
     h.addEventListener('click', (e) => {
       // Ctrl/Cmd-click multi-selects columns for "make a row view" — no menu

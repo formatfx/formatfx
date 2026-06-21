@@ -219,9 +219,9 @@ test('the app lands on the grid and the whole on-ramp is click/drag-only', async
   await page.reload();
   await openStudio(page);
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
-  // header menu works
+  // header menu works (Status is a linked instance → the Figma-model actions)
   await header(page, 'Status').click();
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Edit its formatter' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.wb-grid-menu')).toBeHidden();
   // grouping works

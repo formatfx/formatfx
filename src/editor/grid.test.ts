@@ -251,6 +251,56 @@ describe('row-view builder (stage 3, one undo step each)', () => {
   });
 });
 
+describe('CFR linked instances (stage 4, one undo step each)', () => {
+  function gridState(): EditorState {
+    const s = new EditorState();
+    s.columnRefs = { Status: { elmType: 'div', _elmName: 'Status pill', txtContent: '@currentField' } };
+    s.doc = {
+      kind: 'grid',
+      root: buildGridRoot(FIELDS, s.columnRefs, ['Title', 'Status', 'DueDate']),
+    };
+    return s;
+  }
+
+  it('forkCfr makes a linked cell local in one undo step', () => {
+    const s = gridState();
+    expect(s.doc.root.children![1].columnFormatterReference).toBe('[$Status]');
+    s.forkCfr([1]);
+    const cell = s.doc.root.children![1];
+    expect(cell.columnFormatterReference).toBeUndefined();
+    expect(cell.txtContent).toBe('[$Status]'); // @currentField → [$Status]
+    expect(cell.style?.['flex']).toBe('1'); // grid layout preserved
+    expect(cell._elmName).toBe('Status'); // grid column name kept
+    s.undo();
+    expect(s.doc.root.children![1].columnFormatterReference).toBe('[$Status]');
+  });
+
+  it('forkCfr is a no-op on a non-CFR cell', () => {
+    const s = gridState();
+    const before = JSON.stringify(s.doc);
+    s.forkCfr([0]); // Title is a plain local cell
+    expect(JSON.stringify(s.doc)).toBe(before);
+  });
+
+  it('promoteToColumn registers a local cell as the shared format and relinks it', () => {
+    const s = gridState();
+    expect('Title' in s.columnRefs).toBe(false);
+    const field = s.promoteToColumn([0]); // Title is a plain [$Title] cell
+    expect(field).toBe('Title');
+    expect('Title' in s.columnRefs).toBe(true);
+    expect(s.columnRefs.Title.txtContent).toBe('@currentField'); // [$Title] → @currentField
+    expect(s.doc.root.children![0].columnFormatterReference).toBe('[$Title]'); // relinked
+    // undo restores the local cell
+    s.undo();
+    expect(s.doc.root.children![0].columnFormatterReference).toBeUndefined();
+  });
+
+  it('promoteToColumn refuses an already-linked cell', () => {
+    const s = gridState();
+    expect(s.promoteToColumn([1])).toBeNull(); // Status is already a CFR
+  });
+});
+
 describe('grid wrapper semantics', () => {
   it('exports as a view (row) formatter — the grid is editor presentation', () => {
     const doc = {

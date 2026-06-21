@@ -87,7 +87,15 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                conditional formatting overlay UI; imports state, never the
                other way), formatCells.ts (the Excel-comfort Format cells
                dialog: Font/Border/Fill/Alignment over the allow-list,
-               staged patch, OK = one undoable mutation)
+               staged patch, OK = one undoable mutation),
+               areas.ts (the maker-first "make a row view" brain — pure +
+               node-tested: per-area weight Normal/Wide/Widest ⇄ a CSS-fr-like
+               flex grow factor, row density Roomy/Compact = gap/padding only,
+               buildRowView turns a grid root into a weighted row), cfr.ts
+               (the CFR linked-instance brain — pure: cfrBlastRadius =
+               change-everywhere scope, inlineColumnFormatter forks a linked
+               cell local @currentField→[$Field], toColumnFormatter promotes a
+               local cell to the column's shared format [$Field]→@currentField)
 src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
                extractSnippet.ts / deploySnippet.ts generate the auditable
                paste-into-devtools snippets. Pure + dependency-free, and
@@ -369,6 +377,28 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    CONNECTIVITY.md §3.6 against a real tenant. Next per the design:
    npm package prep (separate PR; owner adds NPM_TOKEN + tags v0.1.0),
    then Tier-1 extension after Sheet stage 3.
+1.11. **Maker-first redesign — stages 1–4 SHIPPED** (continuation tracker:
+   `docs/HANDOFF-redesign.md`, added by PR #42). A five-stage pass that makes
+   the default surface serve the maker and folds the developer studio behind
+   one door. Stage 1 (PR #40): grid-first landing, the Studio toggle
+   (`#wb-layout.wb-maker`, pref `studioOpen`), monochrome theme icon
+   (themeToggle.ts). Stage 2 (PR #41): emergent formatter type — the upfront
+   Type dropdown moved into the Studio, replaced by a read-only destination
+   chip (`#wb-dest-chip`, formatterDestination.ts). **Stage 3 (this branch):
+   the row-view builder** — Ctrl/Cmd-click grid columns to multi-select, "make
+   a row view" turns them into weighted **areas** (Normal/Wide/Widest, a
+   conflict-free CSS-fr-like flex; areas.ts), with row **density**
+   (Roomy/Compact) a separate knob and **tile** an explicit pick that can never
+   emerge; per-area sizing on each area's right-click menu, density + back-to-
+   grid in a row-view toolbar. **Stage 4 (this branch): CFR linked instances
+   (the Figma model)** — a teal link badge (`.wb-cfr-link`, the `#038387` of
+   the Structure ⤷ chip) marks a columnFormatterReference cell; its header menu
+   offers "Change everywhere" (edit the shared format, blast radius named) and
+   "Override here" (fork local, default fork-local), and a plain column
+   promotes via "Save as the column's format" (cfr.ts; state.forkCfr /
+   promoteToColumn, one undo step each). Still open: **Stage 5** — deploy
+   clobber guard + validated-JSON as the single Advanced door + retire the old
+   panes. e2e: `areas.spec.ts`, `cfr.spec.ts`.
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
