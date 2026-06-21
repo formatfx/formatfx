@@ -152,7 +152,11 @@ Key structural invariants:
   remain in the markup but no longer hide anything (the `body.wb-basic`
   rules are gone); they're harmless and can be cleaned up opportunistically.
   E2E `beforeEach` just clears `localStorage`; the unified surface is
-  asserted in `sandbox.spec.ts`.
+  asserted in `sandbox.spec.ts`. The app defaults to a **grid-first maker
+  view** (`#wb-layout.wb-maker`): the Palette, Structure, and Properties/JSON panes
+  are hidden on first load and revealed via the topbar **Studio** toggle
+  (pref `studioOpen` in `wb-ui-prefs`, default `false`); the panes are not
+  removed, only hidden.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 

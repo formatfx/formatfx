@@ -2,7 +2,11 @@
  * E2E: the Fluent icon gallery — the fx bar's Icon slot (preview chips + the
  * searchable popover) and the Field guide's embedded icon wall.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+async function openStudio(page: Page): Promise<void> {
+  await page.click('#wb-studio-toggle');
+}
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => { void d.accept(); });
@@ -12,6 +16,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('fx bar Icon slot: preview chips + searchable gallery applies a name', async ({ page }) => {
+  await openStudio(page);
   await page.waitForSelector('.wb-palette-item');
   // insert an Icon element (a span with iconName) — it selects on insert
   await page.locator('.wb-palette-item', { hasText: 'Icon' }).first().click();
@@ -33,6 +38,7 @@ test('fx bar Icon slot: preview chips + searchable gallery applies a name', asyn
 });
 
 test('Field guide: the icon gallery page embeds a searchable wall', async ({ page }) => {
+  await openStudio(page);
   await page.waitForSelector('.wb-palette-item');
   await page.click('#wb-menu-btn');
   await page.click('#wb-guide');

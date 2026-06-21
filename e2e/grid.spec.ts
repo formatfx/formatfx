@@ -20,7 +20,12 @@ function header(page: Page, label: string) {
   return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
+async function openStudio(page: Page): Promise<void> {
+  await page.click('#wb-studio-toggle');
+}
+
 test('header menu formats an unformatted column: scaffold registered, grid renders it via CFR', async ({ page }) => {
+  await openStudio(page);
   await header(page, 'DueDate').click();
   const menu = page.locator('.wb-grid-menu');
   await expect(menu.locator('.wb-grid-menu-title')).toHaveText('DueDate');
@@ -56,6 +61,7 @@ test('hide column is one undoable mutation; "+ column" re-adds fields, formatted
 });
 
 test('drop one column ONTO another → named row-formatter scaffolding, one undo step', async ({ page }) => {
+  await openStudio(page);
   // drag DueDate onto Status (center = group zone)
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
   await expect(page.locator('#wb-toast')).toContainText('Status + DueDate group');
@@ -127,6 +133,7 @@ test('right-click: column menu on headers, element menu on cell content, remove 
 });
 
 test('conditional formatting from the header menu: condition → rule → data preview → apply lands on the column formatter', async ({ page }) => {
+  await openStudio(page);
   await header(page, 'DueDate').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
@@ -153,6 +160,7 @@ test('conditional formatting from the header menu: condition → rule → data p
 });
 
 test('conditional formatting can watch a different column than the one it paints', async ({ page }) => {
+  await openStudio(page);
   await header(page, 'DueDate').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
@@ -208,6 +216,7 @@ test('✨ a color for each choice: one rule per choice, smart colors, formula-re
 test('the app lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await openStudio(page);
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
   // header menu works
   await header(page, 'Status').click();

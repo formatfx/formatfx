@@ -103,6 +103,12 @@ body {
   grid-template-columns: 220px 5px 250px 5px 1fr 5px 360px;
   flex: 1; min-height: 0;
 }
+/* maker view: grid full-bleed, studio panes (palette/structure/side) + their resizers hidden */
+.wb-layout.wb-maker > .wb-pane-palette,
+.wb-layout.wb-maker > .wb-pane-tree,
+.wb-layout.wb-maker > .wb-pane-side,
+.wb-layout.wb-maker > .wb-resizer { display: none; }
+.wb-topbar-controls #wb-studio-toggle.active { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-resizer {
   cursor: col-resize; background: transparent; touch-action: none;
 }
