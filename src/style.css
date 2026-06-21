@@ -397,6 +397,45 @@ body {
 }
 .wb-grid-menu button:hover { background: var(--wb-bg); color: var(--wb-accent); }
 
+/* ── stage 3: multi-select + "make a row view" ─────────────── */
+.wb-grid-col-selected { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); }
+.wb-grid-header.wb-grid-col-selected { color: var(--wb-accent); box-shadow: inset 0 -2px 0 var(--wb-accent); }
+.wb-areas-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 8px; padding: 6px 10px; font-size: 12px;
+  background: color-mix(in srgb, var(--wb-accent) 10%, var(--wb-surface));
+  border: 1px solid color-mix(in srgb, var(--wb-accent) 40%, var(--wb-border));
+  border-radius: 4px;
+}
+.wb-areas-bar[hidden] { display: none; }
+.wb-areas-bar-count { font-weight: 600; color: var(--wb-text); }
+.wb-areas-bar-btn {
+  padding: 3px 10px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--wb-accent); border-radius: 3px;
+  background: var(--wb-accent); color: #fff;
+}
+.wb-areas-bar-btn:hover { filter: brightness(1.08); }
+.wb-areas-bar-clear { background: transparent; color: var(--wb-text-2); border-color: var(--wb-border); }
+.wb-areas-bar-clear:hover { color: var(--wb-accent); border-color: var(--wb-accent); filter: none; }
+
+/* ── stage 3: row-view toolbar (density + back to grid) ────── */
+.wb-rowview-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 8px; padding: 6px 10px; font-size: 12px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 4px;
+}
+.wb-rowview-bar-label { font-weight: 600; color: var(--wb-text-2); }
+.wb-rowview-density { display: inline-flex; align-items: center; gap: 4px; color: var(--wb-text-2); }
+.wb-rowview-bar-btn {
+  padding: 2px 9px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: transparent; color: var(--wb-text);
+}
+.wb-rowview-bar-btn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-rowview-bar-btn.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-rowview-bar-hint { font-size: 11px; color: var(--wb-text-2); font-style: italic; margin-left: auto; }
+.wb-rowview-back { margin-left: 0; }
+
 /* selection + emulation affordances inside the preview.
    Deliberately NOT a solid border: dashed, offset away from the element and
    gently pulsing, so it can't be mistaken for the element's own design. */

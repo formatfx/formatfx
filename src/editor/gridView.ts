@@ -150,6 +150,11 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
 const GRID_MIME = 'application/x-wb-grid-col';
 let dragSourceIndex: number | null = null;
 
+// Transient multi-selection of top-level grid columns — the "select columns →
+// make a row view" build affordance. Never persisted, never undoable: it's a
+// gesture in progress, not document state. Ctrl/Cmd-click a header to toggle.
+const gridSel = new Set<number>();
+
 type DropZone = 'before' | 'after' | 'onto';
 
 function zoneFor(e: DragEvent, target: HTMLElement): DropZone {
@@ -192,6 +197,68 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
   const template = `repeat(${cols.length}, minmax(140px, 1fr))${unplaced.length ? ' 88px' : ''}`;
   grid.style.setProperty('--wb-grid-cols', template);
 
+  // ── multi-select + "make a row view" bar ──────────────────────────────────
+  // drop any selection that points past the current columns (e.g. after a hide)
+  for (const i of [...gridSel]) if (i >= cols.length) gridSel.delete(i);
+
+  const applySelClasses = (): void => {
+    grid.querySelectorAll('.wb-grid-col-selected')
+      .forEach((n) => n.classList.remove('wb-grid-col-selected'));
+    gridSel.forEach((i) => {
+      grid.querySelectorAll(`.wb-grid-header[data-col="${i}"], .wb-grid-cell[data-col="${i}"]`)
+        .forEach((n) => n.classList.add('wb-grid-col-selected'));
+    });
+  };
+
+  const bar = document.createElement('div');
+  bar.className = 'wb-areas-bar';
+  const refreshBar = (): void => {
+    bar.innerHTML = '';
+    const n = gridSel.size;
+    bar.hidden = n === 0;
+    if (n === 0) return;
+    const count = document.createElement('span');
+    count.className = 'wb-areas-bar-count';
+    count.textContent = `${n} column${n > 1 ? 's' : ''} selected →`;
+    bar.appendChild(count);
+    const graduate = (kind: 'row' | 'tile', text: string, title: string): void => {
+      const b = document.createElement('button');
+      b.className = 'wb-areas-bar-btn';
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener('click', () => {
+        const sel = [...gridSel].sort((a, b2) => a - b2);
+        gridSel.clear();
+        state.makeRowView(sel, kind);
+        onToast(kind === 'row'
+          ? `Made a row view from ${sel.length} column${sel.length > 1 ? 's' : ''} — they're areas now. Resize one from its right-click menu, set density in the toolbar, or go back to the grid.`
+          : `Made a tile layout from ${sel.length} column${sel.length > 1 ? 's' : ''} — tile is an explicit layout choice. Set its size in the studio's Properties pane.`);
+      });
+      bar.appendChild(b);
+    };
+    graduate('row', '▤ Make a row view',
+      'Turn the selected columns into a stacked row layout — each becomes a sizeable area (one undo step)');
+    graduate('tile', '▦ Make a tile',
+      'Turn the selected columns into a gallery tile — an explicit layout choice (it can never emerge on its own)');
+    const clear = document.createElement('button');
+    clear.className = 'wb-areas-bar-btn wb-areas-bar-clear';
+    clear.textContent = 'Clear';
+    clear.title = 'Deselect these columns';
+    clear.addEventListener('click', () => clearGridSel());
+    bar.appendChild(clear);
+  };
+  function toggleGridSel(i: number): void {
+    if (gridSel.has(i)) gridSel.delete(i); else gridSel.add(i);
+    applySelClasses();
+    refreshBar();
+  }
+  function clearGridSel(): void {
+    if (gridSel.size === 0) return;
+    gridSel.clear();
+    applySelClasses();
+    refreshBar();
+  }
+
   // header row
   const headrow = document.createElement('div');
   headrow.className = 'wb-grid-headrow';
@@ -211,7 +278,13 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     caret.textContent = '⌄';
     h.append(label, caret);
 
-    h.addEventListener('click', () => {
+    h.addEventListener('click', (e) => {
+      // Ctrl/Cmd-click multi-selects columns for "make a row view" — no menu
+      if ((e.ctrlKey || e.metaKey) && col.path.length > 0) {
+        toggleGridSel(i);
+        return;
+      }
+      clearGridSel();
       state.select(col.path);
       menuFor(col, h, onToast);
     });
@@ -337,7 +410,10 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     grid.appendChild(empty);
   }
 
+  host.appendChild(bar);
   host.appendChild(grid);
+  refreshBar();
+  applySelClasses();
 }
 
 /** Render one column's element into a cell — honoring a top-level forEach

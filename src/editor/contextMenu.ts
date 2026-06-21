@@ -13,6 +13,7 @@ import { openMenu, type MenuItem } from './menu';
 import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { openFormatCells } from './formatCells';
+import { areaWeightOf, WEIGHT_FLEX, WEIGHT_LABEL, type AreaWeight } from './areas';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -43,6 +44,19 @@ export function elementMenuItems(path: NodePath, onToast: (m: string) => void): 
     title: 'Font, borders, fill and alignment — the comfortable dialog; applies to every row',
     fn: () => { state.select(path); openFormatCells(path, onToast); },
   });
+  // area sizing — a top-level area of an explicit row/tile view. Weights are
+  // independent (CSS-fr-like), so resizing one never fights its neighbors.
+  if ((state.doc.kind === 'row' || state.doc.kind === 'tile') && path.length === 1) {
+    const cur = areaWeightOf(node);
+    for (const w of ['normal', 'wide', 'widest'] as AreaWeight[]) {
+      items.push({
+        icon: 'FitWidth',
+        label: `Area width: ${WEIGHT_LABEL[w]}${cur === w ? ' ✓' : ''}`,
+        title: `Size this area ${WEIGHT_LABEL[w]} (flex ${WEIGHT_FLEX[w]}) — independent of the other areas`,
+        fn: () => { state.setAreaWeight(path, w); onToast(`${label} → ${WEIGHT_LABEL[w]}`); },
+      });
+    }
+  }
   items.push({
     icon: 'Rename',
     label: 'Rename…',

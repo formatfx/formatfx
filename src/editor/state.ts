@@ -9,6 +9,11 @@ import type {
 import type { ImportedView } from '../core/schemaImport';
 import { cfrFieldName } from '../core/refs';
 import { buildGridRoot } from './gridScaffold';
+import {
+  buildRowView, rowDensityOf,
+  setAreaWeight as applyAreaWeight, setRowDensity as applyRowDensity,
+  type AreaWeight, type RowDensity,
+} from './areas';
 
 export type ChangeReason =
   | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load';
@@ -572,6 +577,41 @@ export class EditorState {
       this.doc.tileHeight = this.doc.tileHeight ?? 220;
     }
     this.emit('kind');
+  }
+
+  // ─── Stage 3: areas / row-view builder ─────────────────────────────────────
+  // A grid is a row formatter in embryo; "make a row view" graduates it to an
+  // explicit row layout whose columns are weighted areas. Each call is ONE
+  // undoable document mutation, like every other grid gesture.
+
+  /** Graduate the grid to a row view. `indices` curates which columns become
+   *  areas (in the given order); omit for all. The chosen kind is 'row' or
+   *  'tile' — tile is an explicit pick (it can never emerge from structure). */
+  makeRowView(indices?: number[], kind: 'row' | 'tile' = 'row'): void {
+    if (this.doc.kind !== 'grid') { this.setKind(kind); return; }
+    this.snapshot();
+    this.doc.root = buildRowView(this.doc.root, indices, rowDensityOf(this.doc.root));
+    this.doc.kind = kind;
+    if (kind === 'tile') {
+      this.doc.tileWidth = this.doc.tileWidth ?? 254;
+      this.doc.tileHeight = this.doc.tileHeight ?? 220;
+    }
+    this.selection = [];
+    this.emit('kind');
+  }
+
+  /** Set one area's weight (Normal/Wide/Widest). Conflict-free — only the
+   *  named area's flex changes; neighbors keep theirs (CSS-fr semantics). */
+  setAreaWeight(path: NodePath, weight: AreaWeight): void {
+    const el = this.nodeAt(path);
+    if (!el) return;
+    this.mutateDocument(() => applyAreaWeight(el, weight));
+  }
+
+  /** Set the row's density (Roomy/Compact) — gap + padding on the root only. */
+  setRowDensity(density: RowDensity): void {
+    const root = this.doc.root;
+    this.mutateDocument(() => applyRowDensity(root, density));
   }
 
   loadDocument(doc: FormatterDocument): void {
