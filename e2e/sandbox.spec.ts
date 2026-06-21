@@ -15,6 +15,10 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
+async function openStudio(page: Page): Promise<void> {
+  await page.click('#wb-studio-toggle');
+}
+
 async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
   await page.click(`.wb-tabs button[data-tab="${tab}"]`);
 }
@@ -24,6 +28,8 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-row')).toHaveCount(3);
+  // open Studio to access the workspace tree and other studio panes
+  await openStudio(page);
   // workspace tree: the view + Status/Progress/Owner column formatters
   await expect(page.locator('.wb-doc-header').first()).toContainText('View formatter — grid');
   await expect(page.locator('.wb-doc-header')).toHaveCount(4);
@@ -48,6 +54,7 @@ test('status pill example renders colored pills per row', async ({ page }) => {
 });
 
 test('palette click inserts an element, selects it and toasts', async ({ page }) => {
+  await openStudio(page);
   await page.selectOption('#wb-example', 'status-pill'); // column-kind canvas
   await page.locator('.wb-palette-item', { hasText: 'Traffic light' }).click();
   await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('In Progress');
@@ -55,6 +62,7 @@ test('palette click inserts an element, selects it and toasts', async ({ page })
 });
 
 test('JSON round-trip: edit JSON, apply, canvas updates', async ({ page }) => {
+  await openStudio(page);
   await openTab(page, 'json');
   const json = {
     $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
@@ -67,6 +75,7 @@ test('JSON round-trip: edit JSON, apply, canvas updates', async ({ page }) => {
 });
 
 test('lint panel teaches: nested = gets a verbose, positioned error', async ({ page }) => {
+  await openStudio(page);
   await openTab(page, 'json');
   const bad = { elmType: 'div', txtContent: "=if([$Title]=='x','y',=if(true,'a','b'))" };
   await page.fill('#wb-json-text', JSON.stringify(bad));
@@ -78,6 +87,7 @@ test('lint panel teaches: nested = gets a verbose, positioned error', async ({ p
 });
 
 test('hover card opens as flyout and its content is selectable', async ({ page }) => {
+  await openStudio(page);
   await page.selectOption('#wb-example', 'status-pill');
   await page.locator('.wb-palette-item', { hasText: 'Hover card' }).click();
   await page.locator('.wb-mock-cell-fmt .wb-has-card').first().click();
@@ -108,6 +118,7 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
 test('one unified surface — palette + Structure + Properties/JSON, ribbon and fx bar all present', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await openStudio(page);
 
   // there is no mode toggle anymore — everything is on screen at once
   await expect(page.locator('#wb-mode')).toHaveCount(0);
@@ -145,6 +156,7 @@ test('one unified surface — palette + Structure + Properties/JSON, ribbon and 
 });
 
 test('applying name-less JSON over a named design warns before dropping names', async ({ page }) => {
+  await openStudio(page);
   await openTab(page, 'json');
   await page.fill('#wb-json-text', JSON.stringify({ elmType: 'div', txtContent: 'plain' }));
   await page.click('#wb-json-apply');
@@ -154,6 +166,7 @@ test('applying name-less JSON over a named design warns before dropping names', 
 });
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {
+  await openStudio(page);
   await page.selectOption('#wb-example', 'status-pill');
   const source = page.locator('.wb-palette-item', { hasText: 'Icon' }).first();
   const target = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt [data-sp-path]').first();

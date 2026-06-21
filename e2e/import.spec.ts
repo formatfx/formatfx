@@ -4,6 +4,10 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
+async function openStudio(page: Page): Promise<void> {
+  await page.click('#wb-studio-toggle');
+}
+
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => { void d.accept(); });
   await page.goto('/');
@@ -63,6 +67,7 @@ test('native CSV-with-schema import: fields, real rows, formatters registered', 
 
 test('columnFormatterReference renders the registered formatter with swapped @currentField', async ({ page }) => {
   await importExport(page);
+  await openStudio(page);
   await openTab(page, 'json');
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
@@ -143,6 +148,7 @@ test('list snapshot without a default-view formatter rebuilds the grid; Load-as-
 
 test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openStudio(page);
   await openTab(page, 'json');
   await page.click('#wb-json-deploy');
   // grid/row documents deploy as VIEW formatting
@@ -164,6 +170,7 @@ test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ p
 });
 
 test('unregistered CFR shows the explanatory chip', async ({ page }) => {
+  await openStudio(page);
   await openTab(page, 'json');
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
