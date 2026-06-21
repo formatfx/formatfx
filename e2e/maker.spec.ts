@@ -40,7 +40,7 @@ test('the kind control lives in the Studio, and loading a column example updates
   // the kind select moved into the side pane (revealed only in Studio)
   await openStudio(page);
   await expect(page.locator('.wb-pane-side #wb-kind')).toBeVisible();
-  // a column-kind example flips the chip to a column destination
+  // a column-kind example flips the chip to a column destination, naming the column it targets
   await page.selectOption('#wb-example', 'status-pill');
-  await expect(page.locator('#wb-dest-chip')).toContainText('Saves to a column');
+  await expect(page.locator('#wb-dest-chip')).toContainText('Saves to the Status column');
 });
