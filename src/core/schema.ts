@@ -90,6 +90,82 @@ export const SP_FUNCTIONS = [
   'addDays', 'addMinutes', 'loopIndex', 'getUserImage', 'getThumbnailImage',
 ] as const;
 
+/**
+ * Per-function reference: signature, plain-language summary, return kind, the
+ * argument-count range SharePoint accepts, and a copy-paste example. The
+ * structured sibling of STYLE_PROP_DOCS/ATTRIBUTE_DOCS, and the source the
+ * linter's arg-count rule (core/linter.ts) checks against. Prior art for the
+ * "name + signature + hover doc" shape: thechriskent/jsonify's HorseScript
+ * IntelliSense; every claim here is grounded in Microsoft's formatting-syntax
+ * reference, not lifted prose.
+ *
+ * `minArgs`/`maxArgs` follow the documented signatures, but stay deliberately
+ * permissive where an argument is genuinely optional (e.g. a pad string) so a
+ * working formatter is never falsely flagged — the house rule is to teach, not
+ * to cry wolf. `summary` text avoids word-internal apostrophes (the example
+ * chip parser splits on them); the 'quoted' literals live in `example`.
+ */
+export interface SPFunctionDoc {
+  /** Human-readable call form, e.g. "substring(text, start, end)". */
+  signature: string;
+  /** One-line, plain-language explanation. */
+  summary: string;
+  /** What the call evaluates to. */
+  returns: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'any';
+  /** Fewest / most arguments SP accepts — drives the fn-arg-count lint rule. */
+  minArgs: number;
+  maxArgs: number;
+  /** A ready-to-paste example expression. */
+  example: string;
+  /** True for operators Microsoft documents as SharePoint Online-only. */
+  onlineOnly?: boolean;
+}
+
+// Two function names (toString, toLocaleString) collide with Object.prototype
+// members, so as object-literal keys their values are contextually typed
+// against the prototype method instead of the index signature — breaking the
+// `returns` literal-union check. An explicit `as SPFunctionDoc` on just those
+// two sidesteps it; everything else is checked normally.
+export const SP_FUNCTION_DOCS: Record<string, SPFunctionDoc> = {
+  if: { signature: 'if(condition, valueIfTrue, valueIfFalse)', summary: 'Choose between two values from a condition — there is no else-if keyword, so nest another if() in the false slot.', returns: 'any', minArgs: 2, maxArgs: 3, example: "=if([$Status]=='Done','#107c10','#a80000')" },
+  toString: { signature: 'toString(value)', summary: 'Convert a number, date or boolean to its text form.', returns: 'string', minArgs: 1, maxArgs: 1, example: '=toString(45)' } as SPFunctionDoc,
+  Number: { signature: 'Number(value)', summary: 'Parse a value into a number — non-numeric text becomes NaN.', returns: 'number', minArgs: 1, maxArgs: 1, example: "=Number('365')" },
+  Date: { signature: 'Date(value)', summary: 'Turn a date string or number into a date you can compare or format.', returns: 'date', minArgs: 1, maxArgs: 1, example: "=Date('12/26/1981')" },
+  cos: { signature: 'cos(radians)', summary: 'Cosine of an angle given in radians.', returns: 'number', minArgs: 1, maxArgs: 1, example: '=cos(5)' },
+  sin: { signature: 'sin(radians)', summary: 'Sine of an angle given in radians — the maths behind progress-ring arcs.', returns: 'number', minArgs: 1, maxArgs: 1, example: '=sin(@currentField)' },
+  abs: { signature: 'abs(number)', summary: 'Absolute, always-positive value of a number.', returns: 'number', minArgs: 1, maxArgs: 1, example: '=abs(-45)', onlineOnly: true },
+  floor: { signature: 'floor(number)', summary: 'Round down to the nearest whole number.', returns: 'number', minArgs: 1, maxArgs: 1, example: '=floor(45.5)', onlineOnly: true },
+  ceiling: { signature: 'ceiling(number)', summary: 'Round up to the nearest whole number.', returns: 'number', minArgs: 1, maxArgs: 1, example: '=ceiling(45.5)', onlineOnly: true },
+  pow: { signature: 'pow(base, exponent)', summary: 'Raise base to the power of exponent.', returns: 'number', minArgs: 2, maxArgs: 2, example: '=pow(2,3)', onlineOnly: true },
+  indexOf: { signature: 'indexOf(textOrArray, search)', summary: 'Position of the first match (0-based) or -1 if absent — case-sensitive, and the standard workaround for string length.', returns: 'number', minArgs: 2, maxArgs: 2, example: "=indexOf('DogFood','F')", onlineOnly: true },
+  lastIndexOf: { signature: 'lastIndexOf(textOrArray, search)', summary: 'Position of the last match (0-based) or -1 if absent.', returns: 'number', minArgs: 2, maxArgs: 2, example: "=lastIndexOf('DogFood DogFood','Dog')" },
+  substring: { signature: 'substring(text, start, end)', summary: 'The slice of text between the start and end indexes (0-based).', returns: 'string', minArgs: 2, maxArgs: 3, example: "=substring('DogFood',3,6)", onlineOnly: true },
+  startsWith: { signature: 'startsWith(text, search)', summary: 'True when text begins with the search string.', returns: 'boolean', minArgs: 2, maxArgs: 2, example: "=startsWith('DogFood','Dog')" },
+  endsWith: { signature: 'endsWith(text, search)', summary: 'True when text ends with the search string.', returns: 'boolean', minArgs: 2, maxArgs: 2, example: "=endsWith('DogFood','Food')" },
+  replace: { signature: 'replace(textOrArray, find, replacement)', summary: 'Replace the FIRST match of find with replacement.', returns: 'string', minArgs: 3, maxArgs: 3, example: "=replace('Hello world','world','everyone')" },
+  replaceAll: { signature: 'replaceAll(textOrArray, find, replacement)', summary: 'Replace EVERY match of find with replacement.', returns: 'string', minArgs: 3, maxArgs: 3, example: "=replaceAll('a-b-c','-','')" },
+  padStart: { signature: 'padStart(text, length, padString)', summary: 'Pad the start of text until it reaches length.', returns: 'string', minArgs: 2, maxArgs: 3, example: "=padStart('7',3,'0')" },
+  padEnd: { signature: 'padEnd(text, length, padString)', summary: 'Pad the end of text until it reaches length.', returns: 'string', minArgs: 2, maxArgs: 3, example: "=padEnd('7',3,'0')" },
+  toLowerCase: { signature: 'toLowerCase(text)', summary: 'Lower-case a string.', returns: 'string', minArgs: 1, maxArgs: 1, example: "=toLowerCase('DogFood')", onlineOnly: true },
+  toUpperCase: { signature: 'toUpperCase(text)', summary: 'Upper-case a string.', returns: 'string', minArgs: 1, maxArgs: 1, example: "=toUpperCase('DogFood')", onlineOnly: true },
+  split: { signature: 'split(text, separator)', summary: 'Break text into an array on each separator.', returns: 'array', minArgs: 2, maxArgs: 2, example: "=split('Hello World',' ')" },
+  join: { signature: 'join(array, separator)', summary: 'Join a multi-value field into one string, separated by separator.', returns: 'string', minArgs: 2, maxArgs: 2, example: "=join(@currentField,', ')", onlineOnly: true },
+  length: { signature: 'length(arrayOrValue)', summary: 'Count of items in a multi-value field — NOT string length (use indexOf for that).', returns: 'number', minArgs: 1, maxArgs: 1, example: '=length(@currentField)', onlineOnly: true },
+  appendTo: { signature: 'appendTo(array, value)', summary: 'A copy of the array with value added to the end.', returns: 'array', minArgs: 2, maxArgs: 2, example: "=appendTo(@currentField,'Choice 4')" },
+  removeFrom: { signature: 'removeFrom(array, value)', summary: 'A copy of the array with value removed if present.', returns: 'array', minArgs: 2, maxArgs: 2, example: "=removeFrom(@currentField,'Choice 4')" },
+  getDate: { signature: 'getDate(date)', summary: 'Day of the month (1-31) of a date.', returns: 'number', minArgs: 1, maxArgs: 1, example: "=getDate(Date('12/26/1981'))", onlineOnly: true },
+  getMonth: { signature: 'getMonth(date)', summary: 'Month of a date as a zero-based number (January is 0).', returns: 'number', minArgs: 1, maxArgs: 1, example: "=getMonth(Date('12/26/1981'))", onlineOnly: true },
+  getYear: { signature: 'getYear(date)', summary: 'Four-digit year of a date.', returns: 'number', minArgs: 1, maxArgs: 1, example: "=getYear(Date('12/26/1981'))", onlineOnly: true },
+  toLocaleString: { signature: 'toLocaleString(date)', summary: 'Date plus time, formatted for the viewer locale — an empty date renders as empty text.', returns: 'string', minArgs: 1, maxArgs: 1, example: '=toLocaleString(@now)' } as SPFunctionDoc,
+  toLocaleDateString: { signature: 'toLocaleDateString(date)', summary: 'Just the date, formatted for the viewer locale.', returns: 'string', minArgs: 1, maxArgs: 1, example: '=toLocaleDateString(@now)' },
+  toLocaleTimeString: { signature: 'toLocaleTimeString(date)', summary: 'Just the time, formatted for the viewer locale.', returns: 'string', minArgs: 1, maxArgs: 1, example: '=toLocaleTimeString(@now)' },
+  addDays: { signature: 'addDays(date, days)', summary: 'A new date with days added — use a negative number to subtract.', returns: 'date', minArgs: 2, maxArgs: 2, example: '=addDays(@now,3)' },
+  addMinutes: { signature: 'addMinutes(date, minutes)', summary: 'A new date with minutes added — a negative number subtracts.', returns: 'date', minArgs: 2, maxArgs: 2, example: '=addMinutes(@now,-30)' },
+  loopIndex: { signature: 'loopIndex(iteratorName)', summary: 'The 0-based index of the current forEach item — pass the iterator name as a quoted string.', returns: 'number', minArgs: 1, maxArgs: 1, example: "=loopIndex('_tag')" },
+  getUserImage: { signature: 'getUserImage(email, size)', summary: 'URL of a user profile photo at size s, m or l.', returns: 'string', minArgs: 2, maxArgs: 2, example: "=getUserImage([$Owner.email],'s')" },
+  getThumbnailImage: { signature: 'getThumbnailImage(imageField, width, height)', summary: 'URL of a thumbnail for an Image-column value at the given size.', returns: 'string', minArgs: 1, maxArgs: 3, example: '=getThumbnailImage([$Photo],400,300)' },
+};
+
 /** Special string tokens resolvable in expressions. */
 export const SPECIAL_TOKENS = [
   '@currentField', '@me', '@now', '@rowIndex', '@isSelected',

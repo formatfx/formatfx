@@ -28,8 +28,8 @@
  */
 
 import type { SPElement, NodePath, FormatterDocument } from './types';
-import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES } from './schema';
-import { parseExpression, parseForEach } from './expressions';
+import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES, SP_FUNCTIONS, SP_FUNCTION_DOCS } from './schema';
+import { parseExpression, parseForEach, type AstNode } from './expressions';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -119,6 +119,55 @@ export function findNestedEquals(expr: string): number {
     }
   }
   return -1;
+}
+
+/** Visit every function-call node in a parsed expression AST. */
+function forEachCall(node: AstNode, visit: (call: { fn: string; args: AstNode[] }) => void): void {
+  switch (node.kind) {
+    case 'call':
+      visit(node);
+      node.args.forEach((a) => forEachCall(a, visit));
+      break;
+    case 'unary':
+      forEachCall(node.operand, visit);
+      break;
+    case 'binary':
+      forEachCall(node.left, visit);
+      forEachCall(node.right, visit);
+      break;
+    case 'ternary':
+      forEachCall(node.cond, visit);
+      forEachCall(node.yes, visit);
+      forEachCall(node.no, visit);
+      break;
+    // num / str / field / token / ident are leaves
+  }
+}
+
+/**
+ * Check every call in a parsed expression against SP_FUNCTION_DOCS: unknown
+ * names and wrong argument counts both render BLANK on real SP with no error,
+ * so we catch them statically. (Excel-style strings only — the AST-object form
+ * carries its own operand arrays and is validated by the engine at eval time.)
+ */
+function checkCalls(ast: AstNode, where: string, push: (s: Severity, r: string, m: string) => void): void {
+  forEachCall(ast, ({ fn, args }) => {
+    // not() has its own dedicated, more specific rule (no-not-function)
+    if (fn === 'not') return;
+    const doc = SP_FUNCTION_DOCS[fn];
+    if (!doc) {
+      push('error', 'fn-unknown', `${where}: ${fn}() is not a SharePoint formatting function — names are case-sensitive, so check spelling and capitalization (e.g. toUpperCase, not upper). The full set is: ${SP_FUNCTIONS.join(', ')}. SP shows no error for this — the element just renders blank.`);
+      return;
+    }
+    const n = args.length;
+    if (n < doc.minArgs || n > doc.maxArgs) {
+      const want = doc.minArgs === doc.maxArgs
+        ? `${doc.minArgs}`
+        : `${doc.minArgs}–${doc.maxArgs}`;
+      const plural = doc.maxArgs === 1 ? 'argument' : 'arguments';
+      push('error', 'fn-arg-count', `${where}: ${doc.signature} takes ${want} ${plural}, but got ${n}. ${doc.summary} SP shows no error for this — the element just renders blank.`);
+    }
+  });
 }
 
 function maxIfDepth(expr: string): number {
@@ -219,8 +268,9 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     // parse =expressions to surface syntax errors early (skip when a more
     // precise rule already explains the problem)
     if (value.startsWith('=') && !preciseSyntaxIssue) {
+      let ast: AstNode | null = null;
       try {
-        parseExpression(stripExpressionWhitespace(value).slice(1));
+        ast = parseExpression(stripExpressionWhitespace(value).slice(1));
       } catch (e) {
         const raw = (e as Error).message;
         const stripped = stripExpressionWhitespace(value);
@@ -229,6 +279,9 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
         const near = posMatch ? ` Here: ${excerptAt(stripped, Number(posMatch[1]) + 1)} (▶ marks the spot).` : '';
         push('error', 'expr-syntax', `${where}: SharePoint can't read this formula — ${raw}.${near} A formula is built from 'quoted text', numbers, [$FieldName] references, @tokens (like @now or @currentField) and functions like if(), joined with operators (+ - * / == != && || ? :). Check for a missing quote, comma or closing parenthesis around the marker. SP gives no error for this — the element just renders blank.`);
       }
+      // a parseable formula can still call a misspelled function or pass the
+      // wrong number of arguments — both render blank with no SP error
+      if (ast) checkCalls(ast, where, push);
     }
     // CSOM / encoding hazard
     for (const ch of value) {
