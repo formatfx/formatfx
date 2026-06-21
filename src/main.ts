@@ -472,9 +472,9 @@ kindSel.addEventListener('change', () => {
 
 const destChip = document.getElementById('wb-dest-chip')!;
 const updateDestChip = () => {
-  // a registered column formatter is keyed by its field name; the main doc's
-  // field (if it is a column kind) is not separately tracked, so pass null there.
-  const columnField = state.activeDocKey !== 'main' ? state.activeDocKey : null;
+  const columnField = state.doc.kind === 'column'
+    ? (state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName)
+    : null;
   const d = formatterDestination(state.doc.kind, columnField);
   destChip.textContent = `→ ${d.label}`;
   destChip.title = d.title;
