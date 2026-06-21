@@ -105,6 +105,7 @@ test('header menu copies a registered column formatter as column JSON', async ({
 
 test('the same tree graduates: switch Type to row layout and back to grid', async ({ page }) => {
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
+  await openStudio(page);
   await page.selectOption('#wb-kind', 'row');
   // free row layout now — same tree, root renders once per mock row
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
