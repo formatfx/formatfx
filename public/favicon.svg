@@ -10,7 +10,7 @@
   <rect class="f-list" x="14" y="24" width="30" height="8"/>
   <rect class="f-list" x="14" y="40" width="16" height="8"/>
   <g stroke="#d97706" stroke-width="7" stroke-linecap="butt">
-    <line x1="39" y1="39" x2="53" y2="53"/>
-    <line x1="53" y1="39" x2="39" y2="53"/>
+    <line x1="37" y1="36" x2="55" y2="54"/>
+    <line x1="55" y1="36" x2="37" y2="54"/>
   </g>
 </svg>
