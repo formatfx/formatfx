@@ -3,7 +3,7 @@
  * what's edited, Excel input is transpiled to SP in one undoable mutation, and
  * refuse-don't-guess input is rejected without ever touching the document.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountFxBar } from './fxBar';
 import { fxSuggestions } from './fxSuggest';
 import { slotsFor } from './fxSlots';
@@ -180,6 +180,69 @@ describe('fxBar', () => {
     expect(ph()).toContain('bold'); // weight example, not a colour formula
     setSlot(host, 'align');
     expect(ph().toLowerCase()).toContain('left'); // alignment example
+  });
+
+  describe('the feedback line (quiet, transient)', () => {
+    const fb = (host: HTMLElement): HTMLElement => $(host, '.wb-fx-feedback');
+
+    it('stays silent by default — no hint, no draft nudge, no "applied"', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill'); // a draftable slot (pre-populates the editor)
+      expect(fb(host).textContent).toBe('');
+      expect(fb(host).hasAttribute('data-tone')).toBe(false);
+    });
+
+    it('says nothing on a successful apply', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'ink');
+      type(host, '#0078d4');
+      expect(state.selectedNode!.style!['color']).toBe('#0078d4'); // applied…
+      expect(fb(host).textContent).toBe(''); // …but silent about it
+    });
+
+    it('shows a refusal in red, then clears the moment the maker types again', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      type(host, '=NOPE([Status]');
+      expect(fb(host).getAttribute('data-tone')).toBe('error');
+      $<HTMLTextAreaElement>(host, '.wb-fx-editor').dispatchEvent(new Event('input'));
+      expect(fb(host).textContent).toBe('');
+      expect(fb(host).hasAttribute('data-tone')).toBe(false);
+    });
+
+    it('lets the maker dismiss a refusal with the ✕', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      type(host, '=NOPE([Status]');
+      $<HTMLButtonElement>(host, '.wb-fx-feedback-x').dispatchEvent(new Event('click'));
+      expect(fb(host).textContent).toBe('');
+      expect(fb(host).hasAttribute('data-tone')).toBe(false);
+    });
+
+    it('fades a refusal on its own after a readable beat', () => {
+      vi.useFakeTimers();
+      try {
+        const host = mountWith({ elmType: 'div' });
+        setSlot(host, 'fill');
+        type(host, '=NOPE([Status]');
+        expect(fb(host).getAttribute('data-tone')).toBe('error');
+        vi.advanceTimersByTime(6000);
+        expect(fb(host).textContent).toBe('');
+        expect(fb(host).hasAttribute('data-tone')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps a read-only note visible (a persistent condition, not a refusal)', () => {
+      const host = mountWith({
+        elmType: 'div',
+        style: { 'background-color': '=toString([$DueDate])' },
+      });
+      setSlot(host, 'fill');
+      expect(fb(host).getAttribute('data-tone')).toBe('raw');
+      expect(fb(host).textContent).toMatch(/Advanced/i);
+    });
   });
 
   describe('floating / detached editor', () => {
