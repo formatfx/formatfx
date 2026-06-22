@@ -5,6 +5,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountFxBar } from './fxBar';
+import { fxSuggestions } from './fxSuggest';
+import { slotsFor } from './fxSlots';
 import { state } from './state';
 import type { SPElement } from '../core/types';
 
@@ -31,7 +33,14 @@ const setSlot = (host: HTMLElement, id: string): void => {
 const type = (host: HTMLElement, text: string): void => {
   const editor = $<HTMLTextAreaElement>(host, '.wb-fx-editor');
   editor.value = text;
+  editor.dispatchEvent(new Event('input'));
   editor.dispatchEvent(new Event('change'));
+};
+
+/** Focus the bar to open the value menu, then return its option buttons. */
+const openMenu = (host: HTMLElement): HTMLButtonElement[] => {
+  $<HTMLTextAreaElement>(host, '.wb-fx-editor').dispatchEvent(new Event('focus'));
+  return [...document.querySelectorAll<HTMLButtonElement>('.wb-fx-menu-opt')];
 };
 
 describe('fxBar', () => {
@@ -40,10 +49,10 @@ describe('fxBar', () => {
     state.select([]);
   });
 
-  // the detached editor is a persistent tool window — sweep any left open so
-  // one test's float can't bleed into the next
+  // the detached editor + the on-focus value menu live on document.body — sweep
+  // any left open so one test's pop-up can't bleed into the next
   afterEach(() => {
-    document.querySelectorAll('.wb-fx-float').forEach((p) => p.remove());
+    document.querySelectorAll('.wb-fx-float, .wb-fx-menu').forEach((p) => p.remove());
   });
 
   it('lists the slots for the selected element by plain label', () => {
@@ -115,20 +124,52 @@ describe('fxBar', () => {
     expect(state.selectedNode!.txtContent).toBeUndefined();
   });
 
-  it('offers type-aware suggestions as visible, clickable chips', () => {
+  it('pre-populates the bar with the best default as an uncommitted draft', () => {
     const host = mountWith({ elmType: 'div' });
     setSlot(host, 'fill');
-    const chips = [...host.querySelectorAll('.wb-fx-sug')].map((c) => c.textContent);
-    expect(chips).toEqual(expect.arrayContaining(['#107c10'])); // palette colour
-    expect(chips.some((v) => v!.startsWith('=IF('))).toBe(true); // a colour-by-condition template
+    const editor = $<HTMLTextAreaElement>(host, '.wb-fx-editor');
+    const fill = slotsFor(state.selectedNode!).find((s) => s.id === 'fill')!;
+    expect(editor.value).toBe(fxSuggestions(fill, state.fields)[0]); // the smart default
+    expect(editor.classList.contains('wb-fx-draft')).toBe(true);
+    expect(state.selectedNode!.style).toBeUndefined(); // a draft never writes
   });
 
-  it('clicking a suggestion chip fills the editor and applies it', () => {
+  it('pressing Enter accepts the pre-populated draft', () => {
+    const host = mountWith({ elmType: 'div' });
+    setSlot(host, 'ink');
+    const editor = $<HTMLTextAreaElement>(host, '.wb-fx-editor');
+    expect(editor.value).not.toBe(''); // a default was typed for the user
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(state.selectedNode!.style!['color']).toBeDefined();
+  });
+
+  it('offers type-aware value choices as a styled menu on focus (no chip wall)', () => {
     const host = mountWith({ elmType: 'div' });
     setSlot(host, 'fill');
-    const chip = [...host.querySelectorAll<HTMLButtonElement>('.wb-fx-sug')]
-      .find((c) => c.textContent === '#107c10')!;
-    chip.dispatchEvent(new Event('click'));
+    expect(document.querySelector('.wb-fx-menu')).toBeNull(); // nothing until focus
+    const opts = openMenu(host);
+    expect(opts.length).toBeGreaterThan(0);
+    // a literal colour is drawn with a swatch; a template reads as a ƒx formula
+    expect(document.querySelectorAll('.wb-fx-menu .wb-fx-swatch').length).toBeGreaterThan(0);
+    expect([...document.querySelectorAll('.wb-fx-opt-formula')]
+      .some((n) => n.textContent!.startsWith('=IF('))).toBe(true);
+  });
+
+  it('the value menu opens on focus and closes on blur', () => {
+    const host = mountWith({ elmType: 'div' });
+    setSlot(host, 'fill');
+    const editor = $<HTMLTextAreaElement>(host, '.wb-fx-editor');
+    editor.dispatchEvent(new Event('focus'));
+    expect(document.querySelector('.wb-fx-menu')).not.toBeNull();
+    editor.dispatchEvent(new Event('blur'));
+    expect(document.querySelector('.wb-fx-menu')).toBeNull();
+  });
+
+  it('clicking a menu option fills the editor and applies it', () => {
+    const host = mountWith({ elmType: 'div' });
+    setSlot(host, 'fill');
+    const opt = openMenu(host).find((c) => c.textContent === '#107c10')!; // the literal swatch
+    opt.dispatchEvent(new Event('click'));
     expect(state.selectedNode!.style!['background-color']).toBe('#107c10');
   });
 

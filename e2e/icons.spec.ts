@@ -24,7 +24,8 @@ test('fx bar Icon slot: preview chips + searchable gallery applies a name', asyn
   const slot = page.locator('.wb-fx-slot');
   await expect(slot).toBeVisible();
   await slot.selectOption('attr:iconName');
-  // preview chips render (glyph + name)
+  // focus the bar to open the value menu — common icons render with previews
+  await page.click('.wb-fx-editor');
   await expect(page.locator('.wb-fx-iconsug').first()).toBeVisible();
   // open the full gallery, search, and pick
   await page.click('.wb-fx-iconbrowse');
