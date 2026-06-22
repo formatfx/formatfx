@@ -27,6 +27,10 @@ import type { SPExpr } from '../core/types';
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
 type SetFeedback = (text: string, tone?: Tone) => void;
 
+/** How long a refusal lingers before it fades on its own (ms) — long enough to
+ *  read, short enough not to nag. It also clears the instant the maker types. */
+const FEEDBACK_FADE_MS = 6000;
+
 export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } = {}): void {
   host.classList.add('wb-fxbar');
   /** Which slot is being edited — kept across selections so "Fill color" sticks. */
@@ -37,6 +41,8 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
   let float: { panel: HTMLElement; cleanup: () => void } | null = null;
   /** The on-focus value drop-down, when open. */
   let menu: FxMenu | null = null;
+  /** Pending auto-fade for a transient refusal message, if any. */
+  let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   const closeFloat = (): void => {
     if (!float) return;
@@ -55,6 +61,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // across selections and clicks elsewhere, so render() leaves it alone. The
     // on-focus value menu, however, belongs to this bar's editor — drop it.
     closeMenu();
+    if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
     host.innerHTML = '';
     const node = state.selectedNode;
     if (!node) {
@@ -111,12 +118,35 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     editor.placeholder = placeholder;
     editor.readOnly = view.readOnly;
 
-    // ── feedback line: the slot promise, or an error / raw-only note ──
+    // ── feedback line: silent unless something's wrong ──
+    // No slot hint, no draft nudge, no "applied" — the bar speaks only to
+    // REFUSE input (refuse-and-teach). A refusal shows in red, fades on its own
+    // after a readable beat, clears the instant the maker starts fixing it, and
+    // carries a ✕ to dismiss now. A read-only note is a persistent condition, so
+    // it stays put (no fade, no ✕).
     const feedback = document.createElement('div');
     feedback.className = 'wb-fx-feedback';
+    const clearFeedback = (): void => {
+      if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
+      feedback.textContent = '';
+      feedback.removeAttribute('data-tone');
+    };
     const setFeedback: SetFeedback = (text, tone = 'hint') => {
+      if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
       feedback.textContent = text;
       feedback.dataset.tone = tone;
+      // only a refusal is transient + dismissable; a read-only note stays.
+      if (tone === 'error') {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'wb-fx-feedback-x';
+        x.textContent = '✕';
+        x.title = 'Dismiss';
+        x.addEventListener('mousedown', (e) => e.preventDefault());
+        x.addEventListener('click', clearFeedback);
+        feedback.appendChild(x);
+        feedbackTimer = setTimeout(clearFeedback, FEEDBACK_FADE_MS);
+      }
     };
 
     // Apply text to the slot — refuse-don't-guess: a refusal never mutates.
@@ -136,8 +166,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       state.mutateDocument(() => writeSlot(node, slot, spValue));
       selfCommit = false;
       editor.classList.remove('wb-fx-draft');
-      setFb('✓ Applied.', 'ok');
-      return true;
+      return true; // success is silent — the value visibly applies
     };
 
     // ── type for the user: pre-populate the bar with the best default ──
@@ -151,11 +180,15 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       editor.value = best!;
       editor.classList.add('wb-fx-draft');
     }
-    editor.addEventListener('input', () => editor.classList.remove('wb-fx-draft'));
+    editor.addEventListener('input', () => {
+      editor.classList.remove('wb-fx-draft');
+      // typing again = "I'm fixing it" → drop a lingering refusal at once.
+      if (feedback.dataset.tone === 'error') clearFeedback();
+    });
 
+    // Silent by default. The one thing that can't vanish is a read-only note —
+    // it explains why the field can't be edited here and where to go instead.
     if (view.readOnly) setFeedback(`Shown read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
-    else if (draftable) setFeedback('Suggested for you — Enter to use it, ↓ for more, or type your own.', 'hint');
-    else setFeedback(slot.hint, 'hint');
 
     // ── the value menu: a styled drop-down, shown only while the bar is focused.
     // No permanent wall of buttons under the bar — the choices appear on demand,
