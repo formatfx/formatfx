@@ -1332,6 +1332,9 @@ body {
 }
 .wb-fx-editor:focus { outline: none; border-color: var(--wb-accent); }
 .wb-fx-editor:read-only { background: var(--wb-bg); color: var(--wb-text-2); font-style: italic; }
+/* a pre-populated draft (the smart default we typed for the user) reads as a
+   suggestion, not a saved value — muted + italic until they engage with it */
+.wb-fx-editor.wb-fx-draft { color: var(--wb-text-2); font-style: italic; }
 .wb-fx-editor.wb-fx-expanded { white-space: pre-wrap; overflow: auto; resize: vertical; }
 .wb-fx-expand {
   flex: none; padding: 4px 7px; font-size: 13px; line-height: 1;
@@ -1355,6 +1358,44 @@ body {
   max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .wb-fx-sug:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* ── fx bar: the on-focus value menu (styled drop-down of choices) ────────── */
+/* Replaces the old permanent chip wall — the choices appear only while the bar
+   is focused, and each is drawn to resemble the property it sets. */
+.wb-fx-menu {
+  position: fixed; z-index: 55; max-height: 320px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px; padding: 5px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 8px; box-shadow: 0 14px 40px rgba(0, 0, 0, .28);
+}
+.wb-fx-menu-opt {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 6px 9px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--wb-text); cursor: pointer;
+  font: 12px inherit; text-align: left;
+}
+.wb-fx-menu-opt:hover,
+.wb-fx-menu-opt.active { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
+.wb-fx-menu-opt.selected { border-color: var(--wb-accent); }
+.wb-fx-menu .wb-fx-iconsug { gap: 9px; }
+.wb-fx-menu .wb-fx-iconsug .ms-Icon { font-size: 16px; }
+.wb-fx-menu .wb-fx-iconbrowse {
+  justify-content: center; font-weight: 600;
+  border-style: dashed; border-color: var(--wb-border); color: var(--wb-text-2);
+}
+.wb-fx-opt-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-fx-opt-formula { font-family: 'Cascadia Code', Consolas, monospace; font-size: 11.5px; }
+.wb-fx-opt-fx { flex: none; font-style: italic; font-weight: 700; color: var(--wb-accent); font-size: 11px; }
+
+/* the property-styled previews that sit at the left of a value option */
+.wb-fx-prev { flex: none; }
+.wb-fx-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--wb-border); }
+.wb-fx-prev-box {
+  width: 26px; height: 18px; border-radius: 3px; overflow: hidden;
+  background: var(--wb-bg); border: 1px solid var(--wb-border);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; line-height: 1; color: var(--wb-text);
+}
 
 /* ── fx bar: Icon slot chips (preview glyph + name) + gallery button ──────── */
 .wb-fx-iconsug { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; }

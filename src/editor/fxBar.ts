@@ -35,6 +35,8 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
   let selfCommit = false;
   /** The detached floating editor, when open. */
   let float: { panel: HTMLElement; cleanup: () => void } | null = null;
+  /** The on-focus value drop-down, when open. */
+  let menu: FxMenu | null = null;
 
   const closeFloat = (): void => {
     if (!float) return;
@@ -42,6 +44,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     float.panel.remove();
     float = null;
   };
+  const closeMenu = (): void => { if (menu) { menu.el.remove(); menu = null; } };
 
   // The accessory (Title-column toggle) rides on the edit bar; re-home it on
   // every rebuild so it survives the host.innerHTML reset.
@@ -49,7 +52,9 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
 
   const render = (): void => {
     // The detached editor is a free-floating tool window now — it stays put
-    // across selections and clicks elsewhere, so render() leaves it alone.
+    // across selections and clicks elsewhere, so render() leaves it alone. The
+    // on-focus value menu, however, belongs to this bar's editor — drop it.
+    closeMenu();
     host.innerHTML = '';
     const node = state.selectedNode;
     if (!node) {
@@ -95,6 +100,8 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     const view = toEditorView(stored);
     const suggestions = fxSuggestions(slot, state.fields);
     const placeholder = slotPlaceholder(slot, suggestions);
+    // a literal icon name currently on the cell (so the menu marks it selected)
+    const currentIcon = typeof stored === 'string' && !stored.startsWith('=') ? stored : undefined;
 
     const editor = document.createElement('textarea');
     editor.className = 'wb-fx-editor';
@@ -111,8 +118,6 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       feedback.textContent = text;
       feedback.dataset.tone = tone;
     };
-    if (view.readOnly) setFeedback(`Shown read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
-    else setFeedback(slot.hint, 'hint');
 
     // Apply text to the slot — refuse-don't-guess: a refusal never mutates.
     const applyText = (text: string, setFb: SetFeedback): boolean => {
@@ -130,29 +135,59 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       selfCommit = true;
       state.mutateDocument(() => writeSlot(node, slot, spValue));
       selfCommit = false;
+      editor.classList.remove('wb-fx-draft');
       setFb('✓ Applied.', 'ok');
       return true;
     };
 
-    if (!editor.readOnly) {
+    // ── type for the user: pre-populate the bar with the best default ──
+    // The smartest choice for THIS property is dropped straight into the bar as a
+    // MUTED, UNCOMMITTED draft — visible, ready to accept with Enter, or type
+    // over. It is never written to the document until the user acts, so a misclick
+    // can't corrupt the formatter (click-only safety).
+    const best = stored === undefined ? bestDefault(slot, suggestions) : undefined;
+    const draftable = !view.readOnly && best !== undefined;
+    if (draftable) {
+      editor.value = best!;
+      editor.classList.add('wb-fx-draft');
+    }
+    editor.addEventListener('input', () => editor.classList.remove('wb-fx-draft'));
+
+    if (view.readOnly) setFeedback(`Shown read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
+    else if (draftable) setFeedback('Suggested for you — Enter to use it, ↓ for more, or type your own.', 'hint');
+    else setFeedback(slot.hint, 'hint');
+
+    // ── the value menu: a styled drop-down, shown only while the bar is focused.
+    // No permanent wall of buttons under the bar — the choices appear on demand,
+    // and each is drawn to look like the property it sets (a colour swatch, a
+    // sample weight/size, a bordered box). Click or Enter to apply.
+    const onPickValue = (value: string): void => {
+      editor.value = value;
+      editor.classList.remove('wb-fx-draft');
+      if (applyText(value, setFeedback)) editor.focus();
+      closeMenu();
+    };
+
+    if (!view.readOnly) {
+      editor.addEventListener('focus', () => {
+        if (menu || suggestions.length === 0) return;
+        menu = openMenu(editor, slot, suggestions, currentIcon, onPickValue);
+      });
+      editor.addEventListener('blur', () => closeMenu());
       editor.addEventListener('change', () => applyText(editor.value, setFeedback));
       editor.addEventListener('keydown', (e) => {
+        if (menu) {
+          if (e.key === 'ArrowDown') { e.preventDefault(); menu.move(1); return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); menu.move(-1); return; }
+          if (e.key === 'Escape') { e.preventDefault(); closeMenu(); return; }
+          if (e.key === 'Enter' && !e.shiftKey) {
+            const v = menu.activeValue();
+            if (v !== null) { e.preventDefault(); onPickValue(v); return; }
+          }
+        }
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyText(editor.value, setFeedback); editor.blur(); }
       });
     }
-
-    // ── visible value choices: click a chip to drop it in (and apply) ──
-    // Datalist can't attach to a <textarea>, so the suggestions are real chips
-    // — discoverable without typing, the playground's pick-a-value feel.
-    const onPickValue = (value: string): void => {
-      editor.value = value;
-      if (applyText(value, setFeedback)) editor.focus();
-    };
-    // the Icon slot gets preview chips + a one-click gallery of every SP icon
-    const currentIcon = typeof stored === 'string' && !stored.startsWith('=') ? stored : undefined;
-    const chips = slot.picker === 'icon'
-      ? buildIconChips(suggestions, view.readOnly, currentIcon, onPickValue)
-      : buildChips(suggestions, view.readOnly, onPickValue);
 
     // ── ⤢ detach into a roomy floating editor (never a cramped single line) ──
     const expand = document.createElement('button');
@@ -161,6 +196,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     expand.textContent = '⤢';
     expand.title = 'Open a roomy editor — more space to write and read a longer formula';
     expand.addEventListener('click', () => {
+      closeMenu();
       closeFloat();
       float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render());
     });
@@ -170,7 +206,6 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     bar.append(badge, picker, editor, expand);
     if (opts.accessory) bar.append(opts.accessory);
     host.append(bar, feedback);
-    if (chips) host.append(chips);
   };
 
   state.subscribe((reason) => {
@@ -366,44 +401,162 @@ function buildChips(
   return row;
 }
 
-/**
- * The Icon slot's chips: a few common icons shown WITH their preview glyph,
- * plus a "Browse all icons" button that opens the full searchable gallery.
- */
-function buildIconChips(
-  suggestions: string[],
-  readOnly: boolean,
-  current: string | undefined,
-  onPick: (value: string) => void,
-): HTMLElement | null {
-  if (readOnly) return null;
-  const row = document.createElement('div');
-  row.className = 'wb-fx-sugs wb-fx-iconsugs';
+// ─── the on-focus value menu (a styled drop-down of choices) ─────────────────
 
-  for (const name of suggestions.slice(0, 12)) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'wb-fx-sug wb-fx-iconsug' + (name === current ? ' selected' : '');
-    // name first, then a colon, then the glyph — reads as "this is the Edit
-    // icon", not an Edit button that does something when clicked
-    chip.innerHTML = `<span>${name}:</span><i class="ms-Icon ms-Icon--${name}" aria-hidden="true"></i>`;
-    chip.title = `Use the ${name} icon`;
-    chip.addEventListener('mousedown', (e) => e.preventDefault());
-    chip.addEventListener('click', () => onPick(name));
-    row.appendChild(chip);
+interface FxMenu {
+  el: HTMLElement;
+  /** Move the keyboard highlight by ±1 (wraps). */
+  move: (delta: number) => void;
+  /** The highlighted option's value, or null when nothing is highlighted. */
+  activeValue: () => string | null;
+}
+
+/**
+ * The drop-down of value choices for a slot — anchored under the editor and
+ * alive only while the bar is focused. Each option is rendered to RESEMBLE the
+ * property it sets (a colour swatch, a sample at that weight/size, a bordered
+ * box) so the right one reads at a glance. Arrow keys highlight; click or Enter
+ * applies. The Icon slot shows common icons with previews plus a one-click door
+ * to the full searchable gallery.
+ */
+function openMenu(
+  editor: HTMLElement,
+  slot: FxSlot,
+  suggestions: string[],
+  currentIcon: string | undefined,
+  onPick: (value: string) => void,
+): FxMenu {
+  const el = document.createElement('div');
+  el.className = 'wb-fx-menu';
+
+  // arrow-navigable value options (the icon "browse" row is clickable, not arrowed)
+  const opts: { value: string; node: HTMLElement }[] = [];
+  let active = -1;
+
+  // keep focus in the editor while picking, so the click can't blur-commit first
+  const wire = (node: HTMLElement, value: string): void => {
+    node.addEventListener('mousedown', (e) => e.preventDefault());
+    node.addEventListener('click', () => onPick(value));
+    opts.push({ value, node });
+  };
+
+  if (slot.picker === 'icon') {
+    for (const name of suggestions.slice(0, 12)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-fx-menu-opt wb-fx-iconsug' + (name === currentIcon ? ' selected' : '');
+      b.innerHTML = `<i class="ms-Icon ms-Icon--${name}" aria-hidden="true"></i><span class="wb-fx-opt-label">${name}</span>`;
+      b.title = `Use the ${name} icon`;
+      wire(b, name);
+      el.appendChild(b);
+    }
+    const browse = document.createElement('button');
+    browse.type = 'button';
+    browse.className = 'wb-fx-menu-opt wb-fx-iconbrowse';
+    browse.textContent = '⊞ All icons…';
+    browse.title = 'Browse and search every icon SharePoint can render — with previews';
+    browse.addEventListener('mousedown', (e) => e.preventDefault());
+    browse.addEventListener('click', () => openIconPicker({ anchor: browse, current: currentIcon, title: 'Pick an icon', onPick }));
+    el.appendChild(browse);
+  } else {
+    for (const value of suggestions.slice(0, 12)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-fx-menu-opt';
+      b.title = value.startsWith('=') ? `Use this formula: ${value}` : `Use the value ${value}`;
+      fillOption(b, slot, value);
+      wire(b, value);
+      el.appendChild(b);
+    }
   }
 
-  const browse = document.createElement('button');
-  browse.type = 'button';
-  browse.className = 'wb-fx-sug wb-fx-iconbrowse';
-  browse.textContent = '⊞ All icons…';
-  browse.title = 'Browse and search every icon SharePoint can render — with previews';
-  browse.addEventListener('mousedown', (e) => e.preventDefault());
-  browse.addEventListener('click', () => {
-    openIconPicker({ anchor: browse, current, title: 'Pick an icon', onPick });
-  });
-  row.appendChild(browse);
-  return row;
+  const move = (delta: number): void => {
+    if (!opts.length) return;
+    if (active >= 0) opts[active].node.classList.remove('active');
+    active = (active + delta + opts.length) % opts.length;
+    const cur = opts[active].node;
+    cur.classList.add('active');
+    cur.scrollIntoView({ block: 'nearest' });
+  };
+  const activeValue = (): string | null => (active >= 0 ? opts[active].value : null);
+
+  document.body.appendChild(el);
+  const r = editor.getBoundingClientRect();
+  el.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 12)}px`;
+  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
+  el.style.minWidth = `${Math.max(220, r.width)}px`;
+  return { el, move, activeValue };
+}
+
+/** The single best default for a slot — what we pre-populate the bar with. */
+function bestDefault(slot: FxSlot, suggestions: string[]): string | undefined {
+  if (!suggestions.length) return undefined;
+  const k = previewKind(slot);
+  // colour / weight / border lead with a smart conditional template (the showcase
+  // of "thinking for the user"); text & attributes lead with a column reference.
+  if (k === 'code' || k === 'color' || k === 'weight' || k === 'border') return suggestions[0];
+  // align / size / opacity / radius read best as a concrete literal value.
+  return suggestions.find((s) => !s.startsWith('=')) ?? suggestions[0];
+}
+
+/** What a slot's values should look like in the menu. */
+type PreviewKind = 'color' | 'weight' | 'size' | 'align' | 'opacity' | 'radius' | 'border' | 'generic' | 'code';
+function previewKind(slot: FxSlot): PreviewKind {
+  if (slot.kind !== 'style' || !slot.prop) return 'code';
+  const p = slot.prop;
+  if (p === 'font-weight') return 'weight';
+  if (p === 'font-size') return 'size';
+  if (p === 'text-align') return 'align';
+  if (p === 'opacity') return 'opacity';
+  if (p === 'border-radius') return 'radius';
+  if (p.includes('border') || p === 'outline') return 'border';
+  if (p.includes('color') || p === 'fill' || p === 'stroke' || p === 'background') return 'color';
+  return 'generic';
+}
+
+/** Fill a menu option button with a property-styled preview + the value label. */
+function fillOption(button: HTMLElement, slot: FxSlot, value: string): void {
+  // a formula can't be previewed visually — flag it with the ƒx badge and show
+  // the expression in monospace so it reads as "a rule", not a literal value.
+  if (value.startsWith('=')) {
+    const fx = document.createElement('span');
+    fx.className = 'wb-fx-opt-fx';
+    fx.textContent = 'ƒx';
+    const code = document.createElement('span');
+    code.className = 'wb-fx-opt-label wb-fx-opt-formula';
+    code.textContent = value;
+    button.append(fx, code);
+    return;
+  }
+  const label = document.createElement('span');
+  label.className = 'wb-fx-opt-label';
+  label.textContent = value;
+  let prev: HTMLElement | null = null;
+  switch (previewKind(slot)) {
+    case 'color': {
+      prev = document.createElement('span');
+      prev.className = 'wb-fx-prev wb-fx-swatch';
+      prev.style.background = value;
+      break;
+    }
+    case 'weight': { prev = box('Ab'); prev.style.fontWeight = value; break; }
+    case 'size': { prev = box('Ab'); prev.style.fontSize = value; break; }
+    case 'align': { prev = box('Ab'); prev.style.display = 'block'; prev.style.textAlign = value; break; }
+    case 'opacity': { prev = box(''); prev.style.background = 'var(--wb-accent)'; prev.style.opacity = value; break; }
+    case 'radius': { prev = box(''); prev.style.background = 'var(--wb-bg)'; prev.style.borderRadius = value; break; }
+    case 'border': { prev = box(''); if (value !== '0') prev.style.border = value; break; }
+    default: prev = null; // generic / code: the label alone
+  }
+  if (prev) button.append(prev);
+  button.append(label);
+}
+
+/** A small bordered preview box that carries a property-styled sample. */
+function box(text: string): HTMLElement {
+  const b = document.createElement('span');
+  b.className = 'wb-fx-prev wb-fx-prev-box';
+  b.textContent = text;
+  return b;
 }
 
 /** A slot-specific placeholder: a real example value for THIS property. */
