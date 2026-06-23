@@ -10,6 +10,8 @@ export interface MenuItem {
   icon: string;
   label: string;
   title?: string;
+  /** Optional trailing chip, e.g. "Built-in" / "Yours" on the subtype catalog. */
+  badge?: string;
   fn: () => void;
 }
 
@@ -41,6 +43,12 @@ export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): 
     const b = document.createElement('button');
     b.innerHTML = `<i class="ms-Icon ms-Icon--${item.icon}" aria-hidden="true"></i><span></span>`;
     (b.lastChild as HTMLElement).textContent = item.label;
+    if (item.badge) {
+      const chip = document.createElement('span');
+      chip.className = 'wb-menu-badge';
+      chip.textContent = item.badge;
+      b.appendChild(chip);
+    }
     if (item.title) b.title = item.title;
     b.addEventListener('click', () => {
       closeMenu();

@@ -30,7 +30,7 @@ Rules that apply to every story (from `CLAUDE.md`):
 
 ## Phase 2 — Apply core
 
-- [ ] **US-3 — Catalog menu + zero-knob apply**
+- [x] **US-3 — Catalog menu + zero-knob apply**
   - Files: `src/editor/gridView.ts` (`openFormatColumnMenu`, `applyColumnFormatter`), `src/style.css` (badges), e2e spec.
   - Gate: menu lists type-matching seeds + customs with Built-in/Yours badges + "format manually"; non-matching `baseTypes` never appear; zero-knob apply writes formatter + sets `field.subtype`/`subtypeArgs={}` as ONE undoable mutation. e2e: pick a seed renders; Ctrl+Z restores.
   - Verify: `npm run build` && `npm test` && Playwright apply spec.

@@ -4,6 +4,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { EditorState, CARD_SEGMENT } from './state';
+import { gridColumnField } from './gridScaffold';
+import type { SPElement } from '../core/types';
 
 function withCard(): EditorState {
   const s = new EditorState();
@@ -180,6 +182,53 @@ describe('reparentNode', () => {
     const before = JSON.stringify(s.doc);
     s.reparentNode([0], [0, 0]); // try to move A into its own child B
     expect(JSON.stringify(s.doc)).toBe(before);
+  });
+});
+
+describe('applyColumnSubtype: snapshot apply as ONE undoable mutation (US-3)', () => {
+  function colPath(s: EditorState, fieldName: string): number[] {
+    const kids = s.doc.root.children ?? [];
+    return [kids.findIndex((c) => gridColumnField(c) === fieldName)];
+  }
+
+  it('registers the formatter, CFR-wires the cell, tags the field — and one undo reverts all three', () => {
+    const s = new EditorState(); // grid-first default doc
+    const field = s.fields.find((f) => f.name === 'DueDate')!; // an unformatted column
+    const path = colPath(s, 'DueDate');
+    const baked: SPElement = { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' };
+
+    s.applyColumnSubtype('DueDate', baked, 'date-badge', {}, path);
+
+    expect(field.subtype).toBe('date-badge');
+    expect(field.subtypeArgs).toEqual({});
+    expect(s.columnRefs['DueDate']).toBe(baked);
+    expect(s.nodeAt(path)?.columnFormatterReference).toBeTruthy();
+
+    s.undo(); // single Ctrl+Z
+    expect(s.nodeAt(path)?.columnFormatterReference).toBeFalsy();
+    expect(field.subtype).toBeUndefined();
+    expect(field.subtypeArgs).toBeUndefined();
+  });
+
+  it('redo re-applies the tag and the formatter together', () => {
+    const s = new EditorState();
+    const field = s.fields.find((f) => f.name === 'DueDate')!;
+    const path = colPath(s, 'DueDate');
+    s.applyColumnSubtype('DueDate', { elmType: 'div', txtContent: 'x' }, 'date-badge', {}, path);
+    s.undo();
+    s.redo();
+    expect(field.subtype).toBe('date-badge');
+    expect(s.nodeAt(path)?.columnFormatterReference).toBeTruthy();
+  });
+
+  it('does not entangle structural field edits with the doc undo (no regression)', () => {
+    const s = new EditorState();
+    const path = colPath(s, 'DueDate');
+    s.applyColumnSubtype('DueDate', { elmType: 'div', txtContent: 'x' }, 'date-badge', {}, path);
+    s.fields.push({ name: 'Extra', type: 'text' }); // a later, non-snapshotting edit
+    s.undo(); // undoing the apply must NOT remove the field added afterwards
+    expect(s.fields.some((f) => f.name === 'Extra')).toBe(true);
+    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBeUndefined();
   });
 });
 

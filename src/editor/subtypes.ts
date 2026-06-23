@@ -11,7 +11,7 @@
  * never throws — a misread can never wipe or block a maker's work.
  */
 
-import type { Subtype } from '../core/types';
+import type { Subtype, FieldType } from '../core/types';
 import { presetSeeds } from './columnPresets';
 
 /** localStorage key for maker-authored (custom) subtypes. Frozen + additive —
@@ -143,4 +143,20 @@ export function seedSubtypes(): Subtype[] {
     vocab: { refs: ['@currentField'], values: [] },
   }));
   return [...fromPresets, moneySeed()];
+}
+
+/**
+ * The catalog a column of `type` sees: the builtin seeds that fit, then the
+ * saved customs that fit. Subtypes whose `baseTypes` exclude `type` never
+ * appear (refuse-don't-guess — a misclick can't apply a broken recipe).
+ */
+export function subtypesForType(type: FieldType): Subtype[] {
+  const fits = (s: Subtype): boolean => s.baseTypes.includes(type);
+  const seeds = seedSubtypes().filter(fits);
+  const seedIds = new Set(seeds.map((s) => s.id));
+  // A custom never shadows a built-in (spec: override/shadow is out of scope —
+  // you fork instead); an id collision drops the custom so the menu can't
+  // double-list the same id.
+  const customs = listSubtypes().filter((s) => fits(s) && !seedIds.has(s.id));
+  return [...seeds, ...customs];
 }

@@ -50,23 +50,6 @@ const BY_TYPE: Partial<Record<FieldType, PresetRef[]>> = {
   hyperlink: [{ id: 'link', primaryField: 'Link' }],
 };
 
-export interface ColumnPresetOption {
-  id: string;
-  label: string;
-  description: string;
-  icon: string;
-}
-
-/** The presets that fit a field type (empty = "format manually" is the only path). */
-export function columnPresetsFor(type: FieldType): ColumnPresetOption[] {
-  const out: ColumnPresetOption[] = [];
-  for (const ref of BY_TYPE[type] ?? []) {
-    const item = paletteItemById(ref.id);
-    if (item) out.push({ id: ref.id, label: item.label, description: item.description, icon: item.icon });
-  }
-  return out;
-}
-
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Deep-clone a tree, rewriting every string value with `fn`. */

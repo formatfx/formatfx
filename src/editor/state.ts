@@ -361,7 +361,38 @@ export class EditorState {
   // ─── Mutations (all snapshot for undo) ────────────────────────────────────
 
   snapshot(): void {
-    this.pushUndo(JSON.stringify({ doc: this.doc }));
+    this.pushUndo(this.snapState());
+  }
+
+  /** The undo snapshot: the document PLUS the per-field subtype tags, so a tag
+   *  set/cleared by an apply (applyColumnSubtype) rides on the same undo step as
+   *  its formatter. Only the subtype tags are captured — structural field edits
+   *  (add/remove/type, via the data panel) deliberately live outside undo, so a
+   *  later field edit is never clobbered by an unrelated doc undo. */
+  private snapState(): string {
+    return JSON.stringify({ doc: this.doc, tags: this.subtypeTags() });
+  }
+
+  private subtypeTags(): Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }> {
+    const out: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }> = {};
+    for (const f of this.fields) {
+      if (f.subtype !== undefined || f.subtypeArgs !== undefined) out[f.name] = { subtype: f.subtype, subtypeArgs: f.subtypeArgs };
+    }
+    return out;
+  }
+
+  private restoreSnap(snap: string): void {
+    const parsed = JSON.parse(snap) as {
+      doc: FormatterDocument;
+      tags?: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }>;
+    };
+    this.doc = parsed.doc;
+    const tags = parsed.tags ?? {};
+    for (const f of this.fields) {
+      const t = tags[f.name];
+      if (t && t.subtype !== undefined) f.subtype = t.subtype; else delete f.subtype;
+      if (t && t.subtypeArgs !== undefined) f.subtypeArgs = t.subtypeArgs; else delete f.subtypeArgs;
+    }
   }
 
   private pushUndo(state: string): void {
@@ -373,8 +404,8 @@ export class EditorState {
   undo(): void {
     const prev = this.undoStack.pop();
     if (!prev) return;
-    this.redoStack.push(JSON.stringify({ doc: this.doc }));
-    this.doc = JSON.parse(prev).doc;
+    this.redoStack.push(this.snapState());
+    this.restoreSnap(prev);
     this.clampSelection();
     this.emit('document');
   }
@@ -382,8 +413,8 @@ export class EditorState {
   redo(): void {
     const next = this.redoStack.pop();
     if (!next) return;
-    this.undoStack.push(JSON.stringify({ doc: this.doc }));
-    this.doc = JSON.parse(next).doc;
+    this.undoStack.push(this.snapState());
+    this.restoreSnap(next);
     this.clampSelection();
     this.emit('document');
   }
@@ -399,11 +430,12 @@ export class EditorState {
 
   mutateDocument(fn: () => void): void {
     // Snapshot the pre-mutation state, but only commit it if fn actually changed
-    // the document — a no-op gesture (rename to the same value, arrow-step that
-    // re-commits the current value on blur) must not push a phantom undo step.
-    const before = JSON.stringify({ doc: this.doc });
+    // the document or its subtype tags — a no-op gesture (rename to the same
+    // value, arrow-step that re-commits the current value on blur) must not push
+    // a phantom undo step.
+    const before = this.snapState();
     fn();
-    if (JSON.stringify({ doc: this.doc }) === before) return;
+    if (this.snapState() === before) return;
     this.pushUndo(before);
     this.emit('document');
   }
@@ -660,6 +692,47 @@ export class EditorState {
     });
     this.emit('data'); // the new registered formatter shows up in pickers/tree
     return field;
+  }
+
+  // ─── Column subtypes: snapshot apply ───────────────────────────────────────
+
+  /** Apply a subtype to a column as ONE undoable mutation: register the
+   *  already-baked formatter, tag the field (subtype id + baked args), and
+   *  CFR-wire the grid cell so the grid renders it. The field tag and the
+   *  cell-swap are the undoable step (captured by snapState), so a single undo
+   *  reverts both the render and the tag. Stays on the grid (no doc switch —
+   *  that would clear the undo stack and defeat Ctrl+Z).
+   *
+   *  The registry write rides OUTSIDE the snapshot (like promoteToColumn). This
+   *  is safe for the only path US-3 exposes — a FIRST apply over a plain cell:
+   *  undo swaps the cell back to a non-CFR plain cell, so the lingering registry
+   *  entry is unreferenced and inert. It is NOT yet safe to re-apply over an
+   *  already-CFR cell (undo would revert the tag but leave the cell pointing at
+   *  the new registry entry). Re-apply is not a US-3 path; US-7 (push-update)
+   *  will need columnRefs captured in the snapshot before it exercises this. */
+  applyColumnSubtype(
+    fieldName: string,
+    baked: SPElement,
+    subtypeId: string,
+    args: Record<string, string | number | boolean>,
+    path: NodePath,
+  ): void {
+    const field = this.fields.find((f) => f.name === fieldName);
+    if (!field) return;
+    this.columnRefs[fieldName] = baked;
+    this.mutateDocument(() => {
+      field.subtype = subtypeId;
+      field.subtypeArgs = args;
+      const el = this.nodeAt(path);
+      if (el && !el.columnFormatterReference && path.length > 0) {
+        const p = this.parentOf(path);
+        if (p?.parent.children) {
+          const cell = gridCellForField(field, this.columnRefs);
+          if (el._elmName) cell._elmName = el._elmName;
+          p.parent.children[p.index] = cell;
+        }
+      }
+    });
   }
 
   loadDocument(doc: FormatterDocument): void {

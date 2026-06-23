@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype,
-  seedSubtypes,
+  seedSubtypes, subtypesForType,
 } from './subtypes';
 import type { Subtype, SPElement } from '../core/types';
 import { lintDocument } from '../core/linter';
@@ -250,5 +250,45 @@ describe('seed catalog: the new Money value→text seed', () => {
   it('hand-authored vocab offers the value plus common currency symbols', () => {
     expect(money.vocab.refs).toContain('@currentField');
     expect(money.vocab.values).toEqual(expect.arrayContaining(['$', '€', '£']));
+  });
+});
+
+// ─── US-3: type-filtered catalog (seeds + customs) ───────────────────────────
+
+describe('subtypesForType: the catalog a column type sees (refuse-don\'t-guess)', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+
+  it('lists only seeds whose baseTypes include the type', () => {
+    const forNumber = subtypesForType('number').map((s) => s.id);
+    expect(forNumber).toContain('data-bar');
+    expect(forNumber).toContain('money');
+    expect(forNumber).not.toContain('status-pill'); // choice-only
+    expect(forNumber).not.toContain('facepile');     // personMulti-only
+    const forChoice = subtypesForType('choice').map((s) => s.id);
+    expect(forChoice).toContain('status-pill');
+    expect(forChoice).not.toContain('data-bar');
+  });
+
+  it('appends saved customs that fit, after the builtin seeds; excludes non-fitting ones', () => {
+    saveSubtype(sample({ id: 'c-num', name: 'My Number', baseTypes: ['number'] }));
+    saveSubtype(sample({ id: 'c-choice', name: 'My Choice', baseTypes: ['choice'] }));
+    const list = subtypesForType('number');
+    const mine = list.find((s) => s.id === 'c-num');
+    expect(mine?.origin).toBe('custom');
+    expect(list.map((s) => s.id)).not.toContain('c-choice');
+    // seeds come before customs
+    expect(list.findIndex((s) => s.id === 'data-bar')).toBeLessThan(list.findIndex((s) => s.id === 'c-num'));
+  });
+
+  it('returns empty for a type no subtype fits', () => {
+    expect(subtypesForType('note')).toEqual([]);
+    expect(subtypesForType('boolean')).toEqual([]);
+  });
+
+  it('a custom never shadows a built-in: an id collision is dropped, not double-listed', () => {
+    saveSubtype(sample({ id: 'money', name: 'Fake Money', baseTypes: ['number'] }));
+    const moneyEntries = subtypesForType('number').filter((s) => s.id === 'money');
+    expect(moneyEntries).toHaveLength(1);
+    expect(moneyEntries[0].origin).toBe('builtin');
   });
 });

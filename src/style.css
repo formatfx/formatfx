@@ -402,6 +402,16 @@ body {
   padding: 6px 8px; border-radius: 3px; font-size: 12px; cursor: pointer;
 }
 .wb-grid-menu button:hover { background: var(--wb-bg); color: var(--wb-accent); }
+/* subtype-catalog badges: "Built-in" / "Yours" trailing chips */
+.wb-grid-menu button .wb-menu-badge {
+  margin-left: auto; flex: none;
+  font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 8px;
+  background: color-mix(in srgb, var(--wb-text-2) 18%, transparent); color: var(--wb-text-2);
+}
+.wb-grid-menu button:hover .wb-menu-badge {
+  background: color-mix(in srgb, var(--wb-accent) 22%, transparent); color: var(--wb-accent);
+}
 
 /* ── stage 3: multi-select + "make a row view" ─────────────── */
 .wb-grid-col-selected { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); }

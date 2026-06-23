@@ -26,9 +26,10 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius } from './cfr';
-import { columnPresetsFor, buildColumnPreset } from './columnPresets';
+import { subtypesForType } from './subtypes';
+import { paletteItemById } from './palette';
 import { cfrFieldName } from '../core/refs';
-import type { SPElement, NodePath, MockField } from '../core/types';
+import type { SPElement, NodePath, MockField, Subtype } from '../core/types';
 
 interface GridDeps {
   opts: RenderOptions;
@@ -84,19 +85,40 @@ function applyColumnFormatter(col: GridColumn, field: MockField, tree: SPElement
   onToast(msg);
 }
 
-/** "Format this column" → a type-aware preset picker (the system thinks for the
- *  maker), then "format manually". With no fitting preset, go straight to manual. */
+/** Icon for a subtype entry: the palette icon for a preset-derived seed, else a
+ *  sensible fallback (Money / a star for a maker's custom). */
+function subtypeIcon(st: Subtype): string {
+  return paletteItemById(st.id)?.icon ?? (st.id === 'money' ? 'AllCurrency' : 'Tag');
+}
+
+/** Snapshot-apply a subtype to the column and stay on the grid (so the cell
+ *  renders it and a single Ctrl+Z reverts). Zero-knob here (subtypeArgs={});
+ *  the apply-time knob form is US-4. The formatter already carries the seed's
+ *  default literals, so a knob-bearing seed applies sensibly with its defaults. */
+function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
+  const baked = JSON.parse(JSON.stringify(st.formatter)) as SPElement;
+  baked._elmName = `${fieldLabel(field)} — ${st.name}`;
+  state.applyColumnSubtype(field.name, baked, st.id, {}, col.path);
+  onToast(`Applied ${st.name} to ${field.name} — the grid renders it. Ctrl+Z to undo.`);
+}
+
+/** "Format this column" → the type-filtered subtype catalog (built-in seeds +
+ *  the maker's customs, badged), then "format manually". Subtypes whose
+ *  baseTypes exclude this column never appear; with none fitting, go straight to
+ *  the manual blank formatter. */
 function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLElement, onToast: (m: string) => void): void {
-  const presets = columnPresetsFor(field.type);
+  const catalog = subtypesForType(field.type);
   const manual = (): void => applyColumnFormatter(col, field, defaultColumnFormatter(field), onToast,
     `Started a formatter for ${field.name} — you're editing it now; the grid renders it live`);
-  if (presets.length === 0) { manual(); return; }
-  const items: MenuItem[] = presets.map((p) => ({
-    icon: p.icon,
-    label: p.label,
-    title: p.description,
-    fn: () => applyColumnFormatter(col, field, buildColumnPreset(p.id, field)!, onToast,
-      `Started a ${p.label} for ${field.name} — you're editing it; the grid renders it live. Restyle or Ctrl+Z to undo.`),
+  if (catalog.length === 0) { manual(); return; }
+  const items: MenuItem[] = catalog.map((st) => ({
+    icon: subtypeIcon(st),
+    label: st.name,
+    badge: st.origin === 'builtin' ? 'Built-in' : 'Yours',
+    title: st.origin === 'builtin'
+      ? `Apply the built-in ${st.name} look to ${field.name}`
+      : `Apply your saved ${st.name} subtype to ${field.name}`,
+    fn: () => applySubtype(col, field, st, onToast),
   }));
   items.push({
     icon: 'Brush',
