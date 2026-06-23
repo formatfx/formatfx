@@ -68,6 +68,24 @@ async function importTwoDateColumns(page: Page): Promise<void> {
   await page.click('button:has-text("Import pasted text")');
 }
 
+/** Import a schema with a Title + three unformatted Choice columns. */
+async function importChoiceColumns(page: Page): Promise<void> {
+  const choice = (n: string): string => `<Field Type="Choice" Name="${n}" DisplayName="${n}"><CHOICES><CHOICE>A</CHOICE><CHOICE>B</CHOICE></CHOICES></Field>`;
+  const schema = {
+    schemaXmlList: [
+      '<Field Type="Text" Name="Title" DisplayName="Title" ReadOnly="FALSE" />',
+      choice('Phase1'), choice('Phase2'), choice('Phase3'),
+    ],
+  };
+  const csv = `ListSchema=${JSON.stringify(schema)}\n`
+    + '"Title","Phase1","Phase2","Phase3"\n'
+    + '"T","A","B","A"\n';
+  await openDataDock(page);
+  await page.click('button:has-text("Import schema…")');
+  await page.fill('.wb-schema-form textarea', csv);
+  await page.click('button:has-text("Import pasted text")');
+}
+
 /** Seed a maker-authored (custom) date subtype into the wb-subtypes store. */
 async function seedCustomDateSubtype(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -240,4 +258,55 @@ test('Refine: ⋯ on a custom opens the modal; rename + promote a literal to a k
   expect(knob.type).toBe('color');
   expect(knob.label).toBe('Pill color');
   expect(knob.default).toBe('#107c10');
+});
+
+test('Push-update: refine + "update N columns" re-bakes every tagged column; one Ctrl+Z reverts all', async ({ page }) => {
+  // a custom choice subtype whose output is a constant literal (easy to observe)
+  await page.evaluate(() => {
+    localStorage.setItem('wb-subtypes', JSON.stringify({
+      version: 1,
+      subtypes: [{
+        id: 'custom-tag', name: 'Tag', origin: 'custom', baseTypes: ['choice'],
+        formatter: { elmType: 'div', txtContent: "='OLD'" }, knobs: [], vocab: { refs: [], values: [] },
+      }],
+    }));
+  });
+  await importChoiceColumns(page); // Title(0) Phase1(1) Phase2(2) Phase3(3)
+
+  // apply the custom to Phase1 and Phase2 (one-click, zero-knob)
+  for (const col of ['Phase1', 'Phase2']) {
+    await header(page, col).click();
+    await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
+    await page.locator('.wb-grid-menu .wb-menu-main', { hasText: 'Tag' }).click();
+  }
+  const p1 = page.locator('.wb-grid-cell[data-col="1"]').first();
+  const p2 = page.locator('.wb-grid-cell[data-col="2"]').first();
+  await expect(p1).toHaveText('OLD');
+  await expect(p2).toHaveText('OLD');
+
+  // refine via Phase3's catalog (unformatted): promote 'OLD' → change its default to 'NEW'
+  await header(page, 'Phase3').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
+  const row = page.locator('.wb-menu-row', { has: page.locator('.wb-menu-main', { hasText: 'Tag' }) });
+  await row.locator('.wb-menu-action').click();
+  const modal = page.locator('.wb-refine');
+  await expect(modal).toBeVisible();
+  const lit = modal.locator('.wb-refine-lit', { hasText: 'OLD' });
+  await lit.locator('.wb-refine-lit-cb').check();
+  await lit.locator('.wb-refine-knob-default').fill('NEW');
+
+  // push to the 2 columns already using it
+  const push = modal.locator('.wb-refine-push');
+  await expect(push).toHaveText(/2 columns/);
+  await push.click();
+  await expect(modal).toHaveCount(0);
+
+  // both columns re-baked from their stored args to the new default
+  await expect(p1).toHaveText('NEW');
+  await expect(p2).toHaveText('NEW');
+
+  // ONE Ctrl+Z reverts the whole batch
+  await page.keyboard.press('Control+z');
+  await expect(p1).toHaveText('OLD');
+  await expect(p2).toHaveText('OLD');
 });

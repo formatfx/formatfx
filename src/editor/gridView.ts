@@ -243,12 +243,25 @@ function openRefineModal(subtype: Subtype, onToast: (m: string) => void): void {
     typeSel.className = 'wb-refine-knob-type';
     for (const t of KNOB_TYPES) { const o = document.createElement('option'); o.value = t; o.textContent = t; typeSel.appendChild(o); }
     typeSel.value = existing ? existing.type : cand.suggestedType;
-    editor.append(lblIn, typeSel);
+    const defIn = document.createElement('input');
+    defIn.className = 'wb-refine-knob-default';
+    defIn.placeholder = 'default';
+    defIn.value = String(existing ? existing.default : cand.value);
+    editor.append(lblIn, typeSel, defIn);
     editor.hidden = !existing;
 
+    // match the apply-time coercion (coerceKnob): a blank number is NaN, not 0,
+    // so it is refused at Save/Push rather than silently baked as zero
+    const coerceDefault = (type: KnobType, raw: string): string | number | boolean =>
+      type === 'number' ? (raw.trim() === '' ? NaN : Number(raw)) : type === 'bool' ? raw === 'true' : raw;
     const sync = (): void => {
-      working = promoteLiteral(working, cand.value, { label: lblIn.value || cand.value, type: typeSel.value as KnobType });
+      working = promoteLiteral(working, cand.value, {
+        label: lblIn.value || cand.value,
+        type: typeSel.value as KnobType,
+        default: coerceDefault(typeSel.value as KnobType, defIn.value),
+      });
     };
+    defIn.addEventListener('input', () => { if (cb.checked) sync(); });
     cb.addEventListener('change', () => {
       if (cb.checked) { sync(); editor.hidden = false; }
       else { working = demoteLiteral(working, cand.value); editor.hidden = true; }
@@ -260,23 +273,50 @@ function openRefineModal(subtype: Subtype, onToast: (m: string) => void): void {
     litBody.appendChild(row);
   }
 
+  // refuse-and-teach before persisting: a name + every knob default must be
+  // valid (same rules as the apply-time form). Returns true when OK to save.
+  const validate = (): boolean => {
+    if (!working.name.trim()) { onToast('A subtype needs a name.'); return false; }
+    for (const k of working.knobs) {
+      const err = knobError(k, k.default);
+      if (err) { onToast(err); return false; }
+    }
+    return true;
+  };
+
   // — footer —
   const foot = elc('div', 'wb-refine-foot');
   const del = elc('button', 'wb-refine-delete', 'Delete');
   del.addEventListener('click', () => { deleteSubtype(working.id); handle.close(); onToast(`Deleted "${subtype.name}".`); });
   const fork = elc('button', 'wb-refine-fork', 'Fork');
-  fork.addEventListener('click', () => { const f = forkSubtype(working); saveSubtype(f); handle.close(); onToast(`Forked into "${f.name}".`); });
+  fork.addEventListener('click', () => { if (!validate()) return; const f = forkSubtype(working); saveSubtype(f); handle.close(); onToast(`Forked into "${f.name}".`); });
   const spacer = elc('div', 'wb-refine-foot-spacer');
   const cancel = elc('button', 'wb-refine-cancel', 'Cancel');
   cancel.addEventListener('click', () => handle.close());
   const save = elc('button', 'wb-refine-save', 'Save');
   save.addEventListener('click', () => {
-    if (!working.name.trim()) { onToast('A subtype needs a name.'); return; }
+    if (!validate()) return;
     saveSubtype(working);
     handle.close();
     onToast(`Saved "${working.name}".`);
   });
   foot.append(del, fork, spacer, cancel, save);
+
+  // — opt-in push-update (US-7): re-bake the columns already using this —
+  const usingCount = state.columnsUsingSubtype(subtype.id).length;
+  if (usingCount > 0) {
+    const n = usingCount;
+    const push = elc('button', 'wb-refine-push', `Save & update ${n} column${n > 1 ? 's' : ''}`);
+    push.title = `Save, then re-bake the ${n} column${n > 1 ? 's' : ''} already using ${subtype.name} from their saved settings (overwrites hand-edits). One Ctrl+Z reverts all.`;
+    push.addEventListener('click', () => {
+      if (!validate()) return;
+      saveSubtype(working);
+      const pushed = state.pushSubtypeUpdate(working.id, (args) => bakeSubtype(working, args));
+      handle.close();
+      onToast(`Saved and updated ${pushed} column${pushed > 1 ? 's' : ''} using "${working.name}". Ctrl+Z reverts all.`);
+    });
+    foot.append(push);
+  }
   panel.appendChild(foot);
 
   document.body.appendChild(handle.overlay);

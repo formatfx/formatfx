@@ -232,6 +232,73 @@ describe('applyColumnSubtype: snapshot apply as ONE undoable mutation (US-3)', (
   });
 });
 
+describe('pushSubtypeUpdate: batched re-bake, one undo reverts all columns (US-7)', () => {
+  it('re-bakes every column tagged with the subtype from its stored args', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    const b = s.fields.find((f) => f.name === 'Title')!;
+    a.subtype = 'cc'; a.subtypeArgs = {};
+    b.subtype = 'cc'; b.subtypeArgs = {};
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    s.columnRefs['Title'] = { elmType: 'div', txtContent: 'OLD' };
+
+    const n = s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'NEW' }));
+    expect(n).toBe(2);
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
+    expect(s.columnRefs['Title'].txtContent).toBe('NEW');
+
+    s.undo(); // ONE Ctrl+Z reverts BOTH columns
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+    expect(s.columnRefs['Title'].txtContent).toBe('OLD');
+
+    s.redo(); // and redo re-applies the whole batch
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
+    expect(s.columnRefs['Title'].txtContent).toBe('NEW');
+  });
+
+  it('overwrites a hand-edited column and Ctrl+Z recovers it (spec edge case)', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    a.subtype = 'cc'; a.subtypeArgs = {};
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'HAND-EDITED' }; // a maker's hand-edit
+    s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'REBAKED' }));
+    expect(s.columnRefs['DueDate'].txtContent).toBe('REBAKED'); // hand-edit overwritten
+    s.undo();
+    expect(s.columnRefs['DueDate'].txtContent).toBe('HAND-EDITED'); // recovered
+  });
+
+  it('a push and a prior doc edit unwind in order (interleaved)', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    a.subtype = 'cc'; a.subtypeArgs = {};
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    s.insertNode({ elmType: 'span', txtContent: 'x' });   // a doc mutation
+    const docAfterInsert = JSON.stringify(s.doc);
+    s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'NEW' }));
+    s.undo(); // undo the push only
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+    expect(JSON.stringify(s.doc)).toBe(docAfterInsert);   // the insert survived
+    s.undo(); // undo the doc edit
+    expect(JSON.stringify(s.doc)).not.toBe(docAfterInsert);
+  });
+
+  it('re-bakes from each column\'s own stored subtypeArgs', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    a.subtype = 'cc'; a.subtypeArgs = { Symbol: '€' };
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'x' };
+    s.pushSubtypeUpdate('cc', (args) => ({ elmType: 'div', txtContent: String(args.Symbol ?? '?') }));
+    expect(s.columnRefs['DueDate'].txtContent).toBe('€');
+  });
+
+  it('returns 0 and snapshots nothing when no column uses the subtype', () => {
+    const s = new EditorState();
+    const n = s.pushSubtypeUpdate('nobody', () => ({ elmType: 'div' }));
+    expect(n).toBe(0);
+    s.undo(); // nothing to undo — no throw, no change
+  });
+});
+
 describe('STORAGE_KEY is frozen', () => {
   it('matches the literal that protects existing autosaved work', () => {
     // HANDOFF §1: these keys deliberately never change on rename — a rename

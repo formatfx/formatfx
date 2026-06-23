@@ -52,7 +52,7 @@ Rules that apply to every story (from `CLAUDE.md`):
   - Gate: "⋯" on a custom entry → inline modal (rename, edit `baseTypes`, edit `vocab`, delete, fork); extracted-literals checklist; checking promotes a literal to a typed knob {label,type,default}, unchecking demotes; promotion BY VALUE (one value = one knob, all occurrences); no raw-JSON editing; edits persist and do NOT alter columns already using the subtype.
   - Verify: `npm run build` && `npm test` && Playwright refine spec.
 
-- [ ] **US-7 — Push-update**
+- [x] **US-7 — Push-update**
   - Files: `src/editor/gridView.ts` (push action), `src/editor/subtypes.ts` (re-bake), tests + e2e.
   - Gate: after a refine, opt-in "Update the N columns using this" (N = matching `field.subtype`); re-bakes each from stored `field.subtypeArgs`, overwrites formatter (hand-edits included); whole push is ONE batched undoable mutation (single Ctrl+Z reverts all).
   - Verify: `npm run build` && `npm test` && Playwright push spec.

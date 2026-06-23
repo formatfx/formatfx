@@ -364,13 +364,16 @@ export class EditorState {
     this.pushUndo(this.snapState());
   }
 
-  /** The undo snapshot: the document PLUS the per-field subtype tags, so a tag
-   *  set/cleared by an apply (applyColumnSubtype) rides on the same undo step as
-   *  its formatter. Only the subtype tags are captured — structural field edits
-   *  (add/remove/type, via the data panel) deliberately live outside undo, so a
-   *  later field edit is never clobbered by an unrelated doc undo. */
+  /** The undo snapshot: the document, the per-field subtype tags, AND the
+   *  registered column formatters. Tags ride along so an apply
+   *  (applyColumnSubtype) reverts its field tag on the same undo step; the
+   *  registry rides along so a push-update (pushSubtypeUpdate, US-7) — which
+   *  overwrites columnRefs and changes no document node — is one undoable batch.
+   *  Structural field edits (add/remove/type, via the data panel) deliberately
+   *  live outside undo, so a later field edit is never clobbered by an unrelated
+   *  doc undo. */
   private snapState(): string {
-    return JSON.stringify({ doc: this.doc, tags: this.subtypeTags() });
+    return JSON.stringify({ doc: this.doc, tags: this.subtypeTags(), refs: this.columnRefs });
   }
 
   private subtypeTags(): Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }> {
@@ -385,8 +388,10 @@ export class EditorState {
     const parsed = JSON.parse(snap) as {
       doc: FormatterDocument;
       tags?: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }>;
+      refs?: Record<string, SPElement>;
     };
     this.doc = parsed.doc;
+    if (parsed.refs) this.columnRefs = parsed.refs;
     const tags = parsed.tags ?? {};
     for (const f of this.fields) {
       const t = tags[f.name];
@@ -698,18 +703,12 @@ export class EditorState {
 
   /** Apply a subtype to a column as ONE undoable mutation: register the
    *  already-baked formatter, tag the field (subtype id + baked args), and
-   *  CFR-wire the grid cell so the grid renders it. The field tag and the
-   *  cell-swap are the undoable step (captured by snapState), so a single undo
-   *  reverts both the render and the tag. Stays on the grid (no doc switch —
-   *  that would clear the undo stack and defeat Ctrl+Z).
-   *
-   *  The registry write rides OUTSIDE the snapshot (like promoteToColumn). This
-   *  is safe for the only path US-3 exposes — a FIRST apply over a plain cell:
-   *  undo swaps the cell back to a non-CFR plain cell, so the lingering registry
-   *  entry is unreferenced and inert. It is NOT yet safe to re-apply over an
-   *  already-CFR cell (undo would revert the tag but leave the cell pointing at
-   *  the new registry entry). Re-apply is not a US-3 path; US-7 (push-update)
-   *  will need columnRefs captured in the snapshot before it exercises this. */
+   *  CFR-wire the grid cell so the grid renders it — ALL inside the snapshot
+   *  (snapState captures the registry + tags + doc), so a single undo reverts
+   *  the render, the tag, AND the registry entry. This makes even a re-apply
+   *  over an already-CFR cell fully reversible (no lingering/mismatched entry).
+   *  Stays on the grid (no doc switch — that would clear the undo stack and
+   *  defeat Ctrl+Z). */
   applyColumnSubtype(
     fieldName: string,
     baked: SPElement,
@@ -719,8 +718,8 @@ export class EditorState {
   ): void {
     const field = this.fields.find((f) => f.name === fieldName);
     if (!field) return;
-    this.columnRefs[fieldName] = baked;
     this.mutateDocument(() => {
+      this.columnRefs[fieldName] = baked; // captured by snapState → reverts on undo
       field.subtype = subtypeId;
       field.subtypeArgs = args;
       const el = this.nodeAt(path);
@@ -733,6 +732,31 @@ export class EditorState {
         }
       }
     });
+  }
+
+  /** Columns currently wearing `subtypeId` (and registered) — the push count. */
+  columnsUsingSubtype(subtypeId: string): MockField[] {
+    return this.fields.filter((f) => f.subtype === subtypeId && (f.name in this.columnRefs));
+  }
+
+  /**
+   * Push a refined subtype to every column using it (US-7): re-bake each tagged,
+   * registered column from its OWN stored `subtypeArgs` and overwrite its
+   * formatter (hand-edits included), as ONE batched undoable mutation — a single
+   * undo reverts every column (the registry is captured by snapState). `rebake`
+   * is supplied by the caller (gridView, which holds bakeSubtype) so state never
+   * imports the subtypes/editor graph. Returns how many columns were re-baked.
+   */
+  pushSubtypeUpdate(
+    subtypeId: string,
+    rebake: (args: Record<string, string | number | boolean>) => SPElement,
+  ): number {
+    const targets = this.columnsUsingSubtype(subtypeId);
+    if (targets.length === 0) return 0;
+    this.mutateDocument(() => {
+      for (const f of targets) this.columnRefs[f.name] = rebake(f.subtypeArgs ?? {});
+    });
+    return targets.length;
   }
 
   loadDocument(doc: FormatterDocument): void {
