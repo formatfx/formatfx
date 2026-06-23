@@ -74,7 +74,7 @@ Rules that apply to every story (from `CLAUDE.md`):
 - [x] Playwright suite green where a browser is available. — 82 specs (PW_EXECUTABLE=/tmp/chromium).
 - [x] No existing localStorage key or `wb-` class renamed; only `wb-subtypes` added.
 - [x] Nothing from the spec's Out-of-Scope list was built.
-- [ ] A pull request to `main` is open (what changed + why + test counts); not merged.
+- [x] A pull request to `main` is open (what changed + why + test counts); not merged. — #53
 
 > Out of scope (do NOT build): Elapsed/Until relative-time seeds, sharing/tenant
 > storage, composition/layering, cascade/auto-reflow, override/shadow semantics,
