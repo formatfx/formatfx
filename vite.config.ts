@@ -18,7 +18,7 @@ function git(args: string[]): string {
 function buildDefines(): Record<string, string> {
   let version = '0.0.0';
   try {
-    version = JSON.parse(readFileSync('./package.json', 'utf8')).version ?? version;
+    version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version ?? version;
   } catch { /* keep default */ }
 
   const rev = git(['rev-parse', '--short', 'HEAD']) || 'dev';
