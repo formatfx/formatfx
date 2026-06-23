@@ -40,4 +40,27 @@ describe('columnGallery', () => {
     expect(document.querySelector('.wb-colgal-empty')).not.toBeNull();
     expect(document.querySelectorAll('.wb-colgal-card').length).toBe(0);
   });
+
+  it('lists a "Not yet formatted" row for every unformatted, non-protected field', () => {
+    openColumnGallery(document.createElement('button'), toast);
+    const rows = [...document.querySelectorAll('.wb-colgal-newrow')]
+      .map((r) => r.textContent);
+    // default project formats Status/Progress/Owner; ID is protected
+    expect(rows).toEqual(expect.arrayContaining(['Title', 'DueDate', 'AssignedTo']));
+    expect(rows).not.toContain('Status'); // already formatted → not in this group
+    expect(rows).not.toContain('ID'); // protected → never offered
+  });
+
+  it('clicking a Not-yet-formatted row starts that column formatter', () => {
+    openColumnGallery(document.createElement('button'), toast);
+    const due = [...document.querySelectorAll('.wb-colgal-newrow')]
+      .find((r) => r.textContent === 'DueDate') as HTMLElement;
+    due.dispatchEvent(new Event('click'));
+    // a date field offers presets first; take the manual escape hatch
+    const manual = [...document.querySelectorAll('.wb-grid-menu button')]
+      .find((b) => b.textContent?.includes('manually')) as HTMLElement;
+    manual.dispatchEvent(new Event('click'));
+    expect(state.activeDocKey).toBe('DueDate');
+    expect(state.columnRefs.DueDate).toBeTruthy();
+  });
 });

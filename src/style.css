@@ -72,12 +72,6 @@ body {
 }
 .wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
-/* emergent destination chip — read-only; replaces the old Type dropdown */
-.wb-dest-chip {
-  font-size: 12px; color: var(--wb-text-2);
-  border: 1px solid var(--wb-border); border-radius: 11px;
-  padding: 3px 10px; white-space: nowrap; cursor: help;
-}
 /* Studio: the relocated "Advanced: formatter type" control */
 .wb-side-adv {
   display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
@@ -89,11 +83,57 @@ body {
   background: var(--wb-bg); color: var(--wb-text);
 }
 
-/* ── ribbon: a slim toolbar (the Formatted-columns picker) ───────────────── */
+/* ── ribbon: the breadcrumb strip ("where am I / where it saves") ────────── */
 .wb-ribbon {
   display: flex; align-items: center; gap: 4px;
   padding: 6px 12px; background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border); overflow-x: auto;
+}
+.wb-breadcrumb {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+}
+.wb-crumb { font-size: 12.5px; white-space: nowrap; }
+.wb-crumb-root {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; cursor: pointer; font-weight: 600;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text);
+}
+.wb-crumb-root:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-crumb-sep { color: var(--wb-text-2); font-size: 13px; }
+.wb-crumb-tail {
+  font-weight: 600; color: var(--wb-text);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.wb-crumb-back {
+  margin-left: auto; flex: none;
+  padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+}
+.wb-crumb-back:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* ── View Formatters menu (anchored under the breadcrumb root) ───────────── */
+.wb-viewmenu {
+  position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 16px);
+  display: flex; flex-direction: column; gap: 6px; padding: 10px;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+}
+.wb-viewmenu-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
+.wb-viewmenu-row { display: flex; align-items: center; gap: 8px; }
+.wb-viewmenu-name { flex: 1; font-size: 12px; font-weight: 600; }
+.wb-viewmenu-rename {
+  flex: none; padding: 3px 8px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-viewmenu-rename:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-viewmenu-input {
+  flex: 1; min-width: 0; font-size: 12px; padding: 4px 6px;
+  border: 1px solid var(--wb-accent); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
 }
 
 /* ── topbar ☰ menu ───────────────────────────────────────── */
@@ -441,7 +481,6 @@ body {
 .wb-rowview-bar-btn.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
 .wb-rowview-bar-hint { font-size: 11px; color: var(--wb-text-2); font-style: italic; margin-left: auto; }
 .wb-rowview-back { margin-left: 0; }
-.wb-back-bar .wb-rowview-back { font-weight: 600; }
 
 /* selection + emulation affordances inside the preview.
    Deliberately NOT a solid border: dashed, offset away from the element and
@@ -1496,16 +1535,7 @@ body {
 .wb-fx-float-apply:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; }
 .wb-fx-float-apply:disabled { opacity: .45; cursor: default; }
 
-/* ── ribbon: "Formatted columns" picker button ───────────────────────────── */
-.wb-ribbon-cols {
-  align-self: center; flex: none;
-  padding: 6px 12px; font-size: 12px; cursor: pointer;
-  border: 1px solid var(--wb-border); border-radius: 4px;
-  background: var(--wb-surface); color: var(--wb-text);
-}
-.wb-ribbon-cols:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-
-/* ── formatted-columns gallery (floating preview picker) ─────────────────── */
+/* ── Column Formatters menu (floating preview picker, opened from the crumb) ─ */
 .wb-colgal {
   position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 16px);
   max-height: 70vh; overflow-y: auto;
@@ -1515,7 +1545,18 @@ body {
   box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
 }
 .wb-colgal-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
+.wb-colgal-group {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin-top: 4px;
+}
 .wb-colgal-empty { font-size: 12px; color: var(--wb-text-2); line-height: 1.5; }
+.wb-colgal-newrow {
+  display: flex; align-items: center; padding: 6px 8px; text-align: left;
+  font-size: 12px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 6px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-colgal-newrow:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-colgal-card {
   display: flex; flex-direction: column; gap: 6px; padding: 8px; text-align: left;
   border: 1px solid var(--wb-border); border-radius: 6px;

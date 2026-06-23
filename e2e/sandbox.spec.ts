@@ -135,7 +135,8 @@ test('one unified surface — palette + Structure + Properties/JSON, ribbon and 
   await expect(page.locator('.wb-pane-tree')).toBeVisible();
   await expect(page.locator('#wb-pane-side')).toBeVisible();
   await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
-  await expect(page.locator('#wb-activedoc')).toBeVisible();
+  await expect(page.locator('.wb-crumb-root')).toBeVisible();
+  await expect(page.locator('.wb-crumb-tail')).toBeVisible();
   await expect(page.locator('#wb-fxbar')).toBeVisible();
 
   // outlines lives in the ☰ menu
@@ -150,10 +151,10 @@ test('one unified surface — palette + Structure + Properties/JSON, ribbon and 
   await expect(palette.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeVisible();
   await expect(palette.locator('.wb-palette-group', { hasText: 'Actions' })).toBeVisible();
 
-  // the ribbon keeps the Formatted-columns picker (not a palette of items)
+  // the ribbon hosts the breadcrumb (not a palette of items)
   const ribbon = page.locator('#wb-ribbon');
   await expect(ribbon).toBeVisible();
-  await expect(ribbon.locator('#wb-ribbon-cols')).toBeVisible();
+  await expect(ribbon.locator('.wb-crumb-root')).toBeVisible();
   await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
 
   // the Properties pane edits the selected element (the Advanced door opens on

@@ -42,8 +42,9 @@ test('"Override here" forks a linked cell local; undo relinks it', async ({ page
 test('"Change everywhere" opens the shared column formatter', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
-  await expect(page.locator('#wb-activedoc')).toHaveValue('Status');
-  await expect(page.locator('#wb-dest-chip')).toContainText('Saves to the Status column');
+  // the breadcrumb shows you're now editing the Status column formatter
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
 });
 
 test('"Save as the column\'s format" promotes a plain column to a shared, linked format', async ({ page }) => {
@@ -51,8 +52,11 @@ test('"Save as the column\'s format" promotes a plain column to a shared, linked
   await page.locator('.wb-grid-menu button', { hasText: "Save as the Title column's format" }).click();
   // the cell is now a linked instance → badge appears
   await expect(header(page, 'Title').locator('.wb-cfr-link')).toHaveCount(1);
-  // and Title joins the registered column formatters in the workspace switcher
-  await expect(page.locator('#wb-activedoc option', { hasText: 'Column: Title' })).toHaveCount(1);
+  // and Title now carries a shared, linked format — its header offers the
+  // Figma-model "Change everywhere" edit (only registered, linked columns do)
+  await header(page, 'Title').click();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' })).toBeVisible();
+  await page.keyboard.press('Escape');
   // undo removes the link
   await page.keyboard.press('Control+z');
   await expect(header(page, 'Title').locator('.wb-cfr-link')).toHaveCount(0);
