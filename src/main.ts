@@ -22,6 +22,7 @@ import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
 import { openGuide } from './editor/guide';
+import { openAbout } from './editor/about';
 import { themeToggleView } from './editor/themeToggle';
 import type { DocumentKind, FormatterDocument } from './core/types';
 
@@ -57,6 +58,7 @@ app.innerHTML = `
           <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
           <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
           <button id="wb-guide" title="What lists really are (SQL under React), the column type system and its constraints, the formatting JSON layer, and the field-tested gotchas — written for developers">📖 Field guide</button>
+          <button id="wb-about" title="Version, build revision and the last merged pull request"><i class="ms-Icon ms-Icon--Info"></i> About</button>
           <hr>
           <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i> Reset to default example</button>
         </div>
@@ -427,6 +429,7 @@ menuPanel.addEventListener('click', (e) => {
 });
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());
+document.getElementById('wb-about')!.addEventListener('click', () => openAbout());
 
 // toast
 let toastTimer = 0;
