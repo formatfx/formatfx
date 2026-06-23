@@ -30,7 +30,7 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <header class="wb-topbar">
     <div class="wb-brand">
-      <svg class="wb-brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" width="18" height="18">
+      <svg class="wb-brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" width="18" height="18" aria-hidden="true" focusable="false">
         <style>
           .ffx-logo-frame { fill: var(--wb-text); }
           .ffx-logo-amber { fill: #d97706; }
