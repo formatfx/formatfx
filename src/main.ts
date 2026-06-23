@@ -30,7 +30,25 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <header class="wb-topbar">
     <div class="wb-brand">
-      <i class="ms-Icon ms-Icon--ColumnOptions"></i>
+      <svg class="wb-brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" width="18" height="18" aria-hidden="true" focusable="false">
+        <style>
+          .ffx-logo-frame { fill: var(--wb-text); }
+          .ffx-logo-amber { fill: #d97706; }
+        </style>
+        <!-- Frame -->
+        <rect class="ffx-logo-frame" x="3" y="3" width="24" height="4"/>
+        <rect class="ffx-logo-frame" x="3" y="7" width="5" height="4"/>
+        <rect class="ffx-logo-frame" x="3" y="11" width="24" height="4"/>
+        <rect class="ffx-logo-frame" x="3" y="15" width="9" height="4"/>
+        <rect class="ffx-logo-frame" x="3" y="19" width="24" height="4"/>
+        <rect class="ffx-logo-frame" x="3" y="23" width="13" height="4"/>
+
+        <!-- Amber/Orange shapes -->
+        <polygon class="ffx-logo-amber" points="8,7 11,7 15,11 8,11"/>
+        <polygon class="ffx-logo-amber" points="23,7 27,7 27,10 26,11 19,11"/>
+        <polygon class="ffx-logo-amber" points="12,15 23,15 21,17 23,19 12,19"/>
+        <polygon class="ffx-logo-amber" points="20,23 27,23 27,27 24,27"/>
+      </svg>
       <span>${PRODUCT_NAME}</span>
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>

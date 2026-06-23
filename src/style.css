@@ -62,7 +62,7 @@ body {
   border-bottom: 1px solid var(--wb-border);
 }
 .wb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; min-width: 0; }
-.wb-brand .ms-Icon { color: var(--wb-accent); font-size: 18px; flex: none; }
+.wb-brand-logo { flex: none; }
 /* tagline truncates rather than wrapping — a hard wrap used to collide
    "SharePoint…" with the "Editing" control at narrow widths */
 .wb-brand-sub {
