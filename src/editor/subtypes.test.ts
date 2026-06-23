@@ -12,6 +12,7 @@ import {
   SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype,
   seedSubtypes, subtypesForType, bakeSubtype, knobError, coerceKnob,
   deriveVocab, subtypeFromColumn, isBuiltinSubtype,
+  extractLiterals, promoteLiteral, demoteLiteral, isPromoted, forkSubtype,
 } from './subtypes';
 import type { Subtype, SPElement, Knob, MockField } from '../core/types';
 import { lintDocument } from '../core/linter';
@@ -354,6 +355,19 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
     expect(baked.txtContent).toBe('=@currentField*0.25+pow(10,9)+120');
   });
 
+  it('a number knob never rewrites a digit-run inside a quoted string literal', () => {
+    // progress-ring shape: promoting the /100 divisor must not touch the quoted
+    // SVG circumference ',100'
+    const st: Subtype = {
+      id: 'ring', name: 'ring', origin: 'custom', baseTypes: ['number'],
+      knobs: [{ path: '100', label: 'Scale', type: 'number', default: 100 }],
+      vocab: { refs: [], values: [] },
+      formatter: { elmType: 'path', attributes: { 'stroke-dasharray': "=(@currentField*97/100)+',100'" } },
+    };
+    const baked = bakeSubtype(st, { Scale: 90 });
+    expect(baked.attributes!['stroke-dasharray']).toBe("=(@currentField*97/90)+',100'");
+  });
+
   it('bakes a quoted text literal and a bare color style value, by value', () => {
     const st: Subtype = {
       id: 'c', name: 'x', origin: 'custom', baseTypes: ['choice'],
@@ -519,5 +533,138 @@ describe('isBuiltinSubtype: distinguishes seeds from customs', () => {
     expect(isBuiltinSubtype('money')).toBe(true);
     expect(isBuiltinSubtype('custom-123')).toBe(false);
     expect(isBuiltinSubtype('')).toBe(false);
+  });
+});
+
+// ─── US-6: literal extraction + promote/demote (by value) + fork ─────────────
+
+describe('extractLiterals: distinct value-literals with a guessed knob type', () => {
+  const pill: Subtype = {
+    id: 'c-pill', name: 'Pill', origin: 'custom', baseTypes: ['choice'],
+    knobs: [], vocab: { refs: ['@currentField'], values: ['Done'] },
+    formatter: {
+      elmType: 'div',
+      txtContent: "=if(@currentField=='Done','✓ Done',@currentField)",
+      style: { 'background-color': "=if(@currentField=='Done','#107c10','#737a7f')", 'padding': '2px 8px' },
+    },
+  };
+
+  it('pulls quoted strings, colors and bare values; guesses the type; skips refs/empties', () => {
+    const lits = extractLiterals(pill.formatter);
+    const byVal = Object.fromEntries(lits.map((l) => [l.value, l.suggestedType]));
+    expect(byVal['Done']).toBe('text');
+    expect(byVal['✓ Done']).toBe('text');
+    expect(byVal['#107c10']).toBe('color');
+    expect(byVal['#737a7f']).toBe('color');
+    expect(byVal['2px 8px']).toBe('text');                 // a bare literal, still promotable
+    expect(lits.some((l) => l.value.includes('@currentField'))).toBe(false); // a ref, not a literal
+    expect(lits.some((l) => l.value === '')).toBe(false);
+  });
+
+  it('guesses number and bool types', () => {
+    const lits = extractLiterals({ elmType: 'div', txtContent: "=if(@currentField,@currentField*pow(10,2),'no')" });
+    const byVal = Object.fromEntries(lits.map((l) => [l.value, l.suggestedType]));
+    expect(byVal['2']).toBe('number');
+    expect(byVal['10']).toBe('number');
+    const bools = extractLiterals({ elmType: 'div', style: { 'display': "=if(@currentField=='true','flex','none')" } });
+    expect(bools.find((l) => l.value === 'true')?.suggestedType).toBe('bool');
+  });
+
+  it('does not offer raw paint (class tokens, URLs, SVG path data) as bare literals', () => {
+    const lits = extractLiterals({
+      elmType: 'div',
+      attributes: { class: 'ms-bgColor-neutralLighter', href: 'https://x.sharepoint.com/Lists/L' },
+      children: [{ elmType: 'path', attributes: { d: 'M18 2.0845 a 15.9155 15.9155 0 0 1' }, style: { 'fill': '#0078d4' } }],
+    }).map((l) => l.value);
+    expect(lits).not.toContain('ms-bgColor-neutralLighter');
+    expect(lits).not.toContain('https://x.sharepoint.com/Lists/L');
+    expect(lits.some((v) => /^M18/.test(v))).toBe(false);
+    expect(lits).toContain('#0078d4'); // a color stays — it is parameterizable
+  });
+});
+
+describe('refine never alters a column already using the subtype (immutable edits)', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+  it('promote + rename + save leaves a previously-baked formatter untouched', () => {
+    const st = sample({
+      id: 'cc', baseTypes: ['choice'],
+      formatter: { elmType: 'div', txtContent: "=if(@currentField=='Done','#107c10',@currentField)" },
+    });
+    saveSubtype(st);
+    const columnBaked = bakeSubtype(st, {});           // what a column stored at apply time
+    const snapshot = JSON.stringify(columnBaked);
+    // the maker refines: promote a literal, rename, widen baseTypes, save
+    let edited = promoteLiteral(getSubtype('cc')!, '#107c10', { label: 'C', type: 'color' });
+    edited = { ...edited, name: 'Renamed', baseTypes: ['choice', 'choiceMulti'] };
+    saveSubtype(edited);
+    expect(JSON.stringify(columnBaked)).toBe(snapshot); // the column's formatter is unchanged
+    expect(getSubtype('cc')!.name).toBe('Renamed');     // the stored subtype reflects the edit
+    expect(getSubtype('cc')!.knobs).toHaveLength(1);
+  });
+});
+
+describe('promoteLiteral / demoteLiteral / isPromoted: by value, immutable', () => {
+  const pill: Subtype = {
+    id: 'c-pill', name: 'Pill', origin: 'custom', baseTypes: ['choice'],
+    knobs: [], vocab: { refs: [], values: [] },
+    formatter: {
+      elmType: 'div',
+      txtContent: "=if(@currentField=='Done','✓',@currentField)",
+      style: { 'background-color': "=if(@currentField=='Done','#107c10','#737a7f')" },
+    },
+  };
+
+  it('promotes a literal to a typed knob (default = the literal), source untouched', () => {
+    const next = promoteLiteral(pill, '#107c10', { label: 'Done color', type: 'color' });
+    expect(next).not.toBe(pill);
+    expect(pill.knobs).toEqual([]); // immutable source
+    expect(next.knobs.find((k) => k.path === '#107c10')).toMatchObject({ label: 'Done color', type: 'color', default: '#107c10' });
+    expect(isPromoted(next, '#107c10')).toBe(true);
+    // baking the promoted knob updates EVERY occurrence of the value
+    const baked = bakeSubtype(next, { 'Done color': '#0000ff' });
+    expect(JSON.stringify(baked)).toContain('#0000ff');
+    expect(JSON.stringify(baked)).not.toContain('#107c10');
+  });
+
+  it('coerces a number knob default from the literal', () => {
+    const num: Subtype = { ...pill, knobs: [], formatter: { elmType: 'div', txtContent: '=@currentField*pow(10,2)' } };
+    const next = promoteLiteral(num, '2', { label: 'Decimals', type: 'number' });
+    expect(next.knobs[0]).toMatchObject({ path: '2', type: 'number', default: 2 });
+  });
+
+  it('re-promoting a value replaces (no duplicate knobs)', () => {
+    let s = promoteLiteral(pill, 'Done', { label: 'A', type: 'text' });
+    s = promoteLiteral(s, 'Done', { label: 'B', type: 'text' });
+    expect(s.knobs.filter((k) => k.path === 'Done')).toHaveLength(1);
+    expect(s.knobs.find((k) => k.path === 'Done')?.label).toBe('B');
+  });
+
+  it('demotes a knob, leaving the formatter literal in place', () => {
+    const promoted = promoteLiteral(pill, '#107c10', { label: 'C', type: 'color' });
+    const demoted = demoteLiteral(promoted, '#107c10');
+    expect(isPromoted(demoted, '#107c10')).toBe(false);
+    expect(JSON.stringify(demoted.formatter)).toContain('#107c10'); // literal stays; only the knob is gone
+  });
+
+  it('carries choices for a choice knob', () => {
+    const next = promoteLiteral(pill, 'Done', { label: 'State', type: 'choice', choices: ['Done', 'Open'] });
+    expect(next.knobs[0]).toMatchObject({ type: 'choice', choices: ['Done', 'Open'] });
+  });
+});
+
+describe('forkSubtype: copy a custom into a fresh custom', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+  it('gets a new id, a "copy" name, stays custom', () => {
+    const src: Subtype = {
+      id: 'c1', name: 'Mine', origin: 'custom', baseTypes: ['choice'],
+      knobs: [{ path: '$', label: 'S', type: 'text', default: '$' }],
+      vocab: { refs: ['@currentField'], values: [] }, formatter: { elmType: 'div', txtContent: "='$'" },
+    };
+    const fork = forkSubtype(src);
+    expect(fork.id).not.toBe(src.id);
+    expect(fork.origin).toBe('custom');
+    expect(fork.name).toMatch(/copy/i);
+    expect(fork.knobs).toEqual(src.knobs);          // knobs carried
+    expect(fork.knobs).not.toBe(src.knobs);          // but not aliased
   });
 });

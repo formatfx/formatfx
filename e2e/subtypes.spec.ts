@@ -194,3 +194,50 @@ test('Save-as normalizes a hand-authored [$Field] column to @currentField (reusa
   expect(json).toContain('@currentField');
   expect(json).not.toContain('[$Status]'); // not frozen to the source column
 });
+
+test('Refine: ⋯ on a custom opens the modal; rename + promote a literal to a knob, persisted', async ({ page }) => {
+  // seed a custom date subtype with promotable literals (a color, a size)
+  await page.evaluate(() => {
+    localStorage.setItem('wb-subtypes', JSON.stringify({
+      version: 1,
+      subtypes: [{
+        id: 'custom-date-1', name: 'My Date Look', origin: 'custom', baseTypes: ['date'],
+        formatter: { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)', style: { 'background-color': '#107c10', 'padding': '2px 8px' } },
+        knobs: [], vocab: { refs: ['@currentField'], values: [] },
+      }],
+    }));
+  });
+
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
+  // the custom entry exposes a ⋯ refine affordance; built-ins do not
+  const row = page.locator('.wb-menu-row', { has: page.locator('.wb-menu-main', { hasText: 'My Date Look' }) });
+  await expect(row.locator('.wb-menu-action')).toHaveCount(1);
+  await expect(page.locator('.wb-menu-row', { has: page.locator('.wb-menu-main', { hasText: 'Due-date badge' }) }).locator('.wb-menu-action')).toHaveCount(0);
+  await row.locator('.wb-menu-action').click();
+
+  // the refine modal opens, pre-filled
+  const modal = page.locator('.wb-refine');
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('.wb-refine-name')).toHaveValue('My Date Look');
+
+  // rename
+  await modal.locator('.wb-refine-name').fill('Refined Date');
+  // promote the color literal to a knob (by value)
+  const lit = modal.locator('.wb-refine-lit', { hasText: '#107c10' });
+  await lit.locator('.wb-refine-lit-cb').check();
+  await expect(lit.locator('.wb-refine-knob-label')).toBeVisible();
+  await lit.locator('.wb-refine-knob-label').fill('Pill color');
+  await modal.locator('.wb-refine-save').click();
+  await expect(modal).toHaveCount(0);
+
+  // persisted: renamed + a color knob keyed by the literal value
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-subtypes') || '{}'));
+  const mine = stored.subtypes.find((s: { id: string }) => s.id === 'custom-date-1');
+  expect(mine.name).toBe('Refined Date');
+  const knob = mine.knobs.find((k: { path: string }) => k.path === '#107c10');
+  expect(knob).toBeTruthy();
+  expect(knob.type).toBe('color');
+  expect(knob.label).toBe('Pill color');
+  expect(knob.default).toBe('#107c10');
+});

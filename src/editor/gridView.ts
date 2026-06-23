@@ -26,11 +26,16 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius } from './cfr';
-import { subtypesForType, bakeSubtype, coerceKnob, knobError, saveSubtype, subtypeFromColumn, isBuiltinSubtype } from './subtypes';
+import {
+  subtypesForType, bakeSubtype, coerceKnob, knobError, saveSubtype, deleteSubtype,
+  subtypeFromColumn, isBuiltinSubtype, extractLiterals, promoteLiteral, demoteLiteral,
+  isPromoted, forkSubtype,
+} from './subtypes';
 import { paletteItemById } from './palette';
 import { createOverlay } from './overlay';
+import { FIELD_TYPE_OPTIONS } from '../core/schemaImport';
 import { cfrFieldName } from '../core/refs';
-import type { SPElement, NodePath, MockField, Subtype, Knob } from '../core/types';
+import type { SPElement, NodePath, MockField, Subtype, Knob, KnobType } from '../core/types';
 
 interface GridDeps {
   opts: RenderOptions;
@@ -106,6 +111,183 @@ function commitSubtype(col: GridColumn, field: MockField, st: Subtype, args: Rec
 function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
   if (st.knobs.length === 0) { commitSubtype(col, field, st, {}, onToast); return; }
   openKnobForm(col, field, st, onToast);
+}
+
+// ─── Refine modal (custom subtype editor) ────────────────────────────────────
+
+const KNOB_TYPES: KnobType[] = ['text', 'number', 'bool', 'color', 'choice'];
+const elc = (tag: string, cls: string, text?: string): HTMLElement => {
+  const e = document.createElement(tag);
+  e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+
+/** A removable-chip editor over a string list (vocab refs / values), click-safe. */
+function chipEditor(values: string[], placeholder: string, onChange: (next: string[]) => void): HTMLElement {
+  const wrap = elc('div', 'wb-refine-chips');
+  const render = (): void => {
+    wrap.innerHTML = '';
+    for (const v of values) {
+      const chip = elc('span', 'wb-refine-chip');
+      chip.textContent = v;
+      const x = elc('button', 'wb-refine-chip-x', '×');
+      x.title = `Remove ${v}`;
+      x.addEventListener('click', () => { values = values.filter((u) => u !== v); onChange([...values]); render(); });
+      chip.appendChild(x);
+      wrap.appendChild(chip);
+    }
+    const input = document.createElement('input');
+    input.className = 'wb-refine-chip-add';
+    input.placeholder = placeholder;
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const v = input.value.trim();
+      if (v && !values.includes(v)) { values = [...values, v]; onChange([...values]); render(); }
+    });
+    wrap.appendChild(input);
+  };
+  render();
+  return wrap;
+}
+
+/**
+ * The refine modal: edit a CUSTOM subtype in place (rename, baseTypes, vocab,
+ * delete, fork) and promote/demote its literals to typed knobs via a checklist
+ * — all click-only (no raw JSON). Edits persist to wb-subtypes on Save and do
+ * NOT touch columns already using the subtype (their formatter was baked at
+ * apply time; US-7 push is the opt-in way to propagate).
+ */
+function openRefineModal(subtype: Subtype, onToast: (m: string) => void): void {
+  let working: Subtype = JSON.parse(JSON.stringify(subtype)) as Subtype;
+  const handle = createOverlay('wb-refine-overlay', () => handle.close());
+  const panel = elc('div', 'wb-refine');
+  handle.overlay.appendChild(panel);
+
+  const head = elc('div', 'wb-refine-head');
+  head.append(elc('span', 'wb-refine-title', `Refine ${subtype.name}`),
+    elc('span', 'wb-refine-sub', 'Edits save to your library; columns already using it are unchanged.'));
+  panel.appendChild(head);
+
+  // — rename —
+  const nameRow = elc('label', 'wb-refine-row');
+  nameRow.appendChild(elc('span', 'wb-refine-rowlab', 'Name'));
+  const nameInput = document.createElement('input');
+  nameInput.className = 'wb-refine-name';
+  nameInput.value = working.name;
+  nameInput.addEventListener('input', () => { working.name = nameInput.value; });
+  nameRow.appendChild(nameInput);
+  panel.appendChild(nameRow);
+
+  // — base types —
+  const typesRow = elc('div', 'wb-refine-row');
+  typesRow.appendChild(elc('span', 'wb-refine-rowlab', 'Fits column types'));
+  const typesWrap = elc('div', 'wb-refine-types');
+  for (const opt of FIELD_TYPE_OPTIONS) {
+    const lab = elc('label', 'wb-refine-type');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.basetype = opt.value;
+    cb.checked = working.baseTypes.includes(opt.value);
+    cb.addEventListener('change', () => {
+      if (cb.checked) working.baseTypes = [...new Set([...working.baseTypes, opt.value])];
+      else if (working.baseTypes.length > 1) working.baseTypes = working.baseTypes.filter((t) => t !== opt.value);
+      else { cb.checked = true; onToast('A subtype must fit at least one column type.'); } // refuse the empty set
+    });
+    lab.append(cb, document.createTextNode(' ' + opt.label));
+    typesWrap.appendChild(lab);
+  }
+  typesRow.appendChild(typesWrap);
+  panel.appendChild(typesRow);
+
+  // — vocab —
+  const vocabRow = elc('div', 'wb-refine-row');
+  vocabRow.appendChild(elc('span', 'wb-refine-rowlab', 'fx-bar vocabulary'));
+  const vocabBody = elc('div', 'wb-refine-vocab');
+  vocabBody.append(elc('span', 'wb-refine-sublab', 'References'),
+    chipEditor(working.vocab.refs, 'add a reference…', (next) => { working.vocab = { ...working.vocab, refs: next }; }),
+    elc('span', 'wb-refine-sublab', 'Values'),
+    chipEditor(working.vocab.values, 'add a value…', (next) => { working.vocab = { ...working.vocab, values: next }; }));
+  vocabRow.appendChild(vocabBody);
+  panel.appendChild(vocabRow);
+
+  // — extracted-literals checklist (promote/demote to knobs, by value) —
+  const litRow = elc('div', 'wb-refine-row');
+  litRow.appendChild(elc('span', 'wb-refine-rowlab', 'Parameters (knobs)'));
+  const litBody = elc('div', 'wb-refine-lits');
+  litRow.appendChild(litBody);
+  panel.appendChild(litRow);
+
+  const candidates = extractLiterals(working.formatter);
+  if (candidates.length === 0) {
+    litBody.appendChild(elc('span', 'wb-refine-sublab', 'No literals to parameterize.'));
+  }
+  for (const cand of candidates) {
+    const row = elc('div', 'wb-refine-lit');
+    row.dataset.lit = cand.value;
+    const existing = working.knobs.find((k) => k.path === cand.value);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'wb-refine-lit-cb';
+    cb.checked = isPromoted(working, cand.value);
+    const valLab = elc('span', 'wb-refine-lit-val', cand.value);
+
+    // the knob editor is always present; shown only while the literal is promoted
+    const editor = elc('div', 'wb-refine-knob');
+    const lblIn = document.createElement('input');
+    lblIn.className = 'wb-refine-knob-label';
+    lblIn.placeholder = 'label';
+    lblIn.value = existing ? existing.label : defaultKnobLabel(cand.value);
+    const typeSel = document.createElement('select');
+    typeSel.className = 'wb-refine-knob-type';
+    for (const t of KNOB_TYPES) { const o = document.createElement('option'); o.value = t; o.textContent = t; typeSel.appendChild(o); }
+    typeSel.value = existing ? existing.type : cand.suggestedType;
+    editor.append(lblIn, typeSel);
+    editor.hidden = !existing;
+
+    const sync = (): void => {
+      working = promoteLiteral(working, cand.value, { label: lblIn.value || cand.value, type: typeSel.value as KnobType });
+    };
+    cb.addEventListener('change', () => {
+      if (cb.checked) { sync(); editor.hidden = false; }
+      else { working = demoteLiteral(working, cand.value); editor.hidden = true; }
+    });
+    lblIn.addEventListener('input', () => { if (cb.checked) sync(); });
+    typeSel.addEventListener('change', () => { if (cb.checked) sync(); });
+
+    row.append(cb, valLab, editor);
+    litBody.appendChild(row);
+  }
+
+  // — footer —
+  const foot = elc('div', 'wb-refine-foot');
+  const del = elc('button', 'wb-refine-delete', 'Delete');
+  del.addEventListener('click', () => { deleteSubtype(working.id); handle.close(); onToast(`Deleted "${subtype.name}".`); });
+  const fork = elc('button', 'wb-refine-fork', 'Fork');
+  fork.addEventListener('click', () => { const f = forkSubtype(working); saveSubtype(f); handle.close(); onToast(`Forked into "${f.name}".`); });
+  const spacer = elc('div', 'wb-refine-foot-spacer');
+  const cancel = elc('button', 'wb-refine-cancel', 'Cancel');
+  cancel.addEventListener('click', () => handle.close());
+  const save = elc('button', 'wb-refine-save', 'Save');
+  save.addEventListener('click', () => {
+    if (!working.name.trim()) { onToast('A subtype needs a name.'); return; }
+    saveSubtype(working);
+    handle.close();
+    onToast(`Saved "${working.name}".`);
+  });
+  foot.append(del, fork, spacer, cancel, save);
+  panel.appendChild(foot);
+
+  document.body.appendChild(handle.overlay);
+  nameInput.focus();
+}
+
+/** A friendly default knob label from a literal (e.g. "#107c10" → "Color"). */
+function defaultKnobLabel(value: string): string {
+  if (/^#|^(rgb|hsl)/.test(value)) return 'Color';
+  if (/^-?\d/.test(value)) return 'Number';
+  return value.length <= 20 ? value : 'Value';
 }
 
 /** Save the column's current formatter as a reusable custom subtype (Save-as
@@ -230,6 +412,10 @@ function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLEle
     title: st.origin === 'builtin'
       ? `Apply the built-in ${st.name} look to ${field.name}`
       : `Apply your saved ${st.name} subtype to ${field.name}`,
+    // only a maker's own subtypes can be refined (a built-in is forked, not edited)
+    ...(st.origin === 'custom'
+      ? { action: { icon: 'More', title: `Refine ${st.name}…`, fn: () => openRefineModal(st, onToast) } }
+      : {}),
     fn: () => applySubtype(col, field, st, onToast),
   }));
   items.push({

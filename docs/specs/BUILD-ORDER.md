@@ -47,7 +47,7 @@ Rules that apply to every story (from `CLAUDE.md`):
   - Gate: "Save as reusable subtype…" prompts for a name → custom subtype; `baseTypes` defaults to source type; `formatter` = current; `vocab` auto-derived (refs used + literal values set); persists to `wb-subtypes`, shows as "Yours"; saving from a builtin sets `forkedFrom`.
   - Verify: `npm run build` && `npm test` && Playwright birth spec.
 
-- [ ] **US-6 — Refine modal + full parameter editor**
+- [x] **US-6 — Refine modal + full parameter editor**
   - Files: `src/editor/subtypes.ts` (literal extraction, promote/demote), `src/editor/gridView.ts` (modal), `src/style.css`, tests + e2e.
   - Gate: "⋯" on a custom entry → inline modal (rename, edit `baseTypes`, edit `vocab`, delete, fork); extracted-literals checklist; checking promotes a literal to a typed knob {label,type,default}, unchecking demotes; promotion BY VALUE (one value = one knob, all occurrences); no raw-JSON editing; edits persist and do NOT alter columns already using the subtype.
   - Verify: `npm run build` && `npm test` && Playwright refine spec.

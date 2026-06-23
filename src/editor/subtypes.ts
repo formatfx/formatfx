@@ -11,7 +11,7 @@
  * never throws — a misread can never wipe or block a maker's work.
  */
 
-import type { Subtype, Knob, SPElement, FieldType, MockField } from '../core/types';
+import type { Subtype, Knob, KnobType, SPElement, FieldType, MockField } from '../core/types';
 import { presetSeeds } from './columnPresets';
 import { toColumnFormatter } from './cfr';
 
@@ -198,7 +198,10 @@ function bakeString(s: string, knobs: Knob[], answerOf: (knob: Knob) => string |
   // replaced in a single scan that never re-reads a baked-in answer
   const alternatives = knobs.map((knob) => {
     const p = escapeRegExp(String(knob.path));
-    return isTextKnob(knob) ? `'(${p})'` : `(?<![\\w.])(${p})(?![\\w.])`;
+    // a quoted literal, or a STANDALONE numeric/bool token — never digits inside
+    // a quoted string (the `'` guards keep a number knob from rewriting e.g. the
+    // SVG circumference in `',100'` when promoting the `/100` divisor)
+    return isTextKnob(knob) ? `'(${p})'` : `(?<![\\w.$@'])(${p})(?![\\w.'])`;
   });
   const re = new RegExp(alternatives.join('|'), 'g');
   return s.replace(re, (...m): string => {
@@ -379,5 +382,116 @@ export function subtypeFromColumn(opts: {
     formatter: normalized,
     knobs: [],
     vocab: deriveVocab(normalized),
+  };
+}
+
+// ─── Refine: literal extraction + promote/demote (by value) + fork ───────────
+
+/** A distinct literal a maker can promote to a knob, plus a guessed type. */
+export interface LiteralCandidate {
+  value: string;
+  suggestedType: KnobType;
+}
+
+const NUMBER_LITERAL_RE = /(?<![\w.$@'])-?\d+(?:\.\d+)?(?![\w.'])/g;
+
+/** A starting knob type guessed from a literal's shape (the maker can change it). */
+function guessKnobType(value: string): KnobType {
+  if (/^#[0-9a-fA-F]{3,8}$/.test(value) || /^(rgb|rgba|hsl|hsla)\(/.test(value)) return 'color';
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return 'number';
+  if (value === 'true' || value === 'false') return 'bool';
+  return 'text';
+}
+
+/** A WHOLE bare style/attribute value that is paint, not a parameterizable
+ *  value: class tokens, URLs, or SVG path data. (Colors/sizes stay — a maker may
+ *  want a color knob.) */
+function isBareNoise(s: string): boolean {
+  return /(^|\s)(sp-|ms-)[a-z]/i.test(s)   // SP/Fluent class tokens
+    || /^https?:/i.test(s)                  // URLs
+    || /^[Mm][\s\d.,-]/.test(s);            // SVG path data ("M18 2.0845 …")
+}
+
+/**
+ * The distinct value-literals in a formatter — the refine checklist source.
+ * Quoted strings and standalone numbers inside `=` expressions, plus whole bare
+ * style/attribute literals (a color/size value). Field references and the empty
+ * string are not literals. Promotion is BY VALUE, so each distinct value is one
+ * row (and becomes at most one knob).
+ */
+export function extractLiterals(formatter: SPElement): LiteralCandidate[] {
+  const seen = new Map<string, KnobType>();
+  const add = (v: string): void => { if (v !== '' && !seen.has(v)) seen.set(v, guessKnobType(v)); };
+  const scan = (node: SPElement): void => {
+    const strings: string[] = [];
+    if (typeof node.txtContent === 'string') strings.push(node.txtContent);
+    if (typeof node.forEach === 'string') strings.push(node.forEach);
+    if (node.style) for (const v of Object.values(node.style)) if (typeof v === 'string') strings.push(v);
+    if (node.attributes) for (const v of Object.values(node.attributes)) if (typeof v === 'string') strings.push(v);
+    for (const s of strings) {
+      if (s.startsWith('=')) {
+        for (const m of s.matchAll(STR_LITERAL_RE)) add(m[1]);
+        for (const m of s.matchAll(NUMBER_LITERAL_RE)) add(m[0]);
+      } else if (!/[@[\]]/.test(s) && !isBareNoise(s)) {
+        add(s); // a bare literal value (not a field reference or raw paint)
+      }
+    }
+    node.children?.forEach(scan);
+    if (node.customCardProps?.formatter) scan(node.customCardProps.formatter);
+  };
+  scan(formatter);
+  return [...seen].map(([value, suggestedType]) => ({ value, suggestedType }));
+}
+
+/** Coerce a literal string to a knob default of the chosen type. */
+function defaultFromLiteral(value: string, type: KnobType): string | number | boolean {
+  if (type === 'number') return Number(value);
+  if (type === 'bool') return value === 'true';
+  return value;
+}
+
+/** Whether a value is currently promoted to a knob (by value). */
+export function isPromoted(subtype: Subtype, value: string): boolean {
+  return subtype.knobs.some((k) => k.path === value);
+}
+
+/**
+ * Promote a literal to a typed knob (immutable — returns a new subtype). BY
+ * VALUE: the knob's `path` is the literal value, so baking updates every
+ * occurrence; re-promoting the same value REPLACES its knob (no duplicates).
+ * The formatter is unchanged — the literal stays as the knob's default until a
+ * maker answers differently at apply time.
+ */
+export function promoteLiteral(
+  subtype: Subtype,
+  value: string,
+  opts: { label: string; type: KnobType; default?: string | number | boolean; choices?: string[] },
+): Subtype {
+  const knob: Knob = {
+    path: value,
+    label: opts.label,
+    type: opts.type,
+    default: opts.default !== undefined ? opts.default : defaultFromLiteral(value, opts.type),
+    ...(opts.choices ? { choices: opts.choices } : {}),
+  };
+  return { ...subtype, knobs: [...subtype.knobs.filter((k) => k.path !== value), knob] };
+}
+
+/** Demote a literal back to a plain value (remove its knob); the formatter
+ *  literal is left in place. Immutable. */
+export function demoteLiteral(subtype: Subtype, value: string): Subtype {
+  return { ...subtype, knobs: subtype.knobs.filter((k) => k.path !== value) };
+}
+
+/** Fork a custom subtype into a fresh, independent custom (a new id + " copy"
+ *  name); knobs/vocab/formatter are deep-copied so edits never alias the source. */
+export function forkSubtype(subtype: Subtype): Subtype {
+  const copy = JSON.parse(JSON.stringify(subtype)) as Subtype;
+  return {
+    ...copy,
+    id: newSubtypeId(),
+    name: `${subtype.name} copy`,
+    origin: 'custom',
+    forkedFrom: subtype.origin === 'builtin' ? subtype.id : subtype.forkedFrom,
   };
 }
