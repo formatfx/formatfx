@@ -61,9 +61,14 @@ body {
   padding: 8px 14px; background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border);
 }
-.wb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
-.wb-brand .ms-Icon { color: var(--wb-accent); font-size: 18px; }
-.wb-brand-sub { font-weight: 400; font-size: 11px; color: var(--wb-text-2); }
+.wb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; min-width: 0; }
+.wb-brand .ms-Icon { color: var(--wb-accent); font-size: 18px; flex: none; }
+/* tagline truncates rather than wrapping — a hard wrap used to collide
+   "SharePoint…" with the "Editing" control at narrow widths */
+.wb-brand-sub {
+  font-weight: 400; font-size: 11px; color: var(--wb-text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 .wb-topbar-controls { display: flex; align-items: center; gap: 10px; }
 .wb-topbar-controls label { font-size: 12px; color: var(--wb-text-2); display: flex; align-items: center; gap: 5px; }
 .wb-topbar-controls button {
@@ -71,6 +76,17 @@ body {
   border-radius: 3px; padding: 4px 8px; cursor: pointer;
 }
 .wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* Narrow widths: drop the redundant tagline and let the controls wrap below
+   the brand instead of clipping "Advanced"/☰ off the right edge and out of
+   reach. Wrapping (rather than an overflow scroller) is deliberate — an
+   overflow container would also clip the ☰ dropdown that drops beneath it. */
+@media (max-width: 900px) {
+  .wb-topbar { flex-wrap: wrap; gap: 6px 8px; }
+  .wb-brand-sub { display: none; }
+  .wb-topbar-controls { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .wb-topbar-controls > * { flex-shrink: 0; }
+}
 
 /* Studio: the relocated "Advanced: formatter type" control */
 .wb-side-adv {
@@ -582,6 +598,19 @@ body {
   outline: 1px dashed var(--wb-accent) !important;
   outline-offset: 3px;
   animation: wb-sel-pulse 1.4s ease-in-out infinite;
+}
+/* Reduced-motion: the pulsing selection outline and the jump-to-reference
+   flash are decorative — hold them steady. These are the only keyframe
+   animations in the app; keep this in step with them. */
+@media (prefers-reduced-motion: reduce) {
+  .wb-selected { animation: none; outline-color: var(--wb-accent) !important; }
+  /* hold the flash's 0% (highlighted) state statically rather than animating —
+     the JS still clears .wb-flash after 1s, so the jump still gets feedback */
+  .wb-doc-missing.wb-flash {
+    animation: none;
+    border-color: var(--wb-accent);
+    background: color-mix(in srgb, var(--wb-accent) 22%, transparent);
+  }
 }
 .wb-drop-target { outline: 2px dashed var(--wb-accent) !important; outline-offset: -1px; background: rgba(0,120,212,.08); }
 .wb-outlines [data-sp-path] { outline: 1px dashed rgba(140,140,160,.6); outline-offset: -1px; }
