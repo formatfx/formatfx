@@ -18,7 +18,7 @@ Rules that apply to every story (from `CLAUDE.md`):
 
 ## Phase 1 — Foundation
 
-- [ ] **US-1 — Subtype data model + `wb-subtypes` store**
+- [x] **US-1 — Subtype data model + `wb-subtypes` store**
   - Files: `src/core/types.ts` (add `Subtype`, `Knob`, `KnobType`; `MockField.subtype?`, `MockField.subtypeArgs?`), new `src/editor/subtypes.ts` (store + helpers), `src/editor/subtypes.test.ts`.
   - Gate: store does list/get/save/delete against `wb-subtypes` (`{version:1,subtypes:[]}`); `try/catch` guarded; corrupt/missing key → empty catalog, never throws. Unit tests cover round-trip, version guard, private-mode fallback.
   - Verify: `npm run build` && `npm test`.

@@ -142,6 +142,51 @@ export interface MockField {
   protected?: boolean;
   /** Choice options (choice/choiceMulti) — used for sample data + docs. */
   choices?: string[];
+  /** Applied column subtype id (a reusable rendering recipe — see `Subtype`). */
+  subtype?: string;
+  /** Baked knob answers for the applied subtype, keyed by knob label/path. */
+  subtypeArgs?: Record<string, string | number | boolean>;
+}
+
+// ─── Column subtypes (reusable rendering recipes) ────────────────────────────
+// A subtype is a named, re-applyable column formatter — like a Word paragraph
+// style / CSS class / design token, but for SP column rendering. It may carry
+// typed *knobs* (apply-time fill-ins) and the *vocab* the fx bar should offer.
+// Built-in seeds live in code (`origin: 'builtin'`); maker-authored ones persist
+// to the `wb-subtypes` store (`origin: 'custom'`).
+
+/** The widget + validation kind for an apply-time knob. */
+export type KnobType = 'text' | 'number' | 'bool' | 'color' | 'choice';
+
+/** A literal promoted to an apply-time parameter of a subtype. */
+export interface Knob {
+  /** Locates the literal in the formatter tree (promotion is BY VALUE). */
+  path: string;
+  /** Shown in the apply-time form + refine editor. */
+  label: string;
+  type: KnobType;
+  default: string | number | boolean;
+  /** Options for `type === 'choice'`. */
+  choices?: string[];
+}
+
+/** A reusable column-rendering recipe (value→text + styling + fx-bar vocab). */
+export interface Subtype {
+  /** Opaque identity (the cosmetic dotted name lives in `name`). */
+  id: string;
+  /** Free display label, e.g. "Money" / "number.money". */
+  name: string;
+  origin: 'builtin' | 'custom';
+  /** Source subtype id when created via Save-as from a built-in. */
+  forkedFrom?: string;
+  /** The field types this recipe fits (e.g. ['number','currency']). */
+  baseTypes: FieldType[];
+  /** The whole-column formatter tree (the recipe). */
+  formatter: SPElement;
+  /** Literals promoted to apply-time params. */
+  knobs: Knob[];
+  /** What the fx bar should offer for a column wearing this subtype. */
+  vocab: { refs: string[]; values: string[] };
 }
 
 export type CellValue =
