@@ -26,7 +26,7 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius } from './cfr';
-import { subtypesForType, bakeSubtype, coerceKnob, knobError } from './subtypes';
+import { subtypesForType, bakeSubtype, coerceKnob, knobError, saveSubtype, subtypeFromColumn, isBuiltinSubtype } from './subtypes';
 import { paletteItemById } from './palette';
 import { createOverlay } from './overlay';
 import { cfrFieldName } from '../core/refs';
@@ -106,6 +106,21 @@ function commitSubtype(col: GridColumn, field: MockField, st: Subtype, args: Rec
 function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
   if (st.knobs.length === 0) { commitSubtype(col, field, st, {}, onToast); return; }
   openKnobForm(col, field, st, onToast);
+}
+
+/** Save the column's current formatter as a reusable custom subtype (Save-as
+ *  birth): prompts for a name, derives the vocab, records the built-in it forks
+ *  from (if any), and persists to wb-subtypes — it then shows as "Yours". */
+function saveAsSubtype(field: MockField, onToast: (m: string) => void): void {
+  const formatter = state.columnRefs[field.name];
+  if (!formatter) { onToast('Format this column first, then save it as a reusable subtype.'); return; }
+  const name = window.prompt('Name this reusable subtype', `${fieldLabel(field)} style`);
+  if (name === null) return; // cancelled
+  const trimmed = name.trim();
+  if (!trimmed) { onToast('A subtype needs a name.'); return; }
+  const forkedFrom = field.subtype && isBuiltinSubtype(field.subtype) ? field.subtype : undefined;
+  saveSubtype(subtypeFromColumn({ name: trimmed, formatter, field, forkedFrom }));
+  onToast(`Saved "${trimmed}" as a reusable subtype (Yours) — it's in the Format menu for ${field.type} columns.`);
 }
 
 /** One typed widget for a knob, pre-filled with its default; returns a reader. */
@@ -289,6 +304,14 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
             ? `Saved as the ${f} column format — this cell is linked to it now. Ctrl+Z to undo.`
             : 'Could not save this cell as a column format.');
         },
+      });
+    }
+    if (registered) {
+      items.push({
+        icon: 'Save',
+        label: 'Save as reusable subtype…',
+        title: `Save ${fieldLabel(field)}'s current format as a reusable subtype you can apply to other ${field.type} columns`,
+        fn: () => saveAsSubtype(field, onToast),
       });
     }
     items.push({

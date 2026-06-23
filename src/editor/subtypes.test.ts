@@ -11,8 +11,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype,
   seedSubtypes, subtypesForType, bakeSubtype, knobError, coerceKnob,
+  deriveVocab, subtypeFromColumn, isBuiltinSubtype,
 } from './subtypes';
-import type { Subtype, SPElement, Knob } from '../core/types';
+import type { Subtype, SPElement, Knob, MockField } from '../core/types';
 import { lintDocument } from '../core/linter';
 import { renderElement } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
@@ -401,5 +402,122 @@ describe('knobError / coerceKnob: refuse-and-teach validation', () => {
     expect(coerceKnob(numberKnob, '3')).toBe(3);
     expect(coerceKnob({ path: 'x', label: 'On', type: 'bool', default: false }, true)).toBe(true);
     expect(coerceKnob(textKnob, '€')).toBe('€');
+  });
+});
+
+// ─── US-5: Save-as birth (vocab derivation + custom-subtype creation) ────────
+
+describe('deriveVocab: refs + value literals from a recipe (style-ish literals excluded)', () => {
+  it('collects field refs and branch/display values, dropping colors and sizes', () => {
+    const f: SPElement = {
+      elmType: 'div',
+      txtContent: "=if(@currentField=='','None',@currentField)",
+      style: {
+        'background-color': "=if([$Status]=='Done','#107c10','#737a7f')",
+        'padding': '2px 10px',
+      },
+    };
+    const v = deriveVocab(f);
+    expect(v.refs).toContain('@currentField');
+    expect(v.refs).toContain('[$Status]');
+    expect(v.values).toEqual(expect.arrayContaining(['None', 'Done']));
+    expect(v.values).not.toContain('#107c10'); // a color, not a value
+    expect(v.values).not.toContain('');         // empty literal dropped
+    expect(v.values).not.toContain('2px 10px'); // a bare size, never an expression literal
+  });
+
+  it('never throws on an odd tree and dedupes', () => {
+    const f: SPElement = { elmType: 'div', children: [{ elmType: 'span', txtContent: "=if(@currentField=='Yes','Yes','No')" }] };
+    const v = deriveVocab(f);
+    expect(v.refs).toEqual(['@currentField']);
+    expect(v.values).toEqual(['Yes', 'No']);
+  });
+
+  it('drops the exact noise auto-derivation must never surface', () => {
+    // class tokens, URLs, single-char args, and forEach loop locals are NOT vocab
+    const f: SPElement = {
+      elmType: 'div',
+      children: [{
+        elmType: 'div',
+        forEach: '_person in @currentField',
+        children: [
+          { elmType: 'img', attributes: { src: "=getUserImage([$_person.email],'S')" } },
+          { elmType: 'a', attributes: { href: "='https://x.sharepoint.com/Lists/L/DispForm.aspx?ID='" }, txtContent: "=if(@currentField=='Done','Done','Open')" },
+        ],
+      }],
+      style: {
+        'class': "=if(@currentField=='Done','sp-field-severity--good','ms-bgColor-neutralLighter ms-fontColor-neutralPrimary')",
+        'display': "=if(@currentField=='Done','flex','none')",
+      },
+    };
+    const v = deriveVocab(f);
+    expect(v.values).toContain('Done');
+    expect(v.values).toContain('Open');
+    expect(v.values).not.toContain('S');
+    expect(v.values).not.toContain('flex');
+    expect(v.values.some((x) => /^(sp-|ms-)/.test(x))).toBe(false);
+    expect(v.values.some((x) => /sharepoint|DispForm/i.test(x))).toBe(false);
+    // a forEach loop local is not a column ref
+    expect(v.refs.some((r) => r.includes('_person'))).toBe(false);
+    expect(v.refs).toContain('@currentField');
+  });
+});
+
+describe('subtypeFromColumn: create a custom subtype from a column formatter', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+
+  const choice: MockField = { name: 'Status', type: 'choice' };
+  const formatter: SPElement = {
+    elmType: 'div',
+    txtContent: "=if(@currentField=='','None',@currentField)",
+    style: { 'color': '#0078d4' },
+  };
+
+  it('defaults baseTypes to the source type, snapshots the formatter, derives vocab', () => {
+    const st = subtypeFromColumn({ name: 'My Pill', formatter, field: choice });
+    expect(st.origin).toBe('custom');
+    expect(st.name).toBe('My Pill');
+    expect(st.baseTypes).toEqual(['choice']);
+    expect(st.knobs).toEqual([]);
+    expect(st.formatter).not.toBe(formatter);                 // a snapshot, not an alias
+    expect(JSON.stringify(st.formatter)).toBe(JSON.stringify(formatter));
+    expect(st.vocab.refs).toContain('@currentField');
+    expect(st.vocab.values).toContain('None');
+    expect(st.forkedFrom).toBeUndefined();
+  });
+
+  it('normalizes a [$Field]-form formatter to @currentField so it is reusable across columns', () => {
+    const st = subtypeFromColumn({
+      name: 'Pill', field: choice,
+      formatter: { elmType: 'div', txtContent: "=if([$Status]=='','None',[$Status])" },
+    });
+    expect(JSON.stringify(st.formatter)).toContain('@currentField');
+    expect(JSON.stringify(st.formatter)).not.toContain('[$Status]');
+    expect(st.vocab.refs).toContain('@currentField');
+    expect(st.vocab.refs).not.toContain('[$Status]');
+  });
+
+  it('records forkedFrom when born from a built-in', () => {
+    const st = subtypeFromColumn({ name: 'Forked', formatter, field: choice, forkedFrom: 'status-pill' });
+    expect(st.forkedFrom).toBe('status-pill');
+  });
+
+  it('gets a fresh id and persists as Yours, visible in the type catalog', () => {
+    const a = subtypeFromColumn({ name: 'A', formatter, field: choice });
+    const b = subtypeFromColumn({ name: 'B', formatter, field: choice });
+    expect(a.id).not.toBe(b.id);
+    saveSubtype(a);
+    const inCatalog = subtypesForType('choice').find((s) => s.id === a.id);
+    expect(inCatalog?.origin).toBe('custom');
+    expect(getSubtype(a.id)?.name).toBe('A');
+  });
+});
+
+describe('isBuiltinSubtype: distinguishes seeds from customs', () => {
+  it('is true for a seed id, false otherwise', () => {
+    expect(isBuiltinSubtype('status-pill')).toBe(true);
+    expect(isBuiltinSubtype('money')).toBe(true);
+    expect(isBuiltinSubtype('custom-123')).toBe(false);
+    expect(isBuiltinSubtype('')).toBe(false);
   });
 });

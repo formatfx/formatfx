@@ -11,8 +11,9 @@
  * never throws — a misread can never wipe or block a maker's work.
  */
 
-import type { Subtype, Knob, SPElement, FieldType } from '../core/types';
+import type { Subtype, Knob, SPElement, FieldType, MockField } from '../core/types';
 import { presetSeeds } from './columnPresets';
+import { toColumnFormatter } from './cfr';
 
 /** localStorage key for maker-authored (custom) subtypes. Frozen + additive —
  *  the only new key this feature introduces. */
@@ -260,4 +261,123 @@ export function knobError(knob: Knob, value: string | number | boolean): string 
       return null;
     default: { const _exhaustive: never = knob.type; return _exhaustive; } // a new KnobType must add validation
   }
+}
+
+// ─── Vocab derivation + Save-as birth ────────────────────────────────────────
+
+const REF_RE = /@currentField(?:\.[A-Za-z0-9_]+)?|\[\$[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*\]|\[![^\]]+\]/g;
+const STR_LITERAL_RE = /'([^']*)'/g;
+
+/** Layout/visibility/weight keywords that show up in style branch expressions —
+ *  values the recipe paints with, never the column's own data. */
+const CSS_KEYWORDS = new Set([
+  'flex', 'none', 'block', 'inline', 'inline-block', 'inline-flex', 'grid',
+  'hidden', 'visible', 'absolute', 'relative', 'fixed', 'sticky',
+  'bolder', 'lighter', 'wrap', 'nowrap', 'stretch', 'baseline',
+  'solid', 'dashed', 'dotted', 'uppercase', 'lowercase', 'capitalize',
+  'underline', 'italic', 'ellipsis', 'pointer', 'transparent',
+]);
+
+/** A literal the fx bar should NOT offer as a column VALUE (the bar's own
+ *  palettes own colors/sizes; class tokens, URLs, single-char args and CSS
+ *  keywords are paint, not data). */
+function looksLikeStyleValue(s: string): boolean {
+  return s === ''
+    || s.length === 1                                    // single-char arg (e.g. image size 'S')
+    || s.startsWith('#')                                 // hex color
+    || /^(rgb|rgba|hsl|hsla|var|calc|url)\(/.test(s)
+    || /^-?\d/.test(s)                                   // number / size
+    || !/[A-Za-z]/.test(s)                               // punctuation-only
+    || /(^|\s)(sp-|ms-)[a-z]/i.test(s)                   // SP/Fluent class tokens
+    || /^https?:|aspx|DispForm/i.test(s)                 // URLs / SP form links
+    || CSS_KEYWORDS.has(s);                              // case-sensitive: keeps data like "None", drops "none"
+}
+
+/** The `_iterator` name a forEach binds ("_person in @currentField" → _person). */
+function forEachIterator(forEach: string): string | null {
+  return forEach.match(/^\s*([A-Za-z0-9_]+)\s+in\b/)?.[1] ?? null;
+}
+
+/**
+ * Derive the fx-bar vocabulary a recipe implies: the COLUMN references it uses
+ * (`refs`) and the value literals it branches on / displays (`values`).
+ * Style-ish literals (colors, sizes, class tokens, URLs, CSS keywords) are
+ * excluded — the bar offers those from its own palettes — and forEach loop
+ * locals (`[$_person.*]`) are NOT columns, so they never appear as refs. The
+ * auto-derived vocab a Save-as subtype is born with.
+ */
+export function deriveVocab(formatter: SPElement): { refs: string[]; values: string[] } {
+  const refs = new Set<string>();
+  const values = new Set<string>();
+  // pass 1: every forEach iterator name, so its loop-local refs can be dropped
+  const iterators = new Set<string>();
+  const collectIters = (node: SPElement): void => {
+    if (typeof node.forEach === 'string') { const it = forEachIterator(node.forEach); if (it) iterators.add(it); }
+    node.children?.forEach(collectIters);
+    if (node.customCardProps?.formatter) collectIters(node.customCardProps.formatter);
+  };
+  collectIters(formatter);
+  // pass 2: collect refs (minus loop locals) + branch/display values
+  const scan = (node: SPElement): void => {
+    const strings: string[] = [];
+    if (typeof node.txtContent === 'string') strings.push(node.txtContent);
+    if (typeof node.forEach === 'string') strings.push(node.forEach);
+    if (node.style) for (const v of Object.values(node.style)) if (typeof v === 'string') strings.push(v);
+    if (node.attributes) for (const v of Object.values(node.attributes)) if (typeof v === 'string') strings.push(v);
+    for (const s of strings) {
+      for (const m of s.matchAll(REF_RE)) {
+        const name = m[0].match(/^\[\$([A-Za-z0-9_]+)/)?.[1];
+        if (name && iterators.has(name)) continue; // a loop local, not a column
+        refs.add(m[0]);
+      }
+      if (s.startsWith('=')) {
+        for (const m of s.matchAll(STR_LITERAL_RE)) if (!looksLikeStyleValue(m[1])) values.add(m[1]);
+      }
+    }
+    node.children?.forEach(scan);
+    if (node.customCardProps?.formatter) scan(node.customCardProps.formatter);
+  };
+  scan(formatter);
+  return { refs: [...refs], values: [...values] };
+}
+
+/** Whether `id` names a built-in seed (vs a maker's custom). */
+export function isBuiltinSubtype(id: string): boolean {
+  return !!id && seedSubtypes().some((s) => s.id === id);
+}
+
+let subtypeSeq = 0;
+/** A fresh, collision-improbable id for a maker-authored subtype. */
+function newSubtypeId(): string {
+  subtypeSeq += 1;
+  return `custom-${Date.now().toString(36)}-${subtypeSeq}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * Build a custom subtype from a column's current formatter (Save-as birth):
+ * `baseTypes` defaults to the source column's type; the formatter is NORMALIZED
+ * to @currentField terms (so it is reusable across columns — a column may ship a
+ * hand-authored [$Field] formatter, which would otherwise be frozen to the
+ * source column) and snapshotted; vocab is auto-derived from the normalized
+ * tree; `forkedFrom` records the built-in a fork descends from. The caller
+ * persists it via `saveSubtype`. `toColumnFormatter` is idempotent on a tree
+ * that is already in @currentField terms (the common, app-created case).
+ */
+export function subtypeFromColumn(opts: {
+  name: string;
+  formatter: SPElement;
+  field: MockField;
+  forkedFrom?: string;
+}): Subtype {
+  const normalized = toColumnFormatter(opts.formatter, opts.field.name);
+  return {
+    id: newSubtypeId(),
+    name: opts.name,
+    origin: 'custom',
+    ...(opts.forkedFrom ? { forkedFrom: opts.forkedFrom } : {}),
+    baseTypes: [opts.field.type],
+    formatter: normalized,
+    knobs: [],
+    vocab: deriveVocab(normalized),
+  };
 }

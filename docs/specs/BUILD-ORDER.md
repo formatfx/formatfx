@@ -42,7 +42,7 @@ Rules that apply to every story (from `CLAUDE.md`):
 
 ## Phase 3 — Authoring
 
-- [ ] **US-5 — Save-as birth**
+- [x] **US-5 — Save-as birth**
   - Files: `src/editor/cfr.ts` (basis), `src/editor/subtypes.ts` (vocab derivation), `src/editor/gridView.ts` (action), tests + e2e.
   - Gate: "Save as reusable subtype…" prompts for a name → custom subtype; `baseTypes` defaults to source type; `formatter` = current; `vocab` auto-derived (refs used + literal values set); persists to `wb-subtypes`, shows as "Yours"; saving from a builtin sets `forkedFrom`.
   - Verify: `npm run build` && `npm test` && Playwright birth spec.
