@@ -284,7 +284,7 @@ export class EditorState {
     this.rows = p.rows;
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
     this.columnRefs = (p.columnRefs && typeof p.columnRefs === 'object') ? p.columnRefs : {};
-    this.viewName = typeof p.viewName === 'string' ? p.viewName : 'View 1';
+    this.viewName = (typeof p.viewName === 'string' && p.viewName.trim()) || 'View 1';
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
     this.activeDocKey = 'main';
     this.mainDocStash = null;

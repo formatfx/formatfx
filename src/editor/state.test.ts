@@ -220,6 +220,19 @@ describe('view name (project metadata)', () => {
     expect(s3.viewName).toBe('View 1');
   });
 
+  it('loadProject normalizes a blank/whitespace stored name to "View 1"', () => {
+    const legacy = JSON.parse(new EditorState().serializeProject());
+    legacy.viewName = '   ';
+    const s = new EditorState();
+    s.loadProject(JSON.stringify(legacy));
+    expect(s.viewName).toBe('View 1');
+    // and trims a padded name on load, like setViewName does
+    legacy.viewName = '  Roadmap  ';
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(legacy));
+    expect(s2.viewName).toBe('Roadmap');
+  });
+
   it('resetAll restores "View 1"', () => {
     const s = new EditorState();
     s.setViewName('Whatever');

@@ -95,11 +95,16 @@ export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void):
     // Esc closes the menu — unless the inline rename input is handling it
     if (e.key === 'Escape' && !panel.querySelector('.wb-viewmenu-input')) close();
   };
-  setTimeout(() => {
+  // Defer arming the outside-close listeners so the opening click doesn't
+  // close the menu it just opened. If the menu closes before this fires
+  // (rapid open/close, test afterEach), cleanup clears the timer so the
+  // listeners are never added — no leaked handlers.
+  const armTimer = window.setTimeout(() => {
     document.addEventListener('pointerdown', onOutside);
     document.addEventListener('keydown', onKey);
   }, 0);
   const cleanup = (): void => {
+    window.clearTimeout(armTimer);
     document.removeEventListener('pointerdown', onOutside);
     document.removeEventListener('keydown', onKey);
   };
