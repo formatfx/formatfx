@@ -46,7 +46,7 @@ app.innerHTML = `
         <!-- Amber/Orange shapes -->
         <polygon class="ffx-logo-amber" points="8,7 11,7 15,11 8,11"/>
         <polygon class="ffx-logo-amber" points="23,7 27,7 27,10 26,11 19,11"/>
-        <polygon class="ffx-logo-amber" points="12,15 19,15 23,19 12,19"/>
+        <polygon class="ffx-logo-amber" points="12,15 23,15 21,17 23,19 12,19"/>
         <polygon class="ffx-logo-amber" points="20,23 27,23 27,27 24,27"/>
       </svg>
       <span>${PRODUCT_NAME}</span>
