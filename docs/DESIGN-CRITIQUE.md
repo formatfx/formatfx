@@ -54,9 +54,10 @@ The shell is a fixed-px grid
 (`220 5 250 5 1fr 5 360`, `style.css:122`) and the only `@media` query in the
 app is for the guide (`style.css:922`).
 
-- **The topbar collides and clips at ≤768 px:** the tagline wraps into
-  "SharePoint​Editing", and the **"Advanced" button and ☰ menu get cut off the
-  right edge**. At 390 px the entire right control cluster (JSON, undo/redo,
+- **The topbar collides and clips at ≤768 px:** the tagline wraps so its last
+  word runs straight into the next control with no gap (the tagline's
+  "SharePoint" ends up directly against the "Editing" control), and the
+  **"Advanced" button and ☰ menu get cut off the right edge**. At 390 px the entire right control cluster (JSON, undo/redo,
   Advanced, menu) is off-screen and unreachable.
 - Even if mobile *editing* is out of scope, a maker who opens the link on a
   phone sees a broken-looking header. Minimum fix: let `.wb-brand-sub`
@@ -65,9 +66,9 @@ app is for the guide (`style.css:922`).
   regardless of mobile support.
 
 ### 2. Icons are a single point of failure — High
-The Fluent glyphs load render-blocking from `res-1.cdn.office.net`
-(`index.html:10`), and the only fallback is an empty `1em` box
-(`style.css:793`). When that CDN is slow or blocked, **icon-only buttons
+The Fluent icon glyphs come from a render-blocking stylesheet `<link>` to the
+Fluent icon CSS on `res-1.cdn.office.net` (`index.html:10`), and the only
+fallback is an empty `1em` box (`style.css:793`). When that CDN is slow or blocked, **icon-only buttons
 (undo, redo, the brand mark) go completely blank.** Text-labelled buttons
 (JSON, Advanced) degrade fine; the icon-only ones don't. Self-hosting the ~20
 glyphs actually used (or inlining them as SVG) removes a third-party runtime
