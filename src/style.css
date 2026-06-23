@@ -515,7 +515,13 @@ body {
    animations in the app; keep this in step with them. */
 @media (prefers-reduced-motion: reduce) {
   .wb-selected { animation: none; outline-color: var(--wb-accent) !important; }
-  .wb-doc-missing.wb-flash { animation: none; }
+  /* hold the flash's 0% (highlighted) state statically rather than animating —
+     the JS still clears .wb-flash after 1s, so the jump still gets feedback */
+  .wb-doc-missing.wb-flash {
+    animation: none;
+    border-color: var(--wb-accent);
+    background: color-mix(in srgb, var(--wb-accent) 22%, transparent);
+  }
 }
 .wb-drop-target { outline: 2px dashed var(--wb-accent) !important; outline-offset: -1px; background: rgba(0,120,212,.08); }
 .wb-outlines [data-sp-path] { outline: 1px dashed rgba(140,140,160,.6); outline-offset: -1px; }
