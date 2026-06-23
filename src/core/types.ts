@@ -144,7 +144,8 @@ export interface MockField {
   choices?: string[];
   /** Applied column subtype id (a reusable rendering recipe — see `Subtype`). */
   subtype?: string;
-  /** Baked knob answers for the applied subtype, keyed by knob label. */
+  /** Baked knob answers for the applied subtype, keyed by the STABLE knob.path
+   *  (the promoted literal) — so a knob-label rename never orphans the answer. */
   subtypeArgs?: Record<string, string | number | boolean>;
 }
 

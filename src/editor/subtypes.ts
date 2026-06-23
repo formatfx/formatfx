@@ -77,13 +77,16 @@ function persist(subtypes: Subtype[]): void {
 function isSubtype(s: unknown): s is Subtype {
   if (!s || typeof s !== 'object') return false;
   const o = s as Record<string, unknown>;
+  const vocab = o.vocab as { refs?: unknown; values?: unknown } | undefined;
   return typeof o.id === 'string'
     && typeof o.name === 'string'
     && o.origin === 'custom' // the store holds maker-authored subtypes only
-    && Array.isArray(o.baseTypes)
+    && Array.isArray(o.baseTypes) && o.baseTypes.every((t) => typeof t === 'string')
     && !!o.formatter && typeof o.formatter === 'object'
-    && Array.isArray(o.knobs)
-    && !!o.vocab && typeof o.vocab === 'object';
+    && Array.isArray(o.knobs) && o.knobs.every((k) => !!k && typeof k === 'object')
+    // vocab.refs/values must be arrays — downstream (fx bar, chip editor) assumes it
+    && !!vocab && typeof vocab === 'object'
+    && Array.isArray(vocab.refs) && Array.isArray(vocab.values);
 }
 
 // ─── Built-in seed catalog (defined in code, never stored) ───────────────────
@@ -223,7 +226,9 @@ function bakeString(s: string, knobs: Knob[], answerOf: (knob: Knob) => string |
 export function bakeSubtype(subtype: Subtype, args: Record<string, string | number | boolean>): SPElement {
   const tree = JSON.parse(JSON.stringify(subtype.formatter)) as SPElement;
   if (subtype.knobs.length === 0) return tree;
-  const answerOf = (knob: Knob): string | number | boolean => (knob.label in args ? args[knob.label] : knob.default);
+  // args are keyed by the STABLE knob.path (the promoted literal), not the
+  // editable label — so a label rename never orphans an applied column's answer
+  const answerOf = (knob: Knob): string | number | boolean => (knob.path in args ? args[knob.path] : knob.default);
   const sub = (s: string): string => bakeString(s, subtype.knobs, answerOf);
   const visit = (node: SPElement): void => {
     if (typeof node.txtContent === 'string') node.txtContent = sub(node.txtContent);

@@ -241,7 +241,13 @@ function openRefineModal(subtype: Subtype, onToast: (m: string) => void): void {
     lblIn.value = existing ? existing.label : defaultKnobLabel(cand.value);
     const typeSel = document.createElement('select');
     typeSel.className = 'wb-refine-knob-type';
-    for (const t of KNOB_TYPES) { const o = document.createElement('option'); o.value = t; o.textContent = t; typeSel.appendChild(o); }
+    // the refine modal can't author a choice list, so 'choice' is only offered
+    // for a knob that already has one (preserving it); a plain literal can't
+    // become an unusable choice knob (refuse-don't-guess)
+    for (const t of KNOB_TYPES) {
+      if (t === 'choice' && existing?.type !== 'choice') continue;
+      const o = document.createElement('option'); o.value = t; o.textContent = t; typeSel.appendChild(o);
+    }
     typeSel.value = existing ? existing.type : cand.suggestedType;
     const defIn = document.createElement('input');
     defIn.className = 'wb-refine-knob-default';
@@ -255,10 +261,12 @@ function openRefineModal(subtype: Subtype, onToast: (m: string) => void): void {
     const coerceDefault = (type: KnobType, raw: string): string | number | boolean =>
       type === 'number' ? (raw.trim() === '' ? NaN : Number(raw)) : type === 'bool' ? raw === 'true' : raw;
     const sync = (): void => {
+      const type = typeSel.value as KnobType;
       working = promoteLiteral(working, cand.value, {
         label: lblIn.value || cand.value,
-        type: typeSel.value as KnobType,
-        default: coerceDefault(typeSel.value as KnobType, defIn.value),
+        type,
+        default: coerceDefault(type, defIn.value),
+        ...(type === 'choice' && existing?.choices ? { choices: existing.choices } : {}), // never drop a choice knob's options
       });
     };
     defIn.addEventListener('input', () => { if (cb.checked) sync(); });
@@ -423,7 +431,7 @@ function openKnobForm(col: GridColumn, field: MockField, st: Subtype, onToast: (
       const msg = knobError(knob, value);
       err.textContent = msg ?? '';
       if (msg) { ok = false; continue; }
-      args[knob.label] = value;
+      args[knob.path] = value; // key by the STABLE literal path, not the editable label
     }
     if (!ok) return; // refuse-and-teach: nothing bakes until every knob is valid
     handle.close();

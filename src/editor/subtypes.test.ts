@@ -134,6 +134,19 @@ describe('subtypes store: corrupt/missing/version → empty catalog, never throw
     expect(listSubtypes().map((s) => s.id)).toEqual(['c1']);
     expect(listSubtypes()).toHaveLength(1);
   });
+
+  it('drops a record whose vocab.refs/values are not arrays (downstream assumes arrays)', () => {
+    const blob = {
+      version: 1,
+      subtypes: [
+        sample(),
+        { ...sample(), id: 'bv1', vocab: {} },                       // vocab missing refs/values
+        { ...sample(), id: 'bv2', vocab: { refs: 'x', values: [] } }, // refs not an array
+      ],
+    };
+    localStorage.setItem(SUBTYPES_KEY, JSON.stringify(blob));
+    expect(listSubtypes().map((s) => s.id)).toEqual(['c1']);
+  });
 });
 
 describe('subtypes store: private-mode fallback (localStorage throws)', () => {
@@ -301,7 +314,7 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
   it('bakes Money symbol + decimals into every occurrence and renders accordingly', () => {
     const money = seedSubtypes().find((s) => s.id === 'money')!;
     const before = JSON.stringify(money.formatter);
-    const baked = bakeSubtype(money, { Symbol: '€', Decimals: 0 });
+    const baked = bakeSubtype(money, { '$': '€', '2': 0 }); // args keyed by knob.path
     const json = JSON.stringify(baked);
     expect(json).toContain("'€'");
     expect(json).not.toContain("'$'");
@@ -315,9 +328,21 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
 
   it('falls back to a knob default when its arg is missing', () => {
     const money = seedSubtypes().find((s) => s.id === 'money')!;
-    const baked = bakeSubtype(money, { Symbol: '€' }); // Decimals omitted → default 2
+    const baked = bakeSubtype(money, { '$': '€' }); // decimals (path '2') omitted → default 2
     expect(JSON.stringify(baked)).toContain('pow(10,2)');
     expect(JSON.stringify(baked)).toContain("'€'");
+  });
+
+  it('keys args by knob.path, so a label rename never orphans an applied answer', () => {
+    const original: Subtype = {
+      id: 's', name: 'x', origin: 'custom', baseTypes: ['number'], vocab: { refs: [], values: [] },
+      knobs: [{ path: '$', label: 'Symbol', type: 'text', default: '$' }],
+      formatter: { elmType: 'div', txtContent: "='$'+toString(@currentField)" },
+    };
+    const storedArgs = { '$': '€' }; // field.subtypeArgs, keyed by the stable path
+    const renamed: Subtype = { ...original, knobs: [{ ...original.knobs[0], label: 'Currency symbol' }] };
+    // re-baking the RENAMED subtype from the column's stored args still applies the answer
+    expect(JSON.stringify(bakeSubtype(renamed, storedArgs))).toContain("'€'");
   });
 
   it('a zero-knob subtype bakes to a fresh clone (never aliases the seed)', () => {
@@ -339,7 +364,7 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
     };
     // First: A→B, Second: B→C. A naive sequential bake would turn the baked 'B'
     // back into 'C'; the single-pass bake must yield exactly =if(...=='B','C','').
-    const baked = bakeSubtype(st, { First: 'B', Second: 'C' });
+    const baked = bakeSubtype(st, { A: 'B', B: 'C' }); // keyed by path ('A','B')
     expect(baked.txtContent).toBe("=if(@currentField=='B','C','')");
   });
 
@@ -350,7 +375,7 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
       vocab: { refs: [], values: [] },
       formatter: { elmType: 'div', txtContent: '=@currentField*0.25+pow(10,2)+120' },
     };
-    const baked = bakeSubtype(st, { N: 9 });
+    const baked = bakeSubtype(st, { '2': 9 }); // keyed by path
     // only the standalone 2 changes; 0.25, 120 are untouched
     expect(baked.txtContent).toBe('=@currentField*0.25+pow(10,9)+120');
   });
@@ -364,7 +389,7 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
       vocab: { refs: [], values: [] },
       formatter: { elmType: 'path', attributes: { 'stroke-dasharray': "=(@currentField*97/100)+',100'" } },
     };
-    const baked = bakeSubtype(st, { Scale: 90 });
+    const baked = bakeSubtype(st, { '100': 90 }); // keyed by path
     expect(baked.attributes!['stroke-dasharray']).toBe("=(@currentField*97/90)+',100'");
   });
 
@@ -382,7 +407,7 @@ describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutat
         style: { 'background-color': '#107c10' },
       },
     };
-    const baked = bakeSubtype(st, { Match: 'Shipped', Color: '#0078d4' });
+    const baked = bakeSubtype(st, { Done: 'Shipped', '#107c10': '#0078d4' }); // keyed by path
     expect(JSON.stringify(baked)).toContain("'Shipped'");
     expect(JSON.stringify(baked)).not.toContain('Done');
     expect(baked.style!['background-color']).toBe('#0078d4');
@@ -621,7 +646,7 @@ describe('promoteLiteral / demoteLiteral / isPromoted: by value, immutable', () 
     expect(next.knobs.find((k) => k.path === '#107c10')).toMatchObject({ label: 'Done color', type: 'color', default: '#107c10' });
     expect(isPromoted(next, '#107c10')).toBe(true);
     // baking the promoted knob updates EVERY occurrence of the value
-    const baked = bakeSubtype(next, { 'Done color': '#0000ff' });
+    const baked = bakeSubtype(next, { '#107c10': '#0000ff' }); // keyed by path, not the label "Done color"
     expect(JSON.stringify(baked)).toContain('#0000ff');
     expect(JSON.stringify(baked)).not.toContain('#107c10');
   });
