@@ -59,7 +59,7 @@ Rules that apply to every story (from `CLAUDE.md`):
 
 ## Phase 4 — Bar rewiring (strict vocab)
 
-- [ ] **US-8 — fxSuggest reads subtype vocab**
+- [x] **US-8 — fxSuggest reads subtype vocab**
   - Files: `src/editor/fxSuggest.ts`, `src/editor/fxSuggest.test.ts` (contract — change FIRST), `src/editor/fxBar.ts` if needed, e2e.
   - Gate: column with a subtype + non-empty `vocab` → bar offers ONLY that vocab; `...refs`/`...values` padding suppressed. Empty `vocab` → FALL BACK to today's padding. No subtype → behaves exactly as today (prove this in the contract tests). e2e: tagged column shows vocab, hides unrelated refs.
   - Verify: `npm run build` && `npm test` && Playwright bar spec.

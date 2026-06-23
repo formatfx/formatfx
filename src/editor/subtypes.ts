@@ -349,6 +349,11 @@ export function isBuiltinSubtype(id: string): boolean {
   return !!id && seedSubtypes().some((s) => s.id === id);
 }
 
+/** Resolve a subtype id to its record — a built-in seed or a saved custom. */
+export function resolveSubtype(id: string): Subtype | undefined {
+  return seedSubtypes().find((s) => s.id === id) ?? getSubtype(id);
+}
+
 let subtypeSeq = 0;
 /** A fresh, collision-improbable id for a maker-authored subtype. */
 function newSubtypeId(): string {

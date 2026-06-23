@@ -310,3 +310,35 @@ test('Push-update: refine + "update N columns" re-bakes every tagged column; one
   await expect(p1).toHaveText('OLD');
   await expect(p2).toHaveText('OLD');
 });
+
+test('fx bar reads subtype vocab: a tagged column offers ONLY its vocab, hiding unrelated refs', async ({ page }) => {
+  // a custom date subtype whose vocab is just the column's own value
+  await page.evaluate(() => {
+    localStorage.setItem('wb-subtypes', JSON.stringify({
+      version: 1,
+      subtypes: [{
+        id: 'custom-due-fx', name: 'Due fx', origin: 'custom', baseTypes: ['date'],
+        formatter: { elmType: 'div', txtContent: 'Due' }, // a plain literal — the text slot is editable
+        knobs: [], vocab: { refs: ['@currentField'], values: [] },
+      }],
+    }));
+  });
+
+  // apply it to DueDate, then open that column's formatter (@currentField = DueDate)
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
+  await page.locator('.wb-grid-menu .wb-menu-main', { hasText: 'Due fx' }).click();
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
+  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+
+  // the fx bar's text slot offers ONLY the vocab (the column's own value) and
+  // suppresses the broad all-columns ref padding
+  const slot = page.locator('.wb-fx-slot');
+  await expect(slot).toBeVisible();
+  await slot.selectOption('text');
+  await page.locator('.wb-fx-editor').focus(); // the value menu opens on focus
+  await expect(page.locator('.wb-fx-menu')).toBeVisible();
+  await expect(page.locator('.wb-fx-menu-opt', { hasText: '=[DueDate]' })).toHaveCount(1);
+  await expect(page.locator('.wb-fx-menu-opt', { hasText: '=[Title]' })).toHaveCount(0);
+});
