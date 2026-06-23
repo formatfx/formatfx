@@ -48,7 +48,7 @@ test('Rename round-trips through the breadcrumb and persists across reload', asy
 test('on a column doc the root opens the Column Formatters menu (Formatted + Not yet formatted)', async ({ page }) => {
   // drill into a formatted column so the breadcrumb shows Column Formatters
   await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this Column' }).click();
   await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
   await page.locator('.wb-crumb-root').click();
   const gal = page.locator('.wb-colgal');
@@ -61,7 +61,7 @@ test('on a column doc the root opens the Column Formatters menu (Formatted + Not
 
 test('the Not-yet-formatted group starts a formatter for an unplaced column', async ({ page }) => {
   await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this Column' }).click();
   await page.locator('.wb-crumb-root').click();
   // Tags is a plain text field with no formatter → start one from the menu
   await page.locator('.wb-colgal .wb-colgal-newrow', { hasText: 'Tags' }).click();
@@ -78,7 +78,7 @@ test('the relocated Back returns to the named view', async ({ page }) => {
   await page.locator('.wb-viewmenu-input').press('Enter');
   // drill into a column
   await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this Column' }).click();
   const back = page.locator('.wb-crumb-back');
   await expect(back).toContainText('Back to Roadmap view formatter');
   await back.click();

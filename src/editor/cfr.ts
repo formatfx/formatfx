@@ -7,7 +7,7 @@
  *   · cfrBlastRadius   — where a column's format is linked (change-everywhere
  *                        scope)
  *   · inlineColumnFormatter — fork a linked instance to a local copy
- *                        ("override here"): @currentField → [$Field]
+ *                        ("override in this view"): @currentField → [$Field]
  *   · toColumnFormatter — promote a local cell to the column's shared format
  *                        ("save as the column's format"): [$Field] → @currentField
  *
@@ -78,7 +78,7 @@ function transformRefs(tree: SPElement, fn: (s: string) => string): SPElement {
 }
 
 /**
- * Fork a registered column formatter into a LOCAL cell ("override here"): the
+ * Fork a registered column formatter into a LOCAL cell ("override in this view"): the
  * formatter is written in @currentField terms (it's resolved as a CFR), but a
  * local cell renders under the row context, so @currentField must become the
  * explicit [$Field] reference. Dotted props (@currentField.title) carry through.

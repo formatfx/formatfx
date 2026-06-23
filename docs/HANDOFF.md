@@ -393,8 +393,8 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    grid in a row-view toolbar. **Stage 4 (this branch): CFR linked instances
    (the Figma model)** — a teal link badge (`.wb-cfr-link`, the `#038387` of
    the Structure ⤷ chip) marks a columnFormatterReference cell; its header menu
-   offers "Change everywhere" (edit the shared format, blast radius named) and
-   "Override here" (fork local, default fork-local), and a plain column
+   offers "Format this Column" (edit the shared format, blast radius named) and
+   "Override in this view" (fork local, default fork-local), and a plain column
    promotes via "Save as the column's format" (cfr.ts; state.forkCfr /
    promoteToColumn, one undo step each). **Stage 5: safety + the single
    Advanced door.** (a) **Deploy clobber guard** — the deploy snippet bakes the
