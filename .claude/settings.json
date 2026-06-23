@@ -22,6 +22,12 @@
     "microsoft-docs@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
     "claude-code-plugins": {
       "source": {
         "source": "github",
