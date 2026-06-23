@@ -144,6 +144,8 @@ export class EditorState {
   importedViews: ImportedView[] = [];
   /** Which formatter is on the canvas: 'main' or a columnRefs key. */
   activeDocKey = 'main';
+  /** The view's editable name — project metadata, travels with Save/Open. */
+  viewName = 'View 1';
   private mainDocStash: FormatterDocument | null = null;
   private mainFieldStash: string | null = null;
   selection: NodePath | null = [];
@@ -215,6 +217,14 @@ export class EditorState {
     this.emit('data');
   }
 
+  /** Rename the view. Project metadata, not a formatter edit — deliberately
+   *  off the undo stack; emits 'data' so the breadcrumb + menus refresh and
+   *  the change autosaves. */
+  setViewName(name: string): void {
+    this.viewName = name.trim() || 'View 1';
+    this.emit('data');
+  }
+
   /** Human label for the main document, e.g. "View formatter (row layout)". */
   mainDocLabel(): string {
     const d = this.activeDocKey === 'main' ? this.doc : this.mainDocStash ?? this.doc;
@@ -256,7 +266,8 @@ export class EditorState {
       rows: this.rows,
       currentFieldName: this.activeDocKey === 'main' ? this.currentFieldName : this.mainFieldStash ?? this.currentFieldName,
       columnRefs: this.columnRefs,
-      // additive key — older builds simply ignore it (no version bump)
+      // additive keys — older builds simply ignore them (no version bump)
+      viewName: this.viewName,
       ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
       themeMode: this.themeMode,
       customTheme: this.customTheme,
@@ -273,6 +284,7 @@ export class EditorState {
     this.rows = p.rows;
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
     this.columnRefs = (p.columnRefs && typeof p.columnRefs === 'object') ? p.columnRefs : {};
+    this.viewName = typeof p.viewName === 'string' ? p.viewName : 'View 1';
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
     this.activeDocKey = 'main';
     this.mainDocStash = null;
@@ -305,6 +317,7 @@ export class EditorState {
     this.rows = defaultRows();
     this.currentFieldName = 'Status';
     this.columnRefs = defaultColumnRefs();
+    this.viewName = 'View 1';
     this.importedViews = [];
     this.activeDocKey = 'main';
     this.mainDocStash = null;

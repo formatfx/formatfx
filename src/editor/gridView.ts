@@ -107,6 +107,27 @@ function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLEle
   openMenu(header, `Format ${fieldLabel(field)}`, items);
 }
 
+/** Resolve a field to its placed grid column in the active main grid, or a
+ *  synthetic unplaced column (path []), so callers outside the grid (the
+ *  Column Formatters menu) can reuse the header's Format-this-column flow for
+ *  any field. An unplaced field's path-[] column makes applyColumnFormatter
+ *  register + open without a grid mutation (the spec's "unplaced" branch). */
+export function gridColumnForField(field: MockField): GridColumn {
+  if (state.activeDocKey === 'main' && state.doc.kind === 'grid') {
+    const children = state.doc.root.children ?? [];
+    const i = children.findIndex((c) => gridColumnField(c) === field.name);
+    if (i >= 0) return { el: children[i], path: [i] };
+  }
+  return { el: { elmType: 'div' }, path: [] };
+}
+
+/** Open the type-aware "Format this column" menu for a field that may be
+ *  placed in the grid or only registered in the schema — the Column Formatters
+ *  menu's "Not yet formatted" entry point. */
+export function openColumnFormatMenuFor(field: MockField, anchor: HTMLElement, onToast: (m: string) => void): void {
+  openFormatColumnMenu(gridColumnForField(field), field, anchor, onToast);
+}
+
 function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: string) => void): void {
   const registered = fieldName ? state.columnRefs[fieldName] : undefined;
   const root = registered ?? col.el;

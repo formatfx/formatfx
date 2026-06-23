@@ -183,6 +183,51 @@ describe('reparentNode', () => {
   });
 });
 
+describe('view name (project metadata)', () => {
+  it('defaults to "View 1"', () => {
+    expect(new EditorState().viewName).toBe('View 1');
+  });
+
+  it('setViewName assigns and is NOT an undoable document mutation', () => {
+    const s = withCard();
+    const original = JSON.stringify(s.doc);
+    s.mutateDocument(() => { s.doc.root._elmName = 'Probe'; }); // one real doc step
+    s.setViewName('Sprint board');
+    expect(s.viewName).toBe('Sprint board');
+    s.undo(); // the single undo reverts the doc step, untouched by setViewName
+    expect(JSON.stringify(s.doc)).toBe(original);
+    expect(s.viewName).toBe('Sprint board'); // name survives undo — it's metadata
+  });
+
+  it('blank/whitespace names fall back to "View 1"', () => {
+    const s = new EditorState();
+    s.setViewName('   ');
+    expect(s.viewName).toBe('View 1');
+  });
+
+  it('serialize/load round-trips the name; a payload without it loads as "View 1"', () => {
+    const s = new EditorState();
+    s.setViewName('Roadmap');
+    const s2 = new EditorState();
+    s2.loadProject(s.serializeProject());
+    expect(s2.viewName).toBe('Roadmap');
+
+    // an older payload (no viewName field) defaults rather than throwing
+    const legacy = JSON.parse(s.serializeProject());
+    delete legacy.viewName;
+    const s3 = new EditorState();
+    s3.loadProject(JSON.stringify(legacy));
+    expect(s3.viewName).toBe('View 1');
+  });
+
+  it('resetAll restores "View 1"', () => {
+    const s = new EditorState();
+    s.setViewName('Whatever');
+    s.resetAll();
+    expect(s.viewName).toBe('View 1');
+  });
+});
+
 describe('STORAGE_KEY is frozen', () => {
   it('matches the literal that protects existing autosaved work', () => {
     // HANDOFF §1: these keys deliberately never change on rename — a rename

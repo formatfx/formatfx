@@ -50,18 +50,21 @@ test('the example/sample loader lives in the ☰ menu, not the topbar', async ({
   await expect(page.locator('#wb-menu-panel #wb-example')).toBeVisible();
 });
 
-test('topbar shows the emergent destination chip, not a Type dropdown', async ({ page }) => {
+test('the ribbon breadcrumb states where you are, not a Type dropdown', async ({ page }) => {
   // the old upfront Type dropdown is gone from the topbar
   await expect(page.locator('.wb-topbar #wb-kind')).toHaveCount(0);
-  // default doc is a grid → saves to the view
-  await expect(page.locator('#wb-dest-chip')).toContainText('Saves to the view');
+  // default doc is a grid view → root browses views, tail is the view name
+  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('View 1');
 });
 
-test('the kind control lives in the Studio, and loading a column example updates the chip', async ({ page }) => {
+test('the kind control lives in the Studio, and a column example flips the breadcrumb to the column', async ({ page }) => {
   // the kind select moved into the side pane (revealed only in Studio)
   await openStudio(page);
   await expect(page.locator('.wb-pane-side #wb-kind')).toBeVisible();
-  // a column-kind example flips the chip to a column destination, naming the column it targets
+  // a column-kind example flips the breadcrumb root to Column Formatters and
+  // names the column it targets in the tail
   await loadExample(page, 'status-pill');
-  await expect(page.locator('#wb-dest-chip')).toContainText('Saves to the Status column');
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
 });
