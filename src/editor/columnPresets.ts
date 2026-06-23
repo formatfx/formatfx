@@ -50,23 +50,6 @@ const BY_TYPE: Partial<Record<FieldType, PresetRef[]>> = {
   hyperlink: [{ id: 'link', primaryField: 'Link' }],
 };
 
-export interface ColumnPresetOption {
-  id: string;
-  label: string;
-  description: string;
-  icon: string;
-}
-
-/** The presets that fit a field type (empty = "format manually" is the only path). */
-export function columnPresetsFor(type: FieldType): ColumnPresetOption[] {
-  const out: ColumnPresetOption[] = [];
-  for (const ref of BY_TYPE[type] ?? []) {
-    const item = paletteItemById(ref.id);
-    if (item) out.push({ id: ref.id, label: item.label, description: item.description, icon: item.icon });
-  }
-  return out;
-}
-
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Deep-clone a tree, rewriting every string value with `fn`. */
@@ -107,4 +90,40 @@ export function buildColumnPreset(presetId: string, field: MockField): SPElement
   const tree = toColumnFormatter(rebound, field.name);
   tree._elmName = `${fieldLabel(field)} — ${item.label}`;
   return tree;
+}
+
+/** A built-in subtype seed derived from a palette column preset. */
+export interface PresetSeed {
+  id: string;
+  label: string;
+  baseTypes: FieldType[];
+  formatter: SPElement;
+}
+
+/**
+ * The palette column presets re-expressed as built-in subtype seeds — the
+ * source of the built-in seed catalog (editor/subtypes wraps these into
+ * `Subtype`s). BY_TYPE is inverted: each preset becomes ONE @currentField
+ * column formatter tagged with the full set of field types it fits, built
+ * against its natural representative field so the fold-to-@currentField is a
+ * no-op rebind. Each preset appears once even when it fits several types.
+ */
+export function presetSeeds(): PresetSeed[] {
+  const acc = new Map<string, { baseTypes: FieldType[]; type: FieldType; primaryField: string }>();
+  for (const [type, refs] of Object.entries(BY_TYPE) as [FieldType, PresetRef[] | undefined][]) {
+    for (const ref of refs ?? []) {
+      const cur = acc.get(ref.id);
+      if (cur) { if (!cur.baseTypes.includes(type)) cur.baseTypes.push(type); }
+      else acc.set(ref.id, { baseTypes: [type], type, primaryField: ref.primaryField });
+    }
+  }
+  const seeds: PresetSeed[] = [];
+  for (const [id, info] of acc) {
+    const item = paletteItemById(id);
+    const formatter = buildColumnPreset(id, { name: info.primaryField, type: info.type });
+    if (!item || !formatter) continue;
+    formatter._elmName = item.label; // generic seed name; apply re-names per column
+    seeds.push({ id, label: item.label, baseTypes: info.baseTypes, formatter });
+  }
+  return seeds;
 }

@@ -26,9 +26,16 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius } from './cfr';
-import { columnPresetsFor, buildColumnPreset } from './columnPresets';
+import {
+  subtypesForType, bakeSubtype, coerceKnob, knobError, saveSubtype, deleteSubtype,
+  subtypeFromColumn, isBuiltinSubtype, extractLiterals, promoteLiteral, demoteLiteral,
+  isPromoted, forkSubtype,
+} from './subtypes';
+import { paletteItemById } from './palette';
+import { createOverlay } from './overlay';
+import { FIELD_TYPE_OPTIONS } from '../core/schemaImport';
 import { cfrFieldName } from '../core/refs';
-import type { SPElement, NodePath, MockField } from '../core/types';
+import type { SPElement, NodePath, MockField, Subtype, Knob, KnobType } from '../core/types';
 
 interface GridDeps {
   opts: RenderOptions;
@@ -84,19 +91,380 @@ function applyColumnFormatter(col: GridColumn, field: MockField, tree: SPElement
   onToast(msg);
 }
 
-/** "Format this column" → a type-aware preset picker (the system thinks for the
- *  maker), then "format manually". With no fitting preset, go straight to manual. */
+/** Icon for a subtype entry: the palette icon for a preset-derived seed, else a
+ *  sensible fallback (Money / a star for a maker's custom). */
+function subtypeIcon(st: Subtype): string {
+  return paletteItemById(st.id)?.icon ?? (st.id === 'money' ? 'AllCurrency' : 'Tag');
+}
+
+/** Bake `args` into the subtype and snapshot-apply it to the column, staying on
+ *  the grid (so the cell renders it and a single Ctrl+Z reverts). */
+function commitSubtype(col: GridColumn, field: MockField, st: Subtype, args: Record<string, string | number | boolean>, onToast: (m: string) => void): void {
+  const baked = bakeSubtype(st, args);
+  baked._elmName = `${fieldLabel(field)} — ${st.name}`;
+  state.applyColumnSubtype(field.name, baked, st.id, args, col.path);
+  onToast(`Applied ${st.name} to ${field.name} — the grid renders it. Ctrl+Z to undo.`);
+}
+
+/** Pick a subtype: zero-knob applies in one click; a knob-bearing subtype opens
+ *  the apply-time form first. */
+function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
+  if (st.knobs.length === 0) { commitSubtype(col, field, st, {}, onToast); return; }
+  openKnobForm(col, field, st, onToast);
+}
+
+// ─── Refine modal (custom subtype editor) ────────────────────────────────────
+
+const KNOB_TYPES: KnobType[] = ['text', 'number', 'bool', 'color', 'choice'];
+const elc = (tag: string, cls: string, text?: string): HTMLElement => {
+  const e = document.createElement(tag);
+  e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+
+/** A removable-chip editor over a string list (vocab refs / values), click-safe. */
+function chipEditor(values: string[], placeholder: string, onChange: (next: string[]) => void): HTMLElement {
+  const wrap = elc('div', 'wb-refine-chips');
+  const render = (): void => {
+    wrap.innerHTML = '';
+    for (const v of values) {
+      const chip = elc('span', 'wb-refine-chip');
+      chip.textContent = v;
+      const x = elc('button', 'wb-refine-chip-x', '×');
+      x.title = `Remove ${v}`;
+      x.addEventListener('click', () => { values = values.filter((u) => u !== v); onChange([...values]); render(); });
+      chip.appendChild(x);
+      wrap.appendChild(chip);
+    }
+    const input = document.createElement('input');
+    input.className = 'wb-refine-chip-add';
+    input.placeholder = placeholder;
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const v = input.value.trim();
+      if (v && !values.includes(v)) { values = [...values, v]; onChange([...values]); render(); }
+    });
+    wrap.appendChild(input);
+  };
+  render();
+  return wrap;
+}
+
+/**
+ * The refine modal: edit a CUSTOM subtype in place (rename, baseTypes, vocab,
+ * delete, fork) and promote/demote its literals to typed knobs via a checklist
+ * — all click-only (no raw JSON). Edits persist to wb-subtypes on Save and do
+ * NOT touch columns already using the subtype (their formatter was baked at
+ * apply time; US-7 push is the opt-in way to propagate).
+ */
+function openRefineModal(subtype: Subtype, onToast: (m: string) => void): void {
+  let working: Subtype = JSON.parse(JSON.stringify(subtype)) as Subtype;
+  const handle = createOverlay('wb-refine-overlay', () => handle.close());
+  const panel = elc('div', 'wb-refine');
+  handle.overlay.appendChild(panel);
+
+  const head = elc('div', 'wb-refine-head');
+  head.append(elc('span', 'wb-refine-title', `Refine ${subtype.name}`),
+    elc('span', 'wb-refine-sub', 'Edits save to your library; columns already using it are unchanged.'));
+  panel.appendChild(head);
+
+  // — rename —
+  const nameRow = elc('label', 'wb-refine-row');
+  nameRow.appendChild(elc('span', 'wb-refine-rowlab', 'Name'));
+  const nameInput = document.createElement('input');
+  nameInput.className = 'wb-refine-name';
+  nameInput.value = working.name;
+  nameInput.addEventListener('input', () => { working.name = nameInput.value; });
+  nameRow.appendChild(nameInput);
+  panel.appendChild(nameRow);
+
+  // — base types —
+  const typesRow = elc('div', 'wb-refine-row');
+  typesRow.appendChild(elc('span', 'wb-refine-rowlab', 'Fits column types'));
+  const typesWrap = elc('div', 'wb-refine-types');
+  for (const opt of FIELD_TYPE_OPTIONS) {
+    const lab = elc('label', 'wb-refine-type');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.basetype = opt.value;
+    cb.checked = working.baseTypes.includes(opt.value);
+    cb.addEventListener('change', () => {
+      if (cb.checked) working.baseTypes = [...new Set([...working.baseTypes, opt.value])];
+      else if (working.baseTypes.length > 1) working.baseTypes = working.baseTypes.filter((t) => t !== opt.value);
+      else { cb.checked = true; onToast('A subtype must fit at least one column type.'); } // refuse the empty set
+    });
+    lab.append(cb, document.createTextNode(' ' + opt.label));
+    typesWrap.appendChild(lab);
+  }
+  typesRow.appendChild(typesWrap);
+  panel.appendChild(typesRow);
+
+  // — vocab —
+  const vocabRow = elc('div', 'wb-refine-row');
+  vocabRow.appendChild(elc('span', 'wb-refine-rowlab', 'fx-bar vocabulary'));
+  const vocabBody = elc('div', 'wb-refine-vocab');
+  vocabBody.append(elc('span', 'wb-refine-sublab', 'References'),
+    chipEditor(working.vocab.refs, 'add a reference…', (next) => { working.vocab = { ...working.vocab, refs: next }; }),
+    elc('span', 'wb-refine-sublab', 'Values'),
+    chipEditor(working.vocab.values, 'add a value…', (next) => { working.vocab = { ...working.vocab, values: next }; }));
+  vocabRow.appendChild(vocabBody);
+  panel.appendChild(vocabRow);
+
+  // — extracted-literals checklist (promote/demote to knobs, by value) —
+  const litRow = elc('div', 'wb-refine-row');
+  litRow.appendChild(elc('span', 'wb-refine-rowlab', 'Parameters (knobs)'));
+  const litBody = elc('div', 'wb-refine-lits');
+  litRow.appendChild(litBody);
+  panel.appendChild(litRow);
+
+  const candidates = extractLiterals(working.formatter);
+  if (candidates.length === 0) {
+    litBody.appendChild(elc('span', 'wb-refine-sublab', 'No literals to parameterize.'));
+  }
+  for (const cand of candidates) {
+    const row = elc('div', 'wb-refine-lit');
+    row.dataset.lit = cand.value;
+    const existing = working.knobs.find((k) => k.path === cand.value);
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'wb-refine-lit-cb';
+    cb.checked = isPromoted(working, cand.value);
+    const valLab = elc('span', 'wb-refine-lit-val', cand.value);
+
+    // the knob editor is always present; shown only while the literal is promoted
+    const editor = elc('div', 'wb-refine-knob');
+    const lblIn = document.createElement('input');
+    lblIn.className = 'wb-refine-knob-label';
+    lblIn.placeholder = 'label';
+    lblIn.value = existing ? existing.label : defaultKnobLabel(cand.value);
+    const typeSel = document.createElement('select');
+    typeSel.className = 'wb-refine-knob-type';
+    // the refine modal can't author a choice list, so 'choice' is only offered
+    // for a knob that already has one (preserving it); a plain literal can't
+    // become an unusable choice knob (refuse-don't-guess)
+    for (const t of KNOB_TYPES) {
+      if (t === 'choice' && existing?.type !== 'choice') continue;
+      const o = document.createElement('option'); o.value = t; o.textContent = t; typeSel.appendChild(o);
+    }
+    typeSel.value = existing ? existing.type : cand.suggestedType;
+    const defIn = document.createElement('input');
+    defIn.className = 'wb-refine-knob-default';
+    defIn.placeholder = 'default';
+    defIn.value = String(existing ? existing.default : cand.value);
+    editor.append(lblIn, typeSel, defIn);
+    editor.hidden = !existing;
+
+    // match the apply-time coercion (coerceKnob): a blank number is NaN, not 0,
+    // so it is refused at Save/Push rather than silently baked as zero
+    const coerceDefault = (type: KnobType, raw: string): string | number | boolean =>
+      type === 'number' ? (raw.trim() === '' ? NaN : Number(raw)) : type === 'bool' ? raw === 'true' : raw;
+    const sync = (): void => {
+      const type = typeSel.value as KnobType;
+      working = promoteLiteral(working, cand.value, {
+        label: lblIn.value || cand.value,
+        type,
+        default: coerceDefault(type, defIn.value),
+        ...(type === 'choice' && existing?.choices ? { choices: existing.choices } : {}), // never drop a choice knob's options
+      });
+    };
+    defIn.addEventListener('input', () => { if (cb.checked) sync(); });
+    cb.addEventListener('change', () => {
+      if (cb.checked) { sync(); editor.hidden = false; }
+      else { working = demoteLiteral(working, cand.value); editor.hidden = true; }
+    });
+    lblIn.addEventListener('input', () => { if (cb.checked) sync(); });
+    typeSel.addEventListener('change', () => { if (cb.checked) sync(); });
+
+    row.append(cb, valLab, editor);
+    litBody.appendChild(row);
+  }
+
+  // refuse-and-teach before persisting: a name + every knob default must be
+  // valid (same rules as the apply-time form). Returns true when OK to save.
+  const validate = (): boolean => {
+    if (!working.name.trim()) { onToast('A subtype needs a name.'); return false; }
+    for (const k of working.knobs) {
+      const err = knobError(k, k.default);
+      if (err) { onToast(err); return false; }
+    }
+    return true;
+  };
+
+  // — footer —
+  const foot = elc('div', 'wb-refine-foot');
+  const del = elc('button', 'wb-refine-delete', 'Delete');
+  del.addEventListener('click', () => { deleteSubtype(working.id); handle.close(); onToast(`Deleted "${subtype.name}".`); });
+  const fork = elc('button', 'wb-refine-fork', 'Fork');
+  fork.addEventListener('click', () => { if (!validate()) return; const f = forkSubtype(working); saveSubtype(f); handle.close(); onToast(`Forked into "${f.name}".`); });
+  const spacer = elc('div', 'wb-refine-foot-spacer');
+  const cancel = elc('button', 'wb-refine-cancel', 'Cancel');
+  cancel.addEventListener('click', () => handle.close());
+  const save = elc('button', 'wb-refine-save', 'Save');
+  save.addEventListener('click', () => {
+    if (!validate()) return;
+    saveSubtype(working);
+    handle.close();
+    onToast(`Saved "${working.name}".`);
+  });
+  foot.append(del, fork, spacer, cancel, save);
+
+  // — opt-in push-update (US-7): re-bake the columns already using this —
+  const usingCount = state.columnsUsingSubtype(subtype.id).length;
+  if (usingCount > 0) {
+    const n = usingCount;
+    const push = elc('button', 'wb-refine-push', `Save & update ${n} column${n > 1 ? 's' : ''}`);
+    push.title = `Save, then re-bake the ${n} column${n > 1 ? 's' : ''} already using ${subtype.name} from their saved settings (overwrites hand-edits). One Ctrl+Z reverts all.`;
+    push.addEventListener('click', () => {
+      if (!validate()) return;
+      saveSubtype(working);
+      const pushed = state.pushSubtypeUpdate(working.id, (args) => bakeSubtype(working, args));
+      handle.close();
+      onToast(`Saved and updated ${pushed} column${pushed > 1 ? 's' : ''} using "${working.name}". Ctrl+Z reverts all.`);
+    });
+    foot.append(push);
+  }
+  panel.appendChild(foot);
+
+  document.body.appendChild(handle.overlay);
+  nameInput.focus();
+}
+
+/** A friendly default knob label from a literal (e.g. "#107c10" → "Color"). */
+function defaultKnobLabel(value: string): string {
+  if (/^#|^(rgb|hsl)/.test(value)) return 'Color';
+  if (/^-?\d/.test(value)) return 'Number';
+  return value.length <= 20 ? value : 'Value';
+}
+
+/** Save the column's current formatter as a reusable custom subtype (Save-as
+ *  birth): prompts for a name, derives the vocab, records the built-in it forks
+ *  from (if any), and persists to wb-subtypes — it then shows as "Yours". */
+function saveAsSubtype(field: MockField, onToast: (m: string) => void): void {
+  const formatter = state.columnRefs[field.name];
+  if (!formatter) { onToast('Format this column first, then save it as a reusable subtype.'); return; }
+  const name = window.prompt('Name this reusable subtype', `${fieldLabel(field)} style`);
+  if (name === null) return; // cancelled
+  const trimmed = name.trim();
+  if (!trimmed) { onToast('A subtype needs a name.'); return; }
+  const forkedFrom = field.subtype && isBuiltinSubtype(field.subtype) ? field.subtype : undefined;
+  saveSubtype(subtypeFromColumn({ name: trimmed, formatter, field, forkedFrom }));
+  onToast(`Saved "${trimmed}" as a reusable subtype (Yours) — it's in the Format menu for ${field.type} columns.`);
+}
+
+/** One typed widget for a knob, pre-filled with its default; returns a reader. */
+function knobWidget(knob: Knob): { el: HTMLElement; read: () => string | boolean } {
+  if (knob.type === 'bool') {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.knob = knob.label;
+    cb.checked = knob.default === true || knob.default === 'true';
+    return { el: cb, read: () => cb.checked };
+  }
+  if (knob.type === 'choice') {
+    const sel = document.createElement('select');
+    sel.dataset.knob = knob.label;
+    for (const c of knob.choices ?? []) {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      if (String(knob.default) === c) o.selected = true;
+      sel.appendChild(o);
+    }
+    return { el: sel, read: () => sel.value };
+  }
+  const inp = document.createElement('input');
+  inp.type = knob.type === 'number' ? 'number' : knob.type === 'color' ? 'color' : 'text';
+  inp.dataset.knob = knob.label;
+  inp.value = String(knob.default);
+  return { el: inp, read: () => inp.value };
+}
+
+/** The apply-time knob form: a dialog of typed widgets, refuse-and-teach
+ *  validation (nothing bakes until valid), Apply = one undoable mutation. */
+function openKnobForm(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
+  const handle = createOverlay('wb-knobform-overlay', () => handle.close());
+  const panel = document.createElement('div');
+  panel.className = 'wb-knobform';
+  handle.overlay.appendChild(panel);
+
+  const head = document.createElement('div');
+  head.className = 'wb-knobform-head';
+  const title = document.createElement('span');
+  title.className = 'wb-knobform-title';
+  title.textContent = `Set up ${st.name} for ${fieldLabel(field)}`;
+  const sub = document.createElement('span');
+  sub.className = 'wb-knobform-sub';
+  sub.textContent = 'Nothing changes until you Apply (then Ctrl+Z undoes).';
+  head.append(title, sub);
+  panel.appendChild(head);
+
+  const rows: Array<{ knob: Knob; read: () => string | boolean; err: HTMLElement }> = [];
+  for (const knob of st.knobs) {
+    const row = document.createElement('label');
+    row.className = 'wb-knobform-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-knobform-label';
+    lab.textContent = knob.label;
+    const widget = knobWidget(knob);
+    const err = document.createElement('span');
+    err.className = 'wb-knobform-err';
+    row.append(lab, widget.el, err);
+    panel.appendChild(row);
+    rows.push({ knob, read: widget.read, err });
+  }
+
+  const foot = document.createElement('div');
+  foot.className = 'wb-knobform-foot';
+  const cancel = document.createElement('button');
+  cancel.className = 'wb-knobform-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => handle.close());
+  const apply = document.createElement('button');
+  apply.className = 'wb-knobform-apply';
+  apply.textContent = 'Apply';
+  apply.addEventListener('click', () => {
+    const args: Record<string, string | number | boolean> = {};
+    let ok = true;
+    for (const { knob, read, err } of rows) {
+      const value = coerceKnob(knob, read());
+      const msg = knobError(knob, value);
+      err.textContent = msg ?? '';
+      if (msg) { ok = false; continue; }
+      args[knob.path] = value; // key by the STABLE literal path, not the editable label
+    }
+    if (!ok) return; // refuse-and-teach: nothing bakes until every knob is valid
+    handle.close();
+    commitSubtype(col, field, st, args, onToast);
+  });
+  foot.append(cancel, apply);
+  panel.appendChild(foot);
+
+  document.body.appendChild(handle.overlay);
+  (panel.querySelector('input, select') as HTMLElement | null)?.focus();
+}
+
+/** "Format this column" → the type-filtered subtype catalog (built-in seeds +
+ *  the maker's customs, badged), then "format manually". Subtypes whose
+ *  baseTypes exclude this column never appear; with none fitting, go straight to
+ *  the manual blank formatter. */
 function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLElement, onToast: (m: string) => void): void {
-  const presets = columnPresetsFor(field.type);
+  const catalog = subtypesForType(field.type);
   const manual = (): void => applyColumnFormatter(col, field, defaultColumnFormatter(field), onToast,
     `Started a formatter for ${field.name} — you're editing it now; the grid renders it live`);
-  if (presets.length === 0) { manual(); return; }
-  const items: MenuItem[] = presets.map((p) => ({
-    icon: p.icon,
-    label: p.label,
-    title: p.description,
-    fn: () => applyColumnFormatter(col, field, buildColumnPreset(p.id, field)!, onToast,
-      `Started a ${p.label} for ${field.name} — you're editing it; the grid renders it live. Restyle or Ctrl+Z to undo.`),
+  if (catalog.length === 0) { manual(); return; }
+  const items: MenuItem[] = catalog.map((st) => ({
+    icon: subtypeIcon(st),
+    label: st.name,
+    badge: st.origin === 'builtin' ? 'Built-in' : 'Yours',
+    title: st.origin === 'builtin'
+      ? `Apply the built-in ${st.name} look to ${field.name}`
+      : `Apply your saved ${st.name} subtype to ${field.name}`,
+    // only a maker's own subtypes can be refined (a built-in is forked, not edited)
+    ...(st.origin === 'custom'
+      ? { action: { icon: 'More', title: `Refine ${st.name}…`, fn: () => openRefineModal(st, onToast) } }
+      : {}),
+    fn: () => applySubtype(col, field, st, onToast),
   }));
   items.push({
     icon: 'Brush',
@@ -191,6 +559,14 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
             ? `Saved as the ${f} column format — this cell is linked to it now. Ctrl+Z to undo.`
             : 'Could not save this cell as a column format.');
         },
+      });
+    }
+    if (registered) {
+      items.push({
+        icon: 'Save',
+        label: 'Save as reusable subtype…',
+        title: `Save ${fieldLabel(field)}'s current format as a reusable subtype you can apply to other ${field.type} columns`,
+        fn: () => saveAsSubtype(field, onToast),
       });
     }
     items.push({

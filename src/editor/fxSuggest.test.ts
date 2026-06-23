@@ -77,6 +77,64 @@ describe('fxSuggestions — type-aware per slot', () => {
   });
 });
 
+describe('fxSuggestions — subtype vocab (US-8)', () => {
+  const current = FIELDS.find((f) => f.name === 'Status')!; // pretend Status is the @currentField column
+
+  it('a non-empty vocab offers ONLY the vocab refs and suppresses the broad ...refs padding', () => {
+    const s = fxSuggestions(slot('text'), FIELDS, { current, vocab: { refs: ['@currentField'], values: [] } });
+    expect(s).toContain('=[Status]');           // @currentField → the current column's ref
+    expect(s).not.toContain('=[Task name]');    // an unrelated column's bare ref is suppressed
+    expect(s).not.toContain('=[Due date]');
+    expect(s).not.toContain('=[Percent done]');
+  });
+
+  it('maps [$Field] vocab refs to that column and drops unknown tokens', () => {
+    const s = fxSuggestions(slot('text'), FIELDS, { current, vocab: { refs: ['[$DueDate]', '[$Ghost]'], values: [] } });
+    expect(s).toContain('=[Due date]');         // DueDate → its display-name ref
+    expect(s.some((x) => x.includes('Ghost'))).toBe(false); // a ref to a missing column is dropped
+  });
+
+  it('preserves the .prop tail and maps the [!Field] form (all round-trippable)', () => {
+    const flds: MockField[] = [...FIELDS, { name: 'Owner', type: 'person' }];
+    const owner = flds.find((f) => f.name === 'Owner')!;
+    const s = fxSuggestions(slot('text'), flds, {
+      current: owner,
+      vocab: { refs: ['[$Owner.title]', '[!Status]', '@currentField.email'], values: [] },
+    });
+    expect(s).toContain('=[Owner.title]');  // dotted [$Field.prop] keeps its prop
+    expect(s).toContain('=[Status]');       // the [!Field] form maps too
+    expect(s).toContain('=[Owner.email]');  // @currentField.prop → the current column + prop
+    for (const sug of s) if (sug.startsWith('=')) expect(excelToSp(sug, flds).ok, `refused: ${sug}`).toBe(true);
+  });
+
+  it('a non-empty vocab replaces the value padding on a style slot', () => {
+    const s = fxSuggestions(slot('weight'), FIELDS, { current, vocab: { refs: [], values: ['Done', 'Blocked'] } });
+    expect(s).toEqual(expect.arrayContaining(['Done', 'Blocked'])); // the vocab values
+    expect(s).toContain('bold');                                    // the curated idioms stay
+    expect(s).not.toContain('400');                                 // a broad playground value is suppressed
+    expect(fxSuggestions(slot('weight'), FIELDS)).toContain('400'); // …which IS offered today (suppression is real)
+  });
+
+  it('an EMPTY vocab falls back to today\'s padding', () => {
+    expect(fxSuggestions(slot('text'), FIELDS, { current, vocab: { refs: [], values: [] } }))
+      .toEqual(fxSuggestions(slot('text'), FIELDS));
+  });
+
+  it('NO subtype behaves exactly as today (with or without a current field)', () => {
+    expect(fxSuggestions(slot('text'), FIELDS, { current })).toEqual(fxSuggestions(slot('text'), FIELDS));
+    expect(fxSuggestions(slot('fill'), FIELDS, {})).toEqual(fxSuggestions(slot('fill'), FIELDS));
+    expect(fxSuggestions(slot('text'), FIELDS)).toEqual(fxSuggestions(slot('text'), FIELDS, undefined));
+  });
+
+  it('vocab ref suggestions still round-trip through the transpiler', () => {
+    const s = fxSuggestions(slot('text'), FIELDS, { current, vocab: { refs: ['@currentField', '[$DueDate]'], values: [] } });
+    for (const sug of s) {
+      if (!sug.startsWith('=')) continue;
+      expect(excelToSp(sug, FIELDS).ok, `refused: ${sug}`).toBe(true);
+    }
+  });
+});
+
 describe('every suggested formula round-trips through the transpiler (no refusals)', () => {
   it('holds for every slot of several element kinds', () => {
     const nodes = [

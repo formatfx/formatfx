@@ -436,12 +436,101 @@ body {
   border-bottom: 1px solid var(--wb-border); margin-bottom: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.wb-menu-row { display: flex; align-items: center; gap: 2px; }
 .wb-grid-menu button {
   display: flex; align-items: center; gap: 8px; width: 100%;
   border: none; background: transparent; color: var(--wb-text); text-align: left;
   padding: 6px 8px; border-radius: 3px; font-size: 12px; cursor: pointer;
 }
+.wb-grid-menu .wb-menu-main { flex: 1; min-width: 0; }
 .wb-grid-menu button:hover { background: var(--wb-bg); color: var(--wb-accent); }
+.wb-grid-menu .wb-menu-action { width: auto; flex: none; justify-content: center; padding: 6px; color: var(--wb-text-2); }
+.wb-grid-menu .wb-menu-action:hover { color: var(--wb-accent); }
+/* subtype-catalog badges: "Built-in" / "Yours" trailing chips */
+.wb-grid-menu button .wb-menu-badge {
+  margin-left: auto; flex: none;
+  font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 8px;
+  background: color-mix(in srgb, var(--wb-text-2) 18%, transparent); color: var(--wb-text-2);
+}
+.wb-grid-menu button:hover .wb-menu-badge {
+  background: color-mix(in srgb, var(--wb-accent) 22%, transparent); color: var(--wb-accent);
+}
+
+/* ── apply-time knob form (subtype apply) ─────────────────── */
+.wb-knobform-overlay {
+  position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .42);
+}
+.wb-knobform {
+  min-width: 320px; max-width: 440px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 6px; padding: 16px 18px; box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
+}
+.wb-knobform-head { display: flex; flex-direction: column; gap: 2px; }
+.wb-knobform-title { font-size: 14px; font-weight: 600; color: var(--wb-text); }
+.wb-knobform-sub { font-size: 11px; color: var(--wb-text-2); }
+.wb-knobform-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px 10px; }
+.wb-knobform-label { font-size: 12px; color: var(--wb-text); }
+.wb-knobform-row input[type="text"], .wb-knobform-row input[type="number"], .wb-knobform-row select {
+  width: 100%; padding: 4px 6px; font-size: 12px;
+  background: var(--wb-bg); color: var(--wb-text); border: 1px solid var(--wb-border); border-radius: 3px;
+}
+.wb-knobform-row input[type="color"] { width: 44px; height: 26px; padding: 0; border: 1px solid var(--wb-border); border-radius: 3px; background: none; }
+.wb-knobform-err { grid-column: 2; font-size: 11px; color: var(--wb-danger, #d13438); min-height: 0; }
+.wb-knobform-err:empty { display: none; }
+.wb-knobform-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.wb-knobform-foot button {
+  padding: 5px 14px; font-size: 12px; border-radius: 4px; cursor: pointer; border: 1px solid var(--wb-border);
+}
+.wb-knobform-cancel { background: transparent; color: var(--wb-text); }
+.wb-knobform-apply { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); font-weight: 600; }
+
+/* ── refine modal (custom subtype editor) ─────────────────── */
+.wb-refine-overlay {
+  position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .42);
+}
+.wb-refine {
+  width: 480px; max-width: 94vw; max-height: 88vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 6px; padding: 16px 18px; box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
+}
+.wb-refine-head { display: flex; flex-direction: column; gap: 2px; }
+.wb-refine-title { font-size: 14px; font-weight: 600; color: var(--wb-text); }
+.wb-refine-sub { font-size: 11px; color: var(--wb-text-2); }
+.wb-refine-row { display: flex; flex-direction: column; gap: 6px; }
+.wb-refine-rowlab { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--wb-text-2); }
+.wb-refine-name, .wb-refine-knob-label, .wb-refine-knob-default, .wb-refine-chip-add {
+  padding: 4px 6px; font-size: 12px; background: var(--wb-bg); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 3px;
+}
+.wb-refine-knob-label, .wb-refine-knob-default { width: 84px; }
+.wb-refine-types { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.wb-refine-type { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--wb-text); }
+.wb-refine-vocab { display: flex; flex-direction: column; gap: 4px; }
+.wb-refine-sublab { font-size: 11px; color: var(--wb-text-2); }
+.wb-refine-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.wb-refine-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  padding: 1px 4px 1px 7px; border-radius: 10px;
+  background: color-mix(in srgb, var(--wb-accent) 14%, transparent); color: var(--wb-text);
+}
+.wb-refine-chip-x { border: none; background: none; color: var(--wb-text-2); cursor: pointer; font-size: 13px; line-height: 1; padding: 0; }
+.wb-refine-chip-x:hover { color: var(--wb-danger, #d13438); }
+.wb-refine-chip-add { min-width: 110px; flex: 1; }
+.wb-refine-lits { display: flex; flex-direction: column; gap: 4px; }
+.wb-refine-lit { display: flex; align-items: center; gap: 8px; }
+.wb-refine-lit-val { font-family: var(--wb-mono, monospace); font-size: 12px; color: var(--wb-text); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-refine-knob { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.wb-refine-knob-type { font-size: 11px; padding: 2px 4px; background: var(--wb-bg); color: var(--wb-text); border: 1px solid var(--wb-border); border-radius: 3px; }
+.wb-refine-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.wb-refine-foot-spacer { flex: 1; }
+.wb-refine-foot button { padding: 5px 14px; font-size: 12px; border-radius: 4px; cursor: pointer; border: 1px solid var(--wb-border); background: transparent; color: var(--wb-text); }
+.wb-refine-delete { color: var(--wb-danger, #d13438) !important; }
+.wb-refine-save { background: var(--wb-accent) !important; color: #fff !important; border-color: var(--wb-accent) !important; font-weight: 600; }
+.wb-refine-push { background: color-mix(in srgb, var(--wb-accent) 18%, transparent) !important; color: var(--wb-accent) !important; border-color: var(--wb-accent) !important; font-weight: 600; }
 
 /* ── stage 3: multi-select + "make a row view" ─────────────── */
 .wb-grid-col-selected { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); }

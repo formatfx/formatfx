@@ -4,6 +4,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { EditorState, CARD_SEGMENT } from './state';
+import { gridColumnField } from './gridScaffold';
+import type { SPElement } from '../core/types';
 
 function withCard(): EditorState {
   const s = new EditorState();
@@ -180,6 +182,120 @@ describe('reparentNode', () => {
     const before = JSON.stringify(s.doc);
     s.reparentNode([0], [0, 0]); // try to move A into its own child B
     expect(JSON.stringify(s.doc)).toBe(before);
+  });
+});
+
+describe('applyColumnSubtype: snapshot apply as ONE undoable mutation (US-3)', () => {
+  function colPath(s: EditorState, fieldName: string): number[] {
+    const kids = s.doc.root.children ?? [];
+    return [kids.findIndex((c) => gridColumnField(c) === fieldName)];
+  }
+
+  it('registers the formatter, CFR-wires the cell, tags the field — and one undo reverts all three', () => {
+    const s = new EditorState(); // grid-first default doc
+    const field = s.fields.find((f) => f.name === 'DueDate')!; // an unformatted column
+    const path = colPath(s, 'DueDate');
+    const baked: SPElement = { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' };
+
+    s.applyColumnSubtype('DueDate', baked, 'date-badge', {}, path);
+
+    expect(field.subtype).toBe('date-badge');
+    expect(field.subtypeArgs).toEqual({});
+    expect(s.columnRefs['DueDate']).toBe(baked);
+    expect(s.nodeAt(path)?.columnFormatterReference).toBeTruthy();
+
+    s.undo(); // single Ctrl+Z
+    expect(s.nodeAt(path)?.columnFormatterReference).toBeFalsy();
+    expect(field.subtype).toBeUndefined();
+    expect(field.subtypeArgs).toBeUndefined();
+  });
+
+  it('redo re-applies the tag and the formatter together', () => {
+    const s = new EditorState();
+    const field = s.fields.find((f) => f.name === 'DueDate')!;
+    const path = colPath(s, 'DueDate');
+    s.applyColumnSubtype('DueDate', { elmType: 'div', txtContent: 'x' }, 'date-badge', {}, path);
+    s.undo();
+    s.redo();
+    expect(field.subtype).toBe('date-badge');
+    expect(s.nodeAt(path)?.columnFormatterReference).toBeTruthy();
+  });
+
+  it('does not entangle structural field edits with the doc undo (no regression)', () => {
+    const s = new EditorState();
+    const path = colPath(s, 'DueDate');
+    s.applyColumnSubtype('DueDate', { elmType: 'div', txtContent: 'x' }, 'date-badge', {}, path);
+    s.fields.push({ name: 'Extra', type: 'text' }); // a later, non-snapshotting edit
+    s.undo(); // undoing the apply must NOT remove the field added afterwards
+    expect(s.fields.some((f) => f.name === 'Extra')).toBe(true);
+    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBeUndefined();
+  });
+});
+
+describe('pushSubtypeUpdate: batched re-bake, one undo reverts all columns (US-7)', () => {
+  it('re-bakes every column tagged with the subtype from its stored args', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    const b = s.fields.find((f) => f.name === 'Title')!;
+    a.subtype = 'cc'; a.subtypeArgs = {};
+    b.subtype = 'cc'; b.subtypeArgs = {};
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    s.columnRefs['Title'] = { elmType: 'div', txtContent: 'OLD' };
+
+    const n = s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'NEW' }));
+    expect(n).toBe(2);
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
+    expect(s.columnRefs['Title'].txtContent).toBe('NEW');
+
+    s.undo(); // ONE Ctrl+Z reverts BOTH columns
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+    expect(s.columnRefs['Title'].txtContent).toBe('OLD');
+
+    s.redo(); // and redo re-applies the whole batch
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
+    expect(s.columnRefs['Title'].txtContent).toBe('NEW');
+  });
+
+  it('overwrites a hand-edited column and Ctrl+Z recovers it (spec edge case)', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    a.subtype = 'cc'; a.subtypeArgs = {};
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'HAND-EDITED' }; // a maker's hand-edit
+    s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'REBAKED' }));
+    expect(s.columnRefs['DueDate'].txtContent).toBe('REBAKED'); // hand-edit overwritten
+    s.undo();
+    expect(s.columnRefs['DueDate'].txtContent).toBe('HAND-EDITED'); // recovered
+  });
+
+  it('a push and a prior doc edit unwind in order (interleaved)', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    a.subtype = 'cc'; a.subtypeArgs = {};
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    s.insertNode({ elmType: 'span', txtContent: 'x' });   // a doc mutation
+    const docAfterInsert = JSON.stringify(s.doc);
+    s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'NEW' }));
+    s.undo(); // undo the push only
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+    expect(JSON.stringify(s.doc)).toBe(docAfterInsert);   // the insert survived
+    s.undo(); // undo the doc edit
+    expect(JSON.stringify(s.doc)).not.toBe(docAfterInsert);
+  });
+
+  it('re-bakes from each column\'s own stored subtypeArgs', () => {
+    const s = new EditorState();
+    const a = s.fields.find((f) => f.name === 'DueDate')!;
+    a.subtype = 'cc'; a.subtypeArgs = { Symbol: '€' };
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'x' };
+    s.pushSubtypeUpdate('cc', (args) => ({ elmType: 'div', txtContent: String(args.Symbol ?? '?') }));
+    expect(s.columnRefs['DueDate'].txtContent).toBe('€');
+  });
+
+  it('returns 0 and snapshots nothing when no column uses the subtype', () => {
+    const s = new EditorState();
+    const n = s.pushSubtypeUpdate('nobody', () => ({ elmType: 'div' }));
+    expect(n).toBe(0);
+    s.undo(); // nothing to undo — no throw, no change
   });
 });
 

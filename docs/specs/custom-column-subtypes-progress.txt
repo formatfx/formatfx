@@ -1,0 +1,35 @@
+CUSTOM COLUMN SUBTYPES — IMPLEMENTATION PROGRESS
+Finalized: 2026-06-22
+Spec: docs/specs/custom-column-subtypes.md
+
+Legend: [PENDING] [IN_PROGRESS] [DONE]
+
+PHASE 1 — Foundation (data model, storage, seeds)
+  [PENDING] US-1  Subtype data model + store (wb-subtypes)
+  [PENDING] US-2  Seed catalog (existing presets re-expressed + Money)
+  Verify: npm run build && npm test
+
+PHASE 2 — Apply core (catalog menu, apply, knob form)
+  [PENDING] US-3  Catalog menu + zero-knob apply (one undoable mutation)
+  [PENDING] US-4  Apply-time knob form (typed widgets, validation, bake)
+  Verify: npm run build && npm test && Playwright apply specs
+
+PHASE 3 — Authoring (save-as, refine/knobs, push)
+  [PENDING] US-5  Save-as birth (auto-derived vocab, persist)
+  [PENDING] US-6  Refine modal + full parameter editor (literal checklist)
+  [PENDING] US-7  Push-update (overwrite all, one batched undoable mutation)
+  Verify: npm run build && npm test && Playwright authoring specs
+
+PHASE 4 — Bar rewiring (strict vocab)
+  [PENDING] US-8  fxSuggest reads subtype vocab; strict replace + empty fallback
+  Verify: npm run build && npm test (fxSuggest contract) && Playwright bar spec
+
+DEFINITION OF DONE
+  [PENDING] All acceptance criteria pass
+  [PENDING] All four phases verified
+  [PENDING] npm test green; Playwright green where browser available
+  [PENDING] npm run build succeeds; typecheck/lint clean
+  [PENDING] No existing localStorage key or wb- class renamed
+
+OPEN / BLOCKED
+  - Elapsed/Until seeds blocked on owner's relative-time expression (out of v1)

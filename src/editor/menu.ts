@@ -10,6 +10,11 @@ export interface MenuItem {
   icon: string;
   label: string;
   title?: string;
+  /** Optional trailing chip, e.g. "Built-in" / "Yours" on the subtype catalog. */
+  badge?: string;
+  /** Optional trailing affordance (e.g. ⋯ "Refine") — its own click, distinct
+   *  from the row's primary `fn`. */
+  action?: { icon: string; title: string; fn: () => void };
   fn: () => void;
 }
 
@@ -38,15 +43,38 @@ export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): 
   head.textContent = title;
   menu.appendChild(head);
   for (const item of items) {
+    const row = document.createElement('div');
+    row.className = 'wb-menu-row';
     const b = document.createElement('button');
+    b.className = 'wb-menu-main';
     b.innerHTML = `<i class="ms-Icon ms-Icon--${item.icon}" aria-hidden="true"></i><span></span>`;
     (b.lastChild as HTMLElement).textContent = item.label;
+    if (item.badge) {
+      const chip = document.createElement('span');
+      chip.className = 'wb-menu-badge';
+      chip.textContent = item.badge;
+      b.appendChild(chip);
+    }
     if (item.title) b.title = item.title;
     b.addEventListener('click', () => {
       closeMenu();
       item.fn();
     });
-    menu.appendChild(b);
+    row.appendChild(b);
+    if (item.action) {
+      const a = document.createElement('button');
+      a.className = 'wb-menu-action';
+      a.innerHTML = `<i class="ms-Icon ms-Icon--${item.action.icon}" aria-hidden="true"></i>`;
+      a.title = item.action.title;
+      a.setAttribute('aria-label', item.action.title);
+      a.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeMenu();
+        item.action!.fn();
+      });
+      row.appendChild(a);
+    }
+    menu.appendChild(row);
   }
   document.body.appendChild(menu);
   const mr = menu.getBoundingClientRect();

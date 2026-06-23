@@ -5,7 +5,7 @@
  * that renders correctly in the column context.
  */
 import { describe, it, expect } from 'vitest';
-import { columnPresetsFor, buildColumnPreset } from './columnPresets';
+import { buildColumnPreset } from './columnPresets';
 import { renderElement } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
 import type { MockField } from '../core/types';
@@ -22,26 +22,6 @@ function ctx(row: Record<string, unknown>, currentFieldName: string): EvalContex
     now: new Date(),
   };
 }
-
-describe('columnPresetsFor: type-aware, confident matches only', () => {
-  it('offers people presets for a multi-person column', () => {
-    expect(columnPresetsFor('personMulti').map((p) => p.id)).toEqual(['facepile', 'member-count']);
-  });
-  it('offers status looks for choice and bars for number', () => {
-    expect(columnPresetsFor('choice').map((p) => p.id)).toContain('status-pill');
-    expect(columnPresetsFor('number').map((p) => p.id)).toContain('data-bar');
-  });
-  it('returns nothing for types with no confident preset (manual only)', () => {
-    expect(columnPresetsFor('boolean')).toEqual([]);
-    expect(columnPresetsFor('note')).toEqual([]);
-  });
-  it('every option carries label/description/icon from the palette', () => {
-    const opt = columnPresetsFor('date')[0];
-    expect(opt.label).toBeTruthy();
-    expect(opt.description).toBeTruthy();
-    expect(opt.icon).toBeTruthy();
-  });
-});
 
 describe('buildColumnPreset: a real @currentField column formatter', () => {
   const assignedTo: MockField = { name: 'AssignedTo', type: 'personMulti' };

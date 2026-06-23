@@ -49,14 +49,49 @@ function playgroundValues(prop: string | undefined): string[] {
   return (STYLE_VALUE_SUGGESTIONS[prop] ?? []).filter((v) => !v.startsWith('='));
 }
 
-/** Suggestions for a slot, ordered useful-first; de-duplicated. */
-export function fxSuggestions(slot: FxSlot, fields: MockField[]): string[] {
+/** Map a recipe-relative vocab ref (@currentField / [$Field] / [!Field], each
+ *  optionally with a `.prop` tail) to the bar's Excel form (=[Display Name.prop]);
+ *  already-formula tokens pass through, and a ref to a column not in the schema
+ *  is dropped. The dotted tail (e.g. .title / .lookupValue) is preserved so a
+ *  person/lookup recipe's vocab keeps its display sub-field. */
+function excelRef(field: MockField, prop?: string): string {
+  return `=[${field.displayName ?? field.name}${prop ? `.${prop}` : ''}]`;
+}
+function vocabRefToExcel(token: string, fields: MockField[], current?: MockField): string | null {
+  if (token.startsWith('=')) return token;
+  const cur = token.match(/^@currentField(?:\.([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*))?$/);
+  if (cur) return current ? excelRef(current, cur[1]) : null;
+  const m = token.match(/^\[[$!]([A-Za-z0-9_]+)(?:\.([^\]]+))?\]$/);
+  if (m) { const f = fields.find((x) => x.name === m[1]); return f ? excelRef(f, m[2]) : null; }
+  return null;
+}
+
+/** Subtype vocab the fx bar should offer for the column under @currentField. */
+export interface SuggestVocab { refs: string[]; values: string[]; }
+
+/**
+ * Suggestions for a slot, ordered useful-first; de-duplicated.
+ *
+ * US-8: when `opts.vocab` is a column-subtype's NON-EMPTY vocab, the broad
+ * `...refs`/`...values` padding is replaced by ONLY that vocab (refs mapped to
+ * the bar's Excel form for the current column); an empty vocab or no subtype
+ * falls back to today's padding unchanged. The curated per-slot templates,
+ * palette and idioms are kept either way.
+ */
+export function fxSuggestions(
+  slot: FxSlot,
+  fields: MockField[],
+  opts?: { current?: MockField; vocab?: SuggestVocab },
+): string[] {
   const out: string[] = [];
   const choice = sampleChoice(find(fields, 'choice', 'choiceMulti'));
   const date = find(fields, 'date');
   const num = find(fields, 'number', 'currency');
   const bool = find(fields, 'boolean');
-  const refs = fields.map((f) => `=${fieldRef(f)}`);
+  const strictVocab = !!opts?.vocab && (opts.vocab.refs.length > 0 || opts.vocab.values.length > 0);
+  const refs = strictVocab
+    ? dedupe(opts!.vocab!.refs.map((r) => vocabRefToExcel(r, fields, opts!.current)).filter((x): x is string => x !== null))
+    : fields.map((f) => `=${fieldRef(f)}`);
 
   if (slot.kind === 'text') {
     if (choice) out.push(`=IF(${fieldRef(choice.field)} = "${choice.value}", "${choice.value} ✓", ${fieldRef(choice.field)})`);
@@ -79,7 +114,7 @@ export function fxSuggestions(slot: FxSlot, fields: MockField[]): string[] {
   }
 
   const kind = styleKindOf(slot.prop!);
-  const values = playgroundValues(slot.prop);
+  const values = strictVocab ? opts!.vocab!.values : playgroundValues(slot.prop);
   if (kind === 'color') {
     if (choice) {
       const c = condColor(suggestChoiceColors([choice.value]).get(choice.value) ?? 'blue');

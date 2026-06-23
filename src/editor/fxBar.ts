@@ -20,6 +20,7 @@
 import { state } from './state';
 import { slotsFor, readSlot, writeSlot, type FxSlot } from './fxSlots';
 import { fxSuggestions } from './fxSuggest';
+import { resolveSubtype } from './subtypes';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
 import type { SPExpr } from '../core/types';
@@ -105,7 +106,11 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // ── the editor (Excel dialect) ──
     const stored = readSlot(node, slot);
     const view = toEditorView(stored);
-    const suggestions = fxSuggestions(slot, state.fields);
+    // US-8: when @currentField's column wears a subtype, the bar offers that
+    // subtype's vocab instead of the broad all-columns padding.
+    const current = state.fields.find((f) => f.name === state.currentFieldName);
+    const vocab = current?.subtype ? resolveSubtype(current.subtype)?.vocab : undefined;
+    const suggestions = fxSuggestions(slot, state.fields, { current, vocab });
     const placeholder = slotPlaceholder(slot, suggestions);
     // a literal icon name currently on the cell (so the menu marks it selected)
     const currentIcon = typeof stored === 'string' && !stored.startsWith('=') ? stored : undefined;

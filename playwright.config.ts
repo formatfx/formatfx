@@ -16,9 +16,10 @@ export default defineConfig({
   use: {
     // PW_CHANNEL=bundled uses Playwright's own chromium (CI runners);
     // PW_EXECUTABLE points at any chromium binary (containers with no download);
+    // --no-sandbox lets it launch as root in a container (harmless elsewhere).
     // default is the locally installed Edge so corporate machines need no download
     ...(process.env.PW_EXECUTABLE
-      ? { launchOptions: { executablePath: process.env.PW_EXECUTABLE } }
+      ? { launchOptions: { executablePath: process.env.PW_EXECUTABLE, args: ['--no-sandbox'] } }
       : channel === 'bundled' ? {} : { channel }),
     viewport: { width: 1440, height: 900 },
     screenshot: 'on',

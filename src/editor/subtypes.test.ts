@@ -1,0 +1,695 @@
+/**
+ * editor/subtypes.test.ts — contract for the custom-subtype store (US-1).
+ *
+ * The store persists ONLY maker-authored (custom) subtypes to the new
+ * `wb-subtypes` localStorage key, schema-versioned `{ version: 1, subtypes }`.
+ * Built-in seeds live in code (US-2), never here. Every read/write is
+ * try/catch-guarded: a corrupt, missing, or incompatible key yields an empty
+ * catalog and never throws (private-mode safe, like wb-ui-prefs).
+ */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype,
+  seedSubtypes, subtypesForType, bakeSubtype, knobError, coerceKnob,
+  deriveVocab, subtypeFromColumn, isBuiltinSubtype,
+  extractLiterals, promoteLiteral, demoteLiteral, isPromoted, forkSubtype,
+} from './subtypes';
+import type { Subtype, SPElement, Knob, MockField } from '../core/types';
+import { lintDocument } from '../core/linter';
+import { renderElement } from '../core/renderer';
+import type { EvalContext } from '../core/expressions';
+
+function ctx(row: Record<string, unknown>, currentFieldName: string): EvalContext {
+  return {
+    row: row as EvalContext['row'],
+    rowIndex: 0,
+    currentFieldName,
+    me: { title: 'Me', email: 'me@x.com' },
+    iterators: {},
+    iteratorIndex: {},
+    displayNames: {},
+    now: new Date(),
+  };
+}
+
+/** A seed "validates" when its formatter raises no error-severity lint issues. */
+function lintErrors(formatter: SPElement): string[] {
+  return lintDocument({ kind: 'column', root: formatter })
+    .filter((i) => i.severity === 'error')
+    .map((i) => i.rule);
+}
+
+function sample(over: Partial<Subtype> = {}): Subtype {
+  return {
+    id: 'c1',
+    name: 'Money (mine)',
+    origin: 'custom',
+    baseTypes: ['number', 'currency'],
+    formatter: { elmType: 'div', txtContent: '=@currentField' },
+    knobs: [],
+    vocab: { refs: [], values: [] },
+    ...over,
+  };
+}
+
+beforeEach(() => {
+  try { localStorage.clear(); } catch { /* private mode */ }
+});
+
+describe('subtypes store: round-trip persistence', () => {
+  it('saves and lists a custom subtype under the versioned envelope', () => {
+    expect(listSubtypes()).toEqual([]);
+    saveSubtype(sample());
+    expect(listSubtypes().map((s) => s.id)).toEqual(['c1']);
+    expect(getSubtype('c1')?.name).toBe('Money (mine)');
+    const raw = JSON.parse(localStorage.getItem(SUBTYPES_KEY)!);
+    expect(raw.version).toBe(1);
+    expect(raw.subtypes).toHaveLength(1);
+  });
+
+  it('only the new wb-subtypes key is written (existing keys untouched)', () => {
+    localStorage.setItem('wb-ui-prefs', '{"studioOpen":true}');
+    saveSubtype(sample());
+    expect(localStorage.getItem('wb-ui-prefs')).toBe('{"studioOpen":true}');
+    expect(localStorage.getItem(SUBTYPES_KEY)).not.toBeNull();
+  });
+
+  it('upserts by id (one record per id), preserving catalog order', () => {
+    saveSubtype(sample({ id: 'a', name: 'A' }));
+    saveSubtype(sample({ id: 'b', name: 'B' }));
+    saveSubtype(sample({ id: 'a', name: 'A2' })); // re-save must not jump to the end
+    expect(listSubtypes().map((s) => s.id)).toEqual(['a', 'b']);
+    expect(getSubtype('a')?.name).toBe('A2');
+  });
+
+  it('refuses to store a builtin-origin subtype (seeds live in code, not the store)', () => {
+    saveSubtype(sample({ id: 'seed', origin: 'builtin' }));
+    expect(listSubtypes()).toEqual([]);
+  });
+
+  it('deletes by id, leaving the rest', () => {
+    saveSubtype(sample());
+    saveSubtype(sample({ id: 'c2', name: 'Other' }));
+    deleteSubtype('c1');
+    expect(listSubtypes().map((s) => s.id)).toEqual(['c2']);
+    expect(getSubtype('c1')).toBeUndefined();
+  });
+});
+
+describe('subtypes store: corrupt/missing/version → empty catalog, never throws', () => {
+  it('missing key yields an empty catalog', () => {
+    expect(localStorage.getItem(SUBTYPES_KEY)).toBeNull();
+    expect(listSubtypes()).toEqual([]);
+    expect(getSubtype('anything')).toBeUndefined();
+  });
+
+  it('corrupt JSON yields an empty catalog', () => {
+    localStorage.setItem(SUBTYPES_KEY, '{not valid json');
+    expect(() => listSubtypes()).not.toThrow();
+    expect(listSubtypes()).toEqual([]);
+  });
+
+  it('an incompatible version yields an empty catalog (version guard)', () => {
+    localStorage.setItem(SUBTYPES_KEY, JSON.stringify({ version: 99, subtypes: [sample()] }));
+    expect(listSubtypes()).toEqual([]);
+  });
+
+  it('a malformed envelope (subtypes not an array) yields an empty catalog', () => {
+    localStorage.setItem(SUBTYPES_KEY, JSON.stringify({ version: 1, subtypes: 'nope' }));
+    expect(listSubtypes()).toEqual([]);
+  });
+
+  it('drops only the corrupt records from an otherwise valid catalog', () => {
+    const blob = {
+      version: 1,
+      subtypes: [
+        sample(),
+        { id: 'bad' },                                  // missing required fields
+        { ...sample(), id: 'b2', baseTypes: 'number' }, // baseTypes not an array
+        { ...sample(), id: 'seed', origin: 'builtin' }, // seeds never live in the store
+        null,
+      ],
+    };
+    localStorage.setItem(SUBTYPES_KEY, JSON.stringify(blob));
+    expect(listSubtypes().map((s) => s.id)).toEqual(['c1']);
+    expect(listSubtypes()).toHaveLength(1);
+  });
+
+  it('drops a record whose vocab.refs/values are not arrays (downstream assumes arrays)', () => {
+    const blob = {
+      version: 1,
+      subtypes: [
+        sample(),
+        { ...sample(), id: 'bv1', vocab: {} },                       // vocab missing refs/values
+        { ...sample(), id: 'bv2', vocab: { refs: 'x', values: [] } }, // refs not an array
+      ],
+    };
+    localStorage.setItem(SUBTYPES_KEY, JSON.stringify(blob));
+    expect(listSubtypes().map((s) => s.id)).toEqual(['c1']);
+  });
+});
+
+describe('subtypes store: private-mode fallback (localStorage throws)', () => {
+  let originalGet: typeof localStorage.getItem;
+  let originalSet: typeof localStorage.setItem;
+  afterEach(() => {
+    localStorage.getItem = originalGet;
+    localStorage.setItem = originalSet;
+  });
+
+  it('reads fall back to empty when getItem throws', () => {
+    originalGet = localStorage.getItem;
+    originalSet = localStorage.setItem;
+    localStorage.getItem = () => { throw new Error('SecurityError'); };
+    expect(() => listSubtypes()).not.toThrow();
+    expect(listSubtypes()).toEqual([]);
+    expect(() => getSubtype('c1')).not.toThrow();
+  });
+
+  it('writes are swallowed when setItem throws', () => {
+    originalGet = localStorage.getItem;
+    originalSet = localStorage.setItem;
+    localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    expect(() => saveSubtype(sample())).not.toThrow();
+    expect(() => deleteSubtype('c1')).not.toThrow();
+  });
+});
+
+// ─── US-2: built-in seed catalog (presets re-expressed + Money) ──────────────
+
+describe('seed catalog: every column preset re-expressed as a builtin subtype', () => {
+  const seeds = seedSubtypes();
+
+  it('exposes every existing columnPresets entry as a builtin subtype', () => {
+    const ids = seeds.map((s) => s.id);
+    for (const id of [
+      'data-bar', 'status-pill', 'traffic-light', 'severity-class', 'progress-ring',
+      'star-rating', 'date-badge', 'day-counter', 'persona', 'facepile',
+      'member-count', 'lookup-chip', 'link',
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it('every seed is origin:builtin, has >=1 baseType, and a schema-valid formatter', () => {
+    expect(seeds.length).toBeGreaterThan(0);
+    for (const s of seeds) {
+      expect(s.origin).toBe('builtin');
+      expect(s.baseTypes.length).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(s.knobs)).toBe(true);
+      expect(lintErrors(s.formatter)).toEqual([]);
+    }
+  });
+
+  it('carries the correct baseTypes (BY_TYPE inverted)', () => {
+    const byId = Object.fromEntries(seeds.map((s) => [s.id, s]));
+    expect(byId['data-bar'].baseTypes).toEqual(expect.arrayContaining(['number', 'currency']));
+    expect(byId['status-pill'].baseTypes).toEqual(['choice']);
+    expect(byId['facepile'].baseTypes).toEqual(['personMulti']);
+    expect(byId['lookup-chip'].baseTypes).toEqual(expect.arrayContaining(['lookup', 'lookupMulti']));
+    expect(byId['persona'].baseTypes).toEqual(['person']);
+    expect(byId['link'].baseTypes).toEqual(['hyperlink']);
+  });
+
+  it('seed formatters are in @currentField terms (reusable across columns)', () => {
+    const pill = seedSubtypes().find((s) => s.id === 'status-pill')!;
+    expect(JSON.stringify(pill.formatter)).toContain('@currentField');
+  });
+
+  it('every preset seed carries a hand-authored, noise-free vocab', () => {
+    // Hand-authored (not derived): the recipe centers on the column's value, so
+    // every preset seed offers @currentField with no values — no CSS class
+    // tokens (sp-field-*/ms-*), URLs, iterator names, or size-arg fragments.
+    const noise = /^(sp-field-|ms-|https?:|_)|\s$|^\s/;
+    for (const s of seeds.filter((x) => x.id !== 'money')) {
+      expect(s.vocab.refs).toEqual(['@currentField']);
+      expect(s.vocab.values).toEqual([]);
+      for (const v of [...s.vocab.refs, ...s.vocab.values]) expect(v).not.toMatch(noise);
+    }
+  });
+});
+
+describe('seed catalog: the new Money value→text seed', () => {
+  const money = seedSubtypes().find((s) => s.id === 'money')!;
+
+  it('exists with number + currency baseTypes', () => {
+    expect(money).toBeDefined();
+    expect(money.origin).toBe('builtin');
+    expect(money.baseTypes).toEqual(expect.arrayContaining(['number', 'currency']));
+  });
+
+  it('exposes the symbol (text "$") and decimals (number 2) knobs', () => {
+    const byLabel = Object.fromEntries(money.knobs.map((k) => [k.label, k]));
+    expect(money.knobs).toHaveLength(2);
+    expect(byLabel['Symbol']).toMatchObject({ type: 'text', default: '$' });
+    expect(byLabel['Decimals']).toMatchObject({ type: 'number', default: 2 });
+  });
+
+  it('keeps the "$" and decimals literals verbatim so apply/refine can find them', () => {
+    const json = JSON.stringify(money.formatter);
+    expect(json).toContain("'$'");
+    expect(json).toContain('pow(10,2)');
+  });
+
+  it('has a schema-valid formatter that renders a money string', () => {
+    expect(lintErrors(money.formatter)).toEqual([]);
+    const node = renderElement(money.formatter, ctx({ Amount: 1234.5 }, 'Amount'));
+    expect(node.textContent).toBe('$1234.5');
+  });
+
+  it('renders nothing (not "$NaN") for an empty cell', () => {
+    const node = renderElement(money.formatter, ctx({ Amount: '' }, 'Amount'));
+    expect(node.textContent).toBe('');
+  });
+
+  it('hand-authored vocab offers the value plus common currency symbols', () => {
+    expect(money.vocab.refs).toContain('@currentField');
+    expect(money.vocab.values).toEqual(expect.arrayContaining(['$', '€', '£']));
+  });
+});
+
+// ─── US-3: type-filtered catalog (seeds + customs) ───────────────────────────
+
+describe('subtypesForType: the catalog a column type sees (refuse-don\'t-guess)', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+
+  it('lists only seeds whose baseTypes include the type', () => {
+    const forNumber = subtypesForType('number').map((s) => s.id);
+    expect(forNumber).toContain('data-bar');
+    expect(forNumber).toContain('money');
+    expect(forNumber).not.toContain('status-pill'); // choice-only
+    expect(forNumber).not.toContain('facepile');     // personMulti-only
+    const forChoice = subtypesForType('choice').map((s) => s.id);
+    expect(forChoice).toContain('status-pill');
+    expect(forChoice).not.toContain('data-bar');
+  });
+
+  it('appends saved customs that fit, after the builtin seeds; excludes non-fitting ones', () => {
+    saveSubtype(sample({ id: 'c-num', name: 'My Number', baseTypes: ['number'] }));
+    saveSubtype(sample({ id: 'c-choice', name: 'My Choice', baseTypes: ['choice'] }));
+    const list = subtypesForType('number');
+    const mine = list.find((s) => s.id === 'c-num');
+    expect(mine?.origin).toBe('custom');
+    expect(list.map((s) => s.id)).not.toContain('c-choice');
+    // seeds come before customs
+    expect(list.findIndex((s) => s.id === 'data-bar')).toBeLessThan(list.findIndex((s) => s.id === 'c-num'));
+  });
+
+  it('returns empty for a type no subtype fits', () => {
+    expect(subtypesForType('note')).toEqual([]);
+    expect(subtypesForType('boolean')).toEqual([]);
+  });
+
+  it('a custom never shadows a built-in: an id collision is dropped, not double-listed', () => {
+    saveSubtype(sample({ id: 'money', name: 'Fake Money', baseTypes: ['number'] }));
+    const moneyEntries = subtypesForType('number').filter((s) => s.id === 'money');
+    expect(moneyEntries).toHaveLength(1);
+    expect(moneyEntries[0].origin).toBe('builtin');
+  });
+});
+
+// ─── US-4: knob baking + apply-time validation ───────────────────────────────
+
+describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutated)', () => {
+  it('bakes Money symbol + decimals into every occurrence and renders accordingly', () => {
+    const money = seedSubtypes().find((s) => s.id === 'money')!;
+    const before = JSON.stringify(money.formatter);
+    const baked = bakeSubtype(money, { '$': '€', '2': 0 }); // args keyed by knob.path
+    const json = JSON.stringify(baked);
+    expect(json).toContain("'€'");
+    expect(json).not.toContain("'$'");
+    expect(json).toContain('pow(10,0)');
+    expect(json).not.toContain('pow(10,2)');
+    expect(JSON.stringify(money.formatter)).toBe(before); // source untouched
+    // floor(1234.5 * 10^0 + 0.5) / 10^0 = 1235
+    const node = renderElement(baked, ctx({ Amount: 1234.5 }, 'Amount'));
+    expect(node.textContent).toBe('€1235');
+  });
+
+  it('falls back to a knob default when its arg is missing', () => {
+    const money = seedSubtypes().find((s) => s.id === 'money')!;
+    const baked = bakeSubtype(money, { '$': '€' }); // decimals (path '2') omitted → default 2
+    expect(JSON.stringify(baked)).toContain('pow(10,2)');
+    expect(JSON.stringify(baked)).toContain("'€'");
+  });
+
+  it('keys args by knob.path, so a label rename never orphans an applied answer', () => {
+    const original: Subtype = {
+      id: 's', name: 'x', origin: 'custom', baseTypes: ['number'], vocab: { refs: [], values: [] },
+      knobs: [{ path: '$', label: 'Symbol', type: 'text', default: '$' }],
+      formatter: { elmType: 'div', txtContent: "='$'+toString(@currentField)" },
+    };
+    const storedArgs = { '$': '€' }; // field.subtypeArgs, keyed by the stable path
+    const renamed: Subtype = { ...original, knobs: [{ ...original.knobs[0], label: 'Currency symbol' }] };
+    // re-baking the RENAMED subtype from the column's stored args still applies the answer
+    expect(JSON.stringify(bakeSubtype(renamed, storedArgs))).toContain("'€'");
+  });
+
+  it('a zero-knob subtype bakes to a fresh clone (never aliases the seed)', () => {
+    const pill = seedSubtypes().find((s) => s.id === 'status-pill')!;
+    const baked = bakeSubtype(pill, {});
+    expect(baked).not.toBe(pill.formatter);
+    expect(JSON.stringify(baked)).toBe(JSON.stringify(pill.formatter));
+  });
+
+  it('is order-independent: a value one knob bakes is never re-matched by a later knob', () => {
+    const st: Subtype = {
+      id: 'c', name: 'x', origin: 'custom', baseTypes: ['choice'],
+      knobs: [
+        { path: 'A', label: 'First', type: 'text', default: 'A' },
+        { path: 'B', label: 'Second', type: 'text', default: 'B' },
+      ],
+      vocab: { refs: [], values: [] },
+      formatter: { elmType: 'div', txtContent: "=if(@currentField=='A','B','')" },
+    };
+    // First: A→B, Second: B→C. A naive sequential bake would turn the baked 'B'
+    // back into 'C'; the single-pass bake must yield exactly =if(...=='B','C','').
+    const baked = bakeSubtype(st, { A: 'B', B: 'C' }); // keyed by path ('A','B')
+    expect(baked.txtContent).toBe("=if(@currentField=='B','C','')");
+  });
+
+  it('does not corrupt embedded digits when baking a number knob (by token, not substring)', () => {
+    const st: Subtype = {
+      id: 'n', name: 'x', origin: 'custom', baseTypes: ['number'],
+      knobs: [{ path: '2', label: 'N', type: 'number', default: 2 }],
+      vocab: { refs: [], values: [] },
+      formatter: { elmType: 'div', txtContent: '=@currentField*0.25+pow(10,2)+120' },
+    };
+    const baked = bakeSubtype(st, { '2': 9 }); // keyed by path
+    // only the standalone 2 changes; 0.25, 120 are untouched
+    expect(baked.txtContent).toBe('=@currentField*0.25+pow(10,9)+120');
+  });
+
+  it('a number knob never rewrites a digit-run inside a quoted string literal', () => {
+    // progress-ring shape: promoting the /100 divisor must not touch the quoted
+    // SVG circumference ',100'
+    const st: Subtype = {
+      id: 'ring', name: 'ring', origin: 'custom', baseTypes: ['number'],
+      knobs: [{ path: '100', label: 'Scale', type: 'number', default: 100 }],
+      vocab: { refs: [], values: [] },
+      formatter: { elmType: 'path', attributes: { 'stroke-dasharray': "=(@currentField*97/100)+',100'" } },
+    };
+    const baked = bakeSubtype(st, { '100': 90 }); // keyed by path
+    expect(baked.attributes!['stroke-dasharray']).toBe("=(@currentField*97/90)+',100'");
+  });
+
+  it('bakes a quoted text literal and a bare color style value, by value', () => {
+    const st: Subtype = {
+      id: 'c', name: 'x', origin: 'custom', baseTypes: ['choice'],
+      knobs: [
+        { path: 'Done', label: 'Match', type: 'text', default: 'Done' },
+        { path: '#107c10', label: 'Color', type: 'color', default: '#107c10' },
+      ],
+      vocab: { refs: [], values: [] },
+      formatter: {
+        elmType: 'div',
+        txtContent: "=if(@currentField=='Done','✓','')",
+        style: { 'background-color': '#107c10' },
+      },
+    };
+    const baked = bakeSubtype(st, { Done: 'Shipped', '#107c10': '#0078d4' }); // keyed by path
+    expect(JSON.stringify(baked)).toContain("'Shipped'");
+    expect(JSON.stringify(baked)).not.toContain('Done');
+    expect(baked.style!['background-color']).toBe('#0078d4');
+    expect(JSON.stringify(baked)).not.toContain('#107c10');
+  });
+});
+
+describe('knobError / coerceKnob: refuse-and-teach validation', () => {
+  const numberKnob: Knob = { path: '2', label: 'Decimals', type: 'number', default: 2 };
+  const choiceKnob: Knob = { path: 'M', label: 'Size', type: 'choice', default: 'M', choices: ['S', 'M', 'L'] };
+  const textKnob: Knob = { path: '$', label: 'Symbol', type: 'text', default: '$' };
+
+  it('rejects a non-numeric or blank number knob, accepts a number', () => {
+    expect(knobError(numberKnob, coerceKnob(numberKnob, 'abc'))).toMatch(/number/i);
+    expect(knobError(numberKnob, coerceKnob(numberKnob, ''))).toMatch(/number/i); // blank is NOT silently 0
+    expect(knobError(numberKnob, coerceKnob(numberKnob, '   '))).toMatch(/number/i);
+    expect(knobError(numberKnob, coerceKnob(numberKnob, '0'))).toBeNull();
+  });
+
+  it('rejects a choice outside the list', () => {
+    expect(knobError(choiceKnob, 'XL')).toMatch(/one of/i);
+    expect(knobError(choiceKnob, 'L')).toBeNull();
+  });
+
+  it('teaches against a single quote in text (SP strings cannot escape it)', () => {
+    expect(knobError(textKnob, "i'm")).toMatch(/quote/i);
+    expect(knobError(textKnob, '€')).toBeNull();
+  });
+
+  it('coerces raw widget input by knob type', () => {
+    expect(coerceKnob(numberKnob, '3')).toBe(3);
+    expect(coerceKnob({ path: 'x', label: 'On', type: 'bool', default: false }, true)).toBe(true);
+    expect(coerceKnob(textKnob, '€')).toBe('€');
+  });
+});
+
+// ─── US-5: Save-as birth (vocab derivation + custom-subtype creation) ────────
+
+describe('deriveVocab: refs + value literals from a recipe (style-ish literals excluded)', () => {
+  it('collects field refs and branch/display values, dropping colors and sizes', () => {
+    const f: SPElement = {
+      elmType: 'div',
+      txtContent: "=if(@currentField=='','None',@currentField)",
+      style: {
+        'background-color': "=if([$Status]=='Done','#107c10','#737a7f')",
+        'padding': '2px 10px',
+      },
+    };
+    const v = deriveVocab(f);
+    expect(v.refs).toContain('@currentField');
+    expect(v.refs).toContain('[$Status]');
+    expect(v.values).toEqual(expect.arrayContaining(['None', 'Done']));
+    expect(v.values).not.toContain('#107c10'); // a color, not a value
+    expect(v.values).not.toContain('');         // empty literal dropped
+    expect(v.values).not.toContain('2px 10px'); // a bare size, never an expression literal
+  });
+
+  it('never throws on an odd tree and dedupes', () => {
+    const f: SPElement = { elmType: 'div', children: [{ elmType: 'span', txtContent: "=if(@currentField=='Yes','Yes','No')" }] };
+    const v = deriveVocab(f);
+    expect(v.refs).toEqual(['@currentField']);
+    expect(v.values).toEqual(['Yes', 'No']);
+  });
+
+  it('drops the exact noise auto-derivation must never surface', () => {
+    // class tokens, URLs, single-char args, and forEach loop locals are NOT vocab
+    const f: SPElement = {
+      elmType: 'div',
+      children: [{
+        elmType: 'div',
+        forEach: '_person in @currentField',
+        children: [
+          { elmType: 'img', attributes: { src: "=getUserImage([$_person.email],'S')" } },
+          { elmType: 'a', attributes: { href: "='https://x.sharepoint.com/Lists/L/DispForm.aspx?ID='" }, txtContent: "=if(@currentField=='Done','Done','Open')" },
+        ],
+      }],
+      style: {
+        'class': "=if(@currentField=='Done','sp-field-severity--good','ms-bgColor-neutralLighter ms-fontColor-neutralPrimary')",
+        'display': "=if(@currentField=='Done','flex','none')",
+      },
+    };
+    const v = deriveVocab(f);
+    expect(v.values).toContain('Done');
+    expect(v.values).toContain('Open');
+    expect(v.values).not.toContain('S');
+    expect(v.values).not.toContain('flex');
+    expect(v.values.some((x) => /^(sp-|ms-)/.test(x))).toBe(false);
+    expect(v.values.some((x) => /sharepoint|DispForm/i.test(x))).toBe(false);
+    // a forEach loop local is not a column ref
+    expect(v.refs.some((r) => r.includes('_person'))).toBe(false);
+    expect(v.refs).toContain('@currentField');
+  });
+});
+
+describe('subtypeFromColumn: create a custom subtype from a column formatter', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+
+  const choice: MockField = { name: 'Status', type: 'choice' };
+  const formatter: SPElement = {
+    elmType: 'div',
+    txtContent: "=if(@currentField=='','None',@currentField)",
+    style: { 'color': '#0078d4' },
+  };
+
+  it('defaults baseTypes to the source type, snapshots the formatter, derives vocab', () => {
+    const st = subtypeFromColumn({ name: 'My Pill', formatter, field: choice });
+    expect(st.origin).toBe('custom');
+    expect(st.name).toBe('My Pill');
+    expect(st.baseTypes).toEqual(['choice']);
+    expect(st.knobs).toEqual([]);
+    expect(st.formatter).not.toBe(formatter);                 // a snapshot, not an alias
+    expect(JSON.stringify(st.formatter)).toBe(JSON.stringify(formatter));
+    expect(st.vocab.refs).toContain('@currentField');
+    expect(st.vocab.values).toContain('None');
+    expect(st.forkedFrom).toBeUndefined();
+  });
+
+  it('normalizes a [$Field]-form formatter to @currentField so it is reusable across columns', () => {
+    const st = subtypeFromColumn({
+      name: 'Pill', field: choice,
+      formatter: { elmType: 'div', txtContent: "=if([$Status]=='','None',[$Status])" },
+    });
+    expect(JSON.stringify(st.formatter)).toContain('@currentField');
+    expect(JSON.stringify(st.formatter)).not.toContain('[$Status]');
+    expect(st.vocab.refs).toContain('@currentField');
+    expect(st.vocab.refs).not.toContain('[$Status]');
+  });
+
+  it('records forkedFrom when born from a built-in', () => {
+    const st = subtypeFromColumn({ name: 'Forked', formatter, field: choice, forkedFrom: 'status-pill' });
+    expect(st.forkedFrom).toBe('status-pill');
+  });
+
+  it('gets a fresh id and persists as Yours, visible in the type catalog', () => {
+    const a = subtypeFromColumn({ name: 'A', formatter, field: choice });
+    const b = subtypeFromColumn({ name: 'B', formatter, field: choice });
+    expect(a.id).not.toBe(b.id);
+    saveSubtype(a);
+    const inCatalog = subtypesForType('choice').find((s) => s.id === a.id);
+    expect(inCatalog?.origin).toBe('custom');
+    expect(getSubtype(a.id)?.name).toBe('A');
+  });
+});
+
+describe('isBuiltinSubtype: distinguishes seeds from customs', () => {
+  it('is true for a seed id, false otherwise', () => {
+    expect(isBuiltinSubtype('status-pill')).toBe(true);
+    expect(isBuiltinSubtype('money')).toBe(true);
+    expect(isBuiltinSubtype('custom-123')).toBe(false);
+    expect(isBuiltinSubtype('')).toBe(false);
+  });
+});
+
+// ─── US-6: literal extraction + promote/demote (by value) + fork ─────────────
+
+describe('extractLiterals: distinct value-literals with a guessed knob type', () => {
+  const pill: Subtype = {
+    id: 'c-pill', name: 'Pill', origin: 'custom', baseTypes: ['choice'],
+    knobs: [], vocab: { refs: ['@currentField'], values: ['Done'] },
+    formatter: {
+      elmType: 'div',
+      txtContent: "=if(@currentField=='Done','✓ Done',@currentField)",
+      style: { 'background-color': "=if(@currentField=='Done','#107c10','#737a7f')", 'padding': '2px 8px' },
+    },
+  };
+
+  it('pulls quoted strings, colors and bare values; guesses the type; skips refs/empties', () => {
+    const lits = extractLiterals(pill.formatter);
+    const byVal = Object.fromEntries(lits.map((l) => [l.value, l.suggestedType]));
+    expect(byVal['Done']).toBe('text');
+    expect(byVal['✓ Done']).toBe('text');
+    expect(byVal['#107c10']).toBe('color');
+    expect(byVal['#737a7f']).toBe('color');
+    expect(byVal['2px 8px']).toBe('text');                 // a bare literal, still promotable
+    expect(lits.some((l) => l.value.includes('@currentField'))).toBe(false); // a ref, not a literal
+    expect(lits.some((l) => l.value === '')).toBe(false);
+  });
+
+  it('guesses number and bool types', () => {
+    const lits = extractLiterals({ elmType: 'div', txtContent: "=if(@currentField,@currentField*pow(10,2),'no')" });
+    const byVal = Object.fromEntries(lits.map((l) => [l.value, l.suggestedType]));
+    expect(byVal['2']).toBe('number');
+    expect(byVal['10']).toBe('number');
+    const bools = extractLiterals({ elmType: 'div', style: { 'display': "=if(@currentField=='true','flex','none')" } });
+    expect(bools.find((l) => l.value === 'true')?.suggestedType).toBe('bool');
+  });
+
+  it('does not offer raw paint (class tokens, URLs, SVG path data) as bare literals', () => {
+    const lits = extractLiterals({
+      elmType: 'div',
+      attributes: { class: 'ms-bgColor-neutralLighter', href: 'https://x.sharepoint.com/Lists/L' },
+      children: [{ elmType: 'path', attributes: { d: 'M18 2.0845 a 15.9155 15.9155 0 0 1' }, style: { 'fill': '#0078d4' } }],
+    }).map((l) => l.value);
+    expect(lits).not.toContain('ms-bgColor-neutralLighter');
+    expect(lits).not.toContain('https://x.sharepoint.com/Lists/L');
+    expect(lits.some((v) => /^M18/.test(v))).toBe(false);
+    expect(lits).toContain('#0078d4'); // a color stays — it is parameterizable
+  });
+});
+
+describe('refine never alters a column already using the subtype (immutable edits)', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+  it('promote + rename + save leaves a previously-baked formatter untouched', () => {
+    const st = sample({
+      id: 'cc', baseTypes: ['choice'],
+      formatter: { elmType: 'div', txtContent: "=if(@currentField=='Done','#107c10',@currentField)" },
+    });
+    saveSubtype(st);
+    const columnBaked = bakeSubtype(st, {});           // what a column stored at apply time
+    const snapshot = JSON.stringify(columnBaked);
+    // the maker refines: promote a literal, rename, widen baseTypes, save
+    let edited = promoteLiteral(getSubtype('cc')!, '#107c10', { label: 'C', type: 'color' });
+    edited = { ...edited, name: 'Renamed', baseTypes: ['choice', 'choiceMulti'] };
+    saveSubtype(edited);
+    expect(JSON.stringify(columnBaked)).toBe(snapshot); // the column's formatter is unchanged
+    expect(getSubtype('cc')!.name).toBe('Renamed');     // the stored subtype reflects the edit
+    expect(getSubtype('cc')!.knobs).toHaveLength(1);
+  });
+});
+
+describe('promoteLiteral / demoteLiteral / isPromoted: by value, immutable', () => {
+  const pill: Subtype = {
+    id: 'c-pill', name: 'Pill', origin: 'custom', baseTypes: ['choice'],
+    knobs: [], vocab: { refs: [], values: [] },
+    formatter: {
+      elmType: 'div',
+      txtContent: "=if(@currentField=='Done','✓',@currentField)",
+      style: { 'background-color': "=if(@currentField=='Done','#107c10','#737a7f')" },
+    },
+  };
+
+  it('promotes a literal to a typed knob (default = the literal), source untouched', () => {
+    const next = promoteLiteral(pill, '#107c10', { label: 'Done color', type: 'color' });
+    expect(next).not.toBe(pill);
+    expect(pill.knobs).toEqual([]); // immutable source
+    expect(next.knobs.find((k) => k.path === '#107c10')).toMatchObject({ label: 'Done color', type: 'color', default: '#107c10' });
+    expect(isPromoted(next, '#107c10')).toBe(true);
+    // baking the promoted knob updates EVERY occurrence of the value
+    const baked = bakeSubtype(next, { '#107c10': '#0000ff' }); // keyed by path, not the label "Done color"
+    expect(JSON.stringify(baked)).toContain('#0000ff');
+    expect(JSON.stringify(baked)).not.toContain('#107c10');
+  });
+
+  it('coerces a number knob default from the literal', () => {
+    const num: Subtype = { ...pill, knobs: [], formatter: { elmType: 'div', txtContent: '=@currentField*pow(10,2)' } };
+    const next = promoteLiteral(num, '2', { label: 'Decimals', type: 'number' });
+    expect(next.knobs[0]).toMatchObject({ path: '2', type: 'number', default: 2 });
+  });
+
+  it('re-promoting a value replaces (no duplicate knobs)', () => {
+    let s = promoteLiteral(pill, 'Done', { label: 'A', type: 'text' });
+    s = promoteLiteral(s, 'Done', { label: 'B', type: 'text' });
+    expect(s.knobs.filter((k) => k.path === 'Done')).toHaveLength(1);
+    expect(s.knobs.find((k) => k.path === 'Done')?.label).toBe('B');
+  });
+
+  it('demotes a knob, leaving the formatter literal in place', () => {
+    const promoted = promoteLiteral(pill, '#107c10', { label: 'C', type: 'color' });
+    const demoted = demoteLiteral(promoted, '#107c10');
+    expect(isPromoted(demoted, '#107c10')).toBe(false);
+    expect(JSON.stringify(demoted.formatter)).toContain('#107c10'); // literal stays; only the knob is gone
+  });
+
+  it('carries choices for a choice knob', () => {
+    const next = promoteLiteral(pill, 'Done', { label: 'State', type: 'choice', choices: ['Done', 'Open'] });
+    expect(next.knobs[0]).toMatchObject({ type: 'choice', choices: ['Done', 'Open'] });
+  });
+});
+
+describe('forkSubtype: copy a custom into a fresh custom', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* private mode */ } });
+  it('gets a new id, a "copy" name, stays custom', () => {
+    const src: Subtype = {
+      id: 'c1', name: 'Mine', origin: 'custom', baseTypes: ['choice'],
+      knobs: [{ path: '$', label: 'S', type: 'text', default: '$' }],
+      vocab: { refs: ['@currentField'], values: [] }, formatter: { elmType: 'div', txtContent: "='$'" },
+    };
+    const fork = forkSubtype(src);
+    expect(fork.id).not.toBe(src.id);
+    expect(fork.origin).toBe('custom');
+    expect(fork.name).toMatch(/copy/i);
+    expect(fork.knobs).toEqual(src.knobs);          // knobs carried
+    expect(fork.knobs).not.toBe(src.knobs);          // but not aliased
+  });
+});

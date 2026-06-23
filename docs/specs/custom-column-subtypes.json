@@ -1,0 +1,194 @@
+{
+  "feature": "Custom Column Subtypes",
+  "slug": "custom-column-subtypes",
+  "finalized": "2026-06-22",
+  "sourceBrainstorm": "docs/superpowers/specs/2026-06-22-fx-bar-subtypes-design.md",
+  "overview": "A framework for makers to define named, reusable rendering recipes (subtypes) for SharePoint columns, plus a built-in seed catalog. Subtypes carry value->text transforms, visual styling, and fx-bar vocabulary; may expose typed apply-time knobs. v1 also rewires the fx bar to read subtype vocab, fixing the original suggestion-noise complaint.",
+  "scope": {
+    "in": [
+      "Subtype data model (3 facets) + MockField.subtype?/subtypeArgs?",
+      "wb-subtypes localStorage store (custom only, schema-versioned)",
+      "Seed catalog: existing columnPresets re-expressed + Money seed",
+      "Snapshot apply (bake knobs, tag column) as one undoable mutation",
+      "Push-update: re-bake all tagged columns as one batched undoable mutation",
+      "Full parameter editor (extracted-literals checklist -> typed knobs)",
+      "Save-as birth from a column's current formatter",
+      "fx-bar rewiring (strict vocab) with empty-vocab fallback",
+      "Catalog UI in the 'Format this column' menu; refine inline modal"
+    ],
+    "out": [
+      "Elapsed/Until relative-time seeds (await owner expression)",
+      "Sharing / tenant storage (v1 is maker-local)",
+      "Composition / layering of subtypes",
+      "Cascade / auto-reflow on subtype edit",
+      "Override / shadow semantics (fork instead)",
+      "Fragment-swap knobs (literals only)",
+      "Modified-since-apply tracking"
+    ]
+  },
+  "dataModel": {
+    "KnobType": ["text", "number", "bool", "color", "choice"],
+    "Knob": { "path": "string", "label": "string", "type": "KnobType", "default": "string|number|boolean", "choices?": "string[]" },
+    "Subtype": {
+      "id": "string (opaque identity)",
+      "name": "string (free display label; dotted name cosmetic)",
+      "origin": "'builtin' | 'custom'",
+      "forkedFrom?": "string (source subtype id)",
+      "baseTypes": "FieldType[] (set of fitting types)",
+      "formatter": "SPElement (whole-column recipe)",
+      "knobs": "Knob[]",
+      "vocab": { "refs": "string[]", "values": "string[]" }
+    },
+    "MockField": { "subtype?": "string", "subtypeArgs?": "Record<string, string|number|boolean>" }
+  },
+  "storage": {
+    "key": "wb-subtypes",
+    "shape": "{ version: 1, subtypes: Subtype[] }",
+    "notes": "Custom subtypes only; seeds live in code. try/catch private-mode safe. wb- prefix + existing keys frozen; wb-subtypes is a new key."
+  },
+  "userStories": [
+    {
+      "id": "US-1",
+      "title": "Subtype data model + store",
+      "phase": 1,
+      "acceptance": [
+        "Subtype/Knob/KnobType exported; MockField gains subtype?/subtypeArgs?",
+        "Store exposes list/get/save/delete against wb-subtypes, schema-versioned",
+        "try/catch-guarded; corrupt/missing key yields empty catalog, never throws",
+        "Unit tests: round-trip, version guard, private-mode fallback",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-2",
+      "title": "Seed catalog (existing presets + Money)",
+      "phase": 1,
+      "acceptance": [
+        "Every existing columnPresets entry exposed as builtin subtype with correct baseTypes",
+        "Money seed: symbol(text,'$') + decimals(number,2) knobs, value->text formatter, baseTypes include number+currency",
+        "Each seed formatter schema-valid; vocab hand-authored",
+        "Unit tests assert all seeds validate and Money exposes both knobs",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-3",
+      "title": "Catalog menu + zero-knob apply",
+      "phase": 2,
+      "acceptance": [
+        "Menu lists type-matching seeds+customs with Built-in/Yours badges + format manually",
+        "Non-matching baseTypes never appear (refuse-don't-guess)",
+        "Zero-knob apply writes formatter + sets field.subtype/subtypeArgs as one undoable mutation",
+        "e2e: pick seed renders in grid; Ctrl+Z restores",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-4",
+      "title": "Apply-time knob form",
+      "phase": 2,
+      "acceptance": [
+        "Subtype with >=1 knob opens dialog with typed widgets prefilled with defaults",
+        "Invalid input refused-and-taught; nothing baked until valid",
+        "Apply bakes literals + commits one undoable mutation; answers stored in field.subtypeArgs",
+        "e2e: Money symbol='EUR', decimals=0 renders accordingly",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-5",
+      "title": "Save-as birth",
+      "phase": 3,
+      "acceptance": [
+        "'Save as reusable subtype...' prompts for name, creates custom subtype",
+        "baseTypes defaults to source column type; formatter = current; vocab auto-derived",
+        "Persists to wb-subtypes; appears as 'Yours'",
+        "Save from a built-in sets forkedFrom",
+        "Unit tests: vocab derivation + persistence; e2e: birth flow",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-6",
+      "title": "Refine modal + full parameter editor",
+      "phase": 3,
+      "acceptance": [
+        "'...' on a custom entry opens inline modal: rename, edit baseTypes, edit vocab, delete, fork",
+        "Extracted-literals checklist; check promotes to knob {label,type,default}; uncheck demotes",
+        "Promotion by value: one value = one knob; all occurrences update",
+        "No raw-JSON free-text editing required (click-safe)",
+        "Edits persist; do not alter columns already using the subtype",
+        "Unit tests: extraction + promote/demote; e2e: rename + one promotion",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-7",
+      "title": "Push-update",
+      "phase": 3,
+      "acceptance": [
+        "After refine, opt-in 'Update N columns using this' (N = matching field.subtype)",
+        "Re-bakes each tagged column from stored subtypeArgs; overwrites formatter (hand-edits included)",
+        "Whole push is one batched undoable mutation (single Ctrl+Z reverts all)",
+        "Unit/e2e: refine decimals, push, all re-baked; Ctrl+Z restores all",
+        "Typecheck/lint/build pass"
+      ]
+    },
+    {
+      "id": "US-8",
+      "title": "fx-bar rewiring (strict vocab)",
+      "phase": 4,
+      "acceptance": [
+        "Column with subtype + non-empty vocab: bar offers only vocab; padding suppressed",
+        "Column with subtype + empty vocab: bar falls back to today's padding",
+        "Column with no subtype: behaves exactly as today",
+        "fxSuggest contract tests updated first, then engine; e2e asserts vocab shown, unrelated refs hidden",
+        "Typecheck/lint/build pass"
+      ]
+    }
+  ],
+  "phases": [
+    { "n": 1, "name": "Foundation (data model, storage, seeds)", "stories": ["US-1", "US-2"], "verify": "npm run build && npm test" },
+    { "n": 2, "name": "Apply core (catalog menu, apply, knob form)", "stories": ["US-3", "US-4"], "verify": "npm run build && npm test && playwright apply specs" },
+    { "n": 3, "name": "Authoring (save-as, refine/knobs, push)", "stories": ["US-5", "US-6", "US-7"], "verify": "npm run build && npm test && playwright authoring specs" },
+    { "n": 4, "name": "Bar rewiring (strict vocab)", "stories": ["US-8"], "verify": "npm run build && npm test && playwright bar spec" }
+  ],
+  "nonFunctional": [
+    "Vanilla TS + Vite, zero runtime deps",
+    "One gesture = one undoable mutation (push = one batch)",
+    "Click-only safety; no required raw-JSON editing",
+    "Schema-valid generators, refuse-don't-guess (never a standalone '!')",
+    "wb- prefix + existing localStorage keys frozen; only new wb-subtypes key added",
+    "Test files are contracts: change the test first"
+  ],
+  "integrationPoints": [
+    "src/core/types.ts",
+    "src/editor/subtypes.ts (new)",
+    "src/editor/columnPresets.ts",
+    "src/editor/cfr.ts",
+    "src/editor/gridView.ts",
+    "src/editor/fxSuggest.ts",
+    "src/editor/fxBar.ts",
+    "src/style.css"
+  ],
+  "openItems": [
+    "Owner-held relative-time expression required before Elapsed/Until seeds (out of v1)"
+  ],
+  "decisionLog": {
+    "D1": "All three facets in one record",
+    "D2": "REVERSED: bar-rewiring is in v1",
+    "D3": "Structured recipe; apply replaces formatter",
+    "D4": "Full parameter editor",
+    "D5": "Extracted-literals checklist, by value",
+    "D6": "Literal-substitution typed knobs; no fragment-swap",
+    "D7": "baseTypes is a set; dotted name cosmetic",
+    "D8": "Flat catalog, badges, Save-as forks",
+    "D9": "UPGRADED: snapshot apply + push-update",
+    "D10": "New wb-subtypes key; seeds in code",
+    "D11": "Seeds = existing presets + Money",
+    "D12": "Extend Format-this-column menu; refine inline modal",
+    "D13": "Strict bar: vocab replaces padding; untagged unchanged",
+    "D14": "Push overwrites all; one batched undoable mutation",
+    "D15": "Vocab auto-derived at birth; empty vocab falls back to padding"
+  }
+}

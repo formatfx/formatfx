@@ -49,18 +49,26 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   // and a single undo removes the cell swap (the one document mutation)
 });
 
-test('"Format this column" offers type-aware presets (facepile for a people column)', async ({ page }) => {
+test('"Format this column" is the subtype catalog: type-aware looks, badged, snapshot-applied', async ({ page }) => {
+  // an unformatted people column → no avatars anywhere in the grid yet
+  await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
   await header(page, 'AssignedTo').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-  // the system thinks for the maker: a multi-person column → people looks
   await expect(page.locator('.wb-grid-menu-title')).toHaveText('Format AssignedTo');
+  // the system thinks for the maker: a multi-person column → people looks, badged
+  const facepile = page.locator('.wb-grid-menu button', { hasText: 'Facepile' });
+  await expect(facepile.locator('.wb-menu-badge')).toHaveText('Built-in');
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Member count' })).toBeVisible();
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this column manually' })).toBeVisible();
-  await page.locator('.wb-grid-menu button', { hasText: 'Facepile' }).click();
-  // editing the AssignedTo column formatter now; the preview renders avatars
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('AssignedTo');
-  await expect(page.locator('.wb-mock-cell-fmt img').first()).toBeVisible();
+  // a subtype that does not fit a people column never appears (refuse-don't-guess)
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Data bar' })).toHaveCount(0);
+  // snapshot apply: stay on the grid (View Formatters, not drilled into a column),
+  // the cell renders avatars, one Ctrl+Z reverts
+  await facepile.click();
+  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  await expect(page.locator('.wb-grid-cell img').first()).toBeVisible();
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
 });
 
 test('drilling into a column formatter shows a Back affordance that returns to the named view', async ({ page }) => {
