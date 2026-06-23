@@ -12,6 +12,7 @@
  */
 
 import type { Subtype } from '../core/types';
+import { presetSeeds } from './columnPresets';
 
 /** localStorage key for maker-authored (custom) subtypes. Frozen + additive —
  *  the only new key this feature introduces. */
@@ -82,4 +83,64 @@ function isSubtype(s: unknown): s is Subtype {
     && !!o.formatter && typeof o.formatter === 'object'
     && Array.isArray(o.knobs)
     && !!o.vocab && typeof o.vocab === 'object';
+}
+
+// ─── Built-in seed catalog (defined in code, never stored) ───────────────────
+// The existing column presets re-expressed as builtin subtypes, plus the new
+// value→text Money seed. Seeds are immutable and app-versioned; a maker forks
+// one (Save-as) rather than editing it. `seedSubtypes()` returns FRESH trees
+// each call, so a consumer can never mutate the shared catalog.
+
+const MONEY_ID = 'money';
+
+/** The Money value→text seed: a currency symbol + fixed decimals. SP has no
+ *  toFixed, so rounding is floor(v·10^d + 0.5)/10^d, guarded for the empty cell
+ *  (an unset number is '' → render nothing, never "$NaN"). The `'$'` (symbol)
+ *  and `2` (decimals) literals appear verbatim so apply-time baking and
+ *  refine-time promotion can find them by value. */
+function moneySeed(): Subtype {
+  return {
+    id: MONEY_ID,
+    name: 'Money',
+    origin: 'builtin',
+    baseTypes: ['number', 'currency'],
+    formatter: {
+      elmType: 'div',
+      _elmName: 'Money',
+      style: { 'text-align': 'right' },
+      txtContent: "=if(@currentField=='','','$'+toString(floor(@currentField*pow(10,2)+0.5)/pow(10,2)))",
+    },
+    knobs: [
+      { path: '$', label: 'Symbol', type: 'text', default: '$' },
+      { path: '2', label: 'Decimals', type: 'number', default: 2 },
+    ],
+    // hand-authored: a money column's bar offers the value and common symbols.
+    vocab: { refs: ['@currentField'], values: ['$', '€', '£', '¥'] },
+  };
+}
+
+/**
+ * The full built-in catalog: every column preset re-expressed (fresh trees each
+ * call) + Money. Vocab is HAND-AUTHORED (spec US-2): a preset recipe centers on
+ * the column's own value, so it offers `@currentField` and suppresses the bar's
+ * all-columns padding (US-8) without guessing column-specific values — those
+ * come from refine (US-6) or value→text seeds like Money. (Auto-derivation of
+ * vocab is US-5's job for maker Save-as, not the seed catalog's.)
+ *
+ * NOTE: a few preset recipes carry secondary refs to showcase field names
+ * (date-badge → [$Status], lookup-chip → [$Project.*]); these are inherited
+ * from the palette presets and are the existing apply-time-rebind story, not a
+ * guarantee that every secondary ref resolves on an arbitrary list.
+ */
+export function seedSubtypes(): Subtype[] {
+  const fromPresets: Subtype[] = presetSeeds().map((seed) => ({
+    id: seed.id,
+    name: seed.label,
+    origin: 'builtin',
+    baseTypes: seed.baseTypes,
+    formatter: seed.formatter,
+    knobs: [],
+    vocab: { refs: ['@currentField'], values: [] },
+  }));
+  return [...fromPresets, moneySeed()];
 }

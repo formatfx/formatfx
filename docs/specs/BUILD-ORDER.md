@@ -23,7 +23,7 @@ Rules that apply to every story (from `CLAUDE.md`):
   - Gate: store does list/get/save/delete against `wb-subtypes` (`{version:1,subtypes:[]}`); `try/catch` guarded; corrupt/missing key → empty catalog, never throws. Unit tests cover round-trip, version guard, private-mode fallback.
   - Verify: `npm run build` && `npm test`.
 
-- [ ] **US-2 — Seed catalog (existing presets re-expressed + Money)**
+- [x] **US-2 — Seed catalog (existing presets re-expressed + Money)**
   - Files: `src/editor/subtypes.ts` (built-in seed registry), `src/editor/columnPresets.ts` (source), `src/editor/subtypes.test.ts`.
   - Gate: every existing `columnPresets` entry exposed as a builtin subtype with correct `baseTypes`; new **Money** seed with `symbol` (text, "$") + `decimals` (number, 2) knobs, `baseTypes` ⊇ {number, currency}, hand-authored `vocab`. Tests assert all seeds validate, ≥1 baseType each, Money exposes both knobs.
   - Verify: `npm run build` && `npm test`.

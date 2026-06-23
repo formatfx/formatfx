@@ -8,8 +8,34 @@
  * catalog and never throws (private-mode safe, like wb-ui-prefs).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype } from './subtypes';
-import type { Subtype } from '../core/types';
+import {
+  SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype,
+  seedSubtypes,
+} from './subtypes';
+import type { Subtype, SPElement } from '../core/types';
+import { lintDocument } from '../core/linter';
+import { renderElement } from '../core/renderer';
+import type { EvalContext } from '../core/expressions';
+
+function ctx(row: Record<string, unknown>, currentFieldName: string): EvalContext {
+  return {
+    row: row as EvalContext['row'],
+    rowIndex: 0,
+    currentFieldName,
+    me: { title: 'Me', email: 'me@x.com' },
+    iterators: {},
+    iteratorIndex: {},
+    displayNames: {},
+    now: new Date(),
+  };
+}
+
+/** A seed "validates" when its formatter raises no error-severity lint issues. */
+function lintErrors(formatter: SPElement): string[] {
+  return lintDocument({ kind: 'column', root: formatter })
+    .filter((i) => i.severity === 'error')
+    .map((i) => i.rule);
+}
 
 function sample(over: Partial<Subtype> = {}): Subtype {
   return {
@@ -131,5 +157,98 @@ describe('subtypes store: private-mode fallback (localStorage throws)', () => {
     localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
     expect(() => saveSubtype(sample())).not.toThrow();
     expect(() => deleteSubtype('c1')).not.toThrow();
+  });
+});
+
+// ─── US-2: built-in seed catalog (presets re-expressed + Money) ──────────────
+
+describe('seed catalog: every column preset re-expressed as a builtin subtype', () => {
+  const seeds = seedSubtypes();
+
+  it('exposes every existing columnPresets entry as a builtin subtype', () => {
+    const ids = seeds.map((s) => s.id);
+    for (const id of [
+      'data-bar', 'status-pill', 'traffic-light', 'severity-class', 'progress-ring',
+      'star-rating', 'date-badge', 'day-counter', 'persona', 'facepile',
+      'member-count', 'lookup-chip', 'link',
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it('every seed is origin:builtin, has >=1 baseType, and a schema-valid formatter', () => {
+    expect(seeds.length).toBeGreaterThan(0);
+    for (const s of seeds) {
+      expect(s.origin).toBe('builtin');
+      expect(s.baseTypes.length).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(s.knobs)).toBe(true);
+      expect(lintErrors(s.formatter)).toEqual([]);
+    }
+  });
+
+  it('carries the correct baseTypes (BY_TYPE inverted)', () => {
+    const byId = Object.fromEntries(seeds.map((s) => [s.id, s]));
+    expect(byId['data-bar'].baseTypes).toEqual(expect.arrayContaining(['number', 'currency']));
+    expect(byId['status-pill'].baseTypes).toEqual(['choice']);
+    expect(byId['facepile'].baseTypes).toEqual(['personMulti']);
+    expect(byId['lookup-chip'].baseTypes).toEqual(expect.arrayContaining(['lookup', 'lookupMulti']));
+    expect(byId['persona'].baseTypes).toEqual(['person']);
+    expect(byId['link'].baseTypes).toEqual(['hyperlink']);
+  });
+
+  it('seed formatters are in @currentField terms (reusable across columns)', () => {
+    const pill = seedSubtypes().find((s) => s.id === 'status-pill')!;
+    expect(JSON.stringify(pill.formatter)).toContain('@currentField');
+  });
+
+  it('every preset seed carries a hand-authored, noise-free vocab', () => {
+    // Hand-authored (not derived): the recipe centers on the column's value, so
+    // every preset seed offers @currentField with no values — no CSS class
+    // tokens (sp-field-*/ms-*), URLs, iterator names, or size-arg fragments.
+    const noise = /^(sp-field-|ms-|https?:|_)|\s$|^\s/;
+    for (const s of seeds.filter((x) => x.id !== 'money')) {
+      expect(s.vocab.refs).toEqual(['@currentField']);
+      expect(s.vocab.values).toEqual([]);
+      for (const v of [...s.vocab.refs, ...s.vocab.values]) expect(v).not.toMatch(noise);
+    }
+  });
+});
+
+describe('seed catalog: the new Money value→text seed', () => {
+  const money = seedSubtypes().find((s) => s.id === 'money')!;
+
+  it('exists with number + currency baseTypes', () => {
+    expect(money).toBeDefined();
+    expect(money.origin).toBe('builtin');
+    expect(money.baseTypes).toEqual(expect.arrayContaining(['number', 'currency']));
+  });
+
+  it('exposes the symbol (text "$") and decimals (number 2) knobs', () => {
+    const byLabel = Object.fromEntries(money.knobs.map((k) => [k.label, k]));
+    expect(money.knobs).toHaveLength(2);
+    expect(byLabel['Symbol']).toMatchObject({ type: 'text', default: '$' });
+    expect(byLabel['Decimals']).toMatchObject({ type: 'number', default: 2 });
+  });
+
+  it('keeps the "$" and decimals literals verbatim so apply/refine can find them', () => {
+    const json = JSON.stringify(money.formatter);
+    expect(json).toContain("'$'");
+    expect(json).toContain('pow(10,2)');
+  });
+
+  it('has a schema-valid formatter that renders a money string', () => {
+    expect(lintErrors(money.formatter)).toEqual([]);
+    const node = renderElement(money.formatter, ctx({ Amount: 1234.5 }, 'Amount'));
+    expect(node.textContent).toBe('$1234.5');
+  });
+
+  it('renders nothing (not "$NaN") for an empty cell', () => {
+    const node = renderElement(money.formatter, ctx({ Amount: '' }, 'Amount'));
+    expect(node.textContent).toBe('');
+  });
+
+  it('hand-authored vocab offers the value plus common currency symbols', () => {
+    expect(money.vocab.refs).toContain('@currentField');
+    expect(money.vocab.values).toEqual(expect.arrayContaining(['$', '€', '£']));
   });
 });
