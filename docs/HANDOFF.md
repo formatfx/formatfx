@@ -289,11 +289,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 6. Roadmap / TODO (in rough priority order)
 
-1. ~~Node 20 runner deprecation — DEADLINE 2026-06-16~~ **DONE (merged to
-   main before 2026-06-12)**: ci.yml sets the
-   `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'` env opt-in, so GitHub's
-   forced switch is a no-op. Can be deleted once GitHub completes the
-   migration.
+1. ~~Node 20 runner deprecation — DEADLINE 2026-06-16~~ **DONE**: GitHub
+   completed the forced switch, so the actions were bumped to their
+   Node-24-native majors (checkout@v5, setup-node@v5,
+   upload-pages-artifact@v5, deploy-pages@v5, upload-artifact@v7) and the
+   temporary `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` env opt-in was deleted
+   from ci.yml and release.yml. No more Node 20 deprecation warnings.
 1.5. **Grid-first workspace — BUILT 2026-06-12** (designed 2026-06-11,
    owner's vision). Shipped as designed: fourth canvas context on a new
    DocumentKind 'grid' (now the landing default), header menus (format /
