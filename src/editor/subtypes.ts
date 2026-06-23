@@ -11,7 +11,7 @@
  * never throws — a misread can never wipe or block a maker's work.
  */
 
-import type { Subtype, FieldType } from '../core/types';
+import type { Subtype, Knob, SPElement, FieldType } from '../core/types';
 import { presetSeeds } from './columnPresets';
 
 /** localStorage key for maker-authored (custom) subtypes. Frozen + additive —
@@ -159,4 +159,105 @@ export function subtypesForType(type: FieldType): Subtype[] {
   // double-list the same id.
   const customs = listSubtypes().filter((s) => fits(s) && !seedIds.has(s.id));
   return [...seeds, ...customs];
+}
+
+// ─── Knob baking + apply-time validation ─────────────────────────────────────
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A knob whose answer is a quoted/bare STRING (text/color/choice), vs a bare
+ *  number/bool token. Drives both the widget and the substitution form. */
+function isTextKnob(knob: Knob): boolean {
+  return knob.type === 'text' || knob.type === 'color' || knob.type === 'choice';
+}
+
+/** The literal answer for a knob baked into an expression: a quoted, quote-safe
+ *  string for text/color/choice; the bare value for number/bool. */
+function bakedLiteral(knob: Knob, answer: string | number | boolean): string {
+  const ans = String(answer);
+  return isTextKnob(knob) ? `'${ans.replace(/'/g, '')}'` : ans; // SP strings can't escape a quote
+}
+
+/**
+ * Rewrite one expression string, substituting EVERY knob's literal BY VALUE in a
+ * SINGLE left-to-right pass — so a value a knob just baked in can never be
+ * re-matched by a later knob (order-independent). Matches a quoted literal
+ * `'<path>'` (text/color/choice), a standalone numeric/bool token `<path>`, and
+ * a bare value equal to `<path>` (a whole style/attribute literal).
+ */
+function bakeString(s: string, knobs: Knob[], answerOf: (knob: Knob) => string | number | boolean): string {
+  // a whole bare value (a style/attribute literal) equals a knob's literal
+  for (const knob of knobs) {
+    if (s === String(knob.path)) {
+      const ans = String(answerOf(knob));
+      return isTextKnob(knob) ? ans.replace(/'/g, '') : ans;
+    }
+  }
+  // one combined regex of every in-expression occurrence (one capture each),
+  // replaced in a single scan that never re-reads a baked-in answer
+  const alternatives = knobs.map((knob) => {
+    const p = escapeRegExp(String(knob.path));
+    return isTextKnob(knob) ? `'(${p})'` : `(?<![\\w.])(${p})(?![\\w.])`;
+  });
+  const re = new RegExp(alternatives.join('|'), 'g');
+  return s.replace(re, (...m): string => {
+    const captures = m.slice(1, 1 + knobs.length); // groups before offset/string
+    const idx = captures.findIndex((g) => g !== undefined);
+    return idx === -1 ? m[0] : bakedLiteral(knobs[idx], answerOf(knobs[idx]));
+  });
+}
+
+/**
+ * Bake a subtype's knob answers into a fresh copy of its formatter (the source
+ * subtype is never mutated — apply/refine stay click-safe). Every knob's literal
+ * is replaced BY VALUE across the whole tree, in one pass per string so baking
+ * is order-independent; a missing answer falls back to the knob's default. A
+ * zero-knob subtype simply deep-clones. Only expression-bearing fields
+ * (txtContent/style/attributes/forEach + card formatters) are rewritten — never
+ * elmType/_elmName/etc.
+ */
+export function bakeSubtype(subtype: Subtype, args: Record<string, string | number | boolean>): SPElement {
+  const tree = JSON.parse(JSON.stringify(subtype.formatter)) as SPElement;
+  if (subtype.knobs.length === 0) return tree;
+  const answerOf = (knob: Knob): string | number | boolean => (knob.label in args ? args[knob.label] : knob.default);
+  const sub = (s: string): string => bakeString(s, subtype.knobs, answerOf);
+  const visit = (node: SPElement): void => {
+    if (typeof node.txtContent === 'string') node.txtContent = sub(node.txtContent);
+    if (node.style) for (const k of Object.keys(node.style)) { const v = node.style[k]; if (typeof v === 'string') node.style[k] = sub(v); }
+    if (node.attributes) for (const k of Object.keys(node.attributes)) { const v = node.attributes[k]; if (typeof v === 'string') node.attributes[k] = sub(v); }
+    if (typeof node.forEach === 'string') node.forEach = sub(node.forEach);
+    node.children?.forEach(visit);
+    if (node.customCardProps?.formatter) visit(node.customCardProps.formatter);
+  };
+  visit(tree);
+  return tree;
+}
+
+/** Coerce a widget's raw value (string box / checkbox) to the knob's type. A
+ *  blank number box becomes NaN (not 0), so it is refused rather than silently
+ *  baked as zero. */
+export function coerceKnob(knob: Knob, raw: string | boolean): string | number | boolean {
+  if (knob.type === 'number') return String(raw).trim() === '' ? NaN : Number(raw);
+  if (knob.type === 'bool') return raw === true || raw === 'true';
+  return String(raw);
+}
+
+/** A refuse-and-teach validation message for a knob answer, or null if valid. */
+export function knobError(knob: Knob, value: string | number | boolean): string | null {
+  switch (knob.type) {
+    case 'number':
+      return Number.isFinite(typeof value === 'number' ? value : Number(value))
+        ? null : `${knob.label} must be a number.`;
+    case 'choice':
+      return (knob.choices ?? []).includes(String(value))
+        ? null : `${knob.label} must be one of: ${(knob.choices ?? []).join(', ')}.`;
+    case 'text':
+    case 'color':
+      return String(value).includes("'")
+        ? `${knob.label} can't contain a single quote — SharePoint text can't escape it.`
+        : null;
+    case 'bool':
+      return null;
+    default: { const _exhaustive: never = knob.type; return _exhaustive; } // a new KnobType must add validation
+  }
 }

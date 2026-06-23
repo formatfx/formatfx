@@ -413,6 +413,35 @@ body {
   background: color-mix(in srgb, var(--wb-accent) 22%, transparent); color: var(--wb-accent);
 }
 
+/* ── apply-time knob form (subtype apply) ─────────────────── */
+.wb-knobform-overlay {
+  position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .42);
+}
+.wb-knobform {
+  min-width: 320px; max-width: 440px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 6px; padding: 16px 18px; box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
+}
+.wb-knobform-head { display: flex; flex-direction: column; gap: 2px; }
+.wb-knobform-title { font-size: 14px; font-weight: 600; color: var(--wb-text); }
+.wb-knobform-sub { font-size: 11px; color: var(--wb-text-2); }
+.wb-knobform-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px 10px; }
+.wb-knobform-label { font-size: 12px; color: var(--wb-text); }
+.wb-knobform-row input[type="text"], .wb-knobform-row input[type="number"], .wb-knobform-row select {
+  width: 100%; padding: 4px 6px; font-size: 12px;
+  background: var(--wb-bg); color: var(--wb-text); border: 1px solid var(--wb-border); border-radius: 3px;
+}
+.wb-knobform-row input[type="color"] { width: 44px; height: 26px; padding: 0; border: 1px solid var(--wb-border); border-radius: 3px; background: none; }
+.wb-knobform-err { grid-column: 2; font-size: 11px; color: var(--wb-danger, #d13438); min-height: 0; }
+.wb-knobform-err:empty { display: none; }
+.wb-knobform-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.wb-knobform-foot button {
+  padding: 5px 14px; font-size: 12px; border-radius: 4px; cursor: pointer; border: 1px solid var(--wb-border);
+}
+.wb-knobform-cancel { background: transparent; color: var(--wb-text); }
+.wb-knobform-apply { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); font-weight: 600; }
+
 /* ── stage 3: multi-select + "make a row view" ─────────────── */
 .wb-grid-col-selected { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); }
 .wb-grid-header.wb-grid-col-selected { color: var(--wb-accent); box-shadow: inset 0 -2px 0 var(--wb-accent); }

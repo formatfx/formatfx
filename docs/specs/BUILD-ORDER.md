@@ -35,7 +35,7 @@ Rules that apply to every story (from `CLAUDE.md`):
   - Gate: menu lists type-matching seeds + customs with Built-in/Yours badges + "format manually"; non-matching `baseTypes` never appear; zero-knob apply writes formatter + sets `field.subtype`/`subtypeArgs={}` as ONE undoable mutation. e2e: pick a seed renders; Ctrl+Z restores.
   - Verify: `npm run build` && `npm test` && Playwright apply spec.
 
-- [ ] **US-4 — Apply-time knob form**
+- [x] **US-4 — Apply-time knob form**
   - Files: `src/editor/gridView.ts` (+ form), `src/style.css`, e2e spec.
   - Gate: ≥1-knob subtype opens a dialog of typed widgets (text/number/bool/color/choice) pre-filled with defaults; invalid input refused-and-taught, nothing baked until valid; Apply bakes literals + one undoable mutation; answers stored in `field.subtypeArgs`. e2e: Money symbol="€", decimals=0 renders.
   - Verify: `npm run build` && `npm test` && Playwright knob-form spec.

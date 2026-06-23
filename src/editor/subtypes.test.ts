@@ -10,9 +10,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   SUBTYPES_KEY, listSubtypes, getSubtype, saveSubtype, deleteSubtype,
-  seedSubtypes, subtypesForType,
+  seedSubtypes, subtypesForType, bakeSubtype, knobError, coerceKnob,
 } from './subtypes';
-import type { Subtype, SPElement } from '../core/types';
+import type { Subtype, SPElement, Knob } from '../core/types';
 import { lintDocument } from '../core/linter';
 import { renderElement } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
@@ -290,5 +290,116 @@ describe('subtypesForType: the catalog a column type sees (refuse-don\'t-guess)'
     const moneyEntries = subtypesForType('number').filter((s) => s.id === 'money');
     expect(moneyEntries).toHaveLength(1);
     expect(moneyEntries[0].origin).toBe('builtin');
+  });
+});
+
+// ─── US-4: knob baking + apply-time validation ───────────────────────────────
+
+describe('bakeSubtype: by-value knob substitution (pure; the seed is never mutated)', () => {
+  it('bakes Money symbol + decimals into every occurrence and renders accordingly', () => {
+    const money = seedSubtypes().find((s) => s.id === 'money')!;
+    const before = JSON.stringify(money.formatter);
+    const baked = bakeSubtype(money, { Symbol: '€', Decimals: 0 });
+    const json = JSON.stringify(baked);
+    expect(json).toContain("'€'");
+    expect(json).not.toContain("'$'");
+    expect(json).toContain('pow(10,0)');
+    expect(json).not.toContain('pow(10,2)');
+    expect(JSON.stringify(money.formatter)).toBe(before); // source untouched
+    // floor(1234.5 * 10^0 + 0.5) / 10^0 = 1235
+    const node = renderElement(baked, ctx({ Amount: 1234.5 }, 'Amount'));
+    expect(node.textContent).toBe('€1235');
+  });
+
+  it('falls back to a knob default when its arg is missing', () => {
+    const money = seedSubtypes().find((s) => s.id === 'money')!;
+    const baked = bakeSubtype(money, { Symbol: '€' }); // Decimals omitted → default 2
+    expect(JSON.stringify(baked)).toContain('pow(10,2)');
+    expect(JSON.stringify(baked)).toContain("'€'");
+  });
+
+  it('a zero-knob subtype bakes to a fresh clone (never aliases the seed)', () => {
+    const pill = seedSubtypes().find((s) => s.id === 'status-pill')!;
+    const baked = bakeSubtype(pill, {});
+    expect(baked).not.toBe(pill.formatter);
+    expect(JSON.stringify(baked)).toBe(JSON.stringify(pill.formatter));
+  });
+
+  it('is order-independent: a value one knob bakes is never re-matched by a later knob', () => {
+    const st: Subtype = {
+      id: 'c', name: 'x', origin: 'custom', baseTypes: ['choice'],
+      knobs: [
+        { path: 'A', label: 'First', type: 'text', default: 'A' },
+        { path: 'B', label: 'Second', type: 'text', default: 'B' },
+      ],
+      vocab: { refs: [], values: [] },
+      formatter: { elmType: 'div', txtContent: "=if(@currentField=='A','B','')" },
+    };
+    // First: A→B, Second: B→C. A naive sequential bake would turn the baked 'B'
+    // back into 'C'; the single-pass bake must yield exactly =if(...=='B','C','').
+    const baked = bakeSubtype(st, { First: 'B', Second: 'C' });
+    expect(baked.txtContent).toBe("=if(@currentField=='B','C','')");
+  });
+
+  it('does not corrupt embedded digits when baking a number knob (by token, not substring)', () => {
+    const st: Subtype = {
+      id: 'n', name: 'x', origin: 'custom', baseTypes: ['number'],
+      knobs: [{ path: '2', label: 'N', type: 'number', default: 2 }],
+      vocab: { refs: [], values: [] },
+      formatter: { elmType: 'div', txtContent: '=@currentField*0.25+pow(10,2)+120' },
+    };
+    const baked = bakeSubtype(st, { N: 9 });
+    // only the standalone 2 changes; 0.25, 120 are untouched
+    expect(baked.txtContent).toBe('=@currentField*0.25+pow(10,9)+120');
+  });
+
+  it('bakes a quoted text literal and a bare color style value, by value', () => {
+    const st: Subtype = {
+      id: 'c', name: 'x', origin: 'custom', baseTypes: ['choice'],
+      knobs: [
+        { path: 'Done', label: 'Match', type: 'text', default: 'Done' },
+        { path: '#107c10', label: 'Color', type: 'color', default: '#107c10' },
+      ],
+      vocab: { refs: [], values: [] },
+      formatter: {
+        elmType: 'div',
+        txtContent: "=if(@currentField=='Done','✓','')",
+        style: { 'background-color': '#107c10' },
+      },
+    };
+    const baked = bakeSubtype(st, { Match: 'Shipped', Color: '#0078d4' });
+    expect(JSON.stringify(baked)).toContain("'Shipped'");
+    expect(JSON.stringify(baked)).not.toContain('Done');
+    expect(baked.style!['background-color']).toBe('#0078d4');
+    expect(JSON.stringify(baked)).not.toContain('#107c10');
+  });
+});
+
+describe('knobError / coerceKnob: refuse-and-teach validation', () => {
+  const numberKnob: Knob = { path: '2', label: 'Decimals', type: 'number', default: 2 };
+  const choiceKnob: Knob = { path: 'M', label: 'Size', type: 'choice', default: 'M', choices: ['S', 'M', 'L'] };
+  const textKnob: Knob = { path: '$', label: 'Symbol', type: 'text', default: '$' };
+
+  it('rejects a non-numeric or blank number knob, accepts a number', () => {
+    expect(knobError(numberKnob, coerceKnob(numberKnob, 'abc'))).toMatch(/number/i);
+    expect(knobError(numberKnob, coerceKnob(numberKnob, ''))).toMatch(/number/i); // blank is NOT silently 0
+    expect(knobError(numberKnob, coerceKnob(numberKnob, '   '))).toMatch(/number/i);
+    expect(knobError(numberKnob, coerceKnob(numberKnob, '0'))).toBeNull();
+  });
+
+  it('rejects a choice outside the list', () => {
+    expect(knobError(choiceKnob, 'XL')).toMatch(/one of/i);
+    expect(knobError(choiceKnob, 'L')).toBeNull();
+  });
+
+  it('teaches against a single quote in text (SP strings cannot escape it)', () => {
+    expect(knobError(textKnob, "i'm")).toMatch(/quote/i);
+    expect(knobError(textKnob, '€')).toBeNull();
+  });
+
+  it('coerces raw widget input by knob type', () => {
+    expect(coerceKnob(numberKnob, '3')).toBe(3);
+    expect(coerceKnob({ path: 'x', label: 'On', type: 'bool', default: false }, true)).toBe(true);
+    expect(coerceKnob(textKnob, '€')).toBe('€');
   });
 });

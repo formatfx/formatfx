@@ -26,10 +26,11 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius } from './cfr';
-import { subtypesForType } from './subtypes';
+import { subtypesForType, bakeSubtype, coerceKnob, knobError } from './subtypes';
 import { paletteItemById } from './palette';
+import { createOverlay } from './overlay';
 import { cfrFieldName } from '../core/refs';
-import type { SPElement, NodePath, MockField, Subtype } from '../core/types';
+import type { SPElement, NodePath, MockField, Subtype, Knob } from '../core/types';
 
 interface GridDeps {
   opts: RenderOptions;
@@ -91,15 +92,111 @@ function subtypeIcon(st: Subtype): string {
   return paletteItemById(st.id)?.icon ?? (st.id === 'money' ? 'AllCurrency' : 'Tag');
 }
 
-/** Snapshot-apply a subtype to the column and stay on the grid (so the cell
- *  renders it and a single Ctrl+Z reverts). Zero-knob here (subtypeArgs={});
- *  the apply-time knob form is US-4. The formatter already carries the seed's
- *  default literals, so a knob-bearing seed applies sensibly with its defaults. */
-function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
-  const baked = JSON.parse(JSON.stringify(st.formatter)) as SPElement;
+/** Bake `args` into the subtype and snapshot-apply it to the column, staying on
+ *  the grid (so the cell renders it and a single Ctrl+Z reverts). */
+function commitSubtype(col: GridColumn, field: MockField, st: Subtype, args: Record<string, string | number | boolean>, onToast: (m: string) => void): void {
+  const baked = bakeSubtype(st, args);
   baked._elmName = `${fieldLabel(field)} — ${st.name}`;
-  state.applyColumnSubtype(field.name, baked, st.id, {}, col.path);
+  state.applyColumnSubtype(field.name, baked, st.id, args, col.path);
   onToast(`Applied ${st.name} to ${field.name} — the grid renders it. Ctrl+Z to undo.`);
+}
+
+/** Pick a subtype: zero-knob applies in one click; a knob-bearing subtype opens
+ *  the apply-time form first. */
+function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
+  if (st.knobs.length === 0) { commitSubtype(col, field, st, {}, onToast); return; }
+  openKnobForm(col, field, st, onToast);
+}
+
+/** One typed widget for a knob, pre-filled with its default; returns a reader. */
+function knobWidget(knob: Knob): { el: HTMLElement; read: () => string | boolean } {
+  if (knob.type === 'bool') {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.knob = knob.label;
+    cb.checked = knob.default === true || knob.default === 'true';
+    return { el: cb, read: () => cb.checked };
+  }
+  if (knob.type === 'choice') {
+    const sel = document.createElement('select');
+    sel.dataset.knob = knob.label;
+    for (const c of knob.choices ?? []) {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      if (String(knob.default) === c) o.selected = true;
+      sel.appendChild(o);
+    }
+    return { el: sel, read: () => sel.value };
+  }
+  const inp = document.createElement('input');
+  inp.type = knob.type === 'number' ? 'number' : knob.type === 'color' ? 'color' : 'text';
+  inp.dataset.knob = knob.label;
+  inp.value = String(knob.default);
+  return { el: inp, read: () => inp.value };
+}
+
+/** The apply-time knob form: a dialog of typed widgets, refuse-and-teach
+ *  validation (nothing bakes until valid), Apply = one undoable mutation. */
+function openKnobForm(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
+  const handle = createOverlay('wb-knobform-overlay', () => handle.close());
+  const panel = document.createElement('div');
+  panel.className = 'wb-knobform';
+  handle.overlay.appendChild(panel);
+
+  const head = document.createElement('div');
+  head.className = 'wb-knobform-head';
+  const title = document.createElement('span');
+  title.className = 'wb-knobform-title';
+  title.textContent = `Set up ${st.name} for ${fieldLabel(field)}`;
+  const sub = document.createElement('span');
+  sub.className = 'wb-knobform-sub';
+  sub.textContent = 'Nothing changes until you Apply (then Ctrl+Z undoes).';
+  head.append(title, sub);
+  panel.appendChild(head);
+
+  const rows: Array<{ knob: Knob; read: () => string | boolean; err: HTMLElement }> = [];
+  for (const knob of st.knobs) {
+    const row = document.createElement('label');
+    row.className = 'wb-knobform-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-knobform-label';
+    lab.textContent = knob.label;
+    const widget = knobWidget(knob);
+    const err = document.createElement('span');
+    err.className = 'wb-knobform-err';
+    row.append(lab, widget.el, err);
+    panel.appendChild(row);
+    rows.push({ knob, read: widget.read, err });
+  }
+
+  const foot = document.createElement('div');
+  foot.className = 'wb-knobform-foot';
+  const cancel = document.createElement('button');
+  cancel.className = 'wb-knobform-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => handle.close());
+  const apply = document.createElement('button');
+  apply.className = 'wb-knobform-apply';
+  apply.textContent = 'Apply';
+  apply.addEventListener('click', () => {
+    const args: Record<string, string | number | boolean> = {};
+    let ok = true;
+    for (const { knob, read, err } of rows) {
+      const value = coerceKnob(knob, read());
+      const msg = knobError(knob, value);
+      err.textContent = msg ?? '';
+      if (msg) { ok = false; continue; }
+      args[knob.label] = value;
+    }
+    if (!ok) return; // refuse-and-teach: nothing bakes until every knob is valid
+    handle.close();
+    commitSubtype(col, field, st, args, onToast);
+  });
+  foot.append(cancel, apply);
+  panel.appendChild(foot);
+
+  document.body.appendChild(handle.overlay);
+  (panel.querySelector('input, select') as HTMLElement | null)?.focus();
 }
 
 /** "Format this column" → the type-filtered subtype catalog (built-in seeds +

@@ -19,6 +19,32 @@ function header(page: Page, label: string) {
   return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
+/** Reveal the Data dock (it starts collapsed). */
+async function openDataDock(page: Page): Promise<void> {
+  const dock = page.locator('#wb-data-dock');
+  if (await dock.evaluate((el) => el.classList.contains('wb-min'))) {
+    await page.click('#wb-data-min');
+  }
+}
+
+/** Import a schema with an unformatted Currency column (so Money has a target). */
+async function importCurrencyColumn(page: Page): Promise<void> {
+  const schema = {
+    schemaXmlList: [
+      '<Field Type="Text" Name="Title" DisplayName="Title" ReadOnly="FALSE" />',
+      '<Field Type="Currency" Name="Price" DisplayName="Price" ReadOnly="FALSE" />',
+    ],
+  };
+  const csv = `ListSchema=${JSON.stringify(schema)}\n`
+    + '"Title","Price"\n'
+    + '"Widget","149.5"\n'
+    + '"Gadget","299"\n';
+  await openDataDock(page);
+  await page.click('button:has-text("Import schema…")');
+  await page.fill('.wb-schema-form textarea', csv);
+  await page.click('button:has-text("Import pasted text")');
+}
+
 /** Seed a maker-authored (custom) date subtype into the wb-subtypes store. */
 async function seedCustomDateSubtype(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -68,4 +94,35 @@ test('picking a seed snapshot-applies it: the cell renders it and Ctrl+Z restore
   // a single Ctrl+Z reverts to the plain cell
   await page.keyboard.press('Control+z');
   await expect(dueCell.locator('[style*="border-radius"]')).toHaveCount(0);
+});
+
+test('Money: a knob-bearing subtype opens the apply-time form, refuses invalid, then bakes', async ({ page }) => {
+  await importCurrencyColumn(page);
+  await expect(page.locator('.wb-grid-cell').filter({ hasText: '€' })).toHaveCount(0);
+
+  await header(page, 'Price').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
+  const money = page.locator('.wb-grid-menu button', { hasText: 'Money' });
+  await expect(money.locator('.wb-menu-badge')).toHaveText('Built-in');
+  await money.click();
+
+  // the knob form opens, pre-filled with the seed defaults
+  const form = page.locator('.wb-knobform');
+  await expect(form).toBeVisible();
+  await expect(form.locator('[data-knob="Symbol"]')).toHaveValue('$');
+  await expect(form.locator('[data-knob="Decimals"]')).toHaveValue('2');
+
+  // refuse-and-teach: a single quote in text is rejected; nothing bakes, form stays open
+  await form.locator('[data-knob="Symbol"]').fill("x'y");
+  await form.locator('.wb-knobform-apply').click();
+  await expect(form).toBeVisible();
+  await expect(form.locator('.wb-knobform-err').first()).toContainText('quote');
+  await expect(page.locator('.wb-grid-cell').filter({ hasText: '€' })).toHaveCount(0);
+
+  // valid input bakes: € symbol, 0 decimals → an integer money string on the grid
+  await form.locator('[data-knob="Symbol"]').fill('€');
+  await form.locator('[data-knob="Decimals"]').fill('0');
+  await form.locator('.wb-knobform-apply').click();
+  await expect(form).toHaveCount(0);
+  await expect(page.locator('.wb-grid-cell').filter({ hasText: '€' }).first()).toHaveText(/^€\d+$/);
 });
