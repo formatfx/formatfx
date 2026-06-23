@@ -3,10 +3,6 @@ on:
   push:
     branches: [main]
   pull_request:
-# Node 20 action runtime is removed 2026-06-16; opt in to Node 24 now so
-# the forced switch is a no-op (HANDOFF roadmap #1)
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 permissions:
   contents: read
   pages: write
@@ -15,8 +11,8 @@ jobs:
   test-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test
@@ -26,7 +22,7 @@ jobs:
       - run: |
           echo '{"elmType":"div","txtContent":"@currentField"}' > /tmp/fixture.json
           node dist-lib/cli.js lint /tmp/fixture.json
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with: { path: dist }
   deploy-pages:
     if: github.ref == 'refs/heads/main'
@@ -37,17 +33,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
         env: { PW_CHANNEL: bundled }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with: { name: playwright-report, path: playwright-report }
