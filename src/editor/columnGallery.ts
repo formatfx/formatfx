@@ -14,6 +14,8 @@ import { renderElement } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
 import type { SPElement } from '../core/types';
 import { cfrFieldName } from '../core/refs';
+import { fieldLabel } from './gridScaffold';
+import { openColumnFormatMenuFor } from './gridView';
 
 /** Column names that currently carry a formatter, in registry order. */
 export function formattedColumnNames(): string[] {
@@ -56,14 +58,20 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
 
   const head = document.createElement('div');
   head.className = 'wb-colgal-head';
-  head.textContent = 'Formatted columns';
+  head.textContent = 'Column Formatters';
   panel.appendChild(head);
 
   const names = formattedColumnNames();
+
+  const formattedLabel = document.createElement('div');
+  formattedLabel.className = 'wb-colgal-group';
+  formattedLabel.textContent = 'Formatted';
+  panel.appendChild(formattedLabel);
+
   if (names.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'wb-colgal-empty';
-    empty.textContent = 'No columns have a formatter yet. Use a column’s header menu → “Format this column” to start one.';
+    empty.textContent = 'No columns have a formatter yet. Start one from the “Not yet formatted” list below.';
     panel.appendChild(empty);
   }
 
@@ -101,6 +109,30 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
       onToast(`Editing the ${name} column formatter`);
     });
     panel.appendChild(card);
+  }
+
+  // ── Not yet formatted: every schema field without a formatter, as plain
+  // rows. Click → the existing type-aware "Format this column" flow. ─────────
+  const unformatted = state.fields.filter(
+    (f) => !f.protected && !(f.name in state.columnRefs),
+  );
+  if (unformatted.length) {
+    const newLabel = document.createElement('div');
+    newLabel.className = 'wb-colgal-group';
+    newLabel.textContent = 'Not yet formatted';
+    panel.appendChild(newLabel);
+    for (const field of unformatted) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'wb-colgal-newrow';
+      row.textContent = fieldLabel(field);
+      row.title = `Start a formatter for the ${fieldLabel(field)} column`;
+      row.addEventListener('click', () => {
+        closeColumnGallery();
+        openColumnFormatMenuFor(field, anchor, onToast);
+      });
+      panel.appendChild(row);
+    }
   }
 
   document.body.appendChild(panel);

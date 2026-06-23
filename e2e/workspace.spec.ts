@@ -267,7 +267,7 @@ test('element playground marks CFR slots and can enter the referenced formatter'
   // the playground now targets the column formatter's root…
   await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Progress bar');
   // …because the workspace switched to editing [$Progress]
-  await expect(page.locator('#wb-activedoc')).toHaveValue('Progress');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('Progress');
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {

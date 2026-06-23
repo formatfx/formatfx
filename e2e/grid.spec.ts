@@ -35,7 +35,7 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   await menu.locator('button', { hasText: 'Format this column manually' }).click();
   // we land in the column-formatter editing context, scaffolded on @currentField
   await expect(page.locator('.wb-doc-header', { hasText: '[$DueDate]' })).toHaveClass(/active/);
-  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
   // style it so the round trip is visible, then return to the grid
   await page.locator('.wb-tabs button[data-tab="json"]').click();
   await page.fill('#wb-json-text', JSON.stringify({
@@ -62,23 +62,28 @@ test('"Format this column" is the subtype catalog: type-aware looks, badged, sna
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this column manually' })).toBeVisible();
   // a subtype that does not fit a people column never appears (refuse-don't-guess)
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Data bar' })).toHaveCount(0);
-  // snapshot apply: stay on the grid, the cell renders avatars, one Ctrl+Z reverts
+  // snapshot apply: stay on the grid (View Formatters, not drilled into a column),
+  // the cell renders avatars, one Ctrl+Z reverts
   await facepile.click();
-  await expect(page.locator('#wb-activedoc')).toHaveValue('main');
+  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
   await expect(page.locator('.wb-grid-cell img').first()).toBeVisible();
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
 });
 
-test('drilling into a column formatter shows a Back affordance that returns to the view', async ({ page }) => {
+test('drilling into a column formatter shows a Back affordance that returns to the named view', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
-  await expect(page.locator('#wb-activedoc')).toHaveValue('Status');
-  // the shown view (the column preview) offers a way back to where you came from
-  const back = page.locator('.wb-back-bar .wb-rowview-back');
-  await expect(back).toBeVisible();
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
+  // the ribbon breadcrumb offers a way back to the view you drilled from
+  const back = page.locator('.wb-crumb-back');
+  await expect(back).toContainText('Back to View 1 view formatter');
   await back.click();
-  await expect(page.locator('#wb-activedoc')).toHaveValue('main');
+  // back on the view: root browses views, tail is the view name
+  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('View 1');
+  await expect(page.locator('.wb-crumb-back')).toHaveCount(0);
   await expect(page.locator('.wb-grid-header-label').first()).toBeVisible();
 });
 
@@ -186,7 +191,7 @@ test('conditional formatting from the header menu: condition → rule → data p
   await expect(cf.locator('.wb-cf-preview-lab').nth(1)).toHaveText('rule 1');
   await cf.locator('.wb-cf-apply').click();
   // the column route registers a formatter and switches the workspace to it
-  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
   await page.locator('.wb-tabs button[data-tab="json"]').click();
   const json = await page.inputValue('#wb-json-text');
   // the JSON tab shows the sanitized export (Zero Whitespace Rule)
@@ -210,7 +215,7 @@ test('conditional formatting can watch a different column than the one it paints
   await expect(cf.locator('.wb-cf-rule-when').first()).toContainText('Status is Blocked');
   await cf.locator('.wb-cf-apply').click();
   // the PAINTED column gets the formatter; the rules inside watch Status
-  await expect(page.locator('#wb-activedoc')).toHaveValue('DueDate');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
   await page.locator('.wb-tabs button[data-tab="json"]').click();
   expect(await page.inputValue('#wb-json-text')).toContain("[$Status]=='Blocked'");
 });

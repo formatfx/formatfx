@@ -94,24 +94,6 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     now: new Date(),
   });
 
-  /** Contextual "go back" for the view being shown: when you've drilled into a
-   *  column formatter, return to the main (grid/row/tile) you came from —
-   *  mirroring the row-view toolbar's "Back to grid". */
-  const backToMainBar = (): HTMLElement => {
-    const bar = document.createElement('div');
-    bar.className = 'wb-rowview-bar wb-back-bar';
-    const back = document.createElement('button');
-    back.className = 'wb-rowview-bar-btn wb-rowview-back';
-    back.textContent = '← Back';
-    back.title = `Return to ${state.mainDocLabel()}`;
-    back.addEventListener('click', () => { state.openMain(); onToast(`Back to ${state.mainDocLabel()}`); });
-    const label = document.createElement('span');
-    label.className = 'wb-rowview-bar-label';
-    label.textContent = `Editing the ${state.activeDocKey} column formatter`;
-    bar.append(back, label);
-    return bar;
-  };
-
   const render = () => {
     closeFlyout();
     host.innerHTML = '';
@@ -126,8 +108,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
 
     const kind = state.doc.kind;
     if (kind === 'column') {
-      // drilled into a column formatter → offer a way back to where you came from
-      if (state.activeDocKey !== 'main') host.appendChild(backToMainBar());
+      // drilled into a column formatter → the ribbon breadcrumb offers Back
       const table = document.createElement('div');
       table.className = 'wb-mock-list';
       const header = document.createElement('div');

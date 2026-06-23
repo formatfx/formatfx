@@ -17,14 +17,13 @@ import { mountInspector } from './editor/inspector';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
 import { onPushedSnapshot } from './editor/extensionBridge';
-import { openColumnGallery } from './editor/columnGallery';
+import { mountBreadcrumb } from './editor/breadcrumb';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
 import { openGuide } from './editor/guide';
 import { themeToggleView } from './editor/themeToggle';
 import type { DocumentKind, FormatterDocument } from './core/types';
-import { formatterDestination } from './editor/formatterDestination';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -35,11 +34,7 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
-      <label title="Switch between the main formatter and any registered column formatter — CFRs in the main formatter update live">Editing
-        <select id="wb-activedoc"><option value="main">Main formatter</option></select>
-      </label>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
-      <span id="wb-dest-chip" class="wb-dest-chip" title=""></span>
       <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
       <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
@@ -68,8 +63,8 @@ app.innerHTML = `
       </div>
     </div>
   </header>
-  <div class="wb-ribbon" id="wb-ribbon" title="Sheet actions">
-    <button id="wb-ribbon-cols" class="wb-ribbon-cols" title="Browse the columns that already have a formatter — by what they look like — and open one to edit">▦ Formatted columns</button>
+  <div class="wb-ribbon" id="wb-ribbon" title="Where you are — and where this formatter saves">
+    <div id="wb-breadcrumb" class="wb-breadcrumb"></div>
   </div>
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
@@ -430,10 +425,6 @@ menuPanel.addEventListener('click', (e) => {
   // button actions close the menu; the outlines checkbox keeps it open
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
 });
-document.getElementById('wb-ribbon-cols')!.addEventListener('click', (e) => {
-  e.stopPropagation();
-  openColumnGallery(e.currentTarget as HTMLElement, toast);
-});
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());
 
@@ -482,54 +473,17 @@ kindSel.addEventListener('change', () => {
     : `Same element tree, new wrapper: this formatter now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 
-const destChip = document.getElementById('wb-dest-chip')!;
-const updateDestChip = () => {
-  const columnField = state.doc.kind === 'column'
-    ? (state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName)
-    : null;
-  const d = formatterDestination(state.doc.kind, columnField);
-  destChip.textContent = `→ ${d.label}`;
-  destChip.title = d.title;
-};
-updateDestChip();
-
-state.subscribe((reason) => {
-  if (reason === 'load' || reason === 'kind') {
-    kindSel.value = state.doc.kind;
-    updateDestChip();
-  }
-});
-
-// workspace switcher: main formatter ⇄ registered column formatters
-const activeDocSel = document.getElementById('wb-activedoc') as HTMLSelectElement;
-const refreshActiveDocSel = () => {
-  activeDocSel.innerHTML = '';
-  const main = document.createElement('option');
-  main.value = 'main';
-  main.textContent = state.mainDocLabel();
-  activeDocSel.appendChild(main);
-  for (const name of Object.keys(state.columnRefs)) {
-    const o = document.createElement('option');
-    o.value = name;
-    o.textContent = `Column: ${name}`;
-    activeDocSel.appendChild(o);
-  }
-  activeDocSel.value = state.activeDocKey;
-  // wrapper kind/example only make sense on the main formatter
+// wrapper kind/example only make sense on the main formatter — preserve the
+// disabling the old workspace <select> used to drive (the breadcrumb now owns
+// doc navigation; this just keeps the Studio controls coherent).
+const refreshStudioDisabled = () => {
   kindSel.disabled = state.activeDocKey !== 'main';
   exampleSel.disabled = state.activeDocKey !== 'main';
 };
-activeDocSel.addEventListener('change', () => {
-  if (activeDocSel.value === 'main') state.openMain();
-  else state.openColumnRef(activeDocSel.value);
-  toast(activeDocSel.value === 'main'
-    ? 'Editing the main formatter — CFRs reflect your column edits'
-    : `Editing the ${activeDocSel.value} column formatter`);
-});
 state.subscribe((reason) => {
   if (reason === 'data' || reason === 'load' || reason === 'kind') {
-    refreshActiveDocSel();
-    updateDestChip();
+    kindSel.value = state.doc.kind;
+    refreshStudioDisabled();
   }
 });
 
@@ -626,6 +580,7 @@ mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElemen
 mountInspector(document.getElementById('wb-tab-inspector')!);
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
+mountBreadcrumb(document.getElementById('wb-breadcrumb')!, toast);
 
 // extract-push: a snapshot sent from the companion extension lands through the
 // same guarded import as a paste (a fresh tab auto-loads it; existing work is
@@ -663,7 +618,7 @@ state.subscribe((reason) => {
   }
 });
 jsonPanel.refreshLint(canvas.getRuntimeIssues());
-refreshActiveDocSel();
+refreshStudioDisabled();
 kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 
 if (restored) toast('Restored your autosaved project');
