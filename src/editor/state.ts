@@ -667,10 +667,11 @@ export class EditorState {
 
   // ─── Stage 4: CFR linked instances (the Figma model) ───────────────────────
 
-  /** "Override here": fork a linked grid cell into a LOCAL copy of the
-   *  registered formatter — its own to restyle, no longer tied to the column's
-   *  shared format. The cell keeps its grid layout (flex/min-width) and name;
-   *  @currentField becomes the explicit [$Field] ref so it renders locally. */
+  /** "Override in this view": fork a linked grid cell into a LOCAL copy of the
+   *  registered formatter, inlined into THIS view — its own to restyle, no
+   *  longer tied to the column's shared format. The cell keeps its grid layout
+   *  (flex/min-width) and name; @currentField becomes the explicit [$Field] ref
+   *  so it renders locally. */
   forkCfr(path: NodePath): void {
     const el = this.nodeAt(path);
     if (!el?.columnFormatterReference) return;

@@ -1,8 +1,8 @@
 /**
  * E2E: Stage 4 — the CFR linked-instance (Figma) model. A grid column that
  * renders a shared column format is a LINKED INSTANCE, marked with a teal link
- * badge; its menu offers "Change everywhere" (edit the shared format) and
- * "Override here" (fork to a local copy). A plain column promotes to a shared
+ * badge; its menu offers "Format this Column" (edit the shared format) and
+ * "Override in this view" (fork to a local copy). A plain column promotes to a shared
  * format via "Save as the column's format".
  */
 import { test, expect, type Page } from '@playwright/test';
@@ -26,11 +26,11 @@ test('a linked column wears the teal link badge; plain columns do not', async ({
   await expect(header(page, 'Title').locator('.wb-cfr-link')).toHaveCount(0);
 });
 
-test('"Override here" forks a linked cell local; undo relinks it', async ({ page }) => {
+test('"Override in this view" forks a linked cell local; undo relinks it', async ({ page }) => {
   await header(page, 'Status').click();
   const menu = page.locator('.wb-grid-menu');
-  await expect(menu.locator('button', { hasText: 'Change everywhere' })).toBeVisible();
-  await menu.locator('button', { hasText: 'Override here' }).click();
+  await expect(menu.locator('button', { hasText: 'Format this Column' })).toBeVisible();
+  await menu.locator('button', { hasText: 'Override in this view' }).click();
   // local now: the badge is gone, but the cell still renders the pill text
   await expect(header(page, 'Status').locator('.wb-cfr-link')).toHaveCount(0);
   await expect(page.locator('.wb-grid-row').first()).toContainText('In Progress');
@@ -39,9 +39,9 @@ test('"Override here" forks a linked cell local; undo relinks it', async ({ page
   await expect(header(page, 'Status').locator('.wb-cfr-link')).toHaveCount(1);
 });
 
-test('"Change everywhere" opens the shared column formatter', async ({ page }) => {
+test('"Format this Column" opens the shared column formatter', async ({ page }) => {
   await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format this Column' }).click();
   // the breadcrumb shows you're now editing the Status column formatter
   await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
   await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
@@ -53,9 +53,9 @@ test('"Save as the column\'s format" promotes a plain column to a shared, linked
   // the cell is now a linked instance → badge appears
   await expect(header(page, 'Title').locator('.wb-cfr-link')).toHaveCount(1);
   // and Title now carries a shared, linked format — its header offers the
-  // Figma-model "Change everywhere" edit (only registered, linked columns do)
+  // Figma-model "Format this Column" edit (only registered, linked columns do)
   await header(page, 'Title').click();
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Change everywhere' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this Column' })).toBeVisible();
   await page.keyboard.press('Escape');
   // undo removes the link
   await page.keyboard.press('Control+z');

@@ -519,21 +519,22 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
     const isLinked = !!col.el.columnFormatterReference;
     if (isLinked) {
       // a linked instance of the column's shared format (the Figma model):
-      // fork-local by default, or edit the shared format for everyone.
+      // edit the shared format for everyone, or detach a local copy into this view.
       const blast = cfrBlastRadius(field.name, state.doc.root, state.columnRefs);
       items.push({
-        icon: 'BranchFork2',
-        label: 'Override here — make local',
-        title: `Fork this linked cell into a local copy you can restyle on its own, without changing the ${field.name} format anywhere else`,
-        fn: () => { state.forkCfr(col.path); onToast(`"${label}" is local now — your edits stay here. Ctrl+Z to relink.`); },
-      });
-      items.push({
-        icon: 'Edit',
-        label: 'Change everywhere — edit the format',
+        icon: 'Brush',
+        label: 'Format this Column',
+        badge: 'Shared',
         title: blast.count > 1
-          ? `Edit the shared ${field.name} format — applies to all ${blast.count} linked places (${blast.places.join(', ')})`
+          ? `Edit the shared ${field.name} format — changes all ${blast.count} places it's used (${blast.places.join(', ')})`
           : `Edit the shared ${field.name} column format`,
         fn: () => formatColumn(col, field, onToast),
+      });
+      items.push({
+        icon: 'BranchFork2',
+        label: 'Override in this view',
+        title: `Detach this column into its own copy that lives only in this view — restyle it here without changing the ${field.name} format anywhere else`,
+        fn: () => { state.forkCfr(col.path); onToast(`"${label}" is overridden in this view now — your edits stay here. Ctrl+Z to relink.`); },
       });
     } else if (registered) {
       items.push({
@@ -761,8 +762,8 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       badge.className = 'ms-Icon ms-Icon--Link wb-cfr-link';
       badge.setAttribute('aria-hidden', 'true');
       badge.title = blast.count > 1
-        ? `Linked to the ${linkField} column format — shared with ${blast.count} places. "Change everywhere" edits them all; "Override here" makes this one local.`
-        : `Linked to the ${linkField} column format. "Change everywhere" edits the shared format; "Override here" makes this one local.`;
+        ? `Linked to the ${linkField} column format — shared with ${blast.count} places. "Format this Column" edits them all; "Override in this view" detaches this one.`
+        : `Linked to the ${linkField} column format. "Format this Column" edits the shared format; "Override in this view" detaches this one.`;
       h.append(badge);
     }
     const caret = document.createElement('span');
