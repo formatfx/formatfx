@@ -1,16 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31">
   <style>
-    .f-list { fill: #1f2937; }
+    .ffx-frame { fill: #1f2937; }
+    .ffx-amber { fill: #d97706; }
     @media (prefers-color-scheme: dark) {
-      .f-list { fill: #f3f4f6; }
+      .ffx-frame { fill: #f3f4f6; }
     }
   </style>
-  <rect class="f-list" x="6" y="8" width="8" height="48"/>
-  <rect class="f-list" x="14" y="8" width="44" height="8"/>
-  <rect class="f-list" x="14" y="24" width="30" height="8"/>
-  <rect class="f-list" x="14" y="40" width="16" height="8"/>
-  <g stroke="#d97706" stroke-width="7" stroke-linecap="butt">
-    <line x1="37" y1="36" x2="55" y2="54"/>
-    <line x1="55" y1="36" x2="37" y2="54"/>
-  </g>
+  <!-- Frame -->
+  <rect class="ffx-frame" x="3" y="3" width="24" height="4"/>
+  <rect class="ffx-frame" x="3" y="7" width="5" height="4"/>
+  <rect class="ffx-frame" x="3" y="11" width="24" height="4"/>
+  <rect class="ffx-frame" x="3" y="15" width="9" height="4"/>
+  <rect class="ffx-frame" x="3" y="19" width="24" height="4"/>
+  <rect class="ffx-frame" x="3" y="23" width="13" height="4"/>
+
+  <!-- Amber/Orange shapes -->
+  <polygon class="ffx-amber" points="8,7 11,7 15,11 8,11"/>
+  <polygon class="ffx-amber" points="19,7 26,7 30,11 23,11"/>
+  <polygon class="ffx-amber" points="12,15 19,15 23,19 12,19"/>
+  <polygon class="ffx-amber" points="20,23 27,23 27,27 24,27"/>
 </svg>
