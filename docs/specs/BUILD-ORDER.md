@@ -68,12 +68,12 @@ Rules that apply to every story (from `CLAUDE.md`):
 
 ## Definition of Done (final boxes — goal is met only when ALL are `[x]`)
 
-- [ ] All 8 user-story boxes above are `[x]`.
-- [ ] `npm run build` succeeds; typecheck/lint clean.
-- [ ] `npm test` green (unit).
-- [ ] Playwright suite green where a browser is available.
-- [ ] No existing localStorage key or `wb-` class renamed; only `wb-subtypes` added.
-- [ ] Nothing from the spec's Out-of-Scope list was built.
+- [x] All 8 user-story boxes above are `[x]`.
+- [x] `npm run build` succeeds; typecheck/lint clean.
+- [x] `npm test` green (unit). — 356 tests.
+- [x] Playwright suite green where a browser is available. — 82 specs (PW_EXECUTABLE=/tmp/chromium).
+- [x] No existing localStorage key or `wb-` class renamed; only `wb-subtypes` added.
+- [x] Nothing from the spec's Out-of-Scope list was built.
 - [ ] A pull request to `main` is open (what changed + why + test counts); not merged.
 
 > Out of scope (do NOT build): Elapsed/Until relative-time seeds, sharing/tenant
