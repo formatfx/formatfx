@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView, type RowTemplateConfig, type KebabConfig } from './rowTemplates';
+import {
+  composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView,
+  addArea, removeArea, moveArea, setAreaField, patchArea, nextWeight, childSlotOrder,
+  type RowTemplateConfig, type KebabConfig,
+} from './rowTemplates';
 import { themePalette } from '../core/theme';
 import type { MockField } from '../core/types';
 
@@ -135,5 +139,81 @@ describe('defaultConfigFor + buildTemplateView', () => {
     expect((root.attributes!.class as string)).toContain('sp-card-showOnHoverParent');
     const kebab = root.children![root.children!.length - 1];
     expect((kebab.attributes!.class as string)).toContain('sp-card-showOnHoverChild');
+  });
+});
+
+// ─── free-form area ops + the editor's children→area mapping (overhaul) ──────
+
+const NATIVE_ACTIONS = { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false };
+
+describe('area ops (pure, immutable)', () => {
+  const cfg = (): RowTemplateConfig => defaultConfigFor('split', FIELDS);
+
+  it('addArea appends an empty area without mutating the source', () => {
+    const a = cfg();
+    const n0 = a.areas.length;
+    const b = addArea(a);
+    expect(b).not.toBe(a);
+    expect(a.areas.length).toBe(n0);                 // source untouched
+    expect(b.areas.length).toBe(n0 + 1);
+    expect(b.areas.at(-1)?.fieldName).toBe('');
+  });
+
+  it('addArea can seed the new area with a field', () => {
+    expect(addArea(cfg(), 'Due').areas.at(-1)?.fieldName).toBe('Due');
+  });
+
+  it('removeArea splices the given index', () => {
+    const a = cfg();
+    expect(removeArea(a, 1).areas.length).toBe(a.areas.length - 1);
+  });
+
+  it('moveArea reorders; out-of-range is a no-op (same ref)', () => {
+    const a = cfg();
+    const first = a.areas[0].fieldName;
+    expect(moveArea(a, 0, 2).areas[2].fieldName).toBe(first);
+    expect(moveArea(a, 0, 9)).toBe(a);
+  });
+
+  it('setAreaField / patchArea update one area immutably', () => {
+    const a = cfg();
+    expect(setAreaField(a, 0, 'Status').areas[0].fieldName).toBe('Status');
+    expect(patchArea(a, 0, { align: 'center', weight: 'widest' }).areas[0]).toMatchObject({ align: 'center', weight: 'widest' });
+    expect(a.areas[0].align).toBe('left');           // source untouched
+  });
+
+  it('nextWeight cycles normal → wide → widest → normal', () => {
+    expect(nextWeight('normal')).toBe('wide');
+    expect(nextWeight('wide')).toBe('widest');
+    expect(nextWeight('widest')).toBe('normal');
+  });
+});
+
+describe('childSlotOrder mirrors buildTemplateView child order (incl. spliced kebab)', () => {
+  const len = (c: RowTemplateConfig): number =>
+    buildTemplateView(c, FIELDS, {}, themePalette('light')).root.children?.length ?? 0;
+
+  it('no kebab → one slot per area, in order', () => {
+    const c = defaultConfigFor('split', FIELDS);
+    expect(childSlotOrder(c)).toEqual([0, 1, 2]);
+    expect(childSlotOrder(c).length).toBe(len(c));
+  });
+
+  it('kebab right → appended last', () => {
+    const c: RowTemplateConfig = { ...defaultConfigFor('split', FIELDS), kebab: { enabled: true, behavior: 'native', position: 'right', actions: { ...NATIVE_ACTIONS } } };
+    expect(childSlotOrder(c)).toEqual([0, 1, 2, 'kebab']);
+    expect(childSlotOrder(c).length).toBe(len(c));
+  });
+
+  it('kebab title → spliced after the first area', () => {
+    const c: RowTemplateConfig = { ...defaultConfigFor('split', FIELDS), kebab: { enabled: true, behavior: 'native', position: 'title', actions: { ...NATIVE_ACTIONS } } };
+    expect(childSlotOrder(c)).toEqual([0, 'kebab', 1, 2]);
+    expect(childSlotOrder(c).length).toBe(len(c));
+  });
+
+  it('a refused (all-blank custom) kebab leaves no slot', () => {
+    const c: RowTemplateConfig = { ...defaultConfigFor('split', FIELDS), kebab: { enabled: true, behavior: 'custom', position: 'right', actions: { ...NATIVE_ACTIONS } } };
+    expect(childSlotOrder(c)).toEqual([0, 1, 2]);     // buildKebab → null, not placed
+    expect(childSlotOrder(c).length).toBe(len(c));
   });
 });

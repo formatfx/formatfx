@@ -262,3 +262,62 @@ export function buildTemplateView(
   setRowDensity(root, config.density);          // areas.ts: gap + padding only
   return { root, additionalRowClass: composed.wrapperAdditionalRowClass };
 }
+
+// ─── free-form area ops (immutable; consumed by the direct-manipulation modal) ─
+// buildTemplateView already iterates config.areas generically, so arbitrary
+// block counts need no engine change — only these pure array ops.
+
+export function newArea(fieldName = ''): RowAreaConfig {
+  return { fieldName, weight: 'normal', wrapping: 'truncate', align: 'left' };
+}
+
+export function addArea(config: RowTemplateConfig, fieldName = ''): RowTemplateConfig {
+  return { ...config, areas: [...config.areas, newArea(fieldName)] };
+}
+
+export function removeArea(config: RowTemplateConfig, i: number): RowTemplateConfig {
+  return { ...config, areas: config.areas.filter((_, idx) => idx !== i) };
+}
+
+export function moveArea(config: RowTemplateConfig, from: number, to: number): RowTemplateConfig {
+  const n = config.areas.length;
+  // guard NaN/float indices (e.g. a malformed drag payload): without this, NaN
+  // slips past the range checks below and splice(NaN, …) silently acts as index 0.
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return config;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return config;
+  const areas = config.areas.slice();
+  const [moved] = areas.splice(from, 1);
+  areas.splice(to, 0, moved);
+  return { ...config, areas };
+}
+
+export function setAreaField(config: RowTemplateConfig, i: number, fieldName: string): RowTemplateConfig {
+  return patchArea(config, i, { fieldName });
+}
+
+export function patchArea(config: RowTemplateConfig, i: number, patch: Partial<RowAreaConfig>): RowTemplateConfig {
+  if (i < 0 || i >= config.areas.length) return config;
+  const areas = config.areas.map((a, idx) => (idx === i ? { ...a, ...patch } : a));
+  return { ...config, areas };
+}
+
+const WEIGHT_CYCLE: AreaWeight[] = ['normal', 'wide', 'widest'];
+/** The next weight in the Normal → Wide → Widest → Normal cycle (divider click). */
+export function nextWeight(w: AreaWeight): AreaWeight {
+  return WEIGHT_CYCLE[(WEIGHT_CYCLE.indexOf(w) + 1) % WEIGHT_CYCLE.length];
+}
+
+/** The order buildTemplateView lays out root children: each entry is an area
+ *  index or 'kebab'. Mirrors placeKebab + the buildKebab-null refusal EXACTLY,
+ *  so the Edit overlay can map rendered DOM children back to areas (and skip the
+ *  spliced kebab slot) without guessing. Pinned by rowTemplates.test.ts. */
+export function childSlotOrder(config: RowTemplateConfig): (number | 'kebab')[] {
+  const areaSlots: (number | 'kebab')[] = config.areas.map((_, i) => i);
+  const kebabEl = config.kebab.enabled ? buildKebab(config.kebab) : null;
+  if (!kebabEl) return areaSlots;
+  switch (config.kebab.position) {
+    case 'left': return ['kebab', ...areaSlots];
+    case 'title': return areaSlots.length ? [areaSlots[0], 'kebab', ...areaSlots.slice(1)] : ['kebab'];
+    default: return [...areaSlots, 'kebab']; // right + hover
+  }
+}

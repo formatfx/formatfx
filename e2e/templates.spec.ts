@@ -31,7 +31,7 @@ test('Templates opens a modal with a live preview, and a card exclusion is felt'
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   await expect(page.locator('.wb-template-preview .wb-template-prow').first()).toBeVisible();
   // picking the card style greys the generic border control, with a reason
-  await page.locator('[data-field="rowStyle"]').selectOption('card');
+  await page.locator('.wb-template-inspector [data-rowstyle="card"]').click();
   await expect(page.locator('[data-toggle="border"]')).toHaveClass(/wb-disabled/);
   await expect(page.locator('[data-toggle="border"]')).toHaveAttribute('title', /Card style manages its own border/);
 });
@@ -39,7 +39,7 @@ test('Templates opens a modal with a live preview, and a card exclusion is felt'
 test('Apply replaces the row layout and Ctrl+Z reverts it in one step', async ({ page }) => {
   await enterRowView(page);
   await page.locator('.wb-rowview-templates').click();
-  await page.locator('[data-field="templateId"]').selectOption('equal');
+  await page.locator('[data-skeleton="equal"]').click(); // reseed from the Equal skeleton (confirm auto-accepted)
   await page.locator('.wb-template-apply').click();
   await expect(page.locator('.wb-template-modal')).toHaveCount(0);
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
@@ -48,12 +48,12 @@ test('Apply replaces the row layout and Ctrl+Z reverts it in one step', async ({
   await expect(page.locator('.wb-rowview-bar')).toBeVisible();
 });
 
-test('a field can be dragged from the palette into an area', async ({ page }) => {
+test('a field can be dragged from the palette onto a preview block', async ({ page }) => {
   await enterRowView(page);
   await page.locator('.wb-rowview-templates').click();
   await page.locator('.wb-template-field-chip', { hasText: 'DueDate' }).first()
-    .dragTo(page.locator('[data-area="0"]'));
-  await expect(page.locator('[data-area="0"] [data-field="areaField"]')).toHaveValue('DueDate');
+    .dragTo(page.locator('[data-edit-area="0"]'));
+  await expect(page.locator('[data-edit-area="0"]')).toHaveAttribute('data-field-name', 'DueDate');
 });
 
 test('New rowview is reachable from the View Formatters dropdown on the landing screen', async ({ page }) => {
