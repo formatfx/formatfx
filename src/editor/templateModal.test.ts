@@ -32,4 +32,19 @@ describe('template modal', () => {
     expect(state.doc.kind).toBe('row');
     spy.mockRestore();
   });
+
+  it('dropping a field chip on an area sets that area fieldName', () => {
+    state.fields = [{ name: 'Title', type: 'text' }, { name: 'Status', type: 'choice' }, { name: 'Due', type: 'date' }];
+    state.loadDocument({ kind: 'grid', root: { elmType: 'div', children: [] } });
+    openTemplateModal(() => {});
+    const area = document.querySelector('[data-area="0"]') as HTMLElement;
+    const ev = new Event('drop', { bubbles: true, cancelable: true });
+    (ev as unknown as { dataTransfer: unknown }).dataTransfer = {
+      getData: (t: string) => (t === 'application/x-wb-field' ? 'Status' : ''),
+      types: ['application/x-wb-field'],
+    };
+    area.dispatchEvent(ev);
+    const select = document.querySelector('[data-area="0"] [data-field="areaField"]') as HTMLSelectElement;
+    expect(select.value).toBe('Status'); // both channels write areas[i].fieldName
+  });
 });

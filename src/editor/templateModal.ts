@@ -25,12 +25,20 @@ const TEMPLATES: [RowTemplateId, string][] = [
 const ROW_STYLES: [RowStyle, string][] = [
   ['flat', 'Flat'], ['card', 'White card'], ['minimalist', 'Minimalist'],
 ];
+/** Drag MIME for a field chip → area drop, mirroring the palette/tree/grid channels. */
+const FIELD_MIME = 'application/x-wb-field';
 
 function el(tag: string, cls?: string, text?: string): HTMLElement {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
   if (text !== undefined) n.textContent = text;
   return n;
+}
+
+/** Deep-clone the (pure-data) config — JSON, not structuredClone, so it doesn't
+ *  depend on a global the test DOM environment may not provide. */
+function cloneCfg(c: RowTemplateConfig): RowTemplateConfig {
+  return JSON.parse(JSON.stringify(c)) as RowTemplateConfig;
 }
 
 export function openTemplateModal(onToast: (m: string) => void): void {
@@ -68,6 +76,7 @@ function renderConfigPane(
     (v) => setConfig(defaultConfigFor(v as RowTemplateId, state.fields)))); // skeleton reseeds areas
 
   pane.appendChild(el('div', 'wb-template-section', 'Areas'));
+  pane.appendChild(fieldChips());
   config.areas.forEach((_a, i) => pane.appendChild(areaRow(config, i, setConfig)));
 
   pane.appendChild(el('div', 'wb-template-section', 'Row style'));
@@ -143,9 +152,9 @@ function labeledSelect(
   for (const [v, t] of opts) {
     const o = document.createElement('option');
     o.value = v; o.textContent = t;
-    if (v === value) o.selected = true;
     sel.appendChild(o);
   }
+  sel.value = value; // set after options exist (robust across DOM impls)
   sel.addEventListener('change', () => onChange(sel.value));
   wrap.appendChild(sel);
   return wrap;
@@ -180,14 +189,48 @@ function areaRow(config: RowTemplateConfig, i: number, setConfig: (c: RowTemplat
   for (const f of state.fields) {
     const o = document.createElement('option');
     o.value = f.name; o.textContent = f.displayName ?? f.name;
-    if (f.name === config.areas[i].fieldName) o.selected = true;
     sel.appendChild(o);
   }
+  sel.value = config.areas[i].fieldName; // set after options exist (robust across DOM impls)
   sel.addEventListener('change', () => {
-    const next = structuredClone(config);
+    const next = cloneCfg(config);
     next.areas[i].fieldName = sel.value;
     setConfig(next);
   });
   row.appendChild(sel);
+
+  // drop target — accept a field chip dragged from the palette above (both the
+  // dropdown AND drag-drop, per the maker's "why not both 1 and 3?").
+  row.addEventListener('dragover', (e) => {
+    if ((e as DragEvent).dataTransfer?.types.includes(FIELD_MIME)) {
+      e.preventDefault();
+      row.classList.add('wb-drop-hover');
+    }
+  });
+  row.addEventListener('dragleave', () => row.classList.remove('wb-drop-hover'));
+  row.addEventListener('drop', (e) => {
+    row.classList.remove('wb-drop-hover');
+    const name = (e as DragEvent).dataTransfer?.getData(FIELD_MIME);
+    if (!name) return;
+    e.preventDefault();
+    const next = cloneCfg(config);
+    next.areas[i].fieldName = name;
+    setConfig(next);
+  });
   return row;
+}
+
+/** Draggable field chips — the drag SOURCE that pairs with the area drop targets. */
+function fieldChips(): HTMLElement {
+  const box = el('div', 'wb-template-chips');
+  for (const f of state.fields) {
+    const chip = el('span', 'wb-template-field-chip', f.displayName ?? f.name);
+    chip.draggable = true;
+    chip.dataset.field = f.name;
+    chip.addEventListener('dragstart', (e) => {
+      (e as DragEvent).dataTransfer?.setData(FIELD_MIME, f.name);
+    });
+    box.appendChild(chip);
+  }
+  return box;
 }
