@@ -393,3 +393,24 @@ describe('undo integrity', () => {
     expect(s.doc.kind).toBe(k0);
   });
 });
+
+describe('applyRowTemplate', () => {
+  it('is one undo step that reverts root + kind together', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'grid', root: { elmType: 'div', _elmName: 'grid', children: [] } });
+    const newRoot: SPElement = { elmType: 'div', _elmName: 'Row layout', children: [] };
+    s.applyRowTemplate(newRoot, "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
+    expect(s.doc.kind).toBe('row');
+    expect(s.doc.viewExtras!.additionalRowClass as string).toContain('@rowIndex');
+    s.undo();                                   // a single undo reverts BOTH
+    expect(s.doc.kind).toBe('grid');
+    expect(s.doc.root._elmName).toBe('grid');
+  });
+
+  it('preserves unrelated viewExtras (footerFormatter etc.)', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'row', root: { elmType: 'div' }, viewExtras: { footerFormatter: { elmType: 'div' } } });
+    s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' });
+    expect(s.doc.viewExtras!.footerFormatter).toBeDefined();
+  });
+});
