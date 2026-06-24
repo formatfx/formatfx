@@ -17,6 +17,7 @@ import { installPreviewContextMenu } from './contextMenu';
 import type { NodePath, SPElement } from '../core/types';
 import { cfrFieldName } from '../core/refs';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
+import { openTemplateModal } from './templateModal';
 
 /** The Stage-3 row-view toolbar: density (Roomy/Compact) + back to the grid.
  *  Per-area sizing lives on each area's right-click menu (independent weights). */
@@ -41,6 +42,13 @@ function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
     group.appendChild(b);
   }
   bar.appendChild(group);
+
+  const templates = document.createElement('button');
+  templates.className = 'wb-rowview-bar-btn wb-rowview-templates';
+  templates.textContent = '▤ Templates…';
+  templates.title = 'Start from a pre-built row layout (skeleton, styles, kebab)';
+  templates.addEventListener('click', () => openTemplateModal(onToast));
+  bar.appendChild(templates);
 
   const hint = document.createElement('span');
   hint.className = 'wb-rowview-bar-hint';

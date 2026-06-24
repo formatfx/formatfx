@@ -23,3 +23,17 @@ describe('canvas column preview', () => {
     expect(fmt?.textContent).toBe('<img src=x onerror="globalThis.__xss=1"> (formatted)');
   });
 });
+
+describe('row-view toolbar', () => {
+  it('has a Templates button that opens the modal', () => {
+    state.doc = { kind: 'row', root: { elmType: 'div', children: [] } };
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {});
+    const btn = [...host.querySelectorAll('button')].find((b) => /Templates/.test(b.textContent ?? ''));
+    expect(btn).toBeTruthy();
+    btn!.click();
+    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+  });
+});
