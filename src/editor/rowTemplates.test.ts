@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { composeRowStyle, type RowTemplateConfig } from './rowTemplates';
+import { composeRowStyle, buildKebab, type RowTemplateConfig, type KebabConfig } from './rowTemplates';
 import { themePalette } from '../core/theme';
 
 const PAL = themePalette('light');
@@ -54,5 +54,47 @@ describe('composeRowStyle — conflict precedence + exclusion', () => {
     const { ALLOWED_STYLES } = await import('../core/schema');
     const c = composeRowStyle(base({ rowStyle: 'card', leftStripe: 'neutral', hoverHighlight: true }), PAL);
     for (const k of Object.keys(c.rootStyle)) expect(ALLOWED_STYLES.has(k)).toBe(true);
+  });
+});
+
+const kebab = (over: Partial<KebabConfig> = {}): KebabConfig => ({
+  enabled: true, behavior: 'custom', position: 'right',
+  actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false },
+  ...over,
+});
+
+describe('buildKebab — trigger shape + refuse-and-teach', () => {
+  it('custom trigger is a button with DIRECT txtContent and NO children (no card-trigger gotcha)', () => {
+    const el = buildKebab(kebab({ actions: { defaultClick: false, editProps: true, share: false, delete: false, executeFlow: false, setValue: false } }))!;
+    expect(el.elmType).toBe('button');
+    expect(el.txtContent).toBe('⋯');
+    expect(el.children).toBeUndefined();               // trigger has no children
+    expect(el.customCardProps!.formatter.children!.length).toBe(1); // flyout has the action
+  });
+
+  it('refuses executeFlow with a blank flow id (no dead action emitted)', () => {
+    const el = buildKebab(kebab({ actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: true, setValue: false }, flowId: '   ' }));
+    expect(el).toBeNull();                              // nothing else enabled → whole kebab refused
+  });
+
+  it('emits executeFlow only when a flow id is present, as a JSON-string actionParams', () => {
+    const el = buildKebab(kebab({ actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: true, setValue: false }, flowId: 'abc-123' }))!;
+    const action = el.customCardProps!.formatter.children![0].customRowAction!;
+    expect(action.action).toBe('executeFlow');
+    expect(action.actionParams).toBe('{"id":"abc-123"}');
+  });
+
+  it('emits setValue only with field+value, keyed by the internal name', () => {
+    const el = buildKebab(kebab({ actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: true }, setValueField: 'Status', setValueVal: 'Done' }))!;
+    const action = el.customCardProps!.formatter.children![0].customRowAction!;
+    expect(action.action).toBe('setValue');
+    expect(action.actionInput).toEqual({ Status: 'Done' });
+  });
+
+  it('native behavior is a button carrying openContextMenu (direct glyph, no children)', () => {
+    const el = buildKebab(kebab({ behavior: 'native' }))!;
+    expect(el.elmType).toBe('button');
+    expect(el.children).toBeUndefined();
+    expect(el.customRowAction!.action).toBe('openContextMenu');
   });
 });

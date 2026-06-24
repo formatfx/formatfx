@@ -121,3 +121,55 @@ function finalize(
   if (config.hoverHighlight) rootClass.push(`ms-bgColor-${config.hoverToken}--hover`);
   return { rootStyle, rootClass, wrapperAdditionalRowClass, disabled };
 }
+
+// ─── kebab ───────────────────────────────────────────────────────────────────
+
+function actionRow(label: string, action: CustomRowAction): SPElement {
+  return {
+    elmType: 'button',
+    txtContent: label,
+    customRowAction: action,
+    style: { 'display': 'block', 'width': '100%', 'text-align': 'left',
+      'border': 'none', 'background-color': 'transparent', 'padding': '6px 8px', 'cursor': 'pointer' },
+  };
+}
+
+/** Action buttons, REFUSING any whose required param is blank (refuse-and-teach). */
+function buildActionButtons(kebab: KebabConfig): SPElement[] {
+  const out: SPElement[] = [];
+  if (kebab.actions.defaultClick) out.push(actionRow('Open', { action: 'defaultClick' }));
+  if (kebab.actions.editProps) out.push(actionRow('Edit', { action: 'editProps' }));
+  if (kebab.actions.share) out.push(actionRow('Share', { action: 'share' }));
+  if (kebab.actions.delete) out.push(actionRow('Delete', { action: 'delete' }));
+  if (kebab.actions.executeFlow && kebab.flowId?.trim()) {
+    out.push(actionRow('Run flow', { action: 'executeFlow', actionParams: JSON.stringify({ id: kebab.flowId.trim() }) }));
+  }
+  if (kebab.actions.setValue && kebab.setValueField?.trim() && kebab.setValueVal?.trim()) {
+    out.push(actionRow('Set value', { action: 'setValue', actionInput: { [kebab.setValueField.trim()]: kebab.setValueVal.trim() } }));
+  }
+  return out;
+}
+
+/** The kebab trigger. ALWAYS a <button> with the glyph as direct txtContent and
+ *  NO children array — the field-proven safe trigger (linter `card-trigger-button`). */
+export function buildKebab(kebab: KebabConfig): SPElement | null {
+  if (!kebab.enabled) return null;
+  const triggerStyle: Record<string, string> = {
+    'cursor': 'pointer', 'border': 'none', 'background-color': 'transparent', 'font-size': '18px', 'line-height': '1',
+  };
+  if (kebab.behavior === 'native') {
+    return { elmType: 'button', txtContent: '⋯', attributes: { title: 'Item actions' },
+      style: triggerStyle, customRowAction: { action: 'openContextMenu' } };
+  }
+  const actions = buildActionButtons(kebab);
+  if (!actions.length) return null; // refuse an empty/all-blank custom kebab
+  return {
+    elmType: 'button', txtContent: '⋯', attributes: { title: 'Actions' }, style: triggerStyle,
+    customCardProps: {
+      openOnEvent: 'click', directionalHint: 'bottomRightEdge', isBeakVisible: true,
+      formatter: { elmType: 'div',
+        style: { 'display': 'flex', 'flex-direction': 'column', 'padding': '4px', 'min-width': '160px' },
+        children: actions },
+    },
+  };
+}
