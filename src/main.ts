@@ -30,24 +30,12 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <header class="wb-topbar">
     <div class="wb-brand">
-      <svg class="wb-brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31 31" width="18" height="18" aria-hidden="true" focusable="false">
+      <svg class="wb-brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true" focusable="false">
         <style>
-          .ffx-logo-frame { fill: var(--wb-text); }
-          .ffx-logo-amber { fill: #d97706; }
+          .ffx-logo-path { fill: var(--wb-text); }
         </style>
-        <!-- Frame -->
-        <rect class="ffx-logo-frame" x="3" y="3" width="24" height="4"/>
-        <rect class="ffx-logo-frame" x="3" y="7" width="5" height="4"/>
-        <rect class="ffx-logo-frame" x="3" y="11" width="24" height="4"/>
-        <rect class="ffx-logo-frame" x="3" y="15" width="9" height="4"/>
-        <rect class="ffx-logo-frame" x="3" y="19" width="24" height="4"/>
-        <rect class="ffx-logo-frame" x="3" y="23" width="13" height="4"/>
-
-        <!-- Amber/Orange shapes -->
-        <polygon class="ffx-logo-amber" points="8,7 11,7 15,11 8,11"/>
-        <polygon class="ffx-logo-amber" points="23,7 27,7 27,10 26,11 19,11"/>
-        <polygon class="ffx-logo-amber" points="12,15 23,15 21,17 23,19 12,19"/>
-        <polygon class="ffx-logo-amber" points="20,23 27,23 27,27 24,27"/>
+        <path class="ffx-logo-path" d="M 6 5 L 32 5 L 32 9 L 10 9 L 10 14 L 32 14 L 32 18 L 11 18 A 1 1 0 0 0 10 19 L 10 32 L 5 32 L 5 6 A 1 1 0 0 1 6 5 Z"/>
+        <path class="ffx-logo-path" d="M 16 23 L 32 23 L 32 27 L 20 27 L 20 32 L 15 32 L 15 24 A 1 1 0 0 1 16 23 Z"/>
       </svg>
       <span>${PRODUCT_NAME}</span>
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
