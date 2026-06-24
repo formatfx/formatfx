@@ -651,6 +651,30 @@ export class EditorState {
     this.emit('kind');
   }
 
+  /** Apply a pre-built row template: replace the row formatter body, switch to
+   *  'row', and set/clear the zebra wrapper class — as ONE undoable mutation
+   *  (snapState captures the whole doc), mirroring makeRowView. Other viewExtras
+   *  (footerFormatter, commandBarProps, groupProps, …) are preserved. */
+  applyRowTemplate(root: SPElement, additionalRowClass?: string): void {
+    // Snapshot BEFORE mutating and push undo only if the doc actually changed —
+    // an Apply that reproduces the current layout must not push a phantom undo
+    // step (the no-op-snapshot invariant from 5df1f99 / mutateDocument). Touch
+    // viewExtras only when there's a zebra class to set or clear, so a no-op
+    // Apply doesn't flip viewExtras from undefined to {} and read as a change.
+    const before = this.snapState();
+    this.doc.root = root;
+    this.doc.kind = 'row';
+    if (additionalRowClass) {
+      this.doc.viewExtras = { ...this.doc.viewExtras, additionalRowClass };
+    } else if (this.doc.viewExtras?.additionalRowClass !== undefined) {
+      this.doc.viewExtras = { ...this.doc.viewExtras };
+      delete this.doc.viewExtras.additionalRowClass;
+    }
+    if (this.snapState() !== before) this.pushUndo(before);
+    this.selection = [];
+    this.emit('kind');
+  }
+
   /** Set one area's weight (Normal/Wide/Widest). Conflict-free — only the
    *  named area's flex changes; neighbors keep theirs (CSS-fr semantics). */
   setAreaWeight(path: NodePath, weight: AreaWeight): void {

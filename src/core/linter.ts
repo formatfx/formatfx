@@ -351,5 +351,19 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     }
   }
 
+  // customRowAction completeness — a blank-param action is schema-shaped but
+  // does nothing on real SP. Refuse-and-teach (deploys are lint-gated).
+  if (el.customRowAction) {
+    const a = el.customRowAction;
+    if (a.action === 'executeFlow') {
+      const hasId = typeof a.actionParams === 'string' && /"id"\s*:\s*"[^"]+"/.test(a.actionParams);
+      if (!hasId) push('error', 'flow-missing-id', 'executeFlow needs actionParams \'{"id":"<FLOWID>"}\' — pick a flow, or the action does nothing on the list.');
+    }
+    if (a.action === 'setValue') {
+      const ok = a.actionInput && typeof a.actionInput === 'object' && Object.keys(a.actionInput).length > 0;
+      if (!ok) push('error', 'setvalue-missing-target', 'setValue needs actionInput keyed by the column internal name (e.g. {"Status":"Done"}) — set a field and value.');
+    }
+  }
+
   el.children?.forEach((child, i) => walk(child, [...path, i], state, issues));
 }
