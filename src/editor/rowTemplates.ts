@@ -173,3 +173,92 @@ export function buildKebab(kebab: KebabConfig): SPElement | null {
     },
   };
 }
+
+// ─── skeletons + view assembly ───────────────────────────────────────────────
+
+const EMPTY_ACTIONS: KebabActionFlags = {
+  defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false,
+};
+
+/** Skeleton → slot count + the index of the heavier "title" slot (-1 = none). */
+const SKELETONS: Record<RowTemplateId, { slots: number; titleIdx: number }> = {
+  split: { slots: 3, titleIdx: 0 },            // Title (wide) + 2 content
+  avatar: { slots: 3, titleIdx: 1 },           // icon/avatar + Title + details
+  equal: { slots: 3, titleIdx: -1 },           // equal columns
+  'header-detail': { slots: 2, titleIdx: 0 },  // header + detail
+};
+
+export function defaultConfigFor(templateId: RowTemplateId, fields: MockField[]): RowTemplateConfig {
+  const skel = SKELETONS[templateId];
+  const usable = fields.filter((f) => !f.protected);
+  const areas: RowAreaConfig[] = Array.from({ length: skel.slots }, (_, i) => ({
+    fieldName: usable[i]?.name ?? '',
+    weight: i === skel.titleIdx ? 'wide' : 'normal',
+    wrapping: 'truncate',
+    align: 'left',
+  }));
+  return {
+    templateId, rowStyle: 'flat', density: 'roomy',
+    zebraStriping: false, hoverHighlight: false, hoverToken: 'themeLighter',
+    borderStyle: 'none', borderColor: 'neutralQuaternaryAlt', leftStripe: 'none',
+    areas, kebab: { enabled: false, behavior: 'custom', position: 'right', actions: { ...EMPTY_ACTIONS } },
+  };
+}
+
+function applyWrapAlign(cell: SPElement, wrapping: 'wrap' | 'truncate', align: 'left' | 'center' | 'right'): void {
+  cell.style = cell.style ?? {};
+  if (wrapping === 'truncate') {
+    cell.style['overflow'] = 'hidden';
+    cell.style['text-overflow'] = 'ellipsis';
+    cell.style['white-space'] = 'nowrap';
+  } else {
+    cell.style['white-space'] = 'normal';
+  }
+  cell.style['text-align'] = align;
+}
+
+function placeKebab(areas: SPElement[], kebab: SPElement | null, position: KebabPosition): SPElement[] {
+  if (!kebab) return areas;
+  switch (position) {
+    case 'left': return [kebab, ...areas];
+    case 'title': return areas.length ? [areas[0], kebab, ...areas.slice(1)] : [kebab];
+    default: return [...areas, kebab]; // right + hover
+  }
+}
+
+function joinClass(existing: unknown, add: string): string {
+  return `${typeof existing === 'string' ? existing + ' ' : ''}${add}`.trim();
+}
+
+export function buildTemplateView(
+  config: RowTemplateConfig, fields: MockField[],
+  columnRefs: Record<string, SPElement>, palette: Record<string, string>,
+): { root: SPElement; additionalRowClass?: string } {
+  const composed = composeRowStyle(config, palette);
+  const areaEls = config.areas.map((a) => {
+    const field = fields.find((f) => f.name === a.fieldName);
+    const cell: SPElement = field
+      ? gridCellForField(field, columnRefs)
+      : { elmType: 'div', _elmName: 'Empty area', style: { 'flex': '1', 'min-width': '0' } };
+    setAreaWeight(cell, a.weight);              // areas.ts: flex + load-bearing min-width:0
+    applyWrapAlign(cell, a.wrapping, a.align);
+    return cell;
+  });
+
+  const kebab = config.kebab.enabled ? buildKebab(config.kebab) : null;
+  if (kebab && config.kebab.position === 'hover') {
+    kebab.attributes = { ...kebab.attributes, class: joinClass(kebab.attributes?.class, 'sp-card-showOnHoverChild') };
+  }
+  const children = placeKebab(areaEls, kebab, config.kebab.position);
+
+  const root: SPElement = {
+    elmType: 'div', _elmName: 'Row layout',
+    style: { 'display': 'flex', 'align-items': 'center', 'width': '100%', ...composed.rootStyle },
+    children,
+  };
+  const cls = composed.rootClass.slice();
+  if (kebab && config.kebab.position === 'hover') cls.push('sp-card-showOnHoverParent');
+  if (cls.length) root.attributes = { class: cls.join(' ') };
+  setRowDensity(root, config.density);          // areas.ts: gap + padding only
+  return { root, additionalRowClass: composed.wrapperAdditionalRowClass };
+}

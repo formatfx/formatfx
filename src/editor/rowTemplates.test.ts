@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { composeRowStyle, buildKebab, type RowTemplateConfig, type KebabConfig } from './rowTemplates';
+import { composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView, type RowTemplateConfig, type KebabConfig } from './rowTemplates';
 import { themePalette } from '../core/theme';
+import type { MockField } from '../core/types';
 
 const PAL = themePalette('light');
 const base = (over: Partial<RowTemplateConfig> = {}): RowTemplateConfig => ({
@@ -96,5 +97,43 @@ describe('buildKebab — trigger shape + refuse-and-teach', () => {
     expect(el.elmType).toBe('button');
     expect(el.children).toBeUndefined();
     expect(el.customRowAction!.action).toBe('openContextMenu');
+  });
+});
+
+const FIELDS: MockField[] = [
+  { name: 'Title', type: 'text' }, { name: 'Status', type: 'choice' }, { name: 'Due', type: 'date' },
+];
+
+describe('defaultConfigFor + buildTemplateView', () => {
+  it('split skeleton seeds a Title area + 2 content areas', () => {
+    const c = defaultConfigFor('split', FIELDS);
+    expect(c.areas.length).toBe(3);
+    expect(c.areas[0].fieldName).toBe('Title');
+    expect(c.areas[0].weight).toBe('wide'); // Title gets the heavier area
+  });
+
+  it('areas become CFR/value cells with conflict-free weights (areas.ts reuse)', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    const { root } = buildTemplateView(c, FIELDS, {}, themePalette('light'));
+    expect(root.children!.length).toBe(c.areas.length);
+    for (const area of root.children!) expect(area.style!['min-width']).toBe('0'); // setAreaWeight invariant
+  });
+
+  it('zebra lands on the returned additionalRowClass, never on root style', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    c.zebraStriping = true;
+    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, themePalette('light'));
+    expect(additionalRowClass).toBe("=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
+    expect(root.style!['background-color']).toBeUndefined();
+  });
+
+  it('hover-positioned kebab puts showOnHoverParent on the row and showOnHoverChild on the kebab', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    c.kebab = { enabled: true, behavior: 'custom', position: 'hover',
+      actions: { defaultClick: true, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } };
+    const { root } = buildTemplateView(c, FIELDS, {}, themePalette('light'));
+    expect((root.attributes!.class as string)).toContain('sp-card-showOnHoverParent');
+    const kebab = root.children![root.children!.length - 1];
+    expect((kebab.attributes!.class as string)).toContain('sp-card-showOnHoverChild');
   });
 });
