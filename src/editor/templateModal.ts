@@ -10,6 +10,7 @@ import { renderElement, type RenderOptions } from '../core/renderer';
 import { evaluate } from '../core/expressions';
 import { themePalette } from '../core/theme';
 import { isPureGrid } from './gridScaffold';
+import { createOverlay, type OverlayHandle } from './overlay';
 import { ctxForRow, resolveColumnRef } from './previewCtx';
 import {
   defaultConfigFor, buildTemplateView, composeRowStyle,
@@ -44,20 +45,22 @@ function cloneCfg(c: RowTemplateConfig): RowTemplateConfig {
 export function openTemplateModal(onToast: (m: string) => void): void {
   let config: RowTemplateConfig = defaultConfigFor('split', state.fields);
 
-  const overlay = el('div', 'wb-template-modal-overlay');
+  // shared overlay primitive: backdrop click + Esc-to-close + idempotent teardown
+  let handle: OverlayHandle;
+  handle = createOverlay('wb-template-modal-overlay', () => handle.close());
+  const overlay = handle.overlay;
   const modal = el('div', 'wb-template-modal');
   const pane = el('div', 'wb-template-config');
   const preview = el('div', 'wb-template-preview');
   modal.append(pane, preview);
   overlay.appendChild(modal);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
   document.body.appendChild(overlay);
 
   const setConfig = (next: RowTemplateConfig): void => { config = next; rerender(); };
 
   function rerender(): void {
     const composed = composeRowStyle(config, themePalette(state.themeMode));
-    renderConfigPane(pane, config, composed.disabled, setConfig, onToast, overlay);
+    renderConfigPane(pane, config, composed.disabled, setConfig, onToast, handle.close);
     renderPreview(preview, config);
   }
   rerender();
@@ -67,7 +70,7 @@ function renderConfigPane(
   pane: HTMLElement, config: RowTemplateConfig,
   disabled: Partial<Record<StyleToggle, string>>,
   setConfig: (c: RowTemplateConfig) => void,
-  onToast: (m: string) => void, overlay: HTMLElement,
+  onToast: (m: string) => void, close: () => void,
 ): void {
   pane.innerHTML = '';
   pane.appendChild(el('h2', 'wb-template-title', 'Row layout template'));
@@ -93,7 +96,7 @@ function renderConfigPane(
 
   const actions = el('div', 'wb-template-buttons');
   const cancel = el('button', 'wb-template-cancel', 'Cancel');
-  cancel.addEventListener('click', () => overlay.remove());
+  cancel.addEventListener('click', () => close());
   const apply = el('button', 'wb-template-apply', 'Apply') as HTMLButtonElement;
   apply.addEventListener('click', () => {
     // structural click-safety gate: confirm only when the current row layout is
@@ -103,7 +106,7 @@ function renderConfigPane(
     const { root, additionalRowClass } = buildTemplateView(config, state.fields, state.columnRefs, themePalette(state.themeMode));
     state.applyRowTemplate(root, additionalRowClass);
     onToast('Template applied');
-    overlay.remove();
+    close();
   });
   actions.append(cancel, apply);
   pane.appendChild(actions);

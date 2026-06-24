@@ -1737,7 +1737,7 @@ body {
 .wb-rowview-templates { margin-left: 4px; }
 .wb-template-modal-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, .4);
-  display: flex; align-items: center; justify-content: center; z-index: 700;
+  display: flex; align-items: center; justify-content: center; z-index: 1100;
 }
 .wb-template-modal {
   display: flex; width: min(960px, 92vw); height: min(620px, 88vh);
@@ -1766,7 +1766,7 @@ body {
   background: var(--wb-bg); color: var(--wb-text); padding: 5px 6px;
 }
 .wb-template-toggle { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }
-.wb-template-config .wb-disabled { opacity: .45; pointer-events: none; }
+.wb-template-config .wb-disabled { opacity: .45; }
 .wb-template-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 .wb-template-field-chip {
   display: inline-block; padding: 3px 8px; border: 1px solid var(--wb-border);

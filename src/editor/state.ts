@@ -656,12 +656,21 @@ export class EditorState {
    *  (snapState captures the whole doc), mirroring makeRowView. Other viewExtras
    *  (footerFormatter, commandBarProps, groupProps, …) are preserved. */
   applyRowTemplate(root: SPElement, additionalRowClass?: string): void {
-    this.snapshot();
+    // Snapshot BEFORE mutating and push undo only if the doc actually changed —
+    // an Apply that reproduces the current layout must not push a phantom undo
+    // step (the no-op-snapshot invariant from 5df1f99 / mutateDocument). Touch
+    // viewExtras only when there's a zebra class to set or clear, so a no-op
+    // Apply doesn't flip viewExtras from undefined to {} and read as a change.
+    const before = this.snapState();
     this.doc.root = root;
     this.doc.kind = 'row';
-    this.doc.viewExtras = { ...this.doc.viewExtras };
-    if (additionalRowClass) this.doc.viewExtras.additionalRowClass = additionalRowClass;
-    else delete this.doc.viewExtras.additionalRowClass;
+    if (additionalRowClass) {
+      this.doc.viewExtras = { ...this.doc.viewExtras, additionalRowClass };
+    } else if (this.doc.viewExtras?.additionalRowClass !== undefined) {
+      this.doc.viewExtras = { ...this.doc.viewExtras };
+      delete this.doc.viewExtras.additionalRowClass;
+    }
+    if (this.snapState() !== before) this.pushUndo(before);
     this.selection = [];
     this.emit('kind');
   }

@@ -14,6 +14,13 @@ describe('template modal', () => {
     expect(document.querySelector('.wb-template-preview')).toBeTruthy();
   });
 
+  it('Escape closes the modal (shared overlay teardown)', () => {
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+  });
+
   it('greys a control when composeRowStyle disables it, showing the reason', () => {
     openTemplateModal(() => {});
     const sel = document.querySelector('[data-field="rowStyle"]') as HTMLSelectElement;

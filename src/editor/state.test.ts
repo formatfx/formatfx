@@ -413,4 +413,13 @@ describe('applyRowTemplate', () => {
     s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' });
     expect(s.doc.viewExtras!.footerFormatter).toBeDefined();
   });
+
+  it('does not push a phantom undo step when Apply reproduces the current doc', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'row', root: { elmType: 'div', _elmName: 'A', children: [] } });
+    s.applyRowTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // real change A→B (one undo)
+    s.applyRowTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // identical B→B (no undo)
+    s.undo();                                                            // one undo must land on A, not a phantom B
+    expect(s.doc.root._elmName).toBe('A');
+  });
 });

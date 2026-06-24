@@ -46,7 +46,7 @@ function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   const templates = document.createElement('button');
   templates.className = 'wb-rowview-bar-btn wb-rowview-templates';
   templates.textContent = '▤ Templates…';
-  templates.title = 'Start from a pre-built row layout (skeleton, styles, kebab)';
+  templates.title = 'Start from a pre-built row layout (skeleton + stackable styles)';
   templates.addEventListener('click', () => openTemplateModal(onToast));
   bar.appendChild(templates);
 
