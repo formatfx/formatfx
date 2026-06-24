@@ -134,14 +134,14 @@ function decorateBlock(node: HTMLElement, i: number, ui: ModalUI, api: ModalApi)
     if (!dt) return;
     const fld = dt.getData(FIELD_MIME);
     if (fld) { api.assign(i, fld); return; }
-    const from = dt.getData(ORDER_MIME);
-    if (from !== '') api.reorder(Number(from), i);
+    const from = Number(dt.getData(ORDER_MIME));
+    if (Number.isInteger(from)) api.reorder(from, i); // ignore empty/garbage payloads
   });
 }
 
 function makeDivider(leftAreaIdx: number, api: ModalApi): HTMLElement {
   const d = el('div', 'wb-edit-divider');
-  d.title = 'Resize: click to widen the left block';
+  d.title = 'Resize: click to cycle the left block width (Normal → Wide → Widest)';
   d.addEventListener('click', (e) => { e.stopPropagation(); api.cycleWeight(leftAreaIdx); });
   return d;
 }

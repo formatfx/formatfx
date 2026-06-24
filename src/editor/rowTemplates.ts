@@ -281,6 +281,9 @@ export function removeArea(config: RowTemplateConfig, i: number): RowTemplateCon
 
 export function moveArea(config: RowTemplateConfig, from: number, to: number): RowTemplateConfig {
   const n = config.areas.length;
+  // guard NaN/float indices (e.g. a malformed drag payload): without this, NaN
+  // slips past the range checks below and splice(NaN, …) silently acts as index 0.
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return config;
   if (from < 0 || from >= n || to < 0 || to >= n || from === to) return config;
   const areas = config.areas.slice();
   const [moved] = areas.splice(from, 1);

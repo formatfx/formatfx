@@ -110,3 +110,29 @@ describe('template modal — modes & apply', () => {
     expect((document.querySelector('.wb-template-apply') as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('template modal — dock persistence & kebab refusal hints', () => {
+  it('remembers the inspector dock across close + reopen', () => {
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('bottom');
+    (document.querySelector('.wb-template-dock') as HTMLButtonElement).click();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('left');
+    expect(localStorage.getItem('wb-template-inspector-dock')).toBe('left');
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('left'); // restored
+  });
+
+  it('a custom kebab action with a blank param shows an inline refusal hint (mirrors buildKebab)', () => {
+    openTemplateModal(() => {});
+    const check = (sel: string): void => {
+      const cb = document.querySelector(`${sel} input`) as HTMLInputElement;
+      cb.checked = true;
+      cb.dispatchEvent(new Event('change'));
+    };
+    check('[data-toggle="kebab"]');             // enable the kebab (defaults to custom behavior)
+    check('[data-toggle="kebab-executeFlow"]'); // Run-flow action, but no flow id yet
+    expect(document.querySelector('.wb-template-hint')?.textContent).toContain('flow ID');
+  });
+});
