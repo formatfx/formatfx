@@ -34,8 +34,7 @@ app.innerHTML = `
         <style>
           .ffx-logo-path { fill: var(--wb-text); }
         </style>
-        <path class="ffx-logo-path" d="M 6 5 L 32 5 L 32 9 L 10 9 L 10 14 L 32 14 L 32 18 L 11 18 A 1 1 0 0 0 10 19 L 10 32 L 5 32 L 5 6 A 1 1 0 0 1 6 5 Z"/>
-        <path class="ffx-logo-path" d="M 16 23 L 32 23 L 32 27 L 20 27 L 20 32 L 15 32 L 15 24 A 1 1 0 0 1 16 23 Z"/>
+        <path class="ffx-logo-path" fill-rule="evenodd" d="M 0 0 L 32 0 L 32 32 L 0 32 Z M 6 5 L 32 5 L 32 9 L 10 9 L 10 14 L 32 14 L 32 18 L 11 18 A 1 1 0 0 0 10 19 L 10 32 L 5 32 L 5 6 A 1 1 0 0 1 6 5 Z M 16 23 L 32 23 L 32 27 L 20 27 L 20 32 L 15 32 L 15 24 A 1 1 0 0 1 16 23 Z"/>
       </svg>
       <span>${PRODUCT_NAME}</span>
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
