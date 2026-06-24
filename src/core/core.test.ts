@@ -132,6 +132,21 @@ describe('linter', () => {
     expect(lintDocument(doc).map((i) => i.rule)).toContain('foreach-split-scope');
   });
 
+  it('flags executeFlow with no flow id (flow-missing-id)', () => {
+    const doc: FormatterDocument = { kind: 'row', root: { elmType: 'button', customRowAction: { action: 'executeFlow' } } };
+    expect(lintDocument(doc).map((i) => i.rule)).toContain('flow-missing-id');
+  });
+
+  it('flags setValue with no actionInput (setvalue-missing-target)', () => {
+    const doc: FormatterDocument = { kind: 'row', root: { elmType: 'button', customRowAction: { action: 'setValue' } } };
+    expect(lintDocument(doc).map((i) => i.rule)).toContain('setvalue-missing-target');
+  });
+
+  it('does NOT flag a complete executeFlow', () => {
+    const doc: FormatterDocument = { kind: 'row', root: { elmType: 'button', customRowAction: { action: 'executeFlow', actionParams: '{"id":"x"}' } } };
+    expect(lintDocument(doc).map((i) => i.rule)).not.toContain('flow-missing-id');
+  });
+
   it('retracted canon stays retracted: CFR-in-card and inlineEditField-in-forEach are clean', () => {
     const doc: FormatterDocument = {
       kind: 'column',
