@@ -10,6 +10,7 @@
  */
 
 import { state } from './state';
+import { openTemplateModal } from './templateModal';
 
 let openPanel: { panel: HTMLElement; cleanup: () => void } | null = null;
 
@@ -78,6 +79,19 @@ export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void):
     input.focus();
     input.select();
   });
+
+  // "+ New rowview" — start a fresh row view from a pre-built template, so the
+  // feature is reachable from the landing screen, not only after entering Row View.
+  const newRow = document.createElement('button');
+  newRow.type = 'button';
+  newRow.className = 'wb-viewmenu-newrow';
+  newRow.textContent = '+ New rowview…';
+  newRow.title = 'Start a new row view from a pre-built template';
+  newRow.addEventListener('click', () => {
+    closeViewMenu();
+    openTemplateModal(onToast);
+  });
+  panel.appendChild(newRow);
 
   document.body.appendChild(panel);
 

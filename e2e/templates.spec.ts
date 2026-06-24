@@ -55,3 +55,15 @@ test('a field can be dragged from the palette into an area', async ({ page }) =>
     .dragTo(page.locator('[data-area="0"]'));
   await expect(page.locator('[data-area="0"] [data-field="areaField"]')).toHaveValue('DueDate');
 });
+
+test('New rowview is reachable from the View Formatters dropdown on the landing screen', async ({ page }) => {
+  await page.goto('/');
+  // straight from the grid landing — no need to enter Row View first
+  await page.locator('.wb-crumb-root', { hasText: 'View Formatters' }).click();
+  await expect(page.locator('.wb-viewmenu')).toBeVisible();
+  await page.locator('.wb-viewmenu-newrow').click();
+  await expect(page.locator('.wb-template-modal')).toBeVisible();
+  // applying the template graduates the grid into a row view
+  await page.locator('.wb-template-apply').click();
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+});

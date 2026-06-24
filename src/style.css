@@ -151,6 +151,12 @@ body {
   border: 1px solid var(--wb-accent); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
+.wb-viewmenu-newrow {
+  margin-top: 2px; padding: 6px 8px; font-size: 12px; font-weight: 600; text-align: left;
+  cursor: pointer; border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-bg); color: var(--wb-accent);
+}
+.wb-viewmenu-newrow:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
 
 /* ── topbar ☰ menu ───────────────────────────────────────── */
 .wb-menu { position: relative; }
