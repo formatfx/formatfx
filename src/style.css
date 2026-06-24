@@ -1732,3 +1732,60 @@ body {
   box-shadow: 10px 0 28px rgba(0, 0, 0, .28);
   border-right: 1px solid var(--wb-border);
 }
+
+/* ── row-view templates modal ─────────────────────────────────────── */
+.wb-rowview-templates { margin-left: 4px; }
+.wb-template-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .4);
+  display: flex; align-items: center; justify-content: center; z-index: 700;
+}
+.wb-template-modal {
+  display: flex; width: min(960px, 92vw); height: min(620px, 88vh);
+  background: var(--wb-surface); color: var(--wb-text);
+  border-radius: 8px; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, .3);
+}
+.wb-template-config {
+  width: 360px; padding: 16px; overflow-y: auto;
+  border-right: 1px solid var(--wb-border); box-sizing: border-box;
+}
+.wb-template-preview {
+  flex: 1; padding: 16px; overflow-y: auto; background: var(--wb-bg);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.wb-template-title { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+.wb-template-section {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--wb-text-2); margin: 14px 0 6px;
+}
+.wb-template-ctl {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 10px; font-size: 12px; color: var(--wb-text-2);
+}
+.wb-template-ctl select {
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-bg); color: var(--wb-text); padding: 5px 6px;
+}
+.wb-template-toggle { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }
+.wb-template-config .wb-disabled { opacity: .45; pointer-events: none; }
+.wb-template-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.wb-template-field-chip {
+  display: inline-block; padding: 3px 8px; border: 1px solid var(--wb-border);
+  border-radius: 12px; font-size: 12px; cursor: grab; background: var(--wb-surface);
+}
+.wb-template-area {
+  border: 1px dashed var(--wb-border); border-radius: 6px;
+  padding: 8px; margin-bottom: 8px;
+}
+.wb-template-area.wb-drop-hover { border-color: var(--wb-accent); background: var(--wb-bg); }
+.wb-template-area select { width: 100%; }
+.wb-template-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.wb-template-cancel {
+  background: transparent; border: 1px solid var(--wb-border);
+  border-radius: 4px; padding: 8px 16px; cursor: pointer; color: var(--wb-text);
+}
+.wb-template-apply {
+  background: var(--wb-accent); color: #fff; border: none;
+  border-radius: 4px; padding: 8px 16px; cursor: pointer;
+}
+.wb-template-prow { padding: 2px 0; }
+.wb-template-note { font-size: 11px; color: var(--wb-text-2); font-style: italic; }
