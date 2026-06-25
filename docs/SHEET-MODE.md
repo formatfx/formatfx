@@ -136,3 +136,14 @@ column-settings path. Out of scope for stages 1–3; recorded so nobody
    and the fx bar as the editing vocabulary — and the Basic → Sheet rename
    landed here (label only; the `'basic'` value and `wb-basic` class stay
    frozen).
+
+## Future Proposal: Live Sheet (Zero-Distance Editing)
+
+*Proposed concept to further unify the visual formatting and data layers.*
+
+To make the tool feel like magic to an Excel user, the mental model of separating "Data Input" (the Mock Data panel) from "Visual Output" (the Canvas) should be abandoned. The Canvas *is* the interactive spreadsheet.
+
+- **Direct-Entry Canvas:** Eliminate the separate Data panel. Users test conditional formatting by double-clicking the actual rendered cell in the canvas and typing a value (e.g., "Blocked"). The visual formatting reacts instantly around their live cursor.
+- **The `fx` Bar as the Source of Truth:** Mirror Excel's interaction model. Single-clicking a cell shows its mock data value in the `fx` bar. Clicking a column header highlights the entire column and switches the `fx` bar to the formatting formula (e.g., `=if([$Status]=='Done', 'green', 'red')`).
+- **Excel's "Fill Handle" for Mocking:** Provide an Excel-style drag handle on formatted cells. Dragging down spawns new mock rows, intelligently incrementing dates or cycling statuses, allowing users to stress-test row layouts visually.
+- **Column Headers as Command Centers:** The Column Header becomes the anchor for actions like "Templates" or "Conditional Formatting". Even in "Row View", where the grid dissolves into cards, double-clicking text edits the underlying mock data on the fly.
