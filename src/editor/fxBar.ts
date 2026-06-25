@@ -131,12 +131,14 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // it stays put (no fade, no ✕).
     const feedback = document.createElement('div');
     feedback.className = 'wb-fx-feedback';
-    feedback.setAttribute('role', 'alert');
-    feedback.setAttribute('aria-live', 'assertive');
+    feedback.setAttribute('role', 'status');
+    feedback.setAttribute('aria-live', 'polite');
     const clearFeedback = (): void => {
       if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
       feedback.textContent = '';
       feedback.removeAttribute('data-tone');
+      feedback.setAttribute('role', 'status');
+      feedback.setAttribute('aria-live', 'polite');
     };
     const setFeedback: SetFeedback = (text, tone = 'hint') => {
       if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
@@ -144,6 +146,8 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       feedback.dataset.tone = tone;
       // only a refusal is transient + dismissable; a read-only note stays.
       if (tone === 'error') {
+        feedback.setAttribute('role', 'alert');
+        feedback.setAttribute('aria-live', 'assertive');
         const x = document.createElement('button');
         x.type = 'button';
         x.className = 'wb-fx-feedback-x';
@@ -311,9 +315,14 @@ function openFloat(
 
   const fb = document.createElement('div');
   fb.className = 'wb-fx-feedback';
-  fb.setAttribute('role', 'alert');
-  fb.setAttribute('aria-live', 'assertive');
-  const setFb: SetFeedback = (text, tone = 'hint') => { fb.textContent = text; fb.dataset.tone = tone; };
+  fb.setAttribute('role', 'status');
+  fb.setAttribute('aria-live', 'polite');
+  const setFb: SetFeedback = (text, tone = 'hint') => {
+    fb.textContent = text;
+    fb.dataset.tone = tone;
+    fb.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    fb.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
+  };
   if (view.readOnly) setFb(`Read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
   else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
 
