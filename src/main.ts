@@ -561,9 +561,9 @@ const refreshUndoRedo = (): void => {
   undoBtn.disabled = !state.canUndo;
   redoBtn.disabled = !state.canRedo;
 };
-undoBtn.addEventListener('click', () => { state.undo(); refreshUndoRedo(); });
-redoBtn.addEventListener('click', () => { state.redo(); refreshUndoRedo(); });
-state.subscribe(() => refreshUndoRedo());
+undoBtn.addEventListener('click', () => state.undo());
+redoBtn.addEventListener('click', () => state.redo());
+state.subscribe((reason) => { if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo(); });
 refreshUndoRedo();
 document.addEventListener('keydown', (e) => {
   const inText = (e.target as HTMLElement).matches('input, textarea, select');
