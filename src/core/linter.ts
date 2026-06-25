@@ -184,7 +184,7 @@ function maxIfDepth(expr: string): number {
 
 function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue[]): void {
   const push = (severity: Severity, rule: string, message: string) =>
-    issues.push({ severity, rule, message, path });
+    issues.push({ severity, rule, message, path: [...path] });
 
   // bring this element's own iterator into scope for it and its subtree
   if (el.forEach) {
@@ -344,9 +344,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     const f = el.customCardProps.formatter;
     if (f) {
       const cardIssues: LintIssue[] = [];
-      walk(f, [...path, -1], state, cardIssues);
+      path.push(-1);
+      walk(f, path, state, cardIssues);
+      path.pop();
       for (const issue of cardIssues) {
-        issues.push({ ...issue, message: `[customCardProps] ${issue.message}`, path });
+        issues.push({ ...issue, message: `[customCardProps] ${issue.message}`, path: [...path] });
       }
     }
   }
@@ -365,5 +367,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     }
   }
 
-  el.children?.forEach((child, i) => walk(child, [...path, i], state, issues));
+  if (el.children) {
+    for (let i = 0; i < el.children.length; i++) {
+      path.push(i);
+      walk(el.children[i], path, state, issues);
+      path.pop();
+    }
+  }
 }
