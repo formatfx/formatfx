@@ -299,7 +299,10 @@ function openFloat(
   head.className = 'wb-fx-float-head';
   const title = document.createElement('span');
   title.className = 'wb-fx-float-title';
-  title.innerHTML = `<span class="wb-fx-badge">ƒx</span> ${targetLabel}`;
+  const badge = document.createElement('span');
+  badge.className = 'wb-fx-badge';
+  badge.textContent = 'ƒx';
+  title.append(badge, ` ${targetLabel}`);
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.className = 'wb-fx-float-dismiss';
