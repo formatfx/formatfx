@@ -282,6 +282,43 @@ describe('fxBar', () => {
       expect(state.selectedNode!.style).toBeUndefined(); // still uncommitted
     });
 
+    it('stash dot: ⤢ gains wb-fx-has-stash and updated tooltip after dismiss with unapplied draft', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#abcdef';
+      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
+      // dismiss triggers a re-render — the dot appears immediately
+      const expand = $<HTMLButtonElement>(host, '.wb-fx-expand');
+      expect(expand.classList.contains('wb-fx-has-stash')).toBe(true);
+      expect(expand.title).toMatch(/unapplied/i);
+    });
+
+    it('stash dot: ⤢ clears wb-fx-has-stash after the stashed draft is applied', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#abcdef';
+      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
+      // dot is present after dismiss
+      expect($<HTMLButtonElement>(host, '.wb-fx-expand').classList.contains('wb-fx-has-stash')).toBe(true);
+      // reopen and apply
+      const reopened = openFloat(host);
+      $<HTMLButtonElement>(reopened, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
+      // apply triggers onApplied → render — dot must be gone
+      expect($<HTMLButtonElement>(host, '.wb-fx-expand').classList.contains('wb-fx-has-stash')).toBe(false);
+    });
+
+    it('stash dot: appears even when the stashed value is an empty string (key-existence check)', () => {
+      const host = mountWith({ elmType: 'div', style: { 'background-color': '#ffffff' } });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      // clear the textarea — differs from initial '#ffffff', so '' is stashed
+      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '';
+      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
+      expect($<HTMLButtonElement>(host, '.wb-fx-expand').classList.contains('wb-fx-has-stash')).toBe(true);
+    });
+
     it('refused input in the float keeps it open and leaves the doc untouched', () => {
       const host = mountWith({ elmType: 'div' });
       setSlot(host, 'fill');

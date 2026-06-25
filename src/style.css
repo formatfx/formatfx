@@ -1529,6 +1529,13 @@ body {
   background: var(--wb-surface); color: var(--wb-text-2); cursor: pointer;
 }
 .wb-fx-expand:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-fx-expand.wb-fx-has-stash { position: relative; border-color: var(--wb-accent); }
+.wb-fx-expand.wb-fx-has-stash::after {
+  content: ''; display: block; position: absolute;
+  top: 2px; right: 2px; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--wb-accent);
+  pointer-events: none;
+}
 .wb-fx-feedback { font-size: 11px; color: var(--wb-text-2); margin: 4px 0 0 26px; min-height: 14px; }
 .wb-fx-feedback[data-tone="error"] { color: #d13438; }
 .wb-fx-feedback[data-tone="raw"] { color: #ca5010; }

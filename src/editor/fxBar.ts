@@ -234,11 +234,18 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     expand.className = 'wb-fx-expand';
     expand.type = 'button';
     expand.textContent = '⤢';
-    expand.title = 'Open a roomy editor — more space to write and read a longer formula';
+    // dot + tooltip change when there is a stashed (unapplied) draft for this slot
+    const hasStash = !view.readOnly && (slot.id in (floatStash.get(node) ?? {}));
+    if (hasStash) {
+      expand.classList.add('wb-fx-has-stash');
+      expand.title = 'You have an unapplied formula here — click to resume editing it';
+    } else {
+      expand.title = 'Open a roomy editor — more space to write and read a longer formula';
+    }
     expand.addEventListener('click', () => {
       closeMenu();
       closeFloat();
-      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render());
+      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render());
     });
 
     const bar = document.createElement('div');
@@ -282,6 +289,7 @@ function openFloat(
   placeholder: string,
   applyText: (text: string, setFb: SetFeedback) => boolean,
   onApplied: () => void,
+  onDismissed: () => void,
 ): { panel: HTMLElement; cleanup: () => void } {
   const panel = document.createElement('div');
   panel.className = 'wb-fx-float';
@@ -351,6 +359,7 @@ function openFloat(
     }
     cleanup();
     panel.remove();
+    onDismissed(); // re-render so the stash dot appears / clears immediately
   };
   const doApply = (): void => {
     if (!applyText(ta.value, setFb)) return;
