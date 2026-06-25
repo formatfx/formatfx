@@ -558,16 +558,20 @@ document.getElementById('wb-reset')!.addEventListener('click', () => {
 const undoBtn = document.getElementById('wb-undo') as HTMLButtonElement;
 const redoBtn = document.getElementById('wb-redo') as HTMLButtonElement;
 const refreshUndoRedo = (): void => {
+  const undoLabel = state.canUndo ? 'Undo (Ctrl+Z)' : 'Nothing to undo';
+  const redoLabel = state.canRedo ? 'Redo (Ctrl+Y)' : 'Nothing to redo';
   undoBtn.disabled = !state.canUndo;
   redoBtn.disabled = !state.canRedo;
-  undoBtn.title = state.canUndo ? 'Undo (Ctrl+Z)' : 'Nothing to undo';
-  redoBtn.title = state.canRedo ? 'Redo (Ctrl+Y)' : 'Nothing to redo';
+  undoBtn.title = undoLabel;
+  redoBtn.title = redoLabel;
+  undoBtn.setAttribute('aria-label', undoLabel);
+  redoBtn.setAttribute('aria-label', redoLabel);
 };
 undoBtn.addEventListener('click', () => state.undo());
 redoBtn.addEventListener('click', () => state.redo());
-state.subscribe((reason) => {
-  if (reason === 'document' || reason === 'load') refreshUndoRedo();
-});
+// fire on every reason — 'kind' (setKind/makeRowView/applyRowTemplate) also
+// snapshots the stack, so the filter must not exclude it.
+state.subscribe(() => refreshUndoRedo());
 refreshUndoRedo();
 document.addEventListener('keydown', (e) => {
   const inText = (e.target as HTMLElement).matches('input, textarea, select');
