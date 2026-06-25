@@ -64,12 +64,12 @@ describe('fxBar', () => {
   it('marks slots with a value with a · suffix and heavy bold; unset slots stay plain', () => {
     const host = mountWith({ elmType: 'div', style: { color: '#000' } });
     const opts = [...host.querySelectorAll<HTMLOptionElement>('.wb-fx-slot option')];
-    const set = opts.find((o) => o.textContent === 'Text color ·')!;
-    const unset = opts.find((o) => o.textContent === 'Fill color')!;
-    expect(set).toBeDefined();       // · suffix is present when a value is set
-    expect(set.style.fontWeight).toBe('800');
-    expect(unset).toBeDefined();     // no suffix when nothing is set
-    expect(unset.style.fontWeight).toBe('');
+    const set = opts.find((o) => o.textContent === 'Text color ·');
+    const unset = opts.find((o) => o.textContent === 'Fill color');
+    expect(set).toBeDefined();        // · suffix is present when a value is set
+    expect(set?.style.fontWeight).toBe('800');
+    expect(unset).toBeDefined();      // no suffix when nothing is set
+    expect(unset?.style.fontWeight).toBe('');
   });
 
   it('transpiles Excel input to stored SP in one undoable mutation', () => {
