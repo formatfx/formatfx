@@ -217,8 +217,9 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       const yes = document.createElement('button');
       yes.className = 'wb-cf-field-warn-yes';
       yes.textContent = 'Clear rules and switch';
+      const switchTo = pendingField; // captured at render time — avoids non-null assertion on mutable var
       yes.addEventListener('click', () => {
-        field = pendingField!;
+        field = switchTo;
         rules.length = 0;
         selOpt = null;
         inputVal = '';
@@ -262,7 +263,20 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       del.className = 'wb-cf-rule-del';
       del.textContent = '✕';
       del.title = 'Remove this rule';
-      del.addEventListener('click', () => { rules.splice(i, 1); render(); });
+      del.addEventListener('click', () => {
+        rules.splice(i, 1);
+        // if a field switch was pending and the user just cleared the last rule,
+        // apply it now — no rules means no confirmation needed
+        if (pendingField && rules.length === 0) {
+          field = pendingField;
+          selOpt = null;
+          inputVal = '';
+          effectId = defaultEffectFor(field);
+          colorTouched = false;
+          pendingField = null;
+        }
+        render();
+      });
       // reorder controls — only meaningful when there are 2+ rules
       const actions = document.createElement('span');
       actions.className = 'wb-cf-rule-actions';
