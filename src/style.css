@@ -1399,7 +1399,7 @@ body {
 .wb-cf-swatch:hover { transform: scale(1.12); }
 .wb-cf-swatch.active { border-color: var(--wb-text); box-shadow: 0 0 0 1px var(--wb-surface) inset; }
 .wb-cf-addbtn {
-  margin-left: auto; padding: 4px 14px; border-radius: 4px; cursor: pointer;
+  padding: 4px 14px; border-radius: 4px; cursor: pointer;
   background: var(--wb-accent); border: 1px solid var(--wb-accent); color: #fff; font-size: 12px;
 }
 .wb-cf-addbtn:disabled { opacity: .45; cursor: default; }
