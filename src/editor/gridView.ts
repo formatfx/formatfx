@@ -696,6 +696,9 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     bar.innerHTML = '';
     const n = gridSel.size;
     if (n === 0) {
+      const hasSelectable = cols.some((c) => c.path.length > 0);
+      bar.hidden = !hasSelectable;
+      if (!hasSelectable) return;
       bar.className = 'wb-areas-bar wb-areas-bar-idle';
       const hint = document.createElement('span');
       hint.className = 'wb-areas-bar-hint';
@@ -756,7 +759,7 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     h.tabIndex = 0;
     h.setAttribute('role', 'button');
     h.setAttribute('aria-haspopup', 'menu');
-    h.title = 'Click for column actions · Ctrl/Cmd-click to multi-select → Make a row view · drag left/right to reorder · drop onto another column to group them';
+    h.title = 'Click for column actions · Ctrl/Cmd-click to multi-select → Make a row view or tile · drag left/right to reorder · drop onto another column to group them';
     const label = document.createElement('span');
     label.className = 'wb-grid-header-label';
     label.textContent = gridColumnLabel(col.el, state.fields);
