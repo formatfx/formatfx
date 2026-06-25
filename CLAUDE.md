@@ -16,6 +16,13 @@ guidance in your environment.
   Playwright suite too when a browser is available (HANDOFF §7 has the
   no-CDN container recipe).
 - PR body: what changed and why, in plain language, plus test counts.
+- Auto-fix is part of opening a PR, not a follow-up: the moment the PR is
+  open, switch it on in this same session — call `subscribe_pr_activity`
+  for the new PR so the session keeps watching its CI runs and review
+  comments and pushes fixes under the usual rules (clear fix → commit and
+  push; anything ambiguous or architectural → ask the owner first; never
+  force a merge). The owner should never have to flip the **Auto-fix**
+  toggle by hand. Stay subscribed until the PR is merged or closed.
 - Never merge it yourself and never push to `main` — it's protected, and
   merging is the owner's call.
 
