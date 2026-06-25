@@ -41,8 +41,8 @@ app.innerHTML = `
     </div>
     <div class="wb-topbar-controls">
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
-      <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo"></i></button>
-      <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo"></i></button>
+      <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
+      <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
       <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
@@ -76,7 +76,7 @@ app.innerHTML = `
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
       <h2><span class="wb-pane-title">Palette</span>
-        <button id="wb-palette-toggle" title="Collapse to icons — drag still works; hover for names" aria-label="Toggle palette collapse">⮜</button>
+        <button id="wb-palette-toggle" title="Collapse or expand the palette — drag still works; hover for names" aria-label="Toggle palette collapse">⮜</button>
       </h2>
       <div id="wb-palette"></div>
     </aside>
@@ -115,7 +115,7 @@ app.innerHTML = `
           <span class="wb-data-title">Data — mock rows &amp; columns</span>
           <span class="wb-data-dock-actions">
             <button id="wb-data-min" title="Collapse / expand the data panel" aria-label="Collapse or expand data panel">▾</button>
-            <button id="wb-data-max" title="Maximize the data panel" aria-label="Toggle data panel maximize">⛶</button>
+            <button id="wb-data-max" title="Maximize or restore the data panel" aria-label="Toggle data panel maximize">⛶</button>
           </span>
         </div>
         <div id="wb-tab-data" class="wb-data-body"></div>
@@ -128,7 +128,7 @@ app.innerHTML = `
         <button data-tab="inspector" class="active">Properties</button>
         <button data-tab="json" title="The validated-JSON escape hatch — paste/apply any formatter, copy the compiled output, or Deploy">JSON</button>
         <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close" aria-label="Toggle side panel auto-hide">📌</button>
-        <button id="wb-side-max" title="Maximize this pane — room for editing JSON" aria-label="Toggle side panel maximize">⛶</button>
+        <button id="wb-side-max" title="Maximize or restore this pane — room for editing JSON" aria-label="Toggle side panel maximize">⛶</button>
       </nav>
       <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
         <span>Formatter type</span>
