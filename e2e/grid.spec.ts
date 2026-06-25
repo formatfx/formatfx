@@ -241,6 +241,30 @@ test('format cells: bold + fill + outline border stage together and apply as one
   await expect(cell).toHaveCSS('border-top-width', '0px');
 });
 
+test('format cells: Enter applies staged changes (Excel Esc/Enter contract)', async ({ page }) => {
+  await header(page, 'Title').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
+  const fc = page.locator('.wb-fc');
+  await expect(fc).toBeVisible();
+  // Click Bold — render() rebuilds the panel, focus falls to document.body
+  await fc.locator('.wb-fc-toggle', { hasText: 'Bold' }).click();
+  // Enter should trigger Apply (document.activeElement is not a button at this point)
+  await page.keyboard.press('Enter');
+  await expect(fc).not.toBeVisible();
+  await expect(page.locator('.wb-grid [data-sp-path="0"]').first()).toHaveCSS('font-weight', '600');
+});
+
+test('format cells: Enter does not apply when nothing is staged (Apply is disabled)', async ({ page }) => {
+  await header(page, 'Title').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
+  const fc = page.locator('.wb-fc');
+  await expect(fc).toBeVisible();
+  // Font tab is focused on open; pressing Enter fires the tab's own click (not Apply)
+  // and leaves the dialog open because nothing is staged
+  await page.keyboard.press('Enter');
+  await expect(fc).toBeVisible();
+});
+
 test('✨ a color for each choice: one rule per choice, smart colors, formula-replacement warning', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();

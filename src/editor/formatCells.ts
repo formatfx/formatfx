@@ -42,8 +42,10 @@ const MANAGED = [
 ];
 
 let handle: OverlayHandle | null = null;
+let enterHandler: ((e: KeyboardEvent) => void) | null = null;
 
 export function closeFormatCells(): void {
+  if (enterHandler) { document.removeEventListener('keydown', enterHandler); enterHandler = null; }
   handle?.close();
   handle = null;
 }
@@ -115,6 +117,17 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     }
     render();
   };
+
+  // Enter confirms the dialog — mirrors Excel's Format Cells Esc/Enter contract.
+  // Fires when focus is not on a button (buttons handle their own Enter via click),
+  // i.e. after chip interactions leave focus on document.body, Enter still applies.
+  enterHandler = (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    if (document.activeElement instanceof HTMLButtonElement) return;
+    const okBtn = panel.querySelector<HTMLButtonElement>('.wb-fc-ok');
+    if (okBtn && !okBtn.disabled) { e.preventDefault(); okBtn.click(); }
+  };
+  document.addEventListener('keydown', enterHandler);
 
   handle = createOverlay('wb-fc-overlay', closeFormatCells);
   const overlay = handle.overlay;
@@ -373,4 +386,6 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
   render();
   document.body.appendChild(overlay);
+  // Put focus on the first tab so keyboard users land somewhere useful on open.
+  panel.querySelector<HTMLElement>('.wb-fc-tab')?.focus();
 }
