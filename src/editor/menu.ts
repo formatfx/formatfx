@@ -70,9 +70,15 @@ export function openRenamePopover(
   inp.select();
 
   let done = false;
+  const cleanup = () => {
+    document.removeEventListener('pointerdown', onOutside);
+    document.removeEventListener('contextmenu', onOutsideCtx);
+    document.removeEventListener('keydown', onGlobalKey);
+  };
   const commit = () => {
     if (done) return;
     done = true;
+    cleanup();
     const val = inp.value;
     pop.remove();
     onCommit(val);
@@ -80,14 +86,23 @@ export function openRenamePopover(
   const cancel = () => {
     if (done) return;
     done = true;
+    cleanup();
     pop.remove();
   };
+  const onOutside = (e: Event) => { if (!pop.contains(e.target as Node)) commit(); };
+  const onOutsideCtx = (e: Event) => { if (!pop.contains(e.target as Node)) cancel(); };
+  const onGlobalKey = (e: KeyboardEvent) => { if (e.key === 'Escape') cancel(); };
   inp.addEventListener('keydown', (e) => {
     e.stopPropagation();
     if (e.key === 'Enter') { e.preventDefault(); commit(); }
     if (e.key === 'Escape') { e.preventDefault(); cancel(); }
   });
   inp.addEventListener('blur', commit);
+  window.setTimeout(() => {
+    document.addEventListener('pointerdown', onOutside);
+    document.addEventListener('contextmenu', onOutsideCtx);
+    document.addEventListener('keydown', onGlobalKey);
+  }, 0);
 }
 
 export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): void {

@@ -485,7 +485,7 @@ body {
   width: 100%; box-sizing: border-box;
   padding: 4px 8px; font-size: 12px;
   border: 1px solid var(--wb-accent); border-radius: 3px;
-  background: var(--wb-surface); color: var(--wb-text); outline: none;
+  background: var(--wb-surface); color: var(--wb-text);
 }
 
 /* ── apply-time knob form (subtype apply) ─────────────────── */
