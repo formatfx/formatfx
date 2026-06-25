@@ -1361,11 +1361,17 @@ body {
 }
 .wb-cf-rule-when { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-cf-rule-arrow { color: var(--wb-text-2); flex-shrink: 0; }
+.wb-cf-rule-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .wb-cf-rule-del {
-  margin-left: auto; border: none; background: transparent; color: var(--wb-text-2);
+  border: none; background: transparent; color: var(--wb-text-2);
   cursor: pointer; font-size: 10px; flex-shrink: 0;
 }
 .wb-cf-rule-del:hover { color: #d13438; }
+.wb-cf-rule-move {
+  border: none; background: transparent; color: var(--wb-text-2);
+  cursor: pointer; font-size: 11px; flex-shrink: 0; padding: 0 1px; opacity: 0.55;
+}
+.wb-cf-rule-move:hover { opacity: 1; color: var(--wb-accent); }
 .wb-cf-chip { font-size: 12px; line-height: 1.5; white-space: nowrap; flex-shrink: 0; }
 .wb-cf-auto {
   align-self: flex-start; margin-top: 4px; padding: 3px 10px; font-size: 11px;
