@@ -228,17 +228,21 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       if (rules.length > 1) {
         if (i > 0) {
           const up = document.createElement('button');
+          up.type = 'button';
           up.className = 'wb-cf-rule-move';
           up.textContent = '↑';
           up.title = 'Move this rule up — rules apply top to bottom, first match wins';
+          up.setAttribute('aria-label', `Move rule ${i + 1} up`);
           up.addEventListener('click', () => { [rules[i - 1], rules[i]] = [rules[i], rules[i - 1]]; render(); });
           actions.appendChild(up);
         }
         if (i < rules.length - 1) {
           const down = document.createElement('button');
+          down.type = 'button';
           down.className = 'wb-cf-rule-move';
           down.textContent = '↓';
           down.title = 'Move this rule down — rules apply top to bottom, first match wins';
+          down.setAttribute('aria-label', `Move rule ${i + 1} down`);
           down.addEventListener('click', () => { [rules[i], rules[i + 1]] = [rules[i + 1], rules[i]]; render(); });
           actions.appendChild(down);
         }
