@@ -232,7 +232,14 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     expand.className = 'wb-fx-expand';
     expand.type = 'button';
     expand.textContent = '⤢';
-    expand.title = 'Open a roomy editor — more space to write and read a longer formula';
+    // dot + tooltip change when there is a stashed (unapplied) draft for this slot
+    const hasStash = !view.readOnly && !!(floatStash.get(node)?.[slot.id]);
+    if (hasStash) {
+      expand.classList.add('wb-fx-has-stash');
+      expand.title = 'You have an unapplied formula here — click to resume editing it';
+    } else {
+      expand.title = 'Open a roomy editor — more space to write and read a longer formula';
+    }
     expand.addEventListener('click', () => {
       closeMenu();
       closeFloat();
