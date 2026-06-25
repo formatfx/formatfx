@@ -555,8 +555,16 @@ document.getElementById('wb-reset')!.addEventListener('click', () => {
 });
 
 // undo/redo
-document.getElementById('wb-undo')!.addEventListener('click', () => state.undo());
-document.getElementById('wb-redo')!.addEventListener('click', () => state.redo());
+const undoBtn = document.getElementById('wb-undo') as HTMLButtonElement;
+const redoBtn = document.getElementById('wb-redo') as HTMLButtonElement;
+const refreshUndoRedo = (): void => {
+  undoBtn.disabled = !state.canUndo;
+  redoBtn.disabled = !state.canRedo;
+};
+undoBtn.addEventListener('click', () => { state.undo(); refreshUndoRedo(); });
+redoBtn.addEventListener('click', () => { state.redo(); refreshUndoRedo(); });
+state.subscribe(() => refreshUndoRedo());
+refreshUndoRedo();
 document.addEventListener('keydown', (e) => {
   const inText = (e.target as HTMLElement).matches('input, textarea, select');
   if (inText) return;

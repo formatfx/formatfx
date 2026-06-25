@@ -75,7 +75,8 @@ body {
   border: 1px solid var(--wb-border); background: var(--wb-surface); color: var(--wb-text);
   border-radius: 3px; padding: 4px 8px; cursor: pointer;
 }
-.wb-topbar-controls button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-topbar-controls button:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-topbar-controls button:disabled { opacity: .35; cursor: default; }
 
 /* Narrow widths: drop the redundant tagline and let the controls wrap below
    the brand instead of clipping "Advanced"/☰ off the right edge and out of
