@@ -1,4 +1,4 @@
-# Sheet mode — the Excel-true surface (design, locked 2026-06-12)
+# Sheet mode — design, locked 2026-06-12
 
 > **Superseded 2026-06-17:** the Sheet/Advanced *mode toggle* was removed
 > at the owner's request — there is now a single unified surface that
@@ -10,28 +10,26 @@
 > rest of this file as history of how those pieces were designed.
 
 > Owner decisions from the 2026-06-12 voice brief. This is the destination
-> for the mode currently labeled "Basic". The pitch in `branding.ts` —
-> *"If you can use Excel, you can do this."* — becomes literally true at
-> the interface level: Excel's **formatting** experience, a supported
-> subset, transpiled to schema-valid SharePoint JSON.
+> for the mode currently labeled "Basic". The goal: a formatting experience
+> a spreadsheet user would immediately recognize — grid, formula bar, direct
+> manipulation — transpiled to schema-valid SharePoint JSON.
 
 ## The promise, scoped honestly
 
-Excel's *formatting*, exactly how people remember it — not Excel's
-calculation. Formatters paint **display**; they calculate values but never
-store them (a list export will not contain painted output). Everything is
+Formatting that paints **display** — it calculates values but never stores
+them (a list export will not contain painted output). Everything is
 per-row: a formula or format applies to a **whole column or whole row,
 never one cell** — every surface must make that hard to misinterpret
 (say "every row" out loud; never present a single-cell affordance).
 
-**Audience framing, clarified 2026-06-25.** "For Excel users" means *meet
-the spreadsheet mental model* — grid, formulas, direct manipulation — with
-modern craft (progressive disclosure, high-contrast validation,
-edit-in-context), and, because the real maker pain is the **blank page**,
-*show what's possible* rather than make them invent it from nothing.
-Excel-true where it aids fidelity; never an Excel clone — and never a
-licence to inherit Excel's density or dated chrome. The audience is a
-reason to respect muscle memory, not an excuse to skip web craft.
+**Audience framing, clarified 2026-06-25.** Meet the spreadsheet mental
+model — grid, formulas, direct manipulation — with modern craft
+(progressive disclosure, high-contrast validation, edit-in-context), and,
+because the real maker pain is the **blank page**, *show what's possible*
+rather than make them invent it from nothing. Spreadsheet idioms where they
+aid fidelity; never a spreadsheet clone — and never a licence to inherit
+spreadsheet density or dated chrome. Familiarity is a reason to respect
+muscle memory, not an excuse to skip web craft.
 
 **Guiding principle (the owner's, verbatim in spirit):** the system does
 the thinking — type-awareness and contextual filtering are baked into the

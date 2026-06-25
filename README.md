@@ -1,7 +1,6 @@
 # FormatFX — visual special effects for SharePoint lists
 
 > The visual sandbox and layout editor for SharePoint list formatting.
-> *If you can use Excel, you can do this.*
 
 An interactive, fully client-side sandbox and **visual layout editor for SharePoint
 List Formatting** (column formatters, view/row formatters, and tile/gallery
@@ -60,8 +59,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   container, ungroup, duplicate, copy its JSON, remove. All click-only and
   undoable, so it works in Basic mode too; grid headers answer right-click
   with their column menu.
-- **Conditional formatting builder** — the Excel mental model ("when the
-  value …, make it look …") without the dialog maze. The field's type
+- **Conditional formatting builder** — "when the value …, make it look …",
+  without the dialog maze. The field's type
   drives the suggestions: choice columns arrive with **one ready chip per
   choice** and a one-click **“✨ a color for each choice”** (the words pick
   the colors — *Done* goes green, *Blocked* goes red); dates get
@@ -161,7 +160,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   depth, and more. Written for low-code makers, not compiler authors.
 - **Built-in field guide** (☰ menu → 📖) — a full-screen, Learn-style reference
   with a chapter tree, "in this article" rail, diagrams and Microsoft Learn
-  links — written for developers, not Excel translation. What lists really are
+  links — written for developers. What lists really are
   (SQL tables behind a React UI — view thresholds and the 12-join lookup limit
   included), the column type system (person/metadata columns ARE lookups,
   projected fields, calculated-column boundaries, the single-vs-multi
