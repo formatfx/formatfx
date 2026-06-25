@@ -305,7 +305,13 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
       body.appendChild(row('Solid fill', strong));
       const hint = document.createElement('div');
       hint.className = 'wb-fc-hint';
-      hint.textContent = 'Solid fills usually want white text — set it on the Font tab. For fills that follow the value, use Conditional formatting instead.';
+      hint.append('Solid fills usually want white text — ');
+      const fontLink = document.createElement('button');
+      fontLink.type = 'button';
+      fontLink.className = 'wb-fc-hint-link';
+      fontLink.textContent = 'set it on the Font tab';
+      fontLink.addEventListener('click', () => { tab = 'font'; render(); });
+      hint.append(fontLink, '. For fills that follow the value, use Conditional formatting instead.');
       body.appendChild(hint);
     }
 

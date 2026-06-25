@@ -1478,6 +1478,8 @@ body {
 .wb-fc-swatch:hover { transform: scale(1.12); }
 .wb-fc-swatch.active { outline: 2px solid var(--wb-accent); outline-offset: 1px; }
 .wb-fc-hint { font-size: 10px; color: var(--wb-text-2); font-style: italic; }
+.wb-fc-hint-link { background: none; border: none; padding: 0; font: inherit; color: var(--wb-accent); cursor: pointer; text-decoration: underline; }
+.wb-fc-hint-link:hover { opacity: .8; }
 .wb-fc-foot {
   display: flex; gap: 8px; justify-content: flex-end; align-items: center;
   border-top: 1px solid var(--wb-border); padding-top: 10px; margin-top: 12px;
