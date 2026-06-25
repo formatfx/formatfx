@@ -22,14 +22,6 @@ per-row: a formula or format applies to a **whole column or whole row,
 never one cell** — every surface must make that hard to misinterpret
 (say "every row" out loud; never present a single-cell affordance).
 
-**Audience framing, clarified 2026-06-25.** Meet the spreadsheet mental
-model — grid, formulas, direct manipulation — with modern craft
-(progressive disclosure, high-contrast validation, edit-in-context), and,
-because the real maker pain is the **blank page**, *show what's possible*
-rather than make them invent it from nothing. Spreadsheet idioms serve fidelity;
-never a spreadsheet clone — and never a license to inherit
-spreadsheet density or dated chrome. Familiarity is a reason to respect
-muscle memory, not an excuse to skip web craft.
 
 **Guiding principle (the owner's, verbatim in spirit):** the system does
 the thinking — type-awareness and contextual filtering are baked into the
