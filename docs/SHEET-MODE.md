@@ -24,15 +24,6 @@ per-row: a formula or format applies to a **whole column or whole row,
 never one cell** — every surface must make that hard to misinterpret
 (say "every row" out loud; never present a single-cell affordance).
 
-**Audience framing, clarified 2026-06-25.** "For Excel users" means *meet
-the spreadsheet mental model* — grid, formulas, direct manipulation — with
-modern craft (progressive disclosure, high-contrast validation,
-edit-in-context), and, because the real maker pain is the **blank page**,
-*show what's possible* rather than make them invent it from nothing.
-Excel-true where it aids fidelity; never an Excel clone — and never a
-licence to inherit Excel's density or dated chrome. The audience is a
-reason to respect muscle memory, not an excuse to skip web craft.
-
 **Guiding principle (the owner's, verbatim in spirit):** the system does
 the thinking — type-awareness and contextual filtering are baked into the
 design, not documented around it. Ship only what will definitely work on a

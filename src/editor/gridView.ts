@@ -695,18 +695,8 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
   const refreshBar = (): void => {
     bar.innerHTML = '';
     const n = gridSel.size;
-    if (n === 0) {
-      const hasSelectable = cols.some((c) => c.path.length > 0);
-      bar.hidden = !hasSelectable;
-      if (!hasSelectable) return;
-      bar.className = 'wb-areas-bar wb-areas-bar-idle';
-      const hint = document.createElement('span');
-      hint.className = 'wb-areas-bar-hint';
-      hint.textContent = 'Ctrl/Cmd-click column headers to multi-select → Make a row view or tile';
-      bar.appendChild(hint);
-      return;
-    }
-    bar.className = 'wb-areas-bar';
+    bar.hidden = n === 0;
+    if (n === 0) return;
     const count = document.createElement('span');
     count.className = 'wb-areas-bar-count';
     count.textContent = `${n} column${n > 1 ? 's' : ''} selected →`;
@@ -759,7 +749,7 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     h.tabIndex = 0;
     h.setAttribute('role', 'button');
     h.setAttribute('aria-haspopup', 'menu');
-    h.title = 'Click for column actions · Ctrl/Cmd-click to multi-select → Make a row view or tile · drag left/right to reorder · drop onto another column to group them';
+    h.title = 'Click for column actions · drag left/right to reorder · drop onto another column to group them';
     const label = document.createElement('span');
     label.className = 'wb-grid-header-label';
     label.textContent = gridColumnLabel(col.el, state.fields);

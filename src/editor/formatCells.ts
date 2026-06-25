@@ -183,13 +183,8 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
-    const title = document.createElement('span');
-    title.className = 'wb-fc-title';
-    title.append('Format cells — ', nameOf(node));
-    const sub = document.createElement('span');
-    sub.className = 'wb-fc-sub';
-    sub.textContent = 'nothing changes until you Apply (then Ctrl+Z undoes)';
-    head.append(title, sub);
+    head.innerHTML = `<span class="wb-fc-title">Format cells — ${nameOf(node)}</span>
+      <span class="wb-fc-sub">nothing changes until you Apply (then Ctrl+Z undoes)</span>`;
     const close = document.createElement('button');
     close.className = 'wb-fc-close';
     close.textContent = '✕';
