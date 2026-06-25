@@ -547,7 +547,13 @@ function mount(opts: Opts): void {
       for (const [where, k, v] of picked) {
         const rowEl = document.createElement('div');
         rowEl.className = 'wb-pg-out-row';
-        rowEl.innerHTML = `<span class="wb-pg-out-where">${where}</span><code>${k}: ${v}</code>`;
+        const whereSpan = document.createElement('span');
+        whereSpan.className = 'wb-pg-out-where';
+        whereSpan.textContent = where;
+        const codeEl = document.createElement('code');
+        codeEl.textContent = `${k}: ${v}`;
+        rowEl.appendChild(whereSpan);
+        rowEl.appendChild(codeEl);
         const del = document.createElement('button');
         del.textContent = '✕';
         del.title = 'Remove';
