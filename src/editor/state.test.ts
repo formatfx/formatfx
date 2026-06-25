@@ -143,6 +143,30 @@ describe('undo/redo', () => {
     s.redo(); // no redo to do — must be a no-op, not resurrect the old branch
     expect(JSON.stringify(s.doc)).toBe(afterOther);
   });
+
+  it('canUndo / canRedo track availability across the empty → mutate → undo → redo cycle', () => {
+    const s = new EditorState();
+    expect(s.canUndo).toBe(false);
+    expect(s.canRedo).toBe(false);
+
+    s.insertNode({ elmType: 'span', txtContent: 'x' });
+    expect(s.canUndo).toBe(true);
+    expect(s.canRedo).toBe(false);
+
+    s.undo();
+    expect(s.canUndo).toBe(false);
+    expect(s.canRedo).toBe(true);
+
+    s.redo();
+    expect(s.canUndo).toBe(true);
+    expect(s.canRedo).toBe(false);
+
+    // a new mutation after undo clears the redo branch
+    s.undo();
+    s.insertNode({ elmType: 'div', txtContent: 'y' });
+    expect(s.canUndo).toBe(true);
+    expect(s.canRedo).toBe(false);
+  });
 });
 
 describe('reparentNode', () => {
