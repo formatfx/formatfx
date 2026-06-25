@@ -41,11 +41,11 @@ app.innerHTML = `
     </div>
     <div class="wb-topbar-controls">
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
-      <button id="wb-undo" title="Undo (Ctrl+Z)"><i class="ms-Icon ms-Icon--Undo"></i></button>
-      <button id="wb-redo" title="Redo (Ctrl+Y)"><i class="ms-Icon ms-Icon--Redo"></i></button>
+      <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
+      <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
       <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
       <div class="wb-menu" id="wb-menu">
-        <button id="wb-menu-btn" title="Project & view options">☰</button>
+        <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
           <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
@@ -76,7 +76,7 @@ app.innerHTML = `
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
       <h2><span class="wb-pane-title">Palette</span>
-        <button id="wb-palette-toggle" title="Collapse to icons — drag still works; hover for names">⮜</button>
+        <button id="wb-palette-toggle" title="Collapse or expand the palette — drag still works; hover for names" aria-label="Toggle palette collapse">⮜</button>
       </h2>
       <div id="wb-palette"></div>
     </aside>
@@ -84,12 +84,12 @@ app.innerHTML = `
     <aside class="wb-pane wb-pane-tree" id="wb-pane-tree">
       <div class="wb-tree-rail" id="wb-tree-rail" title="Hover to open Structure — it stays open until you click somewhere else">⬚<span>structure</span></div>
       <h2><span>Structure</span>
-        <button id="wb-tree-peek" title="Auto-hide: shrink Structure to a rail; hover the rail to open it, click anywhere else to close">📌</button>
+        <button id="wb-tree-peek" title="Auto-hide: shrink Structure to a rail; hover the rail to open it, click anywhere else to close" aria-label="Toggle Structure auto-hide">📌</button>
       </h2>
       <div id="wb-tree" class="wb-tree-split">
         <section class="wb-tree-sec" id="wb-tree-sec-view">
           <div class="wb-tree-sec-head" id="wb-tree-view-head" title="The view formatter on the canvas — click to collapse">
-            <button class="wb-tree-sec-min" id="wb-tree-view-min" title="Collapse / expand the view formatter">▾</button>
+            <button class="wb-tree-sec-min" id="wb-tree-view-min" title="Collapse / expand the view formatter" aria-label="Collapse or expand view formatter">▾</button>
             <span>View formatter</span>
           </div>
           <div class="wb-tree-sec-body" id="wb-tree-view"></div>
@@ -97,7 +97,7 @@ app.innerHTML = `
         <div class="wb-tree-vsplit" id="wb-tree-vsplit" title="Drag to share space between the two sections"></div>
         <section class="wb-tree-sec" id="wb-tree-sec-cols">
           <div class="wb-tree-sec-head" id="wb-tree-cols-head" title="Column formatters in the workspace — click to collapse">
-            <button class="wb-tree-sec-min" id="wb-tree-cols-min" title="Collapse / expand the column formatters">▾</button>
+            <button class="wb-tree-sec-min" id="wb-tree-cols-min" title="Collapse / expand the column formatters" aria-label="Collapse or expand column formatters">▾</button>
             <span>Column formatters</span>
           </div>
           <div class="wb-tree-sec-body" id="wb-tree-cols"></div>
@@ -114,8 +114,8 @@ app.innerHTML = `
         <div class="wb-data-dock-head" id="wb-data-dock-head" title="Mock rows &amp; columns — click the title to collapse">
           <span class="wb-data-title">Data — mock rows &amp; columns</span>
           <span class="wb-data-dock-actions">
-            <button id="wb-data-min" title="Collapse / expand the data panel">▾</button>
-            <button id="wb-data-max" title="Maximize the data panel">⛶</button>
+            <button id="wb-data-min" title="Collapse / expand the data panel" aria-label="Collapse or expand data panel">▾</button>
+            <button id="wb-data-max" title="Maximize or restore the data panel" aria-label="Toggle data panel maximize">⛶</button>
           </span>
         </div>
         <div id="wb-tab-data" class="wb-data-body"></div>
@@ -127,8 +127,8 @@ app.innerHTML = `
       <nav class="wb-tabs">
         <button data-tab="inspector" class="active">Properties</button>
         <button data-tab="json" title="The validated-JSON escape hatch — paste/apply any formatter, copy the compiled output, or Deploy">JSON</button>
-        <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close">📌</button>
-        <button id="wb-side-max" title="Maximize this pane — room for editing JSON">⛶</button>
+        <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close" aria-label="Toggle side panel auto-hide">📌</button>
+        <button id="wb-side-max" title="Maximize or restore this pane — room for editing JSON" aria-label="Toggle side panel maximize">⛶</button>
       </nav>
       <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
         <span>Formatter type</span>
