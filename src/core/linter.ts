@@ -348,7 +348,7 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       walk(f, path, state, cardIssues);
       path.pop();
       for (const issue of cardIssues) {
-        issues.push({ ...issue, message: `[customCardProps] ${issue.message}`, path: [...path] });
+        issues.push({ ...issue, message: `[customCardProps] ${issue.message}` });
       }
     }
   }
