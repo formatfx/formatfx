@@ -1353,6 +1353,22 @@ body {
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
+.wb-cf-field-warn {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 4px 0 0; padding: 5px 8px; font-size: 11px;
+  background: rgba(247, 162, 0, .10); border: 1px solid rgba(247, 162, 0, .40);
+  border-radius: 5px; color: var(--wb-text);
+}
+.wb-cf-field-warn-yes {
+  padding: 2px 9px; border-radius: 4px; border: 1px solid #ca5010;
+  background: transparent; color: #ca5010; font-size: 11px; cursor: pointer;
+}
+.wb-cf-field-warn-yes:hover { background: rgba(202, 80, 16, .08); }
+.wb-cf-field-warn-no {
+  padding: 2px 9px; border-radius: 4px; border: 1px solid var(--wb-border);
+  background: transparent; font-size: 11px; cursor: pointer; color: var(--wb-text-2);
+}
+.wb-cf-field-warn-no:hover { border-color: var(--wb-text-2); color: var(--wb-text); }
 .wb-cf-group { margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--wb-border); border-radius: 6px; }
 .wb-cf-grouplab {
   font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
