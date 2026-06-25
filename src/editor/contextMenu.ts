@@ -9,7 +9,7 @@
 
 import type { NodePath, SPElement } from '../core/types';
 import { state, CARD_SEGMENT } from './state';
-import { openMenu, type MenuItem } from './menu';
+import { openMenu, openRenamePopover, type MenuItem } from './menu';
 import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { openFormatCells } from './formatCells';
@@ -18,7 +18,11 @@ import { areaWeightOf, WEIGHT_FLEX, WEIGHT_LABEL, type AreaWeight } from './area
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
 /** The shared "works on most things" action set for one element. */
-export function elementMenuItems(path: NodePath, onToast: (m: string) => void): MenuItem[] {
+export function elementMenuItems(
+  path: NodePath,
+  onToast: (m: string) => void,
+  pos?: { x: number; y: number },
+): MenuItem[] {
   const node = state.nodeAt(path);
   if (!node) return [];
   const label = nameOf(node);
@@ -62,12 +66,17 @@ export function elementMenuItems(path: NodePath, onToast: (m: string) => void): 
     label: 'Rename…',
     title: 'Name this element — shows in the Structure pane, cosmetic only',
     fn: () => {
-      const v = prompt(`Name this element (shows in the Structure pane):`, node._elmName ?? '');
-      if (v === null) return;
-      state.mutateDocument(() => {
-        const t = v.trim();
-        if (t) node._elmName = t; else delete node._elmName;
-      });
+      openRenamePopover(
+        pos ?? { x: window.innerWidth / 2 - 100, y: window.innerHeight / 2 - 40 },
+        'Rename element',
+        node._elmName ?? '',
+        (v) => {
+          state.mutateDocument(() => {
+            const t = v.trim();
+            if (t) node._elmName = t; else delete node._elmName;
+          });
+        },
+      );
     },
   });
   items.push({
@@ -135,7 +144,7 @@ function openFor(e: MouseEvent, pathTarget: HTMLElement, onToast: (m: string) =>
   if (!node) return;
   e.preventDefault();
   state.select(path);
-  openMenu({ x: e.clientX, y: e.clientY }, nameOf(node), elementMenuItems(path, onToast));
+  openMenu({ x: e.clientX, y: e.clientY }, nameOf(node), elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }));
 }
 
 /** Wire right-click on the canvas (and card flyouts, which live on <body>). */
@@ -152,7 +161,7 @@ export function installPreviewContextMenu(host: HTMLElement, onToast: (m: string
       if (!node) return;
       e.preventDefault();
       state.select(path);
-      openMenu({ x: e.clientX, y: e.clientY }, nameOf(node), elementMenuItems(path, onToast));
+      openMenu({ x: e.clientX, y: e.clientY }, nameOf(node), elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }));
     }
   });
   document.addEventListener('contextmenu', (e) => {

@@ -479,6 +479,14 @@ body {
 .wb-grid-menu button:hover .wb-menu-badge {
   background: color-mix(in srgb, var(--wb-accent) 22%, transparent); color: var(--wb-accent);
 }
+/* rename popover — same card as the action menu, but just an input field */
+.wb-rename-body { padding: 8px; }
+.wb-rename-input {
+  width: 100%; box-sizing: border-box;
+  padding: 4px 8px; font-size: 12px;
+  border: 1px solid var(--wb-accent); border-radius: 3px;
+  background: var(--wb-surface); color: var(--wb-text); outline: none;
+}
 
 /* ── apply-time knob form (subtype apply) ─────────────────── */
 .wb-knobform-overlay {
