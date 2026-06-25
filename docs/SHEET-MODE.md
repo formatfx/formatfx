@@ -26,8 +26,8 @@ never one cell** — every surface must make that hard to misinterpret
 model — grid, formulas, direct manipulation — with modern craft
 (progressive disclosure, high-contrast validation, edit-in-context), and,
 because the real maker pain is the **blank page**, *show what's possible*
-rather than make them invent it from nothing. Spreadsheet idioms where they
-aid fidelity; never a spreadsheet clone — and never a licence to inherit
+rather than make them invent it from nothing. Spreadsheet idioms serve fidelity;
+never a spreadsheet clone — and never a license to inherit
 spreadsheet density or dated chrome. Familiarity is a reason to respect
 muscle memory, not an excuse to skip web craft.
 
