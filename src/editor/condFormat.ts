@@ -316,11 +316,17 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     const addBtn = document.createElement('button');
     addBtn.className = 'wb-cf-addbtn';
     addBtn.textContent = '+ Add rule';
+    const addHint = document.createElement('span');
+    addHint.className = 'wb-cf-add-hint';
     const refreshAddState = (): void => {
       let ok = !!selOpt;
       if (selOpt?.needs === 'text') ok = escapeCondValue(inputVal) !== '';
       if (selOpt?.needs === 'number') ok = Number.isFinite(Number(inputVal)) && inputVal.trim() !== '';
       addBtn.disabled = !ok;
+      addHint.textContent = ok ? '' :
+        !selOpt ? 'Pick a condition above first' :
+        selOpt.needs === 'text' ? 'Enter a value to add this rule' :
+        'Enter a valid number to add this rule';
     };
     refreshAddState();
     addBtn.addEventListener('click', () => {
@@ -338,6 +344,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       inputVal = '';
       render();
     });
+    lookRow.appendChild(addHint);
     lookRow.appendChild(addBtn);
     panel.appendChild(group('…make it look like', lookRow));
 

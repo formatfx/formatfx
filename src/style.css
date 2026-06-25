@@ -1399,10 +1399,11 @@ body {
 .wb-cf-swatch:hover { transform: scale(1.12); }
 .wb-cf-swatch.active { border-color: var(--wb-text); box-shadow: 0 0 0 1px var(--wb-surface) inset; }
 .wb-cf-addbtn {
-  margin-left: auto; padding: 4px 14px; border-radius: 4px; cursor: pointer;
+  padding: 4px 14px; border-radius: 4px; cursor: pointer;
   background: var(--wb-accent); border: 1px solid var(--wb-accent); color: #fff; font-size: 12px;
 }
 .wb-cf-addbtn:disabled { opacity: .45; cursor: default; }
+.wb-cf-add-hint { margin-left: auto; font-size: 10px; color: var(--wb-text-2); font-style: italic; }
 .wb-cf-preview { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .wb-cf-preview-item { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .wb-cf-preview-lab { font-size: 9px; color: var(--wb-text-2); font-style: italic; }
