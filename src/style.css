@@ -604,6 +604,8 @@ body {
 .wb-areas-bar-btn:hover { filter: brightness(1.08); }
 .wb-areas-bar-clear { background: transparent; color: var(--wb-text-2); border-color: var(--wb-border); }
 .wb-areas-bar-clear:hover { color: var(--wb-accent); border-color: var(--wb-accent); filter: none; }
+.wb-areas-bar-idle { background: transparent; border-color: transparent; padding-left: 0; }
+.wb-areas-bar-hint { color: var(--wb-text-2); font-style: italic; }
 
 /* ── stage 3: row-view toolbar (density + back to grid) ────── */
 .wb-rowview-bar {
