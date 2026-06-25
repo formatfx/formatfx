@@ -18,8 +18,8 @@ function header(page: Page, label: string) {
 }
 
 test('Ctrl-click multi-selects columns and the areas bar makes a row view', async ({ page }) => {
-  // no selection → no bar
-  await expect(page.locator('.wb-areas-bar')).toBeHidden();
+  // no selection → ghost hint visible (guides discoverability)
+  await expect(page.locator('.wb-areas-bar-hint')).toBeVisible();
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await header(page, 'DueDate').click({ modifiers: ['Control'] });
   await expect(page.locator('.wb-areas-bar-count')).toHaveText('2 columns selected →');
