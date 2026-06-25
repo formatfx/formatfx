@@ -6,6 +6,6 @@
  */
 export const PRODUCT_NAME = 'FormatFX';
 export const PRODUCT_TAGLINE = 'formatting effects for SharePoint lists and libraries';
-export const PRODUCT_PITCH = 'If you can use Excel, you can do this.';
+export const PRODUCT_PITCH = 'Design your SharePoint list formatting visually.';
 export const PROJECT_FILE_NAME = 'formatfx-project.json';
 export const HOME_URL = 'https://formatfx.dev';

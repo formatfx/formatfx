@@ -39,7 +39,7 @@ export function elementMenuItems(
   items.push({
     icon: 'LightningBolt',
     label: 'Conditional formatting…',
-    title: 'Paint this element by a field\'s value — pick conditions and looks, Excel-style without the dialog maze',
+    title: 'Paint this element by a field\'s value — pick conditions and looks, without the dialog maze',
     fn: () => { state.select(path); openCondFormat({ kind: 'element', path }, onToast); },
   });
   items.push({

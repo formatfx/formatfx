@@ -180,8 +180,7 @@ export const GUIDE_PAGES: GuidePage[] = [
     title: 'What a list really is',
     body: `
 <h1>What a list really is</h1>
-<p class="wb-guide-lede">A SharePoint list looks like a spreadsheet and gets sold as one
-("if you can use Excel…"). It isn't one. It's a <strong>typed table in a SQL database, rendered
+<p class="wb-guide-lede">A SharePoint list looks like a spreadsheet. It isn't one. It's a <strong>typed table in a SQL database, rendered
 by a React app, with a JSON-programmable presentation layer</strong>. Holding those three layers
 apart is the single most useful mental model for everything else in this guide.</p>
 
