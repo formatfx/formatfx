@@ -35,7 +35,7 @@ export class ExpressionError extends Error {}
 type TokType = 'num' | 'str' | 'field' | 'token' | 'ident' | 'op' | 'lparen' | 'rparen' | 'comma';
 interface Tok { type: TokType; value: string }
 
-const OPS = ['==', '!=', '<=', '>=', '&&', '||', '+', '-', '*', '/', '%', '<', '>', '!', '?', ':'];
+const OPS = new Set(['==', '!=', '<=', '>=', '&&', '||', '+', '-', '*', '/', '%', '<', '>', '!', '?', ':']);
 
 function tokenize(src: string): Tok[] {
   const toks: Tok[] = [];
@@ -80,8 +80,8 @@ function tokenize(src: string): Tok[] {
       i = j; continue;
     }
     const two = src.slice(i, i + 2);
-    if (OPS.includes(two)) { toks.push({ type: 'op', value: two }); i += 2; continue; }
-    if (OPS.includes(c)) { toks.push({ type: 'op', value: c }); i++; continue; }
+    if (OPS.has(two)) { toks.push({ type: 'op', value: two }); i += 2; continue; }
+    if (OPS.has(c)) { toks.push({ type: 'op', value: c }); i++; continue; }
     if (/[A-Za-z_$]/.test(c)) {
       let j = i;
       while (j < src.length && /[A-Za-z0-9_$.]/.test(src[j])) j++;
