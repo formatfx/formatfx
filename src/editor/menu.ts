@@ -34,6 +34,77 @@ export function closeMenu(): void {
   }
 }
 
+/**
+ * A small styled in-place rename popover — replaces bare browser prompt()
+ * for element renaming. Anchored at the pointer position; Enter or losing
+ * focus commits, Escape cancels. One undoable mutation (caller's concern).
+ */
+export function openRenamePopover(
+  anchor: { x: number; y: number },
+  heading: string,
+  initial: string,
+  onCommit: (value: string) => void,
+): void {
+  closeMenu();
+  const pop = document.createElement('div');
+  pop.className = 'wb-grid-menu wb-rename-pop';
+  const head = document.createElement('div');
+  head.className = 'wb-grid-menu-title';
+  head.textContent = heading;
+  const body = document.createElement('div');
+  body.className = 'wb-rename-body';
+  const inp = document.createElement('input');
+  inp.className = 'wb-rename-input';
+  inp.value = initial;
+  inp.placeholder = 'name this element…';
+  inp.setAttribute('aria-label', heading);
+  body.appendChild(inp);
+  pop.append(head, body);
+  document.body.appendChild(pop);
+
+  const pr = pop.getBoundingClientRect();
+  pop.style.top = `${Math.max(4, Math.min(anchor.y, window.innerHeight - pr.height - 8))}px`;
+  pop.style.left = `${Math.max(4, Math.min(anchor.x, window.innerWidth - pr.width - 8))}px`;
+
+  inp.focus();
+  inp.select();
+
+  let done = false;
+  const cleanup = () => {
+    document.removeEventListener('pointerdown', onOutside);
+    document.removeEventListener('contextmenu', onOutsideCtx);
+    document.removeEventListener('keydown', onGlobalKey);
+  };
+  const commit = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    const val = inp.value;
+    pop.remove();
+    onCommit(val);
+  };
+  const cancel = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    pop.remove();
+  };
+  const onOutside = (e: Event) => { if (!pop.contains(e.target as Node)) commit(); };
+  const onOutsideCtx = (e: Event) => { if (!pop.contains(e.target as Node)) cancel(); };
+  const onGlobalKey = (e: KeyboardEvent) => { if (e.key === 'Escape') cancel(); };
+  inp.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  inp.addEventListener('blur', commit);
+  window.setTimeout(() => {
+    document.addEventListener('pointerdown', onOutside);
+    document.addEventListener('contextmenu', onOutsideCtx);
+    document.addEventListener('keydown', onGlobalKey);
+  }, 0);
+}
+
 export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): void {
   closeMenu();
   const menu = document.createElement('div');
