@@ -86,18 +86,20 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     badge.title = 'Write an Excel-style formula for the selected property.';
 
     // ── slot picker (left-edge property dropdown) ──
-    // Slots that already carry a value on this element are shown in heavy bold,
-    // the rest in the normal weight — an at-a-glance map of what's set.
+    // Slots that already carry a value on this element get a " ·" suffix in
+    // their label. This works in both the closed and open states of the select,
+    // and across all browsers (font-weight on <option> is invisible when closed
+    // and unsupported in Safari). The bold is kept as an additional signal when
+    // the dropdown is open.
     const picker = document.createElement('select');
     picker.className = 'wb-fx-slot';
-    picker.title = 'Which property this formula paints. Bold = already has a value on this cell. The list changes with what you have selected.';
+    picker.title = 'Which property this formula paints. · = already has a value on this cell. The list changes with what you have selected.';
     for (const s of slots) {
       const o = document.createElement('option');
       o.value = s.id;
-      o.textContent = s.label;
-      // heavy bold marks a slot that already carries a value (native <option>
-      // honors font-weight in Chromium/Firefox)
-      if (readSlot(node, s) !== undefined) o.style.fontWeight = '800';
+      const hasValue = readSlot(node, s) !== undefined;
+      o.textContent = hasValue ? `${s.label} ·` : s.label;
+      if (hasValue) o.style.fontWeight = '800';
       if (s.id === slot.id) o.selected = true;
       picker.appendChild(o);
     }
