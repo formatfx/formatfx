@@ -413,20 +413,10 @@ function mount(opts: Opts): void {
     // ── header ──
     const head = document.createElement('div');
     head.className = 'wb-pg-head';
-    const title = document.createElement('span');
-    title.className = 'wb-pg-title';
-    title.textContent = '⚗ Style playground';
-    const sub = document.createElement('span');
-    sub.className = 'wb-pg-sub';
-    if (opts.mode === 'element' && targetNode) {
-      sub.append('restyling ');
-      const b = document.createElement('b');
-      b.textContent = nameOf(targetNode);
-      sub.append(b, ' — nothing is saved until you apply');
-    } else {
-      sub.textContent = 'consequence-free — nothing touches your formatter unless you apply it';
-    }
-    head.append(title, sub);
+    head.innerHTML = `<span class="wb-pg-title">⚗ Style playground</span>
+      <span class="wb-pg-sub">${opts.mode === 'element' && targetNode
+        ? `restyling <b>${nameOf(targetNode)}</b> — nothing is saved until you apply`
+        : 'consequence-free — nothing touches your formatter unless you apply it'}</span>`;
     const close = document.createElement('button');
     close.className = 'wb-pg-close';
     close.textContent = '✕';
@@ -557,7 +547,13 @@ function mount(opts: Opts): void {
       for (const [where, k, v] of picked) {
         const rowEl = document.createElement('div');
         rowEl.className = 'wb-pg-out-row';
-        rowEl.innerHTML = `<span class="wb-pg-out-where">${where}</span><code>${k}: ${v}</code>`;
+        const whereSpan = document.createElement('span');
+        whereSpan.className = 'wb-pg-out-where';
+        whereSpan.textContent = where;
+        const codeEl = document.createElement('code');
+        codeEl.textContent = `${k}: ${v}`;
+        rowEl.appendChild(whereSpan);
+        rowEl.appendChild(codeEl);
         const del = document.createElement('button');
         del.textContent = '✕';
         del.title = 'Remove';
