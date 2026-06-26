@@ -504,6 +504,8 @@ function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: 
     onToast(registered
       ? `[$${fieldName}] formatter JSON copied — paste into that column's Format pane`
       : 'Column JSON copied (this cell as a column-formatter starting point)');
+  }).catch(() => {
+    onToast('Copy failed — clipboard access denied (try HTTPS or browser permissions)');
   });
 }
 

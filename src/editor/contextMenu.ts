@@ -115,7 +115,8 @@ export function elementMenuItems(
     title: 'This element subtree as JSON — paste into a children array or keep as a snippet',
     fn: () => {
       navigator.clipboard.writeText(JSON.stringify(node, null, 2)).then(() =>
-        onToast(`${label} JSON copied`));
+        onToast(`${label} JSON copied`)).catch(() =>
+        onToast('Copy failed — clipboard access denied (try HTTPS or browser permissions)'));
     },
   });
   if (inSiblingList) {
