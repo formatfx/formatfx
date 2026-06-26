@@ -348,7 +348,7 @@ function saveAsSubtype(field: MockField, header: HTMLElement, onToast: (m: strin
   const r = header.getBoundingClientRect();
   openRenamePopover(
     { x: r.left, y: r.bottom + 4 },
-    'Save as reusable style',
+    'Save as reusable subtype',
     `${fieldLabel(field)} style`,
     (name) => {
       const trimmed = name.trim();
