@@ -635,12 +635,18 @@ refreshTitleColVisibility();
 // lint refresh after each render pass — also drives the topbar badge so makers
 // in the default maker view can see issues without opening the studio.
 const lintBadge = document.getElementById('wb-lint-badge') as HTMLElement;
-const refreshLintBadge = ({ errors, warnings }: { errors: number; warnings: number }): void => {
-  const count = errors || warnings;
-  if (!count) { lintBadge.hidden = true; return; }
+const refreshLintBadge = ({ errors, warnings, runtime }: { errors: number; warnings: number; runtime: number }): void => {
+  const errorTotal = errors + runtime;
+  const count = errorTotal || warnings;
+  if (!count) { lintBadge.hidden = true; lintBadge.removeAttribute('aria-label'); lintBadge.title = ''; return; }
   lintBadge.textContent = String(count);
   lintBadge.hidden = false;
-  lintBadge.classList.toggle('wb-badge-warn', errors === 0);
+  lintBadge.classList.toggle('wb-badge-warn', errorTotal === 0);
+  const label = errorTotal
+    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open Advanced to review`
+    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open Advanced to review`;
+  lintBadge.setAttribute('aria-label', label);
+  lintBadge.title = label;
 };
 state.subscribe((reason) => {
   if (reason !== 'selection' && reason !== 'theme') {

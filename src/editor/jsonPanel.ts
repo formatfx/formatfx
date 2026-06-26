@@ -16,7 +16,7 @@ import { onExtensionReady, stageApplyToExtension } from './extensionBridge';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
-  refreshLint: (runtime: RenderIssue[]) => { errors: number; warnings: number };
+  refreshLint: (runtime: RenderIssue[]) => { errors: number; warnings: number; runtime: number };
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
@@ -183,7 +183,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   });
 
-  const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number } => {
+  const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number; runtime: number } => {
     const issues = lintDocument(
       state.doc,
       state.fields.map((f) => f.name),
@@ -198,7 +198,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     const warnings = issues.filter((i: LintIssue) => i.severity === 'warning').length;
     if (all.length === 0) {
       lintEl.innerHTML = '<div class="wb-lint-ok">✓ No issues — schema-clean and expression-safe.</div>';
-      return { errors: 0, warnings: 0 };
+      return { errors: 0, warnings: 0, runtime: 0 };
     }
     for (const issue of all) {
       const row = document.createElement('div');
@@ -208,7 +208,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       row.addEventListener('click', () => state.select(issue.path));
       lintEl.appendChild(row);
     }
-    return { errors, warnings };
+    return { errors, warnings, runtime: runtime.length };
   };
 
   state.subscribe((reason) => {
