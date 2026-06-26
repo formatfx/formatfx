@@ -113,10 +113,13 @@ export function elementMenuItems(
     icon: 'Code',
     label: 'Copy element JSON',
     title: 'This element subtree as JSON — paste into a children array or keep as a snippet',
-    fn: () => {
-      navigator.clipboard.writeText(JSON.stringify(node, null, 2)).then(() =>
-        onToast(`${label} JSON copied`)).catch(() =>
-        onToast('Copy failed — clipboard access denied (try HTTPS or browser permissions)'));
+    fn: async () => {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(node, null, 2));
+        onToast(`${label} JSON copied`);
+      } catch {
+        onToast('Copy failed — clipboard access denied (try HTTPS or browser permissions)');
+      }
     },
   });
   if (inSiblingList) {
