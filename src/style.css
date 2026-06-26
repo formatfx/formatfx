@@ -894,6 +894,13 @@ body {
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
+#wb-json-text.wb-json-dirty {
+  border-color: var(--wb-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wb-accent) 30%, transparent);
+}
+.wb-json-toolbar button#wb-json-apply.wb-json-apply-pending {
+  border-color: var(--wb-accent); color: var(--wb-accent); font-weight: 600;
+}
 
 /* ── lint ────────────────────────────────────────────────── */
 .wb-lint { margin-top: 8px; overflow: auto; max-height: 220px; }

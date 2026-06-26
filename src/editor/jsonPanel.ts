@@ -50,7 +50,19 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
   const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
+  const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
   let dirty = false;
+
+  const setDirty = () => {
+    dirty = true;
+    textEl.classList.add('wb-json-dirty');
+    applyBtn.classList.add('wb-json-apply-pending');
+  };
+  const clearDirty = () => {
+    dirty = false;
+    textEl.classList.remove('wb-json-dirty');
+    applyBtn.classList.remove('wb-json-apply-pending');
+  };
 
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
@@ -58,8 +70,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
   };
 
-  textEl.addEventListener('input', () => { dirty = true; });
-  sanitizeEl.addEventListener('change', () => { dirty = false; regenerate(); });
+  textEl.addEventListener('input', setDirty);
+  sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
     await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }));
@@ -85,7 +97,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
         if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
       }
-      dirty = false;
+      clearDirty();
       state.loadDocument(doc);
       onToast(`Imported ${doc.kind} formatter`);
     } catch (e) {
@@ -209,7 +221,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   };
 
   state.subscribe((reason) => {
-    if (reason !== 'selection' && reason !== 'theme') { dirty = false; regenerate(); refreshDeployPanel(); }
+    if (reason !== 'selection' && reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
   });
   regenerate();
   renderLint([]);
