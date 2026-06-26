@@ -20,7 +20,7 @@ import { exportJson } from '../core/serializer';
 import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { openFormatCells } from './formatCells';
-import { openMenu, closeMenu, type MenuItem } from './menu';
+import { openMenu, closeMenu, openRenamePopover, type MenuItem } from './menu';
 import {
   gridCellForField, defaultColumnFormatter, gridColumnField, gridColumnLabel,
   groupName, unplacedFields, fieldLabel,
@@ -339,18 +339,25 @@ function defaultKnobLabel(value: string): string {
 }
 
 /** Save the column's current formatter as a reusable custom subtype (Save-as
- *  birth): prompts for a name, derives the vocab, records the built-in it forks
- *  from (if any), and persists to wb-subtypes — it then shows as "Yours". */
-function saveAsSubtype(field: MockField, onToast: (m: string) => void): void {
+ *  birth): opens an inline popover for the name (no browser prompt), derives
+ *  the vocab, records the built-in it forks from (if any), and persists to
+ *  wb-subtypes — it then shows as "Yours". */
+function saveAsSubtype(field: MockField, header: HTMLElement, onToast: (m: string) => void): void {
   const formatter = state.columnRefs[field.name];
   if (!formatter) { onToast('Format this column first, then save it as a reusable subtype.'); return; }
-  const name = window.prompt('Name this reusable subtype', `${fieldLabel(field)} style`);
-  if (name === null) return; // cancelled
-  const trimmed = name.trim();
-  if (!trimmed) { onToast('A subtype needs a name.'); return; }
-  const forkedFrom = field.subtype && isBuiltinSubtype(field.subtype) ? field.subtype : undefined;
-  saveSubtype(subtypeFromColumn({ name: trimmed, formatter, field, forkedFrom }));
-  onToast(`Saved "${trimmed}" as a reusable subtype (Yours) — it's in the Format menu for ${field.type} columns.`);
+  const r = header.getBoundingClientRect();
+  openRenamePopover(
+    { x: r.left, y: r.bottom + 4 },
+    'Save as reusable style',
+    `${fieldLabel(field)} style`,
+    (name) => {
+      const trimmed = name.trim();
+      if (!trimmed) { onToast('A subtype needs a name.'); return; }
+      const forkedFrom = field.subtype && isBuiltinSubtype(field.subtype) ? field.subtype : undefined;
+      saveSubtype(subtypeFromColumn({ name: trimmed, formatter, field, forkedFrom }));
+      onToast(`Saved "${trimmed}" as a reusable subtype (Yours) — it's in the Format menu for ${field.type} columns.`);
+    },
+  );
 }
 
 /** One typed widget for a knob, pre-filled with its default; returns a reader. */
@@ -567,7 +574,7 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
         icon: 'Save',
         label: 'Save as reusable subtype…',
         title: `Save ${fieldLabel(field)}'s current format as a reusable subtype you can apply to other ${field.type} columns`,
-        fn: () => saveAsSubtype(field, onToast),
+        fn: () => saveAsSubtype(field, header, onToast),
       });
     }
     items.push({
