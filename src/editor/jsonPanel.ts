@@ -50,7 +50,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
   const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
+  const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
   let dirty = false;
+
+  // Sync a visual "pending changes" state on the textarea + Apply button.
+  // When dirty the button highlights so the user can't miss that a paste or
+  // edit hasn't been applied yet; clears on Apply, regenerate, or sanitize toggle.
+  const setDirty = (d: boolean) => {
+    dirty = d;
+    applyBtn.classList.toggle('wb-json-dirty', d);
+    textEl.classList.toggle('wb-json-dirty', d);
+  };
 
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
@@ -58,8 +68,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
   };
 
-  textEl.addEventListener('input', () => { dirty = true; });
-  sanitizeEl.addEventListener('change', () => { dirty = false; regenerate(); });
+  textEl.addEventListener('input', () => { setDirty(true); });
+  sanitizeEl.addEventListener('change', () => { setDirty(false); regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
     await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }));
@@ -85,7 +95,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
         if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
       }
-      dirty = false;
+      setDirty(false);
       state.loadDocument(doc);
       onToast(`Imported ${doc.kind} formatter`);
     } catch (e) {

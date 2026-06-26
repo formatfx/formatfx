@@ -894,6 +894,11 @@ body {
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
+#wb-json-apply.wb-json-dirty {
+  background: var(--wb-accent); color: #fff; border-color: var(--wb-accent);
+}
+#wb-json-apply.wb-json-dirty:hover { opacity: .85; color: #fff; }
+#wb-json-text.wb-json-dirty { border-color: var(--wb-accent); }
 
 /* ── lint ────────────────────────────────────────────────── */
 .wb-lint { margin-top: 8px; overflow: auto; max-height: 220px; }
