@@ -43,7 +43,7 @@ app.innerHTML = `
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
-      <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
+      <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
@@ -632,13 +632,22 @@ state.subscribe((reason) => {
 });
 refreshTitleColVisibility();
 
-// lint refresh after each render pass
+// lint refresh after each render pass — also drives the topbar badge so makers
+// in the default maker view can see issues without opening the studio.
+const lintBadge = document.getElementById('wb-lint-badge') as HTMLElement;
+const refreshLintBadge = ({ errors, warnings }: { errors: number; warnings: number }): void => {
+  const count = errors || warnings;
+  if (!count) { lintBadge.hidden = true; return; }
+  lintBadge.textContent = String(count);
+  lintBadge.hidden = false;
+  lintBadge.classList.toggle('wb-badge-warn', errors === 0);
+};
 state.subscribe((reason) => {
   if (reason !== 'selection' && reason !== 'theme') {
-    window.setTimeout(() => jsonPanel.refreshLint(canvas.getRuntimeIssues()), 0);
+    window.setTimeout(() => refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues())), 0);
   }
 });
-jsonPanel.refreshLint(canvas.getRuntimeIssues());
+refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues()));
 refreshStudioDisabled();
 kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 
