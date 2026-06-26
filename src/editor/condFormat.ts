@@ -200,12 +200,17 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     if (!rules.length) {
       const st = existingStyle();
       const hasFormulas = st && Object.values(st).some(
-        (v) => v !== undefined && (typeof v !== 'string' || v.startsWith('=')),
+        (v) => v !== undefined && (
+          (typeof v === 'string' && v.startsWith('=')) ||
+          (typeof v === 'object' && v !== null)
+        ),
       );
       if (hasFormulas) {
         const notice = document.createElement('div');
         notice.className = 'wb-cf-notice';
-        notice.textContent = 'This element already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).';
+        notice.textContent = target.kind === 'element'
+          ? 'This element already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).'
+          : 'This column\'s formatter already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).';
         panel.appendChild(notice);
       }
     }
