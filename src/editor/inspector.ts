@@ -1056,6 +1056,7 @@ function kvEditor(
     const del = document.createElement('button');
     del.innerHTML = '<i class="ms-Icon ms-Icon--Cancel"></i>';
     del.title = 'Remove';
+    del.setAttribute('aria-label', 'Remove');
     del.addEventListener('click', () => { row.remove(); commitRows(); });
     key.addEventListener('input', refreshValueOptions);
     key.addEventListener('change', commitRows);

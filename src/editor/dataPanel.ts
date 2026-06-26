@@ -607,6 +607,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       const del = document.createElement('button');
       del.innerHTML = '<i class="ms-Icon ms-Icon--Delete"></i>';
       del.title = 'Delete row';
+      del.setAttribute('aria-label', 'Delete row');
       del.addEventListener('click', () => {
         state.rows.splice(ri, 1);
         state.emit('data');
