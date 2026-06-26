@@ -55,7 +55,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   // Sync a visual "pending changes" state on the textarea + Apply button.
   // When dirty the button highlights so the user can't miss that a paste or
-  // edit hasn't been applied yet; clears on Apply, regenerate, or sanitize toggle.
+  // edit hasn't been applied yet; clears on Apply, sanitize toggle, or state change.
   const setDirty = (d: boolean) => {
     dirty = d;
     applyBtn.classList.toggle('wb-json-dirty', d);
@@ -87,7 +87,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     a.click();
     URL.revokeObjectURL(a.href);
   });
-  host.querySelector('#wb-json-apply')!.addEventListener('click', () => {
+  applyBtn.addEventListener('click', () => {
     try {
       const doc = importJson(textEl.value);
       // soft guard: name-less JSON replacing a named design silently drops
@@ -219,7 +219,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   };
 
   state.subscribe((reason) => {
-    if (reason !== 'selection' && reason !== 'theme') { dirty = false; regenerate(); refreshDeployPanel(); }
+    if (reason !== 'selection' && reason !== 'theme') { setDirty(false); regenerate(); refreshDeployPanel(); }
   });
   regenerate();
   renderLint([]);
