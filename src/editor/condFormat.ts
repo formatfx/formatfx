@@ -194,6 +194,22 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     targetRow.appendChild(fieldSel);
     panel.appendChild(targetRow);
 
+    // When the builder opens on an element that already has formula-driven styles
+    // (e.g. from a previous condFormat apply), show an upfront notice so the user
+    // knows the empty rules list is expected — not that their rules were lost.
+    if (!rules.length) {
+      const st = existingStyle();
+      const hasFormulas = st && Object.values(st).some(
+        (v) => v !== undefined && (typeof v !== 'string' || v.startsWith('=')),
+      );
+      if (hasFormulas) {
+        const notice = document.createElement('div');
+        notice.className = 'wb-cf-notice';
+        notice.textContent = 'This element already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).';
+        panel.appendChild(notice);
+      }
+    }
+
     // ── the rules so far ──
     const rulesBox = document.createElement('div');
     rulesBox.className = 'wb-cf-rules';
