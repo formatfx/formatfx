@@ -440,6 +440,8 @@ function advancedLink(): HTMLButtonElement {
   btn.addEventListener('click', () => {
     const toggle = document.getElementById('wb-studio-toggle') as HTMLButtonElement | null;
     if (toggle && !toggle.classList.contains('active')) toggle.click();
+    // Always land on the JSON tab — studio may already be open on Properties.
+    (document.querySelector('.wb-tabs button[data-tab="json"]') as HTMLButtonElement | null)?.click();
   });
   return btn;
 }
