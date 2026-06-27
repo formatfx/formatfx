@@ -127,6 +127,31 @@ describe('fxBar', () => {
     expect(state.selectedNode!.txtContent).toBeUndefined();
   });
 
+  describe('× clear-slot button', () => {
+    it('removes the slot value in one undoable mutation when clicked', () => {
+      const host = mountWith({ elmType: 'div', style: { 'background-color': '#107c10' } });
+      setSlot(host, 'fill');
+      const btn = $<HTMLButtonElement>(host, '.wb-fx-clear');
+      expect(btn.hidden).toBe(false);
+      btn.dispatchEvent(new Event('click'));
+      expect(state.selectedNode!.style?.['background-color']).toBeUndefined();
+      state.undo();
+      expect(state.selectedNode!.style!['background-color']).toBe('#107c10');
+    });
+
+    it('is hidden when the slot has no value', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      expect($<HTMLButtonElement>(host, '.wb-fx-clear').hidden).toBe(true);
+    });
+
+    it('is hidden when the slot holds a read-only AST-form formula', () => {
+      const host = mountWith({ elmType: 'div', style: { 'background-color': '=toString([$DueDate])' } });
+      setSlot(host, 'fill');
+      expect($<HTMLButtonElement>(host, '.wb-fx-clear').hidden).toBe(true);
+    });
+  });
+
   it('pre-populates the bar with the best default as an uncommitted draft', () => {
     const host = mountWith({ elmType: 'div' });
     setSlot(host, 'fill');

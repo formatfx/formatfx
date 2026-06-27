@@ -254,9 +254,25 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render());
     });
 
+    // ── × clear-slot button: one-click remove when the slot has a set, editable value ──
+    // The slot already accepts an empty commit (applyText('') → spValue=undefined →
+    // writeSlot removes the key), but that requires select-all + delete + Enter.
+    // This button does it in one gesture. It is hidden when the slot is empty
+    // (nothing to clear) or read-only (AST/out-of-subset formula — clear via Advanced).
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'wb-fx-clear';
+    clearBtn.textContent = '×';
+    clearBtn.title = `Clear this ${slot.label} value (Ctrl+Z undoes)`;
+    clearBtn.hidden = stored === undefined || view.readOnly;
+    // Prevent the mousedown from blurring the editor before click fires,
+    // matching the same guard used on every other bar button.
+    clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    clearBtn.addEventListener('click', () => { applyText('', setFeedback); render(); });
+
     const bar = document.createElement('div');
     bar.className = 'wb-fx-row';
-    bar.append(badge, picker, editor, expand);
+    bar.append(badge, picker, editor, clearBtn, expand);
     if (opts.accessory) bar.append(opts.accessory);
     host.append(bar, feedback);
     if (focusAfter) editor.focus();
