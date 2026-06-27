@@ -43,6 +43,7 @@ Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
     <textarea id="wb-json-text" spellcheck="false"></textarea>
+    <div id="wb-json-import-error" class="wb-import-error" hidden></div>
     <div id="wb-lint" class="wb-lint"></div>
   `;
 
@@ -50,6 +51,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
   const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
+  const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   let dirty = false;
 
   const regenerate = () => {
@@ -58,7 +60,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
   };
 
-  textEl.addEventListener('input', () => { dirty = true; });
+  const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
+  textEl.addEventListener('input', () => { dirty = true; clearImportError(); });
   sanitizeEl.addEventListener('change', () => { dirty = false; regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
@@ -86,10 +89,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
       }
       dirty = false;
+      clearImportError();
       state.loadDocument(doc);
       onToast(`Imported ${doc.kind} formatter`);
     } catch (e) {
-      onToast(`Import failed: ${(e as Error).message}`);
+      const msg = `Import failed: ${(e as Error).message}`;
+      onToast(msg);
+      importErrorEl.textContent = msg;
+      importErrorEl.hidden = false;
     }
   });
 
