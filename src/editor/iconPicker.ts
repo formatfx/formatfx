@@ -125,6 +125,7 @@ export function openIconPicker(opts: IconPickerOptions): { close: () => void } {
   x.className = 'wb-iconpicker-x';
   x.textContent = '✕';
   x.title = 'Close (Esc)';
+  x.setAttribute('aria-label', 'Close');
   head.append(title, x);
 
   const gridHost = document.createElement('div');

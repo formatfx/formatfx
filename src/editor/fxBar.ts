@@ -155,6 +155,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
         x.className = 'wb-fx-feedback-x';
         x.textContent = '✕';
         x.title = 'Dismiss';
+        x.setAttribute('aria-label', 'Dismiss');
         x.addEventListener('mousedown', (e) => e.preventDefault());
         x.addEventListener('click', clearFeedback);
         feedback.appendChild(x);
@@ -315,6 +316,7 @@ function openFloat(
   dismiss.className = 'wb-fx-float-dismiss';
   dismiss.textContent = '✕';
   dismiss.title = 'Dismiss this window — what you typed is kept (unapplied) until you reopen it. Use Apply to commit.';
+  dismiss.setAttribute('aria-label', 'Dismiss');
   head.append(title, dismiss);
 
   const ta = document.createElement('textarea');

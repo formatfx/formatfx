@@ -41,6 +41,7 @@ export function openGuide(pageId?: string): void {
   close.className = 'wb-guide-close';
   close.textContent = '✕';
   close.title = 'Close (Esc)';
+  close.setAttribute('aria-label', 'Close');
   close.addEventListener('click', () => closeGuide());
   head.appendChild(close);
   overlay.appendChild(head);

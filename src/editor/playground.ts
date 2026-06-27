@@ -421,6 +421,7 @@ function mount(opts: Opts): void {
     close.className = 'wb-pg-close';
     close.textContent = '✕';
     close.title = 'Close (Esc) — unapplied picks on this element are kept for next time';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', () => { stashCurrent(); closePlayground(); });
     head.appendChild(close);
     panel.appendChild(head);
@@ -557,6 +558,7 @@ function mount(opts: Opts): void {
         const del = document.createElement('button');
         del.textContent = '✕';
         del.title = 'Remove';
+        del.setAttribute('aria-label', 'Remove');
         del.addEventListener('click', () => {
           if (opts.mode === 'element') delete pending[k];
           else delete (where === 'shelf' ? shelfStyle : chipStyle)[k];
