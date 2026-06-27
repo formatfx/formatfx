@@ -114,8 +114,9 @@ export function elementMenuItems(
     label: 'Copy element JSON',
     title: 'This element subtree as JSON — paste into a children array or keep as a snippet',
     fn: () => {
-      navigator.clipboard.writeText(JSON.stringify(node, null, 2)).then(() =>
-        onToast(`${label} JSON copied`));
+      navigator.clipboard.writeText(JSON.stringify(node, null, 2))
+        .then(() => onToast(`${label} JSON copied`))
+        .catch(() => onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)'));
     },
   });
   if (inSiblingList) {

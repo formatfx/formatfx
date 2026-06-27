@@ -230,8 +230,12 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         copy.textContent = 'copy';
         copy.title = 'Copy this view\'s raw formatter JSON';
         copy.addEventListener('click', async () => {
-          await navigator.clipboard.writeText(view.customFormatter!);
-          onToast(`"${view.title}" view formatter JSON copied`);
+          try {
+            await navigator.clipboard.writeText(view.customFormatter!);
+            onToast(`"${view.title}" view formatter JSON copied`);
+          } catch {
+            onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+          }
         });
         row.append(load, copy);
       }
@@ -342,8 +346,12 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       copy.title = "Copy this column formatter's JSON for SharePoint's Format pane";
       copy.addEventListener('click', async () => {
         const json = exportJson({ kind: 'column', root: state.activeDocKey === name ? state.doc.root : tree }, { sanitizeWhitespace: true });
-        await navigator.clipboard.writeText(json);
-        onToast(`[$${name}] formatter JSON copied`);
+        try {
+          await navigator.clipboard.writeText(json);
+          onToast(`[$${name}] formatter JSON copied`);
+        } catch {
+          onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+        }
       });
       const del = document.createElement('button');
       del.textContent = 'remove';
@@ -463,8 +471,12 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     liveBtn.textContent = 'Copy live-extract snippet';
     liveBtn.title = 'A commented, read-only (GET-only) script — every line is meant to be read before you run it';
     liveBtn.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(buildExtractSnippet());
-      toast('Extract snippet copied — run it in the console (F12) on your list page, then paste the snapshot it captures below');
+      try {
+        await navigator.clipboard.writeText(buildExtractSnippet());
+        toast('Extract snippet copied — run it in the console (F12) on your list page, then paste the snapshot it captures below');
+      } catch {
+        toast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+      }
     });
     const liveSteps = document.createElement('div');
     liveSteps.className = 'wb-live-steps';

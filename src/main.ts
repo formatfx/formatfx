@@ -498,12 +498,16 @@ state.subscribe((reason) => {
 // one-click copy of whatever is being edited
 document.getElementById('wb-copy')!.addEventListener('click', async () => {
   const { exportJson } = await import('./core/serializer');
-  await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
-  toast(state.activeDocKey !== 'main'
-    ? `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`
-    : state.doc.kind === 'grid'
-    ? 'View (row) formatter JSON copied — the grid ships as a row layout; for one column\'s JSON use its header menu'
-    : 'Main formatter JSON copied — paste into the view\'s Format pane');
+  try {
+    await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
+    toast(state.activeDocKey !== 'main'
+      ? `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`
+      : state.doc.kind === 'grid'
+      ? 'View (row) formatter JSON copied — the grid ships as a row layout; for one column\'s JSON use its header menu'
+      : 'Main formatter JSON copied — paste into the view\'s Format pane');
+  } catch {
+    toast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+  }
 });
 
 // examples

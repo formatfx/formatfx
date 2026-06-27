@@ -500,11 +500,11 @@ function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: 
   const registered = fieldName ? state.columnRefs[fieldName] : undefined;
   const root = registered ?? col.el;
   const json = exportJson({ kind: 'column', root }, { sanitizeWhitespace: true });
-  navigator.clipboard.writeText(json).then(() => {
-    onToast(registered
+  navigator.clipboard.writeText(json)
+    .then(() => onToast(registered
       ? `[$${fieldName}] formatter JSON copied — paste into that column's Format pane`
-      : 'Column JSON copied (this cell as a column-formatter starting point)');
-  });
+      : 'Column JSON copied (this cell as a column-formatter starting point)'))
+    .catch(() => onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)'));
 }
 
 function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => void): void {
