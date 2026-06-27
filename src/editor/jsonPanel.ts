@@ -43,7 +43,7 @@ Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
     <textarea id="wb-json-text" spellcheck="false"></textarea>
-    <div id="wb-json-import-error" class="wb-import-error" hidden></div>
+    <div id="wb-json-import-error" class="wb-import-error" role="alert" aria-live="assertive" hidden></div>
     <div id="wb-lint" class="wb-lint"></div>
   `;
 
@@ -54,13 +54,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   let dirty = false;
 
+  const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
+
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
     textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    clearImportError(); // stale error no longer matches what's in the textarea
   };
 
-  const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
   textEl.addEventListener('input', () => { dirty = true; clearImportError(); });
   sanitizeEl.addEventListener('change', () => { dirty = false; regenerate(); });
 
