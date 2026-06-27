@@ -326,7 +326,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
       fontLink.type = 'button';
       fontLink.className = 'wb-fc-hint-link';
       fontLink.textContent = 'set it on the Font tab';
-      fontLink.addEventListener('click', () => { tab = 'font'; render(); });
+      fontLink.addEventListener('click', () => { tab = 'font'; _lastTab = 'font'; render(); });
       hint.append(fontLink, '. For fills that follow the value, use Conditional formatting instead.');
       body.appendChild(hint);
     }
@@ -395,6 +395,6 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
   render();
   document.body.appendChild(overlay);
-  // Put focus on the first tab so keyboard users land somewhere useful on open.
-  panel.querySelector<HTMLElement>('.wb-fc-tab')?.focus();
+  // Focus the active tab so keyboard users land on the right tab on open.
+  panel.querySelector<HTMLElement>('.wb-fc-tab.active')?.focus();
 }
