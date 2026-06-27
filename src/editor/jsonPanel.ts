@@ -66,7 +66,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }));
       onToast('Formatter JSON copied');
     } catch {
-      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
   host.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
@@ -74,7 +74,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked, csomSafe: true }));
       onToast('CSOM-safe JSON copied (& and < escaped)');
     } catch {
-      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
   host.querySelector('#wb-json-download')!.addEventListener('click', () => {
@@ -161,7 +161,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       await navigator.clipboard.writeText(snippet);
       onToast(`Deploy snippet copied for ${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`} — run it in the console on your list page; it confirms before writing`);
     } catch {
-      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
 
@@ -176,7 +176,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       await navigator.clipboard.writeText(serializeApplyPayload(payload));
       onToast(`Copied for the extension (${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`}) — on your list tab, click the FormatFX extension → Apply from clipboard`);
     } catch {
-      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+      onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
 

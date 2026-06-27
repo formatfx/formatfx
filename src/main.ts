@@ -506,7 +506,7 @@ document.getElementById('wb-copy')!.addEventListener('click', async () => {
       ? 'View (row) formatter JSON copied — the grid ships as a row layout; for one column\'s JSON use its header menu'
       : 'Main formatter JSON copied — paste into the view\'s Format pane');
   } catch {
-    toast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+    toast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
   }
 });
 

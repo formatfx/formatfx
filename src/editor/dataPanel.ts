@@ -234,7 +234,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
             await navigator.clipboard.writeText(view.customFormatter!);
             onToast(`"${view.title}" view formatter JSON copied`);
           } catch {
-            onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+            onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
           }
         });
         row.append(load, copy);
@@ -350,7 +350,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
           await navigator.clipboard.writeText(json);
           onToast(`[$${name}] formatter JSON copied`);
         } catch {
-          onToast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+          onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
         }
       });
       const del = document.createElement('button');
@@ -475,7 +475,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         await navigator.clipboard.writeText(buildExtractSnippet());
         toast('Extract snippet copied — run it in the console (F12) on your list page, then paste the snapshot it captures below');
       } catch {
-        toast('Copy failed — clipboard access blocked (select the text and use Ctrl+C)');
+        toast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
       }
     });
     const liveSteps = document.createElement('div');
