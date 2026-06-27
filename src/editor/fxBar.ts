@@ -268,7 +268,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // Prevent the mousedown from blurring the editor before click fires,
     // matching the same guard used on every other bar button.
     clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    clearBtn.addEventListener('click', () => { applyText('', setFeedback); render(); });
+    clearBtn.addEventListener('click', () => { applyText('', setFeedback); render(true); });
 
     const bar = document.createElement('div');
     bar.className = 'wb-fx-row';

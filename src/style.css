@@ -1538,7 +1538,7 @@ body {
    suggestion, not a saved value — muted + italic until they engage with it */
 .wb-fx-editor.wb-fx-draft { color: var(--wb-text-2); font-style: italic; }
 .wb-fx-editor.wb-fx-expanded { white-space: pre-wrap; overflow: auto; resize: vertical; }
-.wb-fx-expand {
+.wb-fx-expand, .wb-fx-clear {
   flex: none; padding: 4px 7px; font-size: 13px; line-height: 1;
   border: 1px solid var(--wb-border); border-radius: 4px;
   background: var(--wb-surface); color: var(--wb-text-2); cursor: pointer;
@@ -1550,11 +1550,6 @@ body {
   top: 2px; right: 2px; width: 5px; height: 5px;
   border-radius: 50%; background: var(--wb-accent);
   pointer-events: none;
-}
-.wb-fx-clear {
-  flex: none; padding: 4px 7px; font-size: 13px; line-height: 1;
-  border: 1px solid var(--wb-border); border-radius: 4px;
-  background: var(--wb-surface); color: var(--wb-text-2); cursor: pointer;
 }
 .wb-fx-clear:hover { border-color: #d13438; color: #d13438; }
 .wb-fx-feedback { font-size: 11px; color: var(--wb-text-2); margin: 4px 0 0 26px; min-height: 14px; }
