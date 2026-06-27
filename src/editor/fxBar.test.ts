@@ -83,6 +83,14 @@ describe('fxBar', () => {
     expect(literal?.style.fontWeight).toBe('');
   });
 
+  it('treats number and boolean slot values as static (·), not formula-driven (ƒ)', () => {
+    // opacity: 0.6 is a number literal — a valid SPExpr but not a formula
+    const host = mountWith({ elmType: 'div', style: { opacity: 0.6 as unknown as string } });
+    const opts = [...host.querySelectorAll<HTMLOptionElement>('.wb-fx-slot option')];
+    const numericSlot = opts.find((o) => o.textContent === 'Opacity ·');
+    expect(numericSlot).toBeDefined();    // · not ƒ — a number is a static literal
+  });
+
   it('transpiles Excel input to stored SP in one undoable mutation', () => {
     const host = mountWith({ elmType: 'div' });
     setSlot(host, 'fill');
