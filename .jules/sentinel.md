@@ -1,0 +1,4 @@
+## 2024-05-24 - Prevent Stored XSS from User-Controlled Element Names via innerHTML
+**Vulnerability:** Format cells and playground modals used `innerHTML` to display the custom name of an element (`nameOf(node)`). This allowed stored XSS if a user entered a payload like `<img src=x onerror=alert(1)>` as an element's custom name in the structure tree, which is stored in the exported JSON and evaluated when those modals open.
+**Learning:** Even internal toolings or properties not explicitly exported as string fields can execute XSS if injected unsafely into DOM-rendering code using string interpolation. The `_elmName` property is user-controlled.
+**Prevention:** Never use `innerHTML` to display user-derived content, such as element names or labels. Use secure DOM APIs like `document.createElement`, `.textContent`, and `.append()` to build the UI instead.
