@@ -219,12 +219,17 @@ export function completionAt(text: string, caret: number, slot: FxSlot, fields: 
   const before = text.slice(0, caret);
   if (!/^\s*=/.test(before)) return null; // literals get no dialect completions
 
-  // inside an unclosed [column …
+  // inside an open [column … (no ] between the '[' and the caret)
   const lb = before.lastIndexOf('[');
   if (lb >= 0 && !before.slice(lb).includes(']')) {
     const partial = before.slice(lb + 1).toLowerCase();
     const items = columnCompletions(fields).filter((c) => c.slice(1, -1).toLowerCase().includes(partial));
-    return items.length ? { items, from: lb, to: caret } : null;
+    // if this bracket is already closed AFTER the caret, replace through its ']'
+    // so accepting a completion (which carries its own ']') doesn't duplicate it.
+    const close = text.indexOf(']', caret);
+    const nextOpen = text.indexOf('[', caret);
+    const to = close !== -1 && (nextOpen === -1 || close < nextOpen) ? close + 1 : caret;
+    return items.length ? { items, from: lb, to } : null;
   }
 
   // @context token (replace the whole @word)

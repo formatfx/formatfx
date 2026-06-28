@@ -95,7 +95,9 @@ export function mountInspector(host: HTMLElement): void {
     // it governs is set; Reset clears them all in one undoable mutation (writes
     // to every selected node, matching the dedicated controls' commitAll).
     const sectionReset = (props: string[]): SectionReset => ({
-      active: props.some((p) => styleOf(node, p) !== ''),
+      // active when ANY selected node has one of these props set — Reset (commitAll)
+      // writes to every selected node, so the dot/button must reflect all of them.
+      active: state.selectedNodes.some((n) => props.some((p) => styleOf(n, p) !== '')),
       onReset: () => commitAll((n) => {
         if (!n.style) return;
         for (const p of props) delete n.style[p];

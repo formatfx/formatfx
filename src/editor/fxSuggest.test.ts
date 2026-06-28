@@ -186,6 +186,23 @@ describe('inline autocomplete completions (pure)', () => {
       expect(c.to).toBe(text.length);
     });
 
+    it('replaces through an existing closing ] so accepting does not duplicate it', () => {
+      const text = '=IF([Sta], "x", "")';
+      const caret = text.indexOf(']'); // caret right after "Sta", before the ]
+      const c = completionAt(text, caret, textSlot, FIELDS)!;
+      expect(c.from).toBe(text.indexOf('['));
+      expect(c.to).toBe(caret + 1); // range includes the existing ]
+      const spliced = text.slice(0, c.from) + '[Status]' + text.slice(c.to);
+      expect(spliced).toBe('=IF([Status], "x", "")');
+      expect(spliced).not.toContain(']]');
+    });
+
+    it('still ends the range at the caret when the bracket is genuinely unclosed', () => {
+      const text = '=[Sta';
+      const c = completionAt(text, text.length, textSlot, FIELDS)!;
+      expect(c.to).toBe(text.length);
+    });
+
     it('offers condition operands right after IF(', () => {
       const text = '=IF(';
       const c = completionAt(text, text.length, textSlot, FIELDS)!;
