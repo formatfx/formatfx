@@ -14,7 +14,7 @@ import {
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
-import { openPlayground, openElementPlayground } from './playground';
+import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 
 export function mountInspector(host: HTMLElement): void {
@@ -50,8 +50,13 @@ export function mountInspector(host: HTMLElement): void {
     }
     host.append(fieldList, forEachList);
 
-    // document-level wrapper settings when the root is selected
-    if (state.selection && state.selection.length === 0) {
+    // Lens gating: Simple shows the visual essentials (Text / Alignment / Box
+    // model / Style); Pro adds structure, attributes, and the superpower
+    // sections. (The Code lens replaces this inspector with the declarations box.)
+    const pro = state.activeLens === 'pro';
+
+    // document-level wrapper settings when the root is selected (Pro only)
+    if (pro && state.selection && state.selection.length === 0) {
       const kids: HTMLElement[] = [];
       const doc = state.doc;
       if (doc.kind === 'column') {
@@ -85,49 +90,52 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section(`Document — ${doc.kind} formatter`, kids, true));
     }
 
-    // ⚗ playground on the real element — click-only, so basic keeps it
-    const playBtn = document.createElement('button');
-    playBtn.className = 'wb-inspector-play';
-    playBtn.textContent = `⚗ Restyle ${node._elmName ?? 'this element'} in the playground`;
-    playBtn.title = 'Open this element — with its parent, children and live data — in the consequence-free playground';
-    playBtn.addEventListener('click', () => { if (state.selection) openElementPlayground(state.selection); });
-    host.appendChild(playBtn);
+    // ✨ conditional formatting — click-only; the builder generates the
+    // formulas itself, so a misclick can't corrupt the formatter. A FormatFX
+    // superpower → Pro lens. (The playground button is dropped: the Left Edit
+    // Pane IS the playground.)
+    if (pro) {
+      const condBtn = document.createElement('button');
+      condBtn.className = 'wb-inspector-cond';
+      condBtn.textContent = '✨ Conditional formatting…';
+      condBtn.title = 'Paint this element by a field\'s value — Excel-style rules, built by clicking, previewed on your rows';
+      condBtn.addEventListener('click', () => {
+        if (state.selection) openCondFormat({ kind: 'element', path: state.selection });
+      });
+      host.appendChild(condBtn);
+    }
 
-    // ✨ conditional formatting — also click-only; the builder generates the
-    // formulas itself, so a misclick can't corrupt the formatter
-    const condBtn = document.createElement('button');
-    condBtn.className = 'wb-inspector-cond';
-    condBtn.textContent = '✨ Conditional formatting…';
-    condBtn.title = 'Paint this element by a field\'s value — Excel-style rules, built by clicking, previewed on your rows';
-    condBtn.addEventListener('click', () => {
-      if (state.selection) openCondFormat({ kind: 'element', path: state.selection });
-    });
-    host.appendChild(condBtn);
+    // Text content — the headline control in both lenses (Simple calls it "Text").
+    const txtContentField = (): HTMLElement => labeled('txtContent', textarea(
+      node.txtContent === undefined ? ''
+        : typeof node.txtContent === 'string' ? node.txtContent
+        : JSON.stringify(node.txtContent, null, 2),
+      (v) => commit((n) => {
+        const t = v.trim();
+        if (t === '') { delete n.txtContent; return; }
+        if (t.startsWith('{')) {
+          try { n.txtContent = JSON.parse(t); return; } catch { /* keep as string */ }
+        }
+        n.txtContent = v;
+      }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}"));
+
+    if (!pro) host.appendChild(section('Text', [txtContentField()]));
 
     host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
 
-    host.appendChild(section('Element', [
-      labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
-        const t = v.trim();
-        if (t === '') delete n._elmName; else n._elmName = t;
-      }), 'Label shown in the Structure pane — stripped from shipped JSON')),
-      labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
-      labeled('txtContent', textarea(
-        node.txtContent === undefined ? ''
-          : typeof node.txtContent === 'string' ? node.txtContent
-          : JSON.stringify(node.txtContent, null, 2),
-        (v) => commit((n) => {
+    if (pro) {
+      host.appendChild(section('Element', [
+        labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
           const t = v.trim();
-          if (t === '') { delete n.txtContent; return; }
-          if (t.startsWith('{')) {
-            try { n.txtContent = JSON.parse(t); return; } catch { /* keep as string */ }
-          }
-          n.txtContent = v;
-        }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}")),
-      labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
-        if (v === '') delete n.forEach; else n.forEach = v;
-      }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
-    ], true));
+          if (t === '') delete n._elmName; else n._elmName = t;
+        }), 'Label shown in the Structure pane — stripped from shipped JSON')),
+        labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
+        txtContentField(),
+        labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
+          if (v === '') delete n.forEach; else n.forEach = v;
+        }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
+      ], true));
+    }
 
     host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
 
@@ -137,6 +145,8 @@ export function mountInspector(host: HTMLElement): void {
       })),
     ], true));
 
+    // ── Pro-only: attributes + the superpower sections ──────────────────────
+    if (pro) {
     host.appendChild(section('Attributes', [
       kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.attributes; else n.attributes = obj;
@@ -220,13 +230,14 @@ export function mountInspector(host: HTMLElement): void {
         if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
       }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),
     ], true));
+    } // end Pro-only sections
   };
 
   state.subscribe((reason) => {
     // skip rebuilding for our own commits — keeps focus in the input being
     // edited (arrow-stepping, rapid toggles) while canvas/tree still update
     if (reason === 'document' && selfCommit) return;
-    if (reason === 'selection' || reason === 'load' || reason === 'document') render();
+    if (reason === 'selection' || reason === 'load' || reason === 'document' || reason === 'lens') render();
   });
   render();
 }

@@ -2032,3 +2032,20 @@ body {
   font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
 }
 .wb-side-head .wb-side-adv { margin-bottom: 0; }
+
+/* ── Left Edit Pane: structure tree multi-select + visibility ──────────────── */
+.wb-lp-tree .wb-tree-row { display: flex; align-items: center; }
+.wb-lp-tree .wb-tree-label { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+.wb-tree-check {
+  flex: 0 0 auto; width: 13px; height: 13px; margin: 0 7px 0 0; cursor: pointer;
+  accent-color: var(--wb-accent);
+}
+.wb-tree-eye {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; color: var(--wb-lp-text-2);
+  font-size: 12px; line-height: 1; padding: 2px 4px; opacity: 0; transition: opacity .12s;
+}
+.wb-lp-tree .wb-tree-row:hover .wb-tree-eye,
+.wb-lp-tree .wb-tree-row.selected .wb-tree-eye { opacity: .65; }
+.wb-tree-eye:hover { opacity: 1; }
+.wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
+.wb-lp-tree .wb-tree-row.selected { background: var(--wb-lp-selected); border-radius: 5px; }
