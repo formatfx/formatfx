@@ -744,7 +744,30 @@ body {
 .wb-inspector-section { border-bottom: 1px solid var(--wb-border); padding: 4px 0 8px; }
 .wb-inspector-section summary {
   font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; color: var(--wb-text);
+  display: flex; align-items: center; gap: 6px; list-style: none;
 }
+/* custom collapse chevron (so flex layout doesn't drop the native triangle) */
+.wb-inspector-section summary::-webkit-details-marker { display: none; }
+.wb-inspector-section summary::before {
+  content: '▸'; font-size: 9px; color: var(--wb-text-2); flex: none; width: 9px;
+}
+.wb-inspector-section[open] > summary::before { content: '▾'; }
+.wb-sec-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-sec-dot { flex: none; }
+.wb-sec-reset {
+  flex: none; border: none; background: transparent; cursor: pointer; padding: 1px 4px;
+  font-size: 10.5px; font-weight: 600; color: var(--wb-text-2); border-radius: 4px;
+}
+.wb-sec-reset:hover:not(:disabled) { color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
+.wb-sec-reset:disabled { opacity: 0; pointer-events: none; }
+/* forEach: an amber "this element is code-driven" notice */
+.wb-inspector-warn {
+  display: flex; gap: 7px; align-items: flex-start; margin: 6px 0 10px; padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, #f9ae58 55%, var(--wb-border));
+  background: color-mix(in srgb, #f9ae58 14%, transparent);
+  border-radius: 6px; font-size: 11.5px; line-height: 1.35; color: var(--wb-text);
+}
+.wb-warn-icon { flex: none; color: #b3700f; font-weight: 700; }
 .wb-field { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .wb-field > span { font-size: 11px; color: var(--wb-text-2); }
 .wb-field input[type="text"], .wb-field textarea, .wb-field select,
