@@ -147,6 +147,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   };
 
   const render = (): void => {
+    // stale pending switch is irrelevant once there are no rules to lose
+    if (rules.length === 0) pendingFieldKey = null;
     panel.innerHTML = '';
     const targetNode = target.kind === 'element' ? state.nodeAt(target.path) : null;
     if (target.kind === 'element' && !targetNode) {
