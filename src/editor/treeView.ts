@@ -8,6 +8,8 @@ import { state, samePath, CARD_SEGMENT } from './state';
 import { cfrFieldName } from '../core/refs';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
+import { openMenu } from './menu';
+import { elementMenuItems } from './contextMenu';
 
 const ELM_ICONS: Record<string, string> = {
   div: 'CubeShape', span: 'PlainText', a: 'Link', img: 'Photo2',
@@ -72,6 +74,7 @@ export function mountTree(
   viewHost: HTMLElement,
   colsHost: HTMLElement,
   onRevealColumn?: (name: string) => void,
+  onToast: (m: string) => void = () => {},
 ): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click
@@ -279,6 +282,18 @@ export function mountTree(
     row.addEventListener('click', (e) => {
       if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
       else state.select(path);
+    });
+
+    // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…)
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.isSelected(path)) state.select(path);
+      openMenu(
+        { x: e.clientX, y: e.clientY },
+        el._elmName ?? `<${el.elmType}>`,
+        elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }),
+      );
     });
 
     // drag & drop reparent

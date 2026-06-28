@@ -79,6 +79,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     host.querySelector<HTMLElement>('#wb-tree-view')!,
     host.querySelector<HTMLElement>('#wb-tree-cols')!,
     (name) => revealColumn(host, name),
+    toast,
   );
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!);
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
