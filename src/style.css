@@ -2109,3 +2109,16 @@ body {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
   background: var(--wb-override-dot); margin-right: 5px; vertical-align: middle;
 }
+
+/* ── the `=` expression toggle (spec §4.A) ─────────────────────────────────── */
+.wb-expr-field { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.wb-expr-field > :first-child { flex: 1 1 auto; min-width: 0; }
+.wb-expr-toggle {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 12px; font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1;
+}
+.wb-expr-toggle:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-expr-toggle.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-expr-input { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11.5px; color: var(--wb-accent); }

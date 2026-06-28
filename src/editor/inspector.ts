@@ -570,6 +570,64 @@ function propSelect(node: SPElement, commit: (fn: (n: SPElement) => void) => voi
   return sel;
 }
 
+/**
+ * Wrap a literal control with the `=` expression toggle (spec §4.A). In literal
+ * mode the supplied control shows; the `=` button flips to a formula text input
+ * (its value is the stored `=…` expression). Toggling back to literal clears the
+ * formula. Self-contained local re-render — no Function Bar dependency required.
+ */
+function exprField(
+  node: SPElement,
+  commit: (fn: (n: SPElement) => void) => void,
+  prop: string,
+  buildControl: () => HTMLElement,
+  formulaPlaceholder: string,
+): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-expr-field';
+  let exprMode = styleOf(node, prop).startsWith('=');
+  const render = (focusInput = false) => {
+    wrap.innerHTML = '';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'wb-expr-toggle' + (exprMode ? ' active' : '');
+    toggle.textContent = '=';
+    toggle.title = exprMode ? 'Use a literal value' : 'Drive this with a formula';
+    if (exprMode) {
+      const inp = document.createElement('input');
+      inp.className = 'wb-field-input wb-expr-input';
+      inp.value = styleOf(node, prop);
+      inp.placeholder = formulaPlaceholder;
+      inp.spellcheck = false;
+      inp.addEventListener('change', () => setStyleProp(commit, prop, inp.value.trim()));
+      wrap.append(inp);
+      if (focusInput) requestAnimationFrame(() => inp.focus());
+    } else {
+      wrap.append(buildControl());
+    }
+    wrap.append(toggle);
+    toggle.addEventListener('click', () => {
+      if (exprMode && styleOf(node, prop).startsWith('=')) setStyleProp(commit, prop, '');
+      exprMode = !exprMode;
+      render(exprMode);
+    });
+  };
+  render();
+  return wrap;
+}
+
+/** A labeled property row whose control carries the `=` expression toggle. */
+function exprRow(
+  node: SPElement,
+  commit: (fn: (n: SPElement) => void) => void,
+  label: string,
+  prop: string,
+  buildControl: () => HTMLElement,
+  formulaPlaceholder = "=if([$Field]=='x','a','b')",
+): HTMLElement {
+  return visualRow(node, label, prop, exprField(node, commit, prop, buildControl, formulaPlaceholder));
+}
+
 const WEIGHTS: Array<[string, string]> = [
   ['', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['400', '400'],
 ];
@@ -580,40 +638,37 @@ const OVERFLOWS: Array<[string, string]> = [
   ['', 'visible'], ['hidden', 'hidden'], ['auto', 'auto'], ['scroll', 'scroll'],
 ];
 
-/** Typography section (Simple). */
+/** Typography section (Simple) — each control carries the `=` expression toggle. */
 function typographySection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
-  const align = segmented(
-    [{ value: '', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }, { value: 'justify', label: 'Justify' }],
-    styleOf(node, 'text-align'),
-    (v) => setStyleProp(commit, 'text-align', v),
-  );
   return [
-    visualRow(node, 'Size', 'font-size', propInput(node, commit, 'font-size', 'e.g. 13px')),
-    visualRow(node, 'Color', 'color', colorControl(node, commit, 'color', '#605e5c')),
-    visualRow(node, 'Weight', 'font-weight', propSelect(node, commit, 'font-weight', WEIGHTS)),
-    visualRow(node, 'Align', 'text-align', align),
-    visualRow(node, 'Leading', 'line-height', propInput(node, commit, 'line-height', '1.20')),
-    visualRow(node, 'Case', 'text-transform', propSelect(node, commit, 'text-transform', CASES)),
+    exprRow(node, commit, 'Size', 'font-size', () => propInput(node, commit, 'font-size', 'e.g. 13px')),
+    exprRow(node, commit, 'Color', 'color', () => colorControl(node, commit, 'color', '#605e5c')),
+    exprRow(node, commit, 'Weight', 'font-weight', () => propSelect(node, commit, 'font-weight', WEIGHTS)),
+    exprRow(node, commit, 'Align', 'text-align', () => segmented(
+      [{ value: '', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }, { value: 'justify', label: 'Justify' }],
+      styleOf(node, 'text-align'), (v) => setStyleProp(commit, 'text-align', v))),
+    exprRow(node, commit, 'Leading', 'line-height', () => propInput(node, commit, 'line-height', '1.20')),
+    exprRow(node, commit, 'Case', 'text-transform', () => propSelect(node, commit, 'text-transform', CASES)),
   ];
 }
 
 /** Appearance section (Simple + Pro share this primitive). */
 function appearanceSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
   return [
-    visualRow(node, 'Background', 'background-color', colorControl(node, commit, 'background-color', 'None')),
-    visualRow(node, 'Radius', 'border-radius', propInput(node, commit, 'border-radius', '0px')),
-    visualRow(node, 'Opacity', 'opacity', propInput(node, commit, 'opacity', '1.00')),
-    visualRow(node, 'Overflow', 'overflow', propSelect(node, commit, 'overflow', OVERFLOWS)),
+    exprRow(node, commit, 'Background', 'background-color', () => colorControl(node, commit, 'background-color', 'None')),
+    exprRow(node, commit, 'Radius', 'border-radius', () => propInput(node, commit, 'border-radius', '0px')),
+    exprRow(node, commit, 'Opacity', 'opacity', () => propInput(node, commit, 'opacity', '1.00')),
+    exprRow(node, commit, 'Overflow', 'overflow', () => propSelect(node, commit, 'overflow', OVERFLOWS)),
   ];
 }
 
 /** Border section (Simple). */
 function borderSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
   return [
-    visualRow(node, 'Width', 'border-width', propInput(node, commit, 'border-width', '0px')),
-    visualRow(node, 'Style', 'border-style', propSelect(node, commit, 'border-style',
+    exprRow(node, commit, 'Width', 'border-width', () => propInput(node, commit, 'border-width', '0px')),
+    exprRow(node, commit, 'Style', 'border-style', () => propSelect(node, commit, 'border-style',
       [['', 'none'], ['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])),
-    visualRow(node, 'Color', 'border-color', colorControl(node, commit, 'border-color', '#e1dfdd')),
+    exprRow(node, commit, 'Color', 'border-color', () => colorControl(node, commit, 'border-color', '#e1dfdd')),
   ];
 }
 
