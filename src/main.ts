@@ -44,6 +44,7 @@ app.innerHTML = `
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
+      <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
@@ -121,6 +122,9 @@ interface UiPrefs {
   titleCol: boolean;
   /** The active Left Edit Pane lens — a view pref, not part of the project. */
   activeLens: EditorLens;
+  /** Whether the right-hand validated-JSON pane (the Advanced escape hatch) is
+   *  shown. Collapsed by default so the maker landing is left pane + canvas. */
+  jsonOpen: boolean;
 }
 const uiPrefs: UiPrefs = {
   cols: { side: 360 },
@@ -128,15 +132,24 @@ const uiPrefs: UiPrefs = {
   dataMode: 'min',
   titleCol: true,
   activeLens: 'pro',
+  jsonOpen: false,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
+const sidePane = document.getElementById('wb-pane-side')!;
+const sideResizer = layout.querySelector<HTMLElement>('.wb-resizer[data-col="side"]')!;
 const applyLayout = () => {
   const side = uiPrefs.cols.side;
-  // Left Edit Pane: fixed width (--wb-leftpane-w), always visible | canvas | JSON.
-  layout.style.gridTemplateColumns = `var(--wb-leftpane-w) 1fr 5px ${side}px`;
+  // Left Edit Pane is always visible (spec); the JSON pane (Advanced escape
+  // hatch) can fold away so the maker default is left pane + canvas.
+  layout.style.gridTemplateColumns = uiPrefs.jsonOpen
+    ? `var(--wb-leftpane-w) 1fr 5px ${side}px`
+    : 'var(--wb-leftpane-w) 1fr';
+  sidePane.style.display = uiPrefs.jsonOpen ? '' : 'none';
+  sideResizer.style.display = uiPrefs.jsonOpen ? '' : 'none';
+  document.getElementById('wb-json-toggle')?.classList.toggle('active', uiPrefs.jsonOpen);
 };
 window.addEventListener('resize', applyLayout);
 
@@ -161,6 +174,13 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
   });
 }
 applyLayout();
+
+// Advanced: show/hide the validated-JSON pane (the left pane + canvas stay put)
+document.getElementById('wb-json-toggle')!.addEventListener('click', () => {
+  uiPrefs.jsonOpen = !uiPrefs.jsonOpen;
+  applyLayout();
+  saveUiPrefs();
+});
 
 // ─── center Data dock: collapse / maximize / drag-resize ────────────────────
 const dataDock = document.getElementById('wb-data-dock')!;

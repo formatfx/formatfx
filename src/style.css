@@ -2129,3 +2129,6 @@ body {
 /* padding/margin parameter-count selector header */
 .wb-spacing { display: flex; flex-direction: column; gap: 8px; }
 .wb-spacing-head { display: flex; justify-content: flex-end; }
+
+/* Advanced toggle: active when the JSON pane is shown */
+.wb-topbar-controls #wb-json-toggle.active { border-color: var(--wb-accent); color: var(--wb-accent); }
