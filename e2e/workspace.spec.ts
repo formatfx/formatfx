@@ -263,7 +263,8 @@ test('element playground marks CFR slots and can enter the referenced formatter'
   // descend into the slot — the structure tree offers to open the referenced formatter
   await pg.locator('.wb-pg-tree-child', { hasText: 'Progress' }).first().click();
   await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('content is rendered by the [$Progress] column formatter');
-  await pg.locator('.wb-pg-navcfr').click(); // confirm() auto-accepted
+  await pg.locator('.wb-pg-navcfr').click(); // opens the in-app confirmation banner
+  await pg.locator('.wb-pg-cfr-confirm-yes').click(); // confirm the switch
   // the playground now targets the column formatter's root…
   await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Progress bar');
   // …because the workspace switched to editing [$Progress]
