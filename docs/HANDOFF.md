@@ -187,8 +187,9 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
    error message, which was wrong; parser, AST evaluator and linter now
    all throw/flag teaching errors for it, and generators (condRules etc.)
    must never emit a standalone `!`.
- 2. **CFR `@currentField` context**: inside a resolved
-    `columnFormatterReference`, `@currentField` evaluates in the context of the *referenced* column (acting as a window into that column's data and format).
+2. **CFR `@currentField` context**: inside a resolved
+   `columnFormatterReference`, `@currentField` evaluates in the context of the
+   *referenced* column (acting as a window into that column's data and format).
 3. `gap`/`row-gap`/`column-gap` ARE supported by modern SP (an older
    internal rule said otherwise — the allow-list here is correct).
 4. `.sp-card-formatterRef` is `visibility:hidden` in LIST row context on
