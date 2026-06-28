@@ -2091,3 +2091,21 @@ body {
 }
 .wb-preset:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-preset.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+
+/* ── Simple lens: dedicated visual fields (color swatch, active dot) ────────── */
+.wb-color-control { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.wb-color-control .wb-field-input { flex: 1 1 auto; min-width: 0; }
+.wb-swatch {
+  flex: 0 0 auto; width: 18px; height: 18px; border-radius: 4px;
+  border: 1px solid var(--wb-lp-field-border);
+  background-image:
+    linear-gradient(45deg, #c8c6c4 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c6c4 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c6c4 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c6c4 75%);
+  background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+.wb-active-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--wb-override-dot); margin-right: 5px; vertical-align: middle;
+}

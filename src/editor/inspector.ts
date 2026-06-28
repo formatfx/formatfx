@@ -120,12 +120,18 @@ export function mountInspector(host: HTMLElement): void {
         n.txtContent = v;
       }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}"));
 
-    if (!pro) host.appendChild(section('Text', [txtContentField()]));
+    // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
+    if (!pro) {
+      host.appendChild(section('Text', [txtContentField()]));
+      host.appendChild(section('Typography', typographySection(node, commit)));
+      // the click-only flex-arrangement chip is retained as a Simple convenience;
+      // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
+      host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
+      host.appendChild(section('Appearance', appearanceSection(node, commit)));
+      host.appendChild(section('Border', borderSection(node, commit)));
+    }
 
-    // Simple keeps the click-only Alignment chip; Pro gets the full mechanical
-    // Sizing + Contents-layout controls instead.
-    if (!pro) host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
-
+    // ── Pro: the mechanical layout engine + full control ──
     if (pro) {
       host.appendChild(section('Element', [
         labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
@@ -140,15 +146,21 @@ export function mountInspector(host: HTMLElement): void {
       ], true));
       host.appendChild(section('Sizing', [sizingControls(node, commit)]));
       host.appendChild(section('Contents layout', [contentsLayout(node, commit)]));
+      host.appendChild(section('Appearance', appearanceSection(node, commit)));
+      host.appendChild(section('Border', borderSection(node, commit)));
     }
 
+    // Box model: Simple's intuitive padding/margin editor (kept in Pro too until
+    // the parameter-count selectors land).
     host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
 
-    host.appendChild(section('Style', [
-      kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => commit((n) => {
-        if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
-      }), governedProperties(node.attributes?.class)),
-    ], true));
+    if (pro) {
+      host.appendChild(section('Style (all properties)', [
+        kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => commit((n) => {
+          if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
+        }), governedProperties(node.attributes?.class)),
+      ], true));
+    }
 
     // ── Pro-only: attributes + the superpower sections ──────────────────────
     if (pro) {
@@ -492,6 +504,117 @@ function contentsLayout(node: SPElement, commit: (fn: (n: SPElement) => void) =>
   };
   render();
   return wrap;
+}
+
+// ─── Simple lens: dedicated visual property fields ───────────────────────────
+// Targeted single-property patches (safe under multi-select, unlike a whole-
+// object replace) with a blue "active" dot when the property is set.
+
+const PX_PROPS = new Set(['font-size', 'border-radius', 'border-width', 'letter-spacing']);
+function coerceForProp(prop: string, v: string): string {
+  return v && PX_PROPS.has(prop) && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v;
+}
+function setStyleProp(commit: (fn: (n: SPElement) => void) => void, prop: string, v: string): void {
+  commit((n) => {
+    n.style = n.style ?? {};
+    if (v === '') delete n.style[prop]; else n.style[prop] = v;
+    if (Object.keys(n.style).length === 0) delete n.style;
+  });
+}
+function visualRow(node: SPElement, label: string, prop: string, control: HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'wb-field-row';
+  const lab = document.createElement('span');
+  lab.className = 'wb-field-label';
+  if (styleOf(node, prop) !== '') {
+    const dot = document.createElement('span');
+    dot.className = 'wb-active-dot';
+    dot.title = 'This property is set (overriding the default)';
+    lab.appendChild(dot);
+  }
+  lab.append(label);
+  row.append(lab, control);
+  return row;
+}
+function propInput(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLInputElement {
+  const inp = document.createElement('input');
+  inp.className = 'wb-field-input';
+  inp.value = styleOf(node, prop);
+  inp.placeholder = placeholder;
+  inp.addEventListener('change', () => setStyleProp(commit, prop, coerceForProp(prop, inp.value.trim())));
+  return inp;
+}
+function colorControl(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'wb-color-control';
+  const inp = propInput(node, commit, prop, placeholder);
+  const sw = document.createElement('span');
+  sw.className = 'wb-swatch';
+  const cur = styleOf(node, prop);
+  // layer the color over the CSS checker so an empty/expression value reads as "none"
+  sw.style.backgroundColor = cur && !cur.startsWith('=') ? cur : 'transparent';
+  box.append(inp, sw);
+  return box;
+}
+function propSelect(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, options: Array<[string, string]>): HTMLSelectElement {
+  const sel = document.createElement('select');
+  sel.className = 'wb-field-input';
+  const cur = styleOf(node, prop);
+  for (const [val, label] of options) {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    if (val === cur) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('change', () => setStyleProp(commit, prop, sel.value));
+  return sel;
+}
+
+const WEIGHTS: Array<[string, string]> = [
+  ['', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['400', '400'],
+];
+const CASES: Array<[string, string]> = [
+  ['', 'none'], ['uppercase', 'UPPERCASE'], ['lowercase', 'lowercase'], ['capitalize', 'Capitalize'],
+];
+const OVERFLOWS: Array<[string, string]> = [
+  ['', 'visible'], ['hidden', 'hidden'], ['auto', 'auto'], ['scroll', 'scroll'],
+];
+
+/** Typography section (Simple). */
+function typographySection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
+  const align = segmented(
+    [{ value: '', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }, { value: 'justify', label: 'Justify' }],
+    styleOf(node, 'text-align'),
+    (v) => setStyleProp(commit, 'text-align', v),
+  );
+  return [
+    visualRow(node, 'Size', 'font-size', propInput(node, commit, 'font-size', 'e.g. 13px')),
+    visualRow(node, 'Color', 'color', colorControl(node, commit, 'color', '#605e5c')),
+    visualRow(node, 'Weight', 'font-weight', propSelect(node, commit, 'font-weight', WEIGHTS)),
+    visualRow(node, 'Align', 'text-align', align),
+    visualRow(node, 'Leading', 'line-height', propInput(node, commit, 'line-height', '1.20')),
+    visualRow(node, 'Case', 'text-transform', propSelect(node, commit, 'text-transform', CASES)),
+  ];
+}
+
+/** Appearance section (Simple + Pro share this primitive). */
+function appearanceSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
+  return [
+    visualRow(node, 'Background', 'background-color', colorControl(node, commit, 'background-color', 'None')),
+    visualRow(node, 'Radius', 'border-radius', propInput(node, commit, 'border-radius', '0px')),
+    visualRow(node, 'Opacity', 'opacity', propInput(node, commit, 'opacity', '1.00')),
+    visualRow(node, 'Overflow', 'overflow', propSelect(node, commit, 'overflow', OVERFLOWS)),
+  ];
+}
+
+/** Border section (Simple). */
+function borderSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
+  return [
+    visualRow(node, 'Width', 'border-width', propInput(node, commit, 'border-width', '0px')),
+    visualRow(node, 'Style', 'border-style', propSelect(node, commit, 'border-style',
+      [['', 'none'], ['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])),
+    visualRow(node, 'Color', 'border-color', colorControl(node, commit, 'border-color', '#e1dfdd')),
+  ];
 }
 
 // ─── alignment editor ────────────────────────────────────────────────────────
