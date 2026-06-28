@@ -133,7 +133,7 @@ export function elementMenuItems(
     items.push({
       icon: 'Paste',
       label: 'Paste',
-      title: 'Paste the copied element(s) into this container',
+      title: 'Paste the copied element(s) here (into this element, or beside it if it can\'t hold children)',
       fn: () => {
         void pasteNodes(path).then((n) => onToast(n ? `Pasted ${n} element${n === 1 ? '' : 's'}` : 'Nothing to paste'));
       },

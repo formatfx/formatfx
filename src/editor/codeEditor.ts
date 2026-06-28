@@ -45,13 +45,16 @@ export function mountCodeEditor(host: HTMLElement): void {
     if (!path || !node) { dirty = false; return; }
     const parsed = parseDeclarations(box.value);
     if (parsed.errors.length) {
+      // Never corrupt the node: surface the errors and keep the text dirty so the
+      // user can fix it. Do NOT apply a partial parse — otherwise an all-malformed
+      // buffer would clear style/attributes/txtContent/forEach and lose the values.
       errs.hidden = false;
       errs.textContent = parsed.errors
         .map((e) => `Line ${e.line}: ${e.message}`)
         .join('  ·  ');
-    } else {
-      errs.hidden = true;
+      return;
     }
+    errs.hidden = true;
     dirty = false; // applied — let the re-render reformat to canonical
     state.mutateDocument(() => {
       const n = state.nodeAt(path);

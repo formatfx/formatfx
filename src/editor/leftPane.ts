@@ -166,7 +166,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     paletteBtn.classList.toggle('active', !palettePop.hidden);
   });
   document.addEventListener('pointerdown', (e) => {
-    if (!palettePop.hidden && !palettePop.contains(e.target as Node) && e.target !== paletteBtn) {
+    // contains() — not `!== paletteBtn` — so a click on the button's inner SVG
+    // still counts as an inside-click (otherwise the toggle never closes).
+    if (!palettePop.hidden && !palettePop.contains(e.target as Node) && !paletteBtn.contains(e.target as Node)) {
       palettePop.hidden = true;
       paletteBtn.classList.remove('active');
     }
