@@ -10,6 +10,30 @@
   --wb-canvas-bg: #f3f2f1;
   --wb-scroll-thumb: #c8c6c4;
   --wb-scroll-thumb-hover: #a19f9d;
+
+  /* ── Left Edit Pane design tokens (FormatFX-native; tokenized so a re-skin
+        is a one-place edit). The warm surface is SCOPED to the left pane — the
+        canvas + JSON stay Fluent-cool, so the dark-mode engine probe is safe. */
+  --wb-leftpane-w: 360px;
+  /* The Left Edit Pane matches the rest of the app (cool/flat Fluent): these
+     alias the app tokens, so they flip automatically in dark mode too. */
+  --wb-lp-bg: var(--wb-bg);
+  --wb-lp-surface: var(--wb-surface);
+  --wb-lp-border: var(--wb-border);
+  --wb-lp-field-border: var(--wb-border);
+  --wb-lp-text: var(--wb-text);
+  --wb-lp-text-2: var(--wb-text-2);
+  --wb-lp-selected: #cfe4f7;     /* tree selected row (light blue) */
+  --wb-lp-seg-track: #f3f2f1;    /* segmented-control track */
+  /* CTA + active draw-tool = the Microsoft-blue primary (flat, app-consistent). */
+  --wb-cta: var(--wb-accent);
+  --wb-cta-hover: #106ebe;
+  --wb-cta-text: #ffffff;
+  --wb-tool-active: var(--wb-accent);
+  /* the active/override blue dot + focus reuse the same primary */
+  --wb-override-dot: var(--wb-accent);
+  --wb-governed-opacity: 0.5;
+
   /* tells the browser to paint native scrollbars & form controls light */
   color-scheme: light;
 }
@@ -24,6 +48,13 @@ body.wb-dark {
   --wb-canvas-bg: #141312;
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
+
+  /* Left Edit Pane — only the non-aliased tokens need dark overrides (the
+     surface/border/text aliases follow the app tokens above automatically). */
+  --wb-lp-selected: #123a5c;     /* tree selected row (dark blue) */
+  --wb-lp-seg-track: #322f2e;
+  --wb-cta-hover: #2b88d8;
+
   /* …and dark in dark mode (covers Firefox + native widgets) */
   color-scheme: dark;
 }
@@ -1870,3 +1901,234 @@ body {
 .wb-template-cancel { background: transparent; border: 1px solid var(--wb-border); border-radius: 4px; padding: 8px 16px; cursor: pointer; color: var(--wb-text); }
 .wb-template-apply { background: var(--wb-accent); color: #fff; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
 .wb-template-apply:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Left Edit Pane — the Claude-style consolidated editing surface
+   (action header · lens tabs · structure tree · draw toolbar · property lenses)
+   ══════════════════════════════════════════════════════════════════════════ */
+.wb-leftpane {
+  background: var(--wb-lp-bg); color: var(--wb-lp-text);
+  border-right: 1px solid var(--wb-lp-border);
+  display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+}
+
+/* ── action header (Edit · Discard · Save) ─────────────────────────────────── */
+.wb-lp-header {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px 10px;
+}
+.wb-lp-title { font-size: 15px; font-weight: 700; color: var(--wb-lp-text); }
+.wb-lp-actions { display: flex; align-items: center; gap: 14px; }
+.wb-lp-discard {
+  border: none; background: none; cursor: pointer; padding: 4px 2px;
+  font-size: 13px; color: var(--wb-lp-text-2);
+}
+.wb-lp-discard:hover:not(:disabled) { color: var(--wb-lp-text); }
+.wb-lp-discard:disabled { opacity: .4; cursor: default; }
+.wb-lp-save {
+  border: none; cursor: pointer; background: var(--wb-cta); color: var(--wb-cta-text);
+  font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: 8px;
+}
+.wb-lp-save:hover { background: var(--wb-cta-hover); }
+
+/* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
+.wb-lens-tabs {
+  flex: 0 0 auto; display: flex; gap: 18px; padding: 0 16px;
+  border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-lens-tab {
+  border: none; background: none; cursor: pointer; padding: 8px 0 9px;
+  font-size: 14px; color: var(--wb-lp-text-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.wb-lens-tab:hover { color: var(--wb-lp-text); }
+.wb-lens-tab.active {
+  color: var(--wb-lp-text); font-weight: 600; border-bottom-color: var(--wb-lp-text);
+}
+
+/* ── structure tree region ─────────────────────────────────────────────────── */
+.wb-lp-tree {
+  flex: 0 0 auto; height: 230px; overflow: auto;
+  border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-leftpane.wb-lens-simple .wb-lp-tree,
+.wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; } /* Simple hides the tree */
+.wb-lp-tree .wb-tree-sec-head {
+  position: sticky; top: 0; z-index: 1; background: var(--wb-lp-bg);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--wb-lp-text-2); padding: 8px 12px 4px;
+}
+.wb-lp-tree .wb-tree-sec-body { padding: 0 6px 6px; }
+
+/* ── splitter between tree and properties ──────────────────────────────────── */
+.wb-lp-splitter {
+  flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none; background: transparent;
+}
+.wb-lp-splitter:hover, .wb-lp-splitter:active { background: var(--wb-accent); opacity: .4; }
+
+/* ── draw toolbar ──────────────────────────────────────────────────────────── */
+.wb-drawbar {
+  position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 3px;
+  padding: 6px 10px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: 7px;
+  background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
+}
+.wb-tool:hover:not(:disabled) { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-tool.active { background: var(--wb-tool-active); color: var(--wb-cta-text); }
+.wb-tool:disabled { opacity: .35; cursor: default; }
+.wb-tool-sep { width: 1px; height: 18px; background: var(--wb-lp-border); margin: 0 5px; }
+
+/* palette overflow popover (the collapsed palette) */
+.wb-palette-pop {
+  position: absolute; top: calc(100% + 4px); left: 8px; z-index: 40;
+  width: 320px; max-height: 360px; overflow: auto; padding: 10px;
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-border);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+}
+.wb-palette-pop[hidden] { display: none; }
+
+/* ── lower workspace (inspector / code) ────────────────────────────────────── */
+.wb-lp-props {
+  flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column;
+}
+.wb-lp-inspector { flex: 1 0 auto; }
+.wb-lp-code { display: none; flex: 1 1 auto; min-height: 0; }
+.wb-leftpane.wb-lens-code .wb-lp-inspector { display: none; }
+.wb-leftpane.wb-lens-code .wb-lp-code { display: flex; flex-direction: column; }
+
+/* ── Code lens declarations box ────────────────────────────────────────────── */
+.wb-codelens { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; height: 100%; }
+.wb-code-box {
+  flex: 1 1 auto; width: 100%; min-height: 220px; resize: none;
+  font-family: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, monospace;
+  font-size: 12.5px; line-height: 1.65; padding: 12px 14px; color: var(--wb-lp-text);
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-field-border); border-radius: 10px;
+}
+.wb-code-box:focus { outline: none; border-color: var(--wb-accent); }
+.wb-code-box:disabled { opacity: .6; }
+.wb-code-hint { flex: 0 0 auto; font-size: 12px; color: var(--wb-lp-text-2); }
+.wb-code-errors {
+  flex: 0 0 auto; font-size: 12px; color: #d13438;
+  background: rgba(209, 52, 56, .08); border: 1px solid rgba(209, 52, 56, .3);
+  border-radius: 6px; padding: 6px 10px;
+}
+.wb-code-errors[hidden] { display: none; }
+
+/* ── JSON side pane header (Type select lives here now) ─────────────────────── */
+.wb-side-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.wb-side-head .wb-pane-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
+}
+.wb-side-head .wb-side-adv { margin-bottom: 0; }
+
+/* ── Left Edit Pane: structure tree multi-select + visibility ──────────────── */
+.wb-lp-tree .wb-tree-row { display: flex; align-items: center; }
+.wb-lp-tree .wb-tree-label { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+.wb-tree-check {
+  flex: 0 0 auto; width: 13px; height: 13px; margin: 0 7px 0 0; cursor: pointer;
+  accent-color: var(--wb-accent);
+}
+.wb-tree-eye {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; color: var(--wb-lp-text-2);
+  font-size: 12px; line-height: 1; padding: 2px 4px; opacity: 0; transition: opacity .12s;
+}
+.wb-lp-tree .wb-tree-row:hover .wb-tree-eye,
+.wb-lp-tree .wb-tree-row.selected .wb-tree-eye { opacity: .65; }
+.wb-tree-eye:hover { opacity: 1; }
+.wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
+.wb-lp-tree .wb-tree-row.selected { background: var(--wb-lp-selected); border-radius: 5px; }
+
+/* ── class-precedence: inline-override badge on a governed Style row ────────── */
+.wb-governed-badge {
+  flex: 0 0 auto; font-size: 10px; font-weight: 600; line-height: 1;
+  padding: 2px 6px; border-radius: 4px; white-space: nowrap; cursor: help;
+  color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wb-accent) 35%, transparent);
+}
+.wb-governed-badge[hidden] { display: none; }
+
+/* ── Pro controls: segmented · field rows · sizing · contents layout ───────── */
+.wb-sizing, .wb-contents { display: flex; flex-direction: column; gap: 8px; }
+.wb-field-row, .wb-preset-row { display: flex; align-items: center; gap: 8px; }
+.wb-field-label {
+  flex: 0 0 64px; font-size: 12px; color: var(--wb-lp-text-2);
+}
+.wb-field-input {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 5px 8px;
+  border: 1px solid var(--wb-lp-field-border); border-radius: 6px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text);
+}
+.wb-field-input:focus { outline: none; border-color: var(--wb-accent); }
+.wb-field-input:disabled { opacity: .55; }
+
+/* segmented control (Hug/Fixed/Fill, display modes) */
+.wb-segmented {
+  display: inline-flex; flex: 0 0 auto; flex-wrap: wrap; gap: 2px; padding: 2px;
+  background: var(--wb-lp-seg-track); border-radius: 7px;
+}
+.wb-seg {
+  border: none; background: transparent; cursor: pointer; color: var(--wb-lp-text-2);
+  font-size: 11.5px; padding: 4px 9px; border-radius: 5px; white-space: nowrap;
+}
+.wb-seg:hover { color: var(--wb-lp-text); }
+.wb-seg.active {
+  background: var(--wb-lp-surface); color: var(--wb-lp-text); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+.wb-contents > .wb-segmented { width: 100%; }
+
+/* flex alignment preset rows */
+.wb-presets { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+.wb-preset {
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; padding: 3px 8px; border-radius: 5px;
+}
+.wb-preset:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-preset.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+
+/* ── Simple lens: dedicated visual fields (color swatch, active dot) ────────── */
+.wb-color-control { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.wb-color-control .wb-field-input { flex: 1 1 auto; min-width: 0; }
+.wb-swatch {
+  flex: 0 0 auto; width: 18px; height: 18px; border-radius: 4px;
+  border: 1px solid var(--wb-lp-field-border);
+  background-image:
+    linear-gradient(45deg, #c8c6c4 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c6c4 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c6c4 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c6c4 75%);
+  background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+.wb-active-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--wb-override-dot); margin-right: 5px; vertical-align: middle;
+}
+
+/* ── the `=` expression toggle (spec §4.A) ─────────────────────────────────── */
+.wb-expr-field { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.wb-expr-field > :first-child { flex: 1 1 auto; min-width: 0; }
+.wb-expr-toggle {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 12px; font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1;
+}
+.wb-expr-toggle:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-expr-toggle.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-expr-input { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11.5px; color: var(--wb-accent); }
+
+/* multi-select: a property whose value differs across the selection reads "Mixed" */
+.wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }
+
+/* padding/margin parameter-count selector header */
+.wb-spacing { display: flex; flex-direction: column; gap: 8px; }
+.wb-spacing-head { display: flex; justify-content: flex-end; }
+
+/* Advanced toggle: active when the JSON pane is shown */
+.wb-topbar-controls #wb-json-toggle.active { border-color: var(--wb-accent); color: var(--wb-accent); }

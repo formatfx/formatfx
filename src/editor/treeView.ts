@@ -8,6 +8,8 @@ import { state, samePath, CARD_SEGMENT } from './state';
 import { cfrFieldName } from '../core/refs';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
+import { openMenu } from './menu';
+import { elementMenuItems } from './contextMenu';
 
 const ELM_ICONS: Record<string, string> = {
   div: 'CubeShape', span: 'PlainText', a: 'Link', img: 'Photo2',
@@ -72,6 +74,7 @@ export function mountTree(
   viewHost: HTMLElement,
   colsHost: HTMLElement,
   onRevealColumn?: (name: string) => void,
+  onToast: (m: string) => void = () => {},
 ): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click
@@ -161,13 +164,23 @@ export function mountTree(
 
     const row = document.createElement('div');
     row.className = 'wb-tree-row';
-    if (state.selection && samePath(state.selection, path)) row.classList.add('selected');
+    if (state.isSelected(path)) row.classList.add('selected');
+    if (el.style?.['display'] === 'none') row.classList.add('wb-tree-hidden');
     row.draggable = path.length > 0;
     row.tabIndex = 0;
 
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
     label.style.paddingLeft = `${path.length * 12}px`;
+    // Figma-style multi-select checkbox (13×13) — toggles this node in/out of
+    // the selection set without disturbing the others.
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'wb-tree-check';
+    check.checked = state.isSelected(path);
+    check.setAttribute('aria-label', `Select ${el._elmName ?? el.elmType}`);
+    check.addEventListener('click', (e) => { e.stopPropagation(); state.toggleSelect(path); });
+    label.appendChild(check);
     const typeIcon = document.createElement('i');
     typeIcon.className = `ms-Icon ms-Icon--${ELM_ICONS[el.elmType] ?? 'CubeShape'} wb-tree-elmicon`;
     label.appendChild(typeIcon);
@@ -241,9 +254,47 @@ export function mountTree(
       mk('Copy', 'Duplicate', () => state.duplicateNode(path));
       mk('Delete', 'Delete', () => state.removeNode(path));
     }
+    // 👁 visibility toggle — flips display:none on the canvas for this node
+    const eye = document.createElement('button');
+    eye.className = 'wb-tree-eye';
+    const hidden = el.style?.['display'] === 'none';
+    eye.textContent = hidden ? '🚫' : '👁';
+    eye.title = hidden ? 'Show on canvas' : 'Hide on canvas (display:none)';
+    eye.setAttribute('aria-label', eye.title);
+    eye.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.mutateDocument(() => {
+        const n = state.nodeAt(path);
+        if (!n) return;
+        if (n.style?.['display'] === 'none') {
+          delete n.style['display'];
+          if (n.style && Object.keys(n.style).length === 0) delete n.style;
+        } else {
+          n.style = n.style ?? {};
+          n.style['display'] = 'none';
+        }
+      });
+    });
+    row.appendChild(eye);
     row.appendChild(actions);
 
-    row.addEventListener('click', () => state.select(path));
+    // selection: plain click = single-select; Ctrl/Cmd/Shift = add/remove
+    row.addEventListener('click', (e) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
+      else state.select(path);
+    });
+
+    // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…)
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!state.isSelected(path)) state.select(path);
+      openMenu(
+        { x: e.clientX, y: e.clientY },
+        el._elmName ?? `<${el.elmType}>`,
+        elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }),
+      );
+    });
 
     // drag & drop reparent
     row.addEventListener('dragstart', (e) => {

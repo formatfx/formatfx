@@ -14,8 +14,16 @@ import {
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
-import { openPlayground, openElementPlayground } from './playground';
+import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
+import { governedProperties } from './classPrecedence';
+import { styleAcross } from './multiSelect';
+
+/** True when 2+ nodes are selected and they disagree on this style property. */
+function propIsMixed(prop: string): boolean {
+  const nodes = state.selectedNodes;
+  return nodes.length > 1 && !styleAcross(nodes, prop).uniform;
+}
 
 export function mountInspector(host: HTMLElement): void {
   const render = () => {
@@ -28,6 +36,15 @@ export function mountInspector(host: HTMLElement): void {
     const commit = (fn: (n: SPElement) => void) => {
       selfCommit = true;
       state.mutateDocument(() => fn(node));
+      selfCommit = false;
+    };
+    // Multi-edit: a targeted property patch applies to EVERY selected node as one
+    // undo step (spec — editing a divergent property writes it to all). Used by
+    // the dedicated visual controls; whole-object editors (kvEditor) and identity
+    // fields (name/elmType/txtContent) keep `commit` (primary only).
+    const commitAll = (fn: (n: SPElement) => void) => {
+      selfCommit = true;
+      state.mutateDocument(() => state.selectedNodes.forEach(fn));
       selfCommit = false;
     };
 
@@ -50,8 +67,13 @@ export function mountInspector(host: HTMLElement): void {
     }
     host.append(fieldList, forEachList);
 
-    // document-level wrapper settings when the root is selected
-    if (state.selection && state.selection.length === 0) {
+    // Lens gating: Simple shows the visual essentials (Text / Alignment / Box
+    // model / Style); Pro adds structure, attributes, and the superpower
+    // sections. (The Code lens replaces this inspector with the declarations box.)
+    const pro = state.activeLens === 'pro';
+
+    // document-level wrapper settings when the root is selected (Pro only)
+    if (pro && state.selection && state.selection.length === 0) {
       const kids: HTMLElement[] = [];
       const doc = state.doc;
       if (doc.kind === 'column') {
@@ -85,58 +107,82 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section(`Document — ${doc.kind} formatter`, kids, true));
     }
 
-    // ⚗ playground on the real element — click-only, so basic keeps it
-    const playBtn = document.createElement('button');
-    playBtn.className = 'wb-inspector-play';
-    playBtn.textContent = `⚗ Restyle ${node._elmName ?? 'this element'} in the playground`;
-    playBtn.title = 'Open this element — with its parent, children and live data — in the consequence-free playground';
-    playBtn.addEventListener('click', () => { if (state.selection) openElementPlayground(state.selection); });
-    host.appendChild(playBtn);
+    // ✨ conditional formatting — click-only; the builder generates the
+    // formulas itself, so a misclick can't corrupt the formatter. A FormatFX
+    // superpower → Pro lens. (The playground button is dropped: the Left Edit
+    // Pane IS the playground.)
+    if (pro) {
+      const condBtn = document.createElement('button');
+      condBtn.className = 'wb-inspector-cond';
+      condBtn.textContent = '✨ Conditional formatting…';
+      condBtn.title = 'Paint this element by a field\'s value — Excel-style rules, built by clicking, previewed on your rows';
+      condBtn.addEventListener('click', () => {
+        if (state.selection) openCondFormat({ kind: 'element', path: state.selection });
+      });
+      host.appendChild(condBtn);
+    }
 
-    // ✨ conditional formatting — also click-only; the builder generates the
-    // formulas itself, so a misclick can't corrupt the formatter
-    const condBtn = document.createElement('button');
-    condBtn.className = 'wb-inspector-cond';
-    condBtn.textContent = '✨ Conditional formatting…';
-    condBtn.title = 'Paint this element by a field\'s value — Excel-style rules, built by clicking, previewed on your rows';
-    condBtn.addEventListener('click', () => {
-      if (state.selection) openCondFormat({ kind: 'element', path: state.selection });
-    });
-    host.appendChild(condBtn);
-
-    host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
-
-    host.appendChild(section('Element', [
-      labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
+    // Text content — the headline control in both lenses (Simple calls it "Text").
+    const txtContentField = (): HTMLElement => labeled('txtContent', textarea(
+      node.txtContent === undefined ? ''
+        : typeof node.txtContent === 'string' ? node.txtContent
+        : JSON.stringify(node.txtContent, null, 2),
+      (v) => commit((n) => {
         const t = v.trim();
-        if (t === '') delete n._elmName; else n._elmName = t;
-      }), 'Label shown in the Structure pane — stripped from shipped JSON')),
-      labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
-      labeled('txtContent', textarea(
-        node.txtContent === undefined ? ''
-          : typeof node.txtContent === 'string' ? node.txtContent
-          : JSON.stringify(node.txtContent, null, 2),
-        (v) => commit((n) => {
+        if (t === '') { delete n.txtContent; return; }
+        if (t.startsWith('{')) {
+          try { n.txtContent = JSON.parse(t); return; } catch { /* keep as string */ }
+        }
+        n.txtContent = v;
+      }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}"));
+
+    // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
+    if (!pro) {
+      host.appendChild(section('Text', [txtContentField()]));
+      host.appendChild(section('Typography', typographySection(node, commitAll)));
+      // the click-only flex-arrangement chip is retained as a Simple convenience;
+      // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
+      host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
+      host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
+      host.appendChild(section('Border', borderSection(node, commitAll)));
+    }
+
+    // ── Pro: the mechanical layout engine + full control ──
+    if (pro) {
+      host.appendChild(section('Element', [
+        labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
           const t = v.trim();
-          if (t === '') { delete n.txtContent; return; }
-          if (t.startsWith('{')) {
-            try { n.txtContent = JSON.parse(t); return; } catch { /* keep as string */ }
-          }
-          n.txtContent = v;
-        }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}")),
-      labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
-        if (v === '') delete n.forEach; else n.forEach = v;
-      }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
-    ], true));
+          if (t === '') delete n._elmName; else n._elmName = t;
+        }), 'Label shown in the Structure pane — stripped from shipped JSON')),
+        labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
+        txtContentField(),
+        labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
+          if (v === '') delete n.forEach; else n.forEach = v;
+        }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
+      ], true));
+      host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
+      host.appendChild(section('Position', [positionControls(node, commitAll)]));
+      host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
+      host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
+      host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
+      host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
+      host.appendChild(section('Border', borderSection(node, commitAll)));
+    }
 
-    host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
+    // Box model (DevTools-style): Simple's intuitive padding/margin editor; Pro
+    // uses the parameter-count selectors above instead (spec §7).
+    if (!pro) host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
 
-    host.appendChild(section('Style', [
-      kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => commit((n) => {
-        if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
-      })),
-    ], true));
+    if (pro) {
+      host.appendChild(section('Style (all properties)', [
+        kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => commit((n) => {
+          if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
+        }), governedProperties(node.attributes?.class)),
+      ], true));
+    }
 
+    // ── Pro-only: attributes + the superpower sections ──────────────────────
+    if (pro) {
     host.appendChild(section('Attributes', [
       kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.attributes; else n.attributes = obj;
@@ -220,13 +266,14 @@ export function mountInspector(host: HTMLElement): void {
         if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
       }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),
     ], true));
+    } // end Pro-only sections
   };
 
   state.subscribe((reason) => {
     // skip rebuilding for our own commits — keeps focus in the input being
     // edited (arrow-stepping, rapid toggles) while canvas/tree still update
     if (reason === 'document' && selfCommit) return;
-    if (reason === 'selection' || reason === 'load' || reason === 'document') render();
+    if (reason === 'selection' || reason === 'load' || reason === 'document' || reason === 'lens') render();
   });
   render();
 }
@@ -309,6 +356,467 @@ function checkbox(value: boolean, onChange: (v: boolean) => void): HTMLInputElem
   el.checked = value;
   el.addEventListener('change', () => onChange(el.checked));
   return el;
+}
+
+// ─── Pro controls: segmented selector + Sizing + Contents layout ─────────────
+// Spec §2.B — the mechanical layout engine, honoring the Schema-Fidelity
+// Exclusion Principle (no align-self, no grid display, no fixed/sticky).
+
+/** A horizontal segmented control (Hug/Fixed/Fill, display modes, …). */
+function segmented(
+  options: Array<{ value: string; label: string; title?: string }>,
+  active: string,
+  onChange: (v: string) => void,
+): HTMLElement {
+  const seg = document.createElement('div');
+  seg.className = 'wb-segmented';
+  for (const o of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-seg' + (o.value === active ? ' active' : '');
+    b.textContent = o.label;
+    if (o.title) b.title = o.title;
+    b.addEventListener('click', () => onChange(o.value));
+    seg.appendChild(b);
+  }
+  return seg;
+}
+
+const styleOf = (node: SPElement, prop: string): string =>
+  (typeof node.style?.[prop] === 'string' ? node.style![prop] as string : '');
+
+const SIZE_FILL = '100%';
+type SizeMode = 'hug' | 'fixed' | 'fill';
+function sizeMode(v: string): SizeMode {
+  if (v === '' || v === 'auto' || v === 'fit-content') return 'hug';
+  if (v === SIZE_FILL) return 'fill';
+  return 'fixed';
+}
+
+/** Width/Height with Hug (auto) / Fixed (literal) / Fill (100%). */
+function sizingControls(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-sizing';
+  const setProp = (prop: string, v: string | undefined) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (v === undefined || v === '') delete n.style[prop];
+      else n.style[prop] = /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v;
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    for (const prop of ['width', 'height'] as const) {
+      const cur = styleOf(node, prop);
+      const mode = sizeMode(cur);
+      const row = document.createElement('div');
+      row.className = 'wb-field-row';
+      const label = document.createElement('span');
+      label.className = 'wb-field-label';
+      label.textContent = prop === 'width' ? 'Width' : 'Height';
+      const inp = document.createElement('input');
+      inp.className = 'wb-field-input';
+      inp.value = mode === 'fixed' ? cur : '';
+      inp.placeholder = mode === 'hug' ? 'auto' : mode === 'fill' ? '100%' : 'e.g. 120px';
+      inp.disabled = mode !== 'fixed';
+      inp.addEventListener('change', () => setProp(prop, inp.value.trim()));
+      const seg = segmented(
+        [{ value: 'hug', label: 'Hug', title: 'Shrink to fit the content (auto)' },
+          { value: 'fixed', label: 'Fixed', title: 'A literal size you type' },
+          { value: 'fill', label: 'Fill', title: 'Fill the available space (100%)' }],
+        mode,
+        (m) => setProp(prop, m === 'hug' ? '' : m === 'fill' ? SIZE_FILL : (mode === 'fixed' ? cur : '120px')),
+      );
+      row.append(label, inp, seg);
+      wrap.appendChild(row);
+    }
+  };
+  render();
+  return wrap;
+}
+
+// display: Grid is omitted (unsupported by the SP renderer).
+const DISPLAY_MODES = [
+  { value: 'block', label: 'Block' },
+  { value: 'flex', label: 'Flex' },
+  { value: 'inline-flex', label: 'Inline-Flex' },
+  { value: 'inline-block', label: 'Inline-Block' },
+  { value: 'inline', label: 'Inline' },
+  { value: 'none', label: 'None' },
+];
+const JUSTIFY_PRESETS: Array<[string, string]> = [
+  ['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'],
+  ['space-between', 'Between'], ['space-around', 'Around'], ['space-evenly', 'Evenly'],
+];
+const ALIGN_PRESETS: Array<[string, string]> = [
+  ['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'],
+  ['stretch', 'Stretch'], ['baseline', 'Baseline'],
+];
+
+/** Container layout: display segmented; when Flex, direction + the two rows of
+ *  alignment presets (justify-content / align-items) + gap. */
+function contentsLayout(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-contents';
+  const setProp = (prop: string, v: string) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (v === '') delete n.style[prop]; else n.style[prop] = v;
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const presetRow = (label: string, presets: Array<[string, string]>, active: string, onPick: (v: string) => void): HTMLElement => {
+    const row = document.createElement('div');
+    row.className = 'wb-preset-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-field-label';
+    lab.textContent = label;
+    row.appendChild(lab);
+    const group = document.createElement('div');
+    group.className = 'wb-presets';
+    for (const [val, title] of presets) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-preset' + (val === active ? ' active' : '');
+      b.title = `${label}: ${title}`;
+      b.textContent = title;
+      b.dataset.preset = val;
+      b.addEventListener('click', () => onPick(val));
+      group.appendChild(b);
+    }
+    row.appendChild(group);
+    return row;
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    const display = styleOf(node, 'display');
+    wrap.appendChild(segmented(DISPLAY_MODES, display || 'block', (v) => setProp('display', v === 'block' ? '' : v)));
+    const isFlex = display === 'flex' || display === 'inline-flex';
+    if (isFlex) {
+      const dir = styleOf(node, 'flex-direction') || 'row';
+      wrap.appendChild(presetRow('Direction',
+        [['row', 'Row →'], ['column', 'Column ↓'], ['row-reverse', 'Row ←'], ['column-reverse', 'Column ↑']],
+        dir, (v) => setProp('flex-direction', v === 'row' ? '' : v)));
+      wrap.appendChild(presetRow('Distribute', JUSTIFY_PRESETS, styleOf(node, 'justify-content') || 'flex-start',
+        (v) => setProp('justify-content', v === 'flex-start' ? '' : v)));
+      wrap.appendChild(presetRow('Align', ALIGN_PRESETS, styleOf(node, 'align-items') || 'stretch',
+        (v) => setProp('align-items', v === 'stretch' ? '' : v)));
+      const gapRow = document.createElement('div');
+      gapRow.className = 'wb-field-row';
+      const gl = document.createElement('span');
+      gl.className = 'wb-field-label';
+      gl.textContent = 'Gap';
+      const gi = document.createElement('input');
+      gi.className = 'wb-field-input';
+      gi.value = styleOf(node, 'gap');
+      gi.placeholder = '0px';
+      gi.addEventListener('change', () => {
+        const v = gi.value.trim();
+        setProp('gap', v && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
+      });
+      gapRow.append(gl, gi);
+      wrap.appendChild(gapRow);
+    }
+  };
+  render();
+  return wrap;
+}
+
+/** Positioning (Pro): Inline (static/relative) vs Absolute, with offsets.
+ *  Fixed / sticky are omitted — unsupported by the SP renderer (spec §2.B). */
+function positionControls(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-position';
+  const setProp = (prop: string, v: string) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (v === '') delete n.style[prop]; else n.style[prop] = v;
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const offsetRow = (prop: string, label: string): HTMLElement => {
+    const row = document.createElement('div');
+    row.className = 'wb-field-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-field-label';
+    lab.textContent = label;
+    const inp = document.createElement('input');
+    inp.className = 'wb-field-input';
+    inp.value = styleOf(node, prop);
+    inp.placeholder = 'auto';
+    inp.addEventListener('change', () => {
+      const v = inp.value.trim();
+      setProp(prop, v && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
+    });
+    row.append(lab, inp);
+    return row;
+  };
+  const appendOffsets = () => {
+    for (const [prop, label] of [['top', 'Top'], ['left', 'Left'], ['bottom', 'Bottom'], ['right', 'Right']]) {
+      wrap.appendChild(offsetRow(prop, label));
+    }
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    const pos = styleOf(node, 'position');
+    const mode = pos === 'absolute' ? 'absolute' : 'inline';
+    wrap.appendChild(segmented(
+      [{ value: 'inline', label: 'Inline', title: 'Flows with the layout (static / relative)' },
+        { value: 'absolute', label: 'Absolute', title: 'Positioned against the nearest positioned ancestor' }],
+      mode,
+      (m) => setProp('position', m === 'absolute' ? 'absolute' : ''),
+    ));
+    if (mode === 'absolute') {
+      appendOffsets();
+    } else {
+      const offRow = document.createElement('div');
+      offRow.className = 'wb-field-row';
+      const lab = document.createElement('span');
+      lab.className = 'wb-field-label';
+      lab.textContent = 'Offset';
+      offRow.append(lab, checkbox(pos === 'relative', (on) => setProp('position', on ? 'relative' : '')));
+      wrap.appendChild(offRow);
+      if (pos === 'relative') appendOffsets();
+    }
+  };
+  render();
+  return wrap;
+}
+
+/** Padding / Margin with the `– 1x 2x 4x` parameter-count selector (spec §2.B).
+ *  Writes the CSS shorthand and clears any per-side longhands to avoid conflicts. */
+function spacingControls(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: 'padding' | 'margin'): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-spacing';
+  const px = (v: string): string => (v && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
+  const parts = (): string[] => { const v = styleOf(node, prop).trim(); return v ? v.split(/\s+/) : []; };
+  const setShort = (v: string) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (!v.trim()) delete n.style[prop]; else n.style[prop] = v.trim();
+      for (const s of ['top', 'right', 'bottom', 'left']) delete n.style[`${prop}-${s}`];
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    const p = parts();
+    const mode = p.length === 0 ? '-' : p.length === 1 ? '1x' : p.length === 2 ? '2x' : '4x';
+    const head = document.createElement('div');
+    head.className = 'wb-spacing-head';
+    head.appendChild(segmented(
+      [{ value: '-', label: '–' }, { value: '1x', label: '1x' }, { value: '2x', label: '2x' }, { value: '4x', label: '4x' }],
+      mode,
+      (m) => {
+        const a = p[0] ?? '0px', b = p[1] ?? a, c = p[2] ?? a, d = p[3] ?? b;
+        setShort(m === '-' ? '' : m === '1x' ? a : m === '2x' ? `${a} ${b}` : `${a} ${b} ${c} ${d}`);
+      },
+    ));
+    wrap.appendChild(head);
+    const slot = (label: string, idx: number, len: number) => {
+      const row = document.createElement('div');
+      row.className = 'wb-field-row';
+      const lab = document.createElement('span');
+      lab.className = 'wb-field-label';
+      lab.textContent = label;
+      const inp = document.createElement('input');
+      inp.className = 'wb-field-input';
+      inp.value = parts()[idx] ?? '';
+      inp.placeholder = '0px';
+      inp.addEventListener('change', () => {
+        const cur = parts();
+        const arr = Array.from({ length: len }, (_, i) => cur[i] ?? cur[0] ?? '0px');
+        arr[idx] = px(inp.value.trim()) || '0px';
+        setShort(arr.join(' '));
+      });
+      row.append(lab, inp);
+      wrap.appendChild(row);
+    };
+    if (mode === '1x') slot('All', 0, 1);
+    else if (mode === '2x') { slot('Vertical', 0, 2); slot('Horizontal', 1, 2); }
+    else if (mode === '4x') { slot('Top', 0, 4); slot('Right', 1, 4); slot('Bottom', 2, 4); slot('Left', 3, 4); }
+  };
+  render();
+  return wrap;
+}
+
+// ─── Simple lens: dedicated visual property fields ───────────────────────────
+// Targeted single-property patches (safe under multi-select, unlike a whole-
+// object replace) with a blue "active" dot when the property is set.
+
+const PX_PROPS = new Set(['font-size', 'border-radius', 'border-width', 'letter-spacing']);
+function coerceForProp(prop: string, v: string): string {
+  return v && PX_PROPS.has(prop) && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v;
+}
+function setStyleProp(commit: (fn: (n: SPElement) => void) => void, prop: string, v: string): void {
+  commit((n) => {
+    n.style = n.style ?? {};
+    if (v === '') delete n.style[prop]; else n.style[prop] = v;
+    if (Object.keys(n.style).length === 0) delete n.style;
+  });
+}
+function visualRow(node: SPElement, label: string, prop: string, control: HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'wb-field-row';
+  const lab = document.createElement('span');
+  lab.className = 'wb-field-label';
+  if (styleOf(node, prop) !== '') {
+    const dot = document.createElement('span');
+    dot.className = 'wb-active-dot';
+    dot.title = 'This property is set (overriding the default)';
+    lab.appendChild(dot);
+  }
+  lab.append(label);
+  row.append(lab, control);
+  return row;
+}
+function propInput(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLInputElement {
+  const inp = document.createElement('input');
+  inp.className = 'wb-field-input';
+  const mixed = propIsMixed(prop);
+  inp.value = mixed ? '' : styleOf(node, prop);
+  inp.placeholder = mixed ? 'Mixed' : placeholder;
+  if (mixed) inp.classList.add('wb-mixed');
+  inp.addEventListener('change', () => setStyleProp(commit, prop, coerceForProp(prop, inp.value.trim())));
+  return inp;
+}
+function colorControl(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'wb-color-control';
+  const inp = propInput(node, commit, prop, placeholder);
+  const sw = document.createElement('span');
+  sw.className = 'wb-swatch';
+  const cur = styleOf(node, prop);
+  // layer the color over the CSS checker so an empty/expression/mixed value reads as "none"
+  sw.style.backgroundColor = !propIsMixed(prop) && cur && !cur.startsWith('=') ? cur : 'transparent';
+  box.append(inp, sw);
+  return box;
+}
+function propSelect(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, options: Array<[string, string]>): HTMLSelectElement {
+  const sel = document.createElement('select');
+  sel.className = 'wb-field-input';
+  const mixed = propIsMixed(prop);
+  const cur = styleOf(node, prop);
+  if (mixed) {
+    const o = document.createElement('option');
+    o.textContent = 'Mixed'; o.value = ''; o.disabled = true; o.selected = true;
+    sel.appendChild(o);
+  }
+  for (const [val, label] of options) {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    if (!mixed && val === cur) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('change', () => setStyleProp(commit, prop, sel.value));
+  return sel;
+}
+
+/**
+ * Wrap a literal control with the `=` expression toggle (spec §4.A). In literal
+ * mode the supplied control shows; the `=` button flips to a formula text input
+ * (its value is the stored `=…` expression). Toggling back to literal clears the
+ * formula. Self-contained local re-render — no Function Bar dependency required.
+ */
+function exprField(
+  node: SPElement,
+  commit: (fn: (n: SPElement) => void) => void,
+  prop: string,
+  buildControl: () => HTMLElement,
+  formulaPlaceholder: string,
+): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-expr-field';
+  let exprMode = styleOf(node, prop).startsWith('=');
+  const render = (focusInput = false) => {
+    wrap.innerHTML = '';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'wb-expr-toggle' + (exprMode ? ' active' : '');
+    toggle.textContent = '=';
+    toggle.title = exprMode ? 'Use a literal value' : 'Drive this with a formula';
+    if (exprMode) {
+      const inp = document.createElement('input');
+      inp.className = 'wb-field-input wb-expr-input';
+      inp.value = styleOf(node, prop);
+      inp.placeholder = formulaPlaceholder;
+      inp.spellcheck = false;
+      inp.addEventListener('change', () => setStyleProp(commit, prop, inp.value.trim()));
+      wrap.append(inp);
+      if (focusInput) requestAnimationFrame(() => inp.focus());
+    } else {
+      wrap.append(buildControl());
+    }
+    wrap.append(toggle);
+    toggle.addEventListener('click', () => {
+      if (exprMode && styleOf(node, prop).startsWith('=')) setStyleProp(commit, prop, '');
+      exprMode = !exprMode;
+      render(exprMode);
+    });
+  };
+  render();
+  return wrap;
+}
+
+/** A labeled property row whose control carries the `=` expression toggle. */
+function exprRow(
+  node: SPElement,
+  commit: (fn: (n: SPElement) => void) => void,
+  label: string,
+  prop: string,
+  buildControl: () => HTMLElement,
+  formulaPlaceholder = "=if([$Field]=='x','a','b')",
+): HTMLElement {
+  return visualRow(node, label, prop, exprField(node, commit, prop, buildControl, formulaPlaceholder));
+}
+
+const WEIGHTS: Array<[string, string]> = [
+  ['', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['700', 'Bold'], ['400', '400'],
+];
+const CASES: Array<[string, string]> = [
+  ['', 'none'], ['uppercase', 'UPPERCASE'], ['lowercase', 'lowercase'], ['capitalize', 'Capitalize'],
+];
+const OVERFLOWS: Array<[string, string]> = [
+  ['', 'visible'], ['hidden', 'hidden'], ['auto', 'auto'], ['scroll', 'scroll'],
+];
+
+/** Typography section (Simple) — each control carries the `=` expression toggle. */
+function typographySection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
+  return [
+    exprRow(node, commit, 'Size', 'font-size', () => propInput(node, commit, 'font-size', 'e.g. 13px')),
+    exprRow(node, commit, 'Color', 'color', () => colorControl(node, commit, 'color', '#605e5c')),
+    exprRow(node, commit, 'Weight', 'font-weight', () => propSelect(node, commit, 'font-weight', WEIGHTS)),
+    exprRow(node, commit, 'Align', 'text-align', () => segmented(
+      [{ value: '', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }, { value: 'justify', label: 'Justify' }],
+      styleOf(node, 'text-align'), (v) => setStyleProp(commit, 'text-align', v))),
+    exprRow(node, commit, 'Leading', 'line-height', () => propInput(node, commit, 'line-height', '1.20')),
+    exprRow(node, commit, 'Case', 'text-transform', () => propSelect(node, commit, 'text-transform', CASES)),
+  ];
+}
+
+/** Appearance section (Simple + Pro share this primitive). */
+function appearanceSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
+  return [
+    exprRow(node, commit, 'Background', 'background-color', () => colorControl(node, commit, 'background-color', 'None')),
+    exprRow(node, commit, 'Radius', 'border-radius', () => propInput(node, commit, 'border-radius', '0px')),
+    exprRow(node, commit, 'Opacity', 'opacity', () => propInput(node, commit, 'opacity', '1.00')),
+    exprRow(node, commit, 'Overflow', 'overflow', () => propSelect(node, commit, 'overflow', OVERFLOWS)),
+  ];
+}
+
+/** Border section (Simple). */
+function borderSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
+  return [
+    exprRow(node, commit, 'Width', 'border-width', () => propInput(node, commit, 'border-width', '0px')),
+    exprRow(node, commit, 'Style', 'border-style', () => propSelect(node, commit, 'border-style',
+      [['', 'none'], ['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])),
+    exprRow(node, commit, 'Color', 'border-color', () => colorControl(node, commit, 'border-color', '#e1dfdd')),
+  ];
 }
 
 // ─── alignment editor ────────────────────────────────────────────────────────
@@ -961,6 +1469,9 @@ function kvEditor(
   docs: Record<string, string>,
   familyOf: ((prop: string) => StyleFamily) | null,
   onChange: (next: Record<string, SPExpr>) => void,
+  // class-precedence: prop → governing class. A row whose prop is governed but
+  // present (an inline value) is an OVERRIDE of that class — flag it (spec §5).
+  governed?: Map<string, string>,
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'wb-kv';
@@ -1057,10 +1568,27 @@ function kvEditor(
     del.innerHTML = '<i class="ms-Icon ms-Icon--Cancel"></i>';
     del.title = 'Remove';
     del.addEventListener('click', () => { row.remove(); commitRows(); });
-    key.addEventListener('input', refreshValueOptions);
+    // class-precedence override badge: a class would paint this property, but
+    // this inline value wins. Clearing the value hands control back to the class.
+    const badge = document.createElement('span');
+    badge.className = 'wb-governed-badge';
+    const refreshGoverned = () => {
+      const cls = governed?.get(key.value.trim());
+      if (cls) {
+        badge.hidden = false;
+        badge.textContent = '[Class Overridden]';
+        badge.title = `This inline value overrides class "${cls}". Clear it to let the class control this property.`;
+        row.classList.add('wb-row-override');
+      } else {
+        badge.hidden = true;
+        row.classList.remove('wb-row-override');
+      }
+    };
+    refreshGoverned();
+    key.addEventListener('input', () => { refreshValueOptions(); refreshGoverned(); });
     key.addEventListener('change', commitRows);
     val.addEventListener('change', commitRows);
-    row.append(key, val, valList, info, del, card);
+    row.append(key, val, badge, valList, info, del, card);
     wrap.appendChild(row);
   };
 
