@@ -14,6 +14,7 @@ import {
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
+import { focusFxSlot } from './fxBar';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
@@ -748,6 +749,15 @@ function exprField(
       inp.spellcheck = false;
       inp.addEventListener('change', () => setStyleProp(commit, prop, inp.value.trim()));
       wrap.append(inp);
+      // dock the Function Bar onto this property — edit the same formula there,
+      // with column/context/function autocomplete and the value menu.
+      const dock = document.createElement('button');
+      dock.type = 'button';
+      dock.className = 'wb-expr-fx';
+      dock.textContent = 'ƒx';
+      dock.title = 'Edit this formula in the Function Bar — with column and function autocomplete';
+      dock.addEventListener('click', () => { focusFxSlot(prop); });
+      wrap.append(dock);
       if (focusInput) requestAnimationFrame(() => inp.focus());
     } else {
       wrap.append(buildControl());

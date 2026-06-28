@@ -2122,6 +2122,14 @@ body {
 .wb-expr-toggle:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-expr-toggle.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
 .wb-expr-input { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11.5px; color: var(--wb-accent); }
+/* ƒx — dock the Function Bar onto this property's formula (shown in = mode) */
+.wb-expr-fx {
+  flex: 0 0 auto; height: 22px; padding: 0 6px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1; font-style: italic;
+}
+.wb-expr-fx:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
 /* multi-select: a property whose value differs across the selection reads "Mixed" */
 .wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }

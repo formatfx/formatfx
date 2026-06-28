@@ -18,7 +18,7 @@
  */
 
 import { state } from './state';
-import { slotsFor, readSlot, writeSlot, type FxSlot } from './fxSlots';
+import { slotsFor, readSlot, writeSlot, slotIdForProp, type FxSlot } from './fxSlots';
 import { fxSuggestions } from './fxSuggest';
 import { resolveSubtype } from './subtypes';
 import { excelToSp, spToExcel } from './dialect';
@@ -31,6 +31,24 @@ type SetFeedback = (text: string, tone?: Tone) => void;
 /** How long a refusal lingers before it fades on its own (ms) — long enough to
  *  read, short enough not to nag. It also clears the instant the maker types. */
 const FEEDBACK_FADE_MS = 6000;
+
+/** The mounted bar's "dock onto this property" handler, so other panels (the
+ *  inspector's `=` formula preview) can hand a property to the fx bar. Null
+ *  until mountFxBar runs; the app mounts exactly one bar. */
+let dockOntoProp: ((prop: string) => void) | null = null;
+
+/**
+ * Dock the fx bar onto a given CSS property's slot and focus its editor — the
+ * inspector's `=` formula preview calls this so a maker can edit the same
+ * formula in the bar (with its column / function autocomplete). The element
+ * must already be selected (the bar reads state.selectedNode). Returns false
+ * when no bar is mounted, so callers can fall back gracefully.
+ */
+export function focusFxSlot(prop: string): boolean {
+  if (!dockOntoProp) return false;
+  dockOntoProp(prop);
+  return true;
+}
 
 export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } = {}): void {
   host.classList.add('wb-fxbar');
@@ -260,6 +278,13 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     if (opts.accessory) bar.append(opts.accessory);
     host.append(bar, feedback);
     if (focusAfter) editor.focus();
+  };
+
+  // let the inspector (and anything else) dock the bar onto a property slot
+  dockOntoProp = (prop) => {
+    currentSlotId = slotIdForProp(prop);
+    render(true); // render() falls back to slots[0] if this element lacks the slot
+    host.scrollIntoView({ block: 'nearest' });
   };
 
   state.subscribe((reason) => {
