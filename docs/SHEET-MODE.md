@@ -121,8 +121,9 @@ column-settings path. Out of scope for stages 1–3; recorded so nobody
    painted — "Text shown", "Fill color", "Left border" and any expression
    the element already carries; the editor shows the stored SP formula
    parsed out toward Excel and accepts Excel-ish input back, committing one
-   undoable mutation. Bad input is refused, never written (helping prevent accidental corruptions from typos/misclicks, though this should be treated as guidance rather than a rigid rule); a formula outside the Excel subset shows
-   read-only with an "edit in Advanced" pointer. Advanced keeps showing the
+   undoable mutation. Bad input is refused, never written. A formula outside
+   the Excel subset shows read-only with an "edit in Advanced" pointer.
+   Advanced keeps showing the
    raw SP dialect (the inspector). The two additive comforts also landed
    2026-06-16: **type-aware per-slot suggestions** (`fxSuggest.ts` — the
    datalist offers values that fit the slot and the schema's field types,
