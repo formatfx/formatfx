@@ -210,9 +210,10 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
       b.className = 'wb-fc-tab' + (t === tab ? ' active' : '') + (hasPending ? ' wb-fc-tab-dirty' : '');
       b.textContent = t[0].toUpperCase() + t.slice(1);
       if (hasPending) {
+        b.setAttribute('aria-label', `${t[0].toUpperCase() + t.slice(1)} — has pending changes`);
         const dot = document.createElement('span');
         dot.className = 'wb-fc-tab-dot';
-        dot.setAttribute('aria-label', 'has pending changes');
+        dot.setAttribute('aria-hidden', 'true');
         b.appendChild(dot);
       }
       b.addEventListener('click', () => { tab = t; render(); });
