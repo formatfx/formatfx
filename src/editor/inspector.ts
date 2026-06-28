@@ -17,6 +17,13 @@ import { state, CARD_SEGMENT } from './state';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
+import { styleAcross } from './multiSelect';
+
+/** True when 2+ nodes are selected and they disagree on this style property. */
+function propIsMixed(prop: string): boolean {
+  const nodes = state.selectedNodes;
+  return nodes.length > 1 && !styleAcross(nodes, prop).uniform;
+}
 
 export function mountInspector(host: HTMLElement): void {
   const render = () => {
@@ -29,6 +36,15 @@ export function mountInspector(host: HTMLElement): void {
     const commit = (fn: (n: SPElement) => void) => {
       selfCommit = true;
       state.mutateDocument(() => fn(node));
+      selfCommit = false;
+    };
+    // Multi-edit: a targeted property patch applies to EVERY selected node as one
+    // undo step (spec — editing a divergent property writes it to all). Used by
+    // the dedicated visual controls; whole-object editors (kvEditor) and identity
+    // fields (name/elmType/txtContent) keep `commit` (primary only).
+    const commitAll = (fn: (n: SPElement) => void) => {
+      selfCommit = true;
+      state.mutateDocument(() => state.selectedNodes.forEach(fn));
       selfCommit = false;
     };
 
@@ -123,12 +139,12 @@ export function mountInspector(host: HTMLElement): void {
     // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
     if (!pro) {
       host.appendChild(section('Text', [txtContentField()]));
-      host.appendChild(section('Typography', typographySection(node, commit)));
+      host.appendChild(section('Typography', typographySection(node, commitAll)));
       // the click-only flex-arrangement chip is retained as a Simple convenience;
       // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
       host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
-      host.appendChild(section('Appearance', appearanceSection(node, commit)));
-      host.appendChild(section('Border', borderSection(node, commit)));
+      host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
+      host.appendChild(section('Border', borderSection(node, commitAll)));
     }
 
     // ── Pro: the mechanical layout engine + full control ──
@@ -144,10 +160,10 @@ export function mountInspector(host: HTMLElement): void {
           if (v === '') delete n.forEach; else n.forEach = v;
         }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
       ], true));
-      host.appendChild(section('Sizing', [sizingControls(node, commit)]));
-      host.appendChild(section('Contents layout', [contentsLayout(node, commit)]));
-      host.appendChild(section('Appearance', appearanceSection(node, commit)));
-      host.appendChild(section('Border', borderSection(node, commit)));
+      host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
+      host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
+      host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
+      host.appendChild(section('Border', borderSection(node, commitAll)));
     }
 
     // Box model: Simple's intuitive padding/margin editor (kept in Pro too until
@@ -539,8 +555,10 @@ function visualRow(node: SPElement, label: string, prop: string, control: HTMLEl
 function propInput(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLInputElement {
   const inp = document.createElement('input');
   inp.className = 'wb-field-input';
-  inp.value = styleOf(node, prop);
-  inp.placeholder = placeholder;
+  const mixed = propIsMixed(prop);
+  inp.value = mixed ? '' : styleOf(node, prop);
+  inp.placeholder = mixed ? 'Mixed' : placeholder;
+  if (mixed) inp.classList.add('wb-mixed');
   inp.addEventListener('change', () => setStyleProp(commit, prop, coerceForProp(prop, inp.value.trim())));
   return inp;
 }
@@ -551,19 +569,25 @@ function colorControl(node: SPElement, commit: (fn: (n: SPElement) => void) => v
   const sw = document.createElement('span');
   sw.className = 'wb-swatch';
   const cur = styleOf(node, prop);
-  // layer the color over the CSS checker so an empty/expression value reads as "none"
-  sw.style.backgroundColor = cur && !cur.startsWith('=') ? cur : 'transparent';
+  // layer the color over the CSS checker so an empty/expression/mixed value reads as "none"
+  sw.style.backgroundColor = !propIsMixed(prop) && cur && !cur.startsWith('=') ? cur : 'transparent';
   box.append(inp, sw);
   return box;
 }
 function propSelect(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, options: Array<[string, string]>): HTMLSelectElement {
   const sel = document.createElement('select');
   sel.className = 'wb-field-input';
+  const mixed = propIsMixed(prop);
   const cur = styleOf(node, prop);
+  if (mixed) {
+    const o = document.createElement('option');
+    o.textContent = 'Mixed'; o.value = ''; o.disabled = true; o.selected = true;
+    sel.appendChild(o);
+  }
   for (const [val, label] of options) {
     const o = document.createElement('option');
     o.value = val; o.textContent = label;
-    if (val === cur) o.selected = true;
+    if (!mixed && val === cur) o.selected = true;
     sel.appendChild(o);
   }
   sel.addEventListener('change', () => setStyleProp(commit, prop, sel.value));

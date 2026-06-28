@@ -2122,3 +2122,6 @@ body {
 .wb-expr-toggle:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-expr-toggle.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
 .wb-expr-input { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11.5px; color: var(--wb-accent); }
+
+/* multi-select: a property whose value differs across the selection reads "Mixed" */
+.wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }
