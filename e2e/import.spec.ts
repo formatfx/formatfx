@@ -4,8 +4,8 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-async function openStudio(page: Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
+async function openJson(page: Page): Promise<void> {
+  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
 test.beforeEach(async ({ page }) => {
@@ -14,10 +14,6 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
 });
-
-async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
-  await page.click(`.wb-tabs button[data-tab="${tab}"]`);
-}
 
 /** The Data editor is a dock below the preview; reveal it (it starts collapsed). */
 async function openDataDock(page: Page): Promise<void> {
@@ -67,8 +63,7 @@ test('native CSV-with-schema import: fields, real rows, formatters registered', 
 
 test('columnFormatterReference renders the registered formatter with swapped @currentField', async ({ page }) => {
   await importExport(page);
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
     columnFormatterReference: '[$Pct]',
@@ -148,8 +143,7 @@ test('list snapshot without a default-view formatter rebuilds the grid; Load-as-
 
 test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.click('#wb-json-deploy');
   // grid/row documents deploy as VIEW formatting
   await expect(page.locator('#wb-deploy-target')).toContainText('view');
@@ -170,8 +164,7 @@ test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ p
 });
 
 test('unregistered CFR shows the explanatory chip', async ({ page }) => {
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
     columnFormatterReference: '[$NotRegistered]',
