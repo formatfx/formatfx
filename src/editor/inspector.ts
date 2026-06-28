@@ -16,6 +16,7 @@ import {
 import { state, CARD_SEGMENT } from './state';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
+import { governedProperties } from './classPrecedence';
 
 export function mountInspector(host: HTMLElement): void {
   const render = () => {
@@ -142,7 +143,7 @@ export function mountInspector(host: HTMLElement): void {
     host.appendChild(section('Style', [
       kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => commit((n) => {
         if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
-      })),
+      }), governedProperties(node.attributes?.class)),
     ], true));
 
     // ── Pro-only: attributes + the superpower sections ──────────────────────
@@ -972,6 +973,9 @@ function kvEditor(
   docs: Record<string, string>,
   familyOf: ((prop: string) => StyleFamily) | null,
   onChange: (next: Record<string, SPExpr>) => void,
+  // class-precedence: prop → governing class. A row whose prop is governed but
+  // present (an inline value) is an OVERRIDE of that class — flag it (spec §5).
+  governed?: Map<string, string>,
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'wb-kv';
@@ -1068,10 +1072,27 @@ function kvEditor(
     del.innerHTML = '<i class="ms-Icon ms-Icon--Cancel"></i>';
     del.title = 'Remove';
     del.addEventListener('click', () => { row.remove(); commitRows(); });
-    key.addEventListener('input', refreshValueOptions);
+    // class-precedence override badge: a class would paint this property, but
+    // this inline value wins. Clearing the value hands control back to the class.
+    const badge = document.createElement('span');
+    badge.className = 'wb-governed-badge';
+    const refreshGoverned = () => {
+      const cls = governed?.get(key.value.trim());
+      if (cls) {
+        badge.hidden = false;
+        badge.textContent = '[Class Overridden]';
+        badge.title = `This inline value overrides class "${cls}". Clear it to let the class control this property.`;
+        row.classList.add('wb-row-override');
+      } else {
+        badge.hidden = true;
+        row.classList.remove('wb-row-override');
+      }
+    };
+    refreshGoverned();
+    key.addEventListener('input', () => { refreshValueOptions(); refreshGoverned(); });
     key.addEventListener('change', commitRows);
     val.addEventListener('change', commitRows);
-    row.append(key, val, valList, info, del, card);
+    row.append(key, val, badge, valList, info, del, card);
     wrap.appendChild(row);
   };
 

@@ -15,21 +15,22 @@
         is a one-place edit). The warm surface is SCOPED to the left pane — the
         canvas + JSON stay Fluent-cool, so the dark-mode engine probe is safe. */
   --wb-leftpane-w: 360px;
-  --wb-lp-bg: #f7f6f3;            /* warm cream pane background */
-  --wb-lp-surface: #ffffff;      /* field / card surfaces */
-  --wb-lp-border: #e7e3dc;       /* warm hairline */
-  --wb-lp-field-border: #e3ded5; /* field outline */
-  --wb-lp-text: #2b2a28;
-  --wb-lp-text-2: #6b6862;       /* labels / muted */
-  --wb-lp-selected: #ece7df;     /* tree selected row */
-  --wb-lp-seg-track: #efece6;    /* segmented-control track */
-  /* secondary CTA / active draw-tool accent — our own terracotta (NOT Claude's
-     #c2613c). Save button + active tool route through these. */
-  --wb-cta: #b4552f;
-  --wb-cta-hover: #9f4a28;
+  /* The Left Edit Pane matches the rest of the app (cool/flat Fluent): these
+     alias the app tokens, so they flip automatically in dark mode too. */
+  --wb-lp-bg: var(--wb-bg);
+  --wb-lp-surface: var(--wb-surface);
+  --wb-lp-border: var(--wb-border);
+  --wb-lp-field-border: var(--wb-border);
+  --wb-lp-text: var(--wb-text);
+  --wb-lp-text-2: var(--wb-text-2);
+  --wb-lp-selected: #cfe4f7;     /* tree selected row (light blue) */
+  --wb-lp-seg-track: #f3f2f1;    /* segmented-control track */
+  /* CTA + active draw-tool = the Microsoft-blue primary (flat, app-consistent). */
+  --wb-cta: var(--wb-accent);
+  --wb-cta-hover: #106ebe;
   --wb-cta-text: #ffffff;
-  --wb-tool-active: var(--wb-cta);
-  /* the active/override blue dot + focus reuse the Microsoft-blue primary */
+  --wb-tool-active: var(--wb-accent);
+  /* the active/override blue dot + focus reuse the same primary */
   --wb-override-dot: var(--wb-accent);
   --wb-governed-opacity: 0.5;
 
@@ -48,18 +49,11 @@ body.wb-dark {
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
 
-  /* Left Edit Pane — dark counterparts (parity from day one). */
-  --wb-lp-bg: #1f1e1c;
-  --wb-lp-surface: #2a2826;
-  --wb-lp-border: #3a3733;
-  --wb-lp-field-border: #403c37;
-  --wb-lp-text: #f1efea;
-  --wb-lp-text-2: #b3ada3;
-  --wb-lp-selected: #38332c;
-  --wb-lp-seg-track: #322e29;
-  --wb-cta: #c4663f;
-  --wb-cta-hover: #d2734c;
-  --wb-cta-text: #ffffff;
+  /* Left Edit Pane — only the non-aliased tokens need dark overrides (the
+     surface/border/text aliases follow the app tokens above automatically). */
+  --wb-lp-selected: #123a5c;     /* tree selected row (dark blue) */
+  --wb-lp-seg-track: #322f2e;
+  --wb-cta-hover: #2b88d8;
 
   /* …and dark in dark mode (covers Firefox + native widgets) */
   color-scheme: dark;
@@ -2049,3 +2043,12 @@ body {
 .wb-tree-eye:hover { opacity: 1; }
 .wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
 .wb-lp-tree .wb-tree-row.selected { background: var(--wb-lp-selected); border-radius: 5px; }
+
+/* ── class-precedence: inline-override badge on a governed Style row ────────── */
+.wb-governed-badge {
+  flex: 0 0 auto; font-size: 10px; font-weight: 600; line-height: 1;
+  padding: 2px 6px; border-radius: 4px; white-space: nowrap; cursor: help;
+  color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wb-accent) 35%, transparent);
+}
+.wb-governed-badge[hidden] { display: none; }
