@@ -17,7 +17,10 @@ import {
 } from './areas';
 
 export type ChangeReason =
-  | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load';
+  | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load' | 'lens';
+
+/** The Left Edit Pane's three interaction lenses (progressive disclosure). */
+export type EditorLens = 'simple' | 'pro' | 'code';
 
 type Listener = (reason: ChangeReason) => void;
 
@@ -148,7 +151,17 @@ export class EditorState {
   viewName = 'View 1';
   private mainDocStash: FormatterDocument | null = null;
   private mainFieldStash: string | null = null;
-  selection: NodePath | null = [];
+  /**
+   * Selection backing store. Figma-style multi-select: the array holds every
+   * selected node path; `selection` (below) is the backward-compatible primary
+   * = `_selections[0]`. `[]` as a member means the root is selected; an empty
+   * array means nothing is selected (the old `selection === null`).
+   */
+  private _selections: NodePath[] = [[]];
+  /** The Left Edit Pane lens — UI view state, NOT part of the project file. */
+  activeLens: EditorLens = 'pro';
+  /** The "last Save" checkpoint Discard reverts to (a snapState string). */
+  private _savepoint: string | null = null;
   themeMode: 'light' | 'dark' = 'dark';
   /** Tenant theme palette overrides (token → hex), or null for stock Fluent. */
   customTheme: Record<string, string> | null = null;
@@ -162,6 +175,23 @@ export class EditorState {
   get canUndo(): boolean { return this.undoStack.length > 0; }
   get canRedo(): boolean { return this.redoStack.length > 0; }
 
+  /** Primary selected path — the backward-compatible single-selection accessor.
+   *  Reads the first of the multi-selection; assigning collapses to a single
+   *  selection (or clears it when null), so every existing `this.selection = …`
+   *  mutation and the canvas/inspector readers keep working unchanged. */
+  get selection(): NodePath | null { return this._selections.length ? this._selections[0] : null; }
+  set selection(path: NodePath | null) { this._selections = path == null ? [] : [path]; }
+
+  /** Every selected node path (Figma-style multi-select). */
+  get selections(): NodePath[] { return this._selections; }
+
+  /** Every selected node, resolved against the live document (drops dead paths). */
+  get selectedNodes(): SPElement[] {
+    return this._selections
+      .map((p) => this.nodeAt(p))
+      .filter((n): n is SPElement => n != null);
+  }
+
   subscribe(fn: Listener): void { this.listeners.push(fn); }
 
   emit(reason: ChangeReason): void {
@@ -171,7 +201,38 @@ export class EditorState {
       this.columnRefs[this.activeDocKey] = this.doc.root;
     }
     for (const fn of this.listeners) fn(reason);
-    if (reason !== 'selection') this.scheduleAutosave();
+    // 'selection' and 'lens' are pure view state — neither autosaves (the lens
+    // is not part of the project file; it lives in wb-ui-prefs).
+    if (reason !== 'selection' && reason !== 'lens') this.scheduleAutosave();
+  }
+
+  // ─── Left Edit Pane: lens + Save checkpoint ────────────────────────────────
+
+  /** Switch the Simple/Pro/Code lens. UI-only: off the undo stack, no autosave. */
+  setLens(lens: EditorLens): void {
+    if (this.activeLens === lens) return;
+    this.activeLens = lens;
+    this.emit('lens');
+  }
+
+  /** Mark the live document as the Save checkpoint (the Save button / first load). */
+  markSavepoint(): void { this._savepoint = this.snapState(); }
+
+  /** Whether there are unsaved mutations since the last Save checkpoint. */
+  get isDirtySinceSave(): boolean {
+    return this._savepoint != null && this._savepoint !== this.snapState();
+  }
+
+  /** Discard every mutation back to the last Save checkpoint (multi-step undo).
+   *  The discard itself is one undoable step, so an accidental Discard is Ctrl+Z-able. */
+  discardToSavepoint(): void {
+    if (this._savepoint == null) return;
+    const before = this.snapState();
+    if (before === this._savepoint) return;
+    this.pushUndo(before);
+    this.restoreSnap(this._savepoint);
+    this.clampSelection();
+    this.emit('document');
   }
 
   // ─── Workspace: main formatter ⇄ column formatters ─────────────────────────
@@ -198,6 +259,7 @@ export class EditorState {
     this.selection = [];
     this.undoStack = []; // undo history is per-document
     this.redoStack = [];
+    this.markSavepoint(); // Discard reverts to the column as opened
     this.emit('load');
     this.emit('data');
   }
@@ -216,6 +278,7 @@ export class EditorState {
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
+    this.markSavepoint();
     this.emit('load');
     this.emit('data');
   }
@@ -297,6 +360,7 @@ export class EditorState {
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
+    this.markSavepoint();
     this.emit('load');
     this.emit('data');
   }
@@ -329,6 +393,7 @@ export class EditorState {
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
+    this.markSavepoint();
     this.emit('load');
     this.emit('data');
   }
@@ -441,12 +506,34 @@ export class EditorState {
   }
 
   private clampSelection(): void {
-    if (this.selection && !this.nodeAt(this.selection)) this.selection = [];
+    const valid = this._selections.filter((p) => this.nodeAt(p) != null);
+    // keep what survives; if a non-empty selection went fully stale fall back to
+    // the root, but an already-empty selection stays empty (old null behavior).
+    this._selections = valid.length ? valid : (this._selections.length ? [[]] : []);
   }
 
   select(path: NodePath | null): void {
-    this.selection = path;
+    this.selection = path; // setter collapses to a single selection / clears
     this.emit('selection');
+  }
+
+  /** Replace the entire selection set (Figma-style multi-select). */
+  selectMulti(paths: NodePath[]): void {
+    this._selections = paths.slice();
+    this.emit('selection');
+  }
+
+  /** Add or remove one path from the selection set (checkbox toggle). */
+  toggleSelect(path: NodePath): void {
+    const i = this._selections.findIndex((p) => samePath(p, path));
+    if (i >= 0) this._selections.splice(i, 1);
+    else this._selections.push(path);
+    this.emit('selection');
+  }
+
+  /** Whether this exact path is part of the current selection set. */
+  isSelected(path: NodePath): boolean {
+    return this._selections.some((p) => samePath(p, path));
   }
 
   mutateDocument(fn: () => void): void {

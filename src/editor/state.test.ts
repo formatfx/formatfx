@@ -447,3 +447,102 @@ describe('applyRowTemplate', () => {
     expect(s.doc.root._elmName).toBe('A');
   });
 });
+
+describe('multi-select', () => {
+  function threeChildren(): EditorState {
+    const s = new EditorState();
+    s.doc.root.children = [
+      { elmType: 'span', txtContent: 'a' },
+      { elmType: 'span', txtContent: 'b' },
+      { elmType: 'span', txtContent: 'c' },
+    ];
+    return s;
+  }
+
+  it('selection is the primary of the multi-selection (backward compatible)', () => {
+    const s = threeChildren();
+    s.select([0]);
+    expect(s.selection).toEqual([0]);
+    expect(s.selections).toEqual([[0]]);
+    expect(s.selectedNode?.txtContent).toBe('a');
+  });
+
+  it('selectMulti / selectedNodes resolve every selected node', () => {
+    const s = threeChildren();
+    s.selectMulti([[0], [2]]);
+    expect(s.selections).toEqual([[0], [2]]);
+    expect(s.selectedNodes.map((n) => n.txtContent)).toEqual(['a', 'c']);
+    expect(s.selection).toEqual([0]); // primary stays the first
+  });
+
+  it('toggleSelect adds and removes paths; isSelected reflects membership', () => {
+    const s = threeChildren();
+    s.select([0]);
+    s.toggleSelect([1]);
+    expect(s.isSelected([0])).toBe(true);
+    expect(s.isSelected([1])).toBe(true);
+    s.toggleSelect([0]);
+    expect(s.isSelected([0])).toBe(false);
+    expect(s.selections).toEqual([[1]]);
+  });
+
+  it('assigning selection = null clears it (old single-select contract)', () => {
+    const s = threeChildren();
+    s.select([0]);
+    s.selection = null;
+    expect(s.selection).toBeNull();
+    expect(s.selections).toEqual([]);
+    expect(s.selectedNodes).toEqual([]);
+  });
+
+  it('structural mutations collapse multi-select to the affected node', () => {
+    const s = threeChildren();
+    s.selectMulti([[0], [1], [2]]);
+    s.removeNode([1]);
+    expect(s.selections).toEqual([[]]); // removeNode sets selection to the parent
+  });
+});
+
+describe('lens + save checkpoint', () => {
+  it('setLens changes the lens and is off the undo stack', () => {
+    const s = new EditorState();
+    expect(s.activeLens).toBe('pro');
+    let reason = '';
+    s.subscribe((r) => { reason = r; });
+    s.setLens('code');
+    expect(s.activeLens).toBe('code');
+    expect(reason).toBe('lens');
+    expect(s.canUndo).toBe(false);
+    s.setLens('code'); // no-op when unchanged
+  });
+
+  it('discardToSavepoint reverts every mutation since the checkpoint', () => {
+    const s = new EditorState();
+    s.markSavepoint();
+    expect(s.isDirtySinceSave).toBe(false);
+    s.insertNode({ elmType: 'span', txtContent: 'x' });
+    s.insertNode({ elmType: 'span', txtContent: 'y' });
+    expect(s.isDirtySinceSave).toBe(true);
+    s.discardToSavepoint();
+    expect(s.isDirtySinceSave).toBe(false);
+  });
+
+  it('the discard itself is undoable', () => {
+    const s = new EditorState();
+    s.markSavepoint();
+    const before = JSON.stringify(s.doc);
+    s.insertNode({ elmType: 'span', _elmName: 'inserted', txtContent: 'x' });
+    s.discardToSavepoint();
+    expect(JSON.stringify(s.doc)).toBe(before);
+    s.undo(); // un-discard
+    expect(JSON.stringify(s.doc)).not.toBe(before);
+  });
+
+  it('discard with no checkpoint is a no-op', () => {
+    const s = new EditorState();
+    s.insertNode({ elmType: 'span', txtContent: 'x' });
+    const snap = JSON.stringify(s.doc);
+    s.discardToSavepoint(); // _savepoint null → nothing happens
+    expect(JSON.stringify(s.doc)).toBe(snap);
+  });
+});
