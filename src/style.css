@@ -1275,6 +1275,20 @@ body {
 .wb-pg-tree-target { color: var(--wb-accent); font-weight: 600; background: rgba(0, 120, 212, .1); cursor: default; }
 .wb-pg-tree-stash { color: var(--wb-accent); font-size: 10px; flex-shrink: 0; }
 .wb-pg-navcfr { color: #038387; }
+.wb-pg-cfr-confirm {
+  margin: 8px 0; padding: 8px 12px; border-radius: 6px; font-size: 12px;
+  background: rgba(3, 131, 135, .08); border: 1px solid #038387;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.wb-pg-cfr-confirm span { flex: 1; min-width: 0; color: #038387; }
+.wb-pg-cfr-confirm-yes, .wb-pg-cfr-confirm-no {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid; cursor: pointer;
+  background: transparent; white-space: nowrap;
+}
+.wb-pg-cfr-confirm-yes { border-color: #038387; color: #038387; }
+.wb-pg-cfr-confirm-yes:hover { background: #038387; color: #fff; }
+.wb-pg-cfr-confirm-no { border-color: var(--wb-border); color: var(--wb-text-2); }
+.wb-pg-cfr-confirm-no:hover { border-color: var(--wb-text-2); color: var(--wb-text); }
 /* the property card: what it does, with self-applying examples */
 .wb-pg-doc {
   margin-top: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.7;
