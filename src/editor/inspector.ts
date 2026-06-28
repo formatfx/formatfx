@@ -122,7 +122,9 @@ export function mountInspector(host: HTMLElement): void {
 
     if (!pro) host.appendChild(section('Text', [txtContentField()]));
 
-    host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
+    // Simple keeps the click-only Alignment chip; Pro gets the full mechanical
+    // Sizing + Contents-layout controls instead.
+    if (!pro) host.appendChild(section('Alignment', [alignmentEditor(node, commit)]));
 
     if (pro) {
       host.appendChild(section('Element', [
@@ -136,6 +138,8 @@ export function mountInspector(host: HTMLElement): void {
           if (v === '') delete n.forEach; else n.forEach = v;
         }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
       ], true));
+      host.appendChild(section('Sizing', [sizingControls(node, commit)]));
+      host.appendChild(section('Contents layout', [contentsLayout(node, commit)]));
     }
 
     host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
@@ -321,6 +325,173 @@ function checkbox(value: boolean, onChange: (v: boolean) => void): HTMLInputElem
   el.checked = value;
   el.addEventListener('change', () => onChange(el.checked));
   return el;
+}
+
+// ─── Pro controls: segmented selector + Sizing + Contents layout ─────────────
+// Spec §2.B — the mechanical layout engine, honoring the Schema-Fidelity
+// Exclusion Principle (no align-self, no grid display, no fixed/sticky).
+
+/** A horizontal segmented control (Hug/Fixed/Fill, display modes, …). */
+function segmented(
+  options: Array<{ value: string; label: string; title?: string }>,
+  active: string,
+  onChange: (v: string) => void,
+): HTMLElement {
+  const seg = document.createElement('div');
+  seg.className = 'wb-segmented';
+  for (const o of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-seg' + (o.value === active ? ' active' : '');
+    b.textContent = o.label;
+    if (o.title) b.title = o.title;
+    b.addEventListener('click', () => onChange(o.value));
+    seg.appendChild(b);
+  }
+  return seg;
+}
+
+const styleOf = (node: SPElement, prop: string): string =>
+  (typeof node.style?.[prop] === 'string' ? node.style![prop] as string : '');
+
+const SIZE_FILL = '100%';
+type SizeMode = 'hug' | 'fixed' | 'fill';
+function sizeMode(v: string): SizeMode {
+  if (v === '' || v === 'auto' || v === 'fit-content') return 'hug';
+  if (v === SIZE_FILL) return 'fill';
+  return 'fixed';
+}
+
+/** Width/Height with Hug (auto) / Fixed (literal) / Fill (100%). */
+function sizingControls(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-sizing';
+  const setProp = (prop: string, v: string | undefined) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (v === undefined || v === '') delete n.style[prop];
+      else n.style[prop] = /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v;
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    for (const prop of ['width', 'height'] as const) {
+      const cur = styleOf(node, prop);
+      const mode = sizeMode(cur);
+      const row = document.createElement('div');
+      row.className = 'wb-field-row';
+      const label = document.createElement('span');
+      label.className = 'wb-field-label';
+      label.textContent = prop === 'width' ? 'Width' : 'Height';
+      const inp = document.createElement('input');
+      inp.className = 'wb-field-input';
+      inp.value = mode === 'fixed' ? cur : '';
+      inp.placeholder = mode === 'hug' ? 'auto' : mode === 'fill' ? '100%' : 'e.g. 120px';
+      inp.disabled = mode !== 'fixed';
+      inp.addEventListener('change', () => setProp(prop, inp.value.trim()));
+      const seg = segmented(
+        [{ value: 'hug', label: 'Hug', title: 'Shrink to fit the content (auto)' },
+          { value: 'fixed', label: 'Fixed', title: 'A literal size you type' },
+          { value: 'fill', label: 'Fill', title: 'Fill the available space (100%)' }],
+        mode,
+        (m) => setProp(prop, m === 'hug' ? '' : m === 'fill' ? SIZE_FILL : (mode === 'fixed' ? cur : '120px')),
+      );
+      row.append(label, inp, seg);
+      wrap.appendChild(row);
+    }
+  };
+  render();
+  return wrap;
+}
+
+// display: Grid is omitted (unsupported by the SP renderer).
+const DISPLAY_MODES = [
+  { value: 'block', label: 'Block' },
+  { value: 'flex', label: 'Flex' },
+  { value: 'inline-flex', label: 'Inline-Flex' },
+  { value: 'inline-block', label: 'Inline-Block' },
+  { value: 'inline', label: 'Inline' },
+  { value: 'none', label: 'None' },
+];
+const JUSTIFY_PRESETS: Array<[string, string]> = [
+  ['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'],
+  ['space-between', 'Between'], ['space-around', 'Around'], ['space-evenly', 'Evenly'],
+];
+const ALIGN_PRESETS: Array<[string, string]> = [
+  ['flex-start', 'Start'], ['center', 'Center'], ['flex-end', 'End'],
+  ['stretch', 'Stretch'], ['baseline', 'Baseline'],
+];
+
+/** Container layout: display segmented; when Flex, direction + the two rows of
+ *  alignment presets (justify-content / align-items) + gap. */
+function contentsLayout(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-contents';
+  const setProp = (prop: string, v: string) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (v === '') delete n.style[prop]; else n.style[prop] = v;
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const presetRow = (label: string, presets: Array<[string, string]>, active: string, onPick: (v: string) => void): HTMLElement => {
+    const row = document.createElement('div');
+    row.className = 'wb-preset-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-field-label';
+    lab.textContent = label;
+    row.appendChild(lab);
+    const group = document.createElement('div');
+    group.className = 'wb-presets';
+    for (const [val, title] of presets) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-preset' + (val === active ? ' active' : '');
+      b.title = `${label}: ${title}`;
+      b.textContent = title;
+      b.dataset.preset = val;
+      b.addEventListener('click', () => onPick(val));
+      group.appendChild(b);
+    }
+    row.appendChild(group);
+    return row;
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    const display = styleOf(node, 'display');
+    wrap.appendChild(segmented(DISPLAY_MODES, display || 'block', (v) => setProp('display', v === 'block' ? '' : v)));
+    const isFlex = display === 'flex' || display === 'inline-flex';
+    if (isFlex) {
+      const dir = styleOf(node, 'flex-direction') || 'row';
+      wrap.appendChild(presetRow('Direction',
+        [['row', 'Row →'], ['column', 'Column ↓'], ['row-reverse', 'Row ←'], ['column-reverse', 'Column ↑']],
+        dir, (v) => setProp('flex-direction', v === 'row' ? '' : v)));
+      wrap.appendChild(presetRow('Distribute', JUSTIFY_PRESETS, styleOf(node, 'justify-content') || 'flex-start',
+        (v) => setProp('justify-content', v === 'flex-start' ? '' : v)));
+      wrap.appendChild(presetRow('Align', ALIGN_PRESETS, styleOf(node, 'align-items') || 'stretch',
+        (v) => setProp('align-items', v === 'stretch' ? '' : v)));
+      const gapRow = document.createElement('div');
+      gapRow.className = 'wb-field-row';
+      const gl = document.createElement('span');
+      gl.className = 'wb-field-label';
+      gl.textContent = 'Gap';
+      const gi = document.createElement('input');
+      gi.className = 'wb-field-input';
+      gi.value = styleOf(node, 'gap');
+      gi.placeholder = '0px';
+      gi.addEventListener('change', () => {
+        const v = gi.value.trim();
+        setProp('gap', v && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
+      });
+      gapRow.append(gl, gi);
+      wrap.appendChild(gapRow);
+    }
+  };
+  render();
+  return wrap;
 }
 
 // ─── alignment editor ────────────────────────────────────────────────────────
