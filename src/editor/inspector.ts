@@ -161,6 +161,7 @@ export function mountInspector(host: HTMLElement): void {
         }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
       ], true));
       host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
+      host.appendChild(section('Position', [positionControls(node, commitAll)]));
       host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
       host.appendChild(section('Border', borderSection(node, commitAll)));
@@ -516,6 +517,68 @@ function contentsLayout(node: SPElement, commit: (fn: (n: SPElement) => void) =>
       });
       gapRow.append(gl, gi);
       wrap.appendChild(gapRow);
+    }
+  };
+  render();
+  return wrap;
+}
+
+/** Positioning (Pro): Inline (static/relative) vs Absolute, with offsets.
+ *  Fixed / sticky are omitted — unsupported by the SP renderer (spec §2.B). */
+function positionControls(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-position';
+  const setProp = (prop: string, v: string) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (v === '') delete n.style[prop]; else n.style[prop] = v;
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const offsetRow = (prop: string, label: string): HTMLElement => {
+    const row = document.createElement('div');
+    row.className = 'wb-field-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-field-label';
+    lab.textContent = label;
+    const inp = document.createElement('input');
+    inp.className = 'wb-field-input';
+    inp.value = styleOf(node, prop);
+    inp.placeholder = 'auto';
+    inp.addEventListener('change', () => {
+      const v = inp.value.trim();
+      setProp(prop, v && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
+    });
+    row.append(lab, inp);
+    return row;
+  };
+  const appendOffsets = () => {
+    for (const [prop, label] of [['top', 'Top'], ['left', 'Left'], ['bottom', 'Bottom'], ['right', 'Right']]) {
+      wrap.appendChild(offsetRow(prop, label));
+    }
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    const pos = styleOf(node, 'position');
+    const mode = pos === 'absolute' ? 'absolute' : 'inline';
+    wrap.appendChild(segmented(
+      [{ value: 'inline', label: 'Inline', title: 'Flows with the layout (static / relative)' },
+        { value: 'absolute', label: 'Absolute', title: 'Positioned against the nearest positioned ancestor' }],
+      mode,
+      (m) => setProp('position', m === 'absolute' ? 'absolute' : ''),
+    ));
+    if (mode === 'absolute') {
+      appendOffsets();
+    } else {
+      const offRow = document.createElement('div');
+      offRow.className = 'wb-field-row';
+      const lab = document.createElement('span');
+      lab.className = 'wb-field-label';
+      lab.textContent = 'Offset';
+      offRow.append(lab, checkbox(pos === 'relative', (on) => setProp('position', on ? 'relative' : '')));
+      wrap.appendChild(offRow);
+      if (pos === 'relative') appendOffsets();
     }
   };
   render();
