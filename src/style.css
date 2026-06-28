@@ -10,6 +10,29 @@
   --wb-canvas-bg: #f3f2f1;
   --wb-scroll-thumb: #c8c6c4;
   --wb-scroll-thumb-hover: #a19f9d;
+
+  /* ── Left Edit Pane design tokens (FormatFX-native; tokenized so a re-skin
+        is a one-place edit). The warm surface is SCOPED to the left pane — the
+        canvas + JSON stay Fluent-cool, so the dark-mode engine probe is safe. */
+  --wb-leftpane-w: 360px;
+  --wb-lp-bg: #f7f6f3;            /* warm cream pane background */
+  --wb-lp-surface: #ffffff;      /* field / card surfaces */
+  --wb-lp-border: #e7e3dc;       /* warm hairline */
+  --wb-lp-field-border: #e3ded5; /* field outline */
+  --wb-lp-text: #2b2a28;
+  --wb-lp-text-2: #6b6862;       /* labels / muted */
+  --wb-lp-selected: #ece7df;     /* tree selected row */
+  --wb-lp-seg-track: #efece6;    /* segmented-control track */
+  /* secondary CTA / active draw-tool accent — our own terracotta (NOT Claude's
+     #c2613c). Save button + active tool route through these. */
+  --wb-cta: #b4552f;
+  --wb-cta-hover: #9f4a28;
+  --wb-cta-text: #ffffff;
+  --wb-tool-active: var(--wb-cta);
+  /* the active/override blue dot + focus reuse the Microsoft-blue primary */
+  --wb-override-dot: var(--wb-accent);
+  --wb-governed-opacity: 0.5;
+
   /* tells the browser to paint native scrollbars & form controls light */
   color-scheme: light;
 }
@@ -24,6 +47,20 @@ body.wb-dark {
   --wb-canvas-bg: #141312;
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
+
+  /* Left Edit Pane — dark counterparts (parity from day one). */
+  --wb-lp-bg: #1f1e1c;
+  --wb-lp-surface: #2a2826;
+  --wb-lp-border: #3a3733;
+  --wb-lp-field-border: #403c37;
+  --wb-lp-text: #f1efea;
+  --wb-lp-text-2: #b3ada3;
+  --wb-lp-selected: #38332c;
+  --wb-lp-seg-track: #322e29;
+  --wb-cta: #c4663f;
+  --wb-cta-hover: #d2734c;
+  --wb-cta-text: #ffffff;
+
   /* …and dark in dark mode (covers Firefox + native widgets) */
   color-scheme: dark;
 }
@@ -1870,3 +1907,128 @@ body {
 .wb-template-cancel { background: transparent; border: 1px solid var(--wb-border); border-radius: 4px; padding: 8px 16px; cursor: pointer; color: var(--wb-text); }
 .wb-template-apply { background: var(--wb-accent); color: #fff; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
 .wb-template-apply:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Left Edit Pane — the Claude-style consolidated editing surface
+   (action header · lens tabs · structure tree · draw toolbar · property lenses)
+   ══════════════════════════════════════════════════════════════════════════ */
+.wb-leftpane {
+  background: var(--wb-lp-bg); color: var(--wb-lp-text);
+  border-right: 1px solid var(--wb-lp-border);
+  display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+}
+
+/* ── action header (Edit · Discard · Save) ─────────────────────────────────── */
+.wb-lp-header {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px 10px;
+}
+.wb-lp-title { font-size: 15px; font-weight: 700; color: var(--wb-lp-text); }
+.wb-lp-actions { display: flex; align-items: center; gap: 14px; }
+.wb-lp-discard {
+  border: none; background: none; cursor: pointer; padding: 4px 2px;
+  font-size: 13px; color: var(--wb-lp-text-2);
+}
+.wb-lp-discard:hover:not(:disabled) { color: var(--wb-lp-text); }
+.wb-lp-discard:disabled { opacity: .4; cursor: default; }
+.wb-lp-save {
+  border: none; cursor: pointer; background: var(--wb-cta); color: var(--wb-cta-text);
+  font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: 8px;
+}
+.wb-lp-save:hover { background: var(--wb-cta-hover); }
+
+/* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
+.wb-lens-tabs {
+  flex: 0 0 auto; display: flex; gap: 18px; padding: 0 16px;
+  border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-lens-tab {
+  border: none; background: none; cursor: pointer; padding: 8px 0 9px;
+  font-size: 14px; color: var(--wb-lp-text-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.wb-lens-tab:hover { color: var(--wb-lp-text); }
+.wb-lens-tab.active {
+  color: var(--wb-lp-text); font-weight: 600; border-bottom-color: var(--wb-lp-text);
+}
+
+/* ── structure tree region ─────────────────────────────────────────────────── */
+.wb-lp-tree {
+  flex: 0 0 auto; height: 230px; overflow: auto;
+  border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-leftpane.wb-lens-simple .wb-lp-tree,
+.wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; } /* Simple hides the tree */
+.wb-lp-tree .wb-tree-sec-head {
+  position: sticky; top: 0; z-index: 1; background: var(--wb-lp-bg);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--wb-lp-text-2); padding: 8px 12px 4px;
+}
+.wb-lp-tree .wb-tree-sec-body { padding: 0 6px 6px; }
+
+/* ── splitter between tree and properties ──────────────────────────────────── */
+.wb-lp-splitter {
+  flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none; background: transparent;
+}
+.wb-lp-splitter:hover, .wb-lp-splitter:active { background: var(--wb-accent); opacity: .4; }
+
+/* ── draw toolbar ──────────────────────────────────────────────────────────── */
+.wb-drawbar {
+  position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 3px;
+  padding: 6px 10px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: 7px;
+  background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
+}
+.wb-tool:hover:not(:disabled) { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-tool.active { background: var(--wb-tool-active); color: var(--wb-cta-text); }
+.wb-tool:disabled { opacity: .35; cursor: default; }
+.wb-tool-sep { width: 1px; height: 18px; background: var(--wb-lp-border); margin: 0 5px; }
+
+/* palette overflow popover (the collapsed palette) */
+.wb-palette-pop {
+  position: absolute; top: calc(100% + 4px); left: 8px; z-index: 40;
+  width: 320px; max-height: 360px; overflow: auto; padding: 10px;
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-border);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+}
+.wb-palette-pop[hidden] { display: none; }
+
+/* ── lower workspace (inspector / code) ────────────────────────────────────── */
+.wb-lp-props {
+  flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column;
+}
+.wb-lp-inspector { flex: 1 0 auto; }
+.wb-lp-code { display: none; flex: 1 1 auto; min-height: 0; }
+.wb-leftpane.wb-lens-code .wb-lp-inspector { display: none; }
+.wb-leftpane.wb-lens-code .wb-lp-code { display: flex; flex-direction: column; }
+
+/* ── Code lens declarations box ────────────────────────────────────────────── */
+.wb-codelens { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; height: 100%; }
+.wb-code-box {
+  flex: 1 1 auto; width: 100%; min-height: 220px; resize: none;
+  font-family: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, monospace;
+  font-size: 12.5px; line-height: 1.65; padding: 12px 14px; color: var(--wb-lp-text);
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-field-border); border-radius: 10px;
+}
+.wb-code-box:focus { outline: none; border-color: var(--wb-accent); }
+.wb-code-box:disabled { opacity: .6; }
+.wb-code-hint { flex: 0 0 auto; font-size: 12px; color: var(--wb-lp-text-2); }
+.wb-code-errors {
+  flex: 0 0 auto; font-size: 12px; color: #d13438;
+  background: rgba(209, 52, 56, .08); border: 1px solid rgba(209, 52, 56, .3);
+  border-radius: 6px; padding: 6px 10px;
+}
+.wb-code-errors[hidden] { display: none; }
+
+/* ── JSON side pane header (Type select lives here now) ─────────────────────── */
+.wb-side-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.wb-side-head .wb-pane-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
+}
+.wb-side-head .wb-side-adv { margin-bottom: 0; }
