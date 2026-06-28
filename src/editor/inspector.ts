@@ -163,13 +163,15 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
       host.appendChild(section('Position', [positionControls(node, commitAll)]));
       host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
+      host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
+      host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
       host.appendChild(section('Border', borderSection(node, commitAll)));
     }
 
-    // Box model: Simple's intuitive padding/margin editor (kept in Pro too until
-    // the parameter-count selectors land).
-    host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
+    // Box model (DevTools-style): Simple's intuitive padding/margin editor; Pro
+    // uses the parameter-count selectors above instead (spec §7).
+    if (!pro) host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
 
     if (pro) {
       host.appendChild(section('Style (all properties)', [
@@ -580,6 +582,64 @@ function positionControls(node: SPElement, commit: (fn: (n: SPElement) => void) 
       wrap.appendChild(offRow);
       if (pos === 'relative') appendOffsets();
     }
+  };
+  render();
+  return wrap;
+}
+
+/** Padding / Margin with the `– 1x 2x 4x` parameter-count selector (spec §2.B).
+ *  Writes the CSS shorthand and clears any per-side longhands to avoid conflicts. */
+function spacingControls(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: 'padding' | 'margin'): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-spacing';
+  const px = (v: string): string => (v && /^-?\d+(\.\d+)?$/.test(v) ? `${v}px` : v);
+  const parts = (): string[] => { const v = styleOf(node, prop).trim(); return v ? v.split(/\s+/) : []; };
+  const setShort = (v: string) => {
+    commit((n) => {
+      n.style = n.style ?? {};
+      if (!v.trim()) delete n.style[prop]; else n.style[prop] = v.trim();
+      for (const s of ['top', 'right', 'bottom', 'left']) delete n.style[`${prop}-${s}`];
+      if (Object.keys(n.style).length === 0) delete n.style;
+    });
+    render();
+  };
+  const render = () => {
+    wrap.innerHTML = '';
+    const p = parts();
+    const mode = p.length === 0 ? '-' : p.length === 1 ? '1x' : p.length === 2 ? '2x' : '4x';
+    const head = document.createElement('div');
+    head.className = 'wb-spacing-head';
+    head.appendChild(segmented(
+      [{ value: '-', label: '–' }, { value: '1x', label: '1x' }, { value: '2x', label: '2x' }, { value: '4x', label: '4x' }],
+      mode,
+      (m) => {
+        const a = p[0] ?? '0px', b = p[1] ?? a, c = p[2] ?? a, d = p[3] ?? b;
+        setShort(m === '-' ? '' : m === '1x' ? a : m === '2x' ? `${a} ${b}` : `${a} ${b} ${c} ${d}`);
+      },
+    ));
+    wrap.appendChild(head);
+    const slot = (label: string, idx: number, len: number) => {
+      const row = document.createElement('div');
+      row.className = 'wb-field-row';
+      const lab = document.createElement('span');
+      lab.className = 'wb-field-label';
+      lab.textContent = label;
+      const inp = document.createElement('input');
+      inp.className = 'wb-field-input';
+      inp.value = parts()[idx] ?? '';
+      inp.placeholder = '0px';
+      inp.addEventListener('change', () => {
+        const cur = parts();
+        const arr = Array.from({ length: len }, (_, i) => cur[i] ?? cur[0] ?? '0px');
+        arr[idx] = px(inp.value.trim()) || '0px';
+        setShort(arr.join(' '));
+      });
+      row.append(lab, inp);
+      wrap.appendChild(row);
+    };
+    if (mode === '1x') slot('All', 0, 1);
+    else if (mode === '2x') { slot('Vertical', 0, 2); slot('Horizontal', 1, 2); }
+    else if (mode === '4x') { slot('Top', 0, 4); slot('Right', 1, 4); slot('Bottom', 2, 4); slot('Left', 3, 4); }
   };
   render();
   return wrap;

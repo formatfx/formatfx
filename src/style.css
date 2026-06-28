@@ -2125,3 +2125,7 @@ body {
 
 /* multi-select: a property whose value differs across the selection reads "Mixed" */
 .wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }
+
+/* padding/margin parameter-count selector header */
+.wb-spacing { display: flex; flex-direction: column; gap: 8px; }
+.wb-spacing-head { display: flex; justify-content: flex-end; }
