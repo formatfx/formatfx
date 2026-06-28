@@ -93,6 +93,9 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   let effectId: EffectId = defaultEffectFor(field);
   let colorId = 'blue';
   let colorTouched = false;
+  // pending field switch — set when user changes the watch-field select while
+  // rules exist; cleared by confirming the switch or cancelling
+  let pendingFieldKey: string | null = null;
 
   /** Style object the generated chains will fall back to (the "else" look). */
   const existingStyle = (): Record<string, SPExpr | undefined> | undefined =>
@@ -183,8 +186,15 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     }
     fieldSel.title = 'Which column the rules watch — pick any column in the row (no typing); the conditions below adapt to its type';
     fieldSel.addEventListener('change', () => {
-      field = state.fields.find((f) => f.name === fieldSel.value) ?? field;
-      rules.length = 0; // suggestions, defaults and rules are per-field
+      const nextFieldName = fieldSel.value;
+      if (rules.length > 0 && nextFieldName !== field.name) {
+        // guard: don't silently discard rules — show a soft-confirm banner
+        pendingFieldKey = nextFieldName;
+        render();
+        return;
+      }
+      field = state.fields.find((f) => f.name === nextFieldName) ?? field;
+      rules.length = 0;
       selOpt = null;
       inputVal = '';
       effectId = defaultEffectFor(field);
@@ -193,6 +203,33 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     });
     targetRow.appendChild(fieldSel);
     panel.appendChild(targetRow);
+
+    // ── soft-confirm when switching watch-field with rules in flight ──
+    if (pendingFieldKey !== null) {
+      const pendingName = pendingFieldKey;
+      const warn = document.createElement('div');
+      warn.className = 'wb-cf-field-warn';
+      const msg = document.createElement('span');
+      msg.textContent = `Switching to [$${pendingName}] will clear your ${rules.length} rule${rules.length === 1 ? '' : 's'}.`;
+      const switchBtn = document.createElement('button');
+      switchBtn.textContent = 'Switch and clear';
+      switchBtn.className = 'wb-cf-field-warn-ok';
+      switchBtn.addEventListener('click', () => {
+        field = state.fields.find((f) => f.name === pendingName) ?? field;
+        rules.length = 0;
+        selOpt = null;
+        inputVal = '';
+        effectId = defaultEffectFor(field);
+        colorTouched = false;
+        pendingFieldKey = null;
+        render();
+      });
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Keep my rules';
+      cancelBtn.addEventListener('click', () => { pendingFieldKey = null; render(); });
+      warn.append(msg, switchBtn, cancelBtn);
+      panel.appendChild(warn);
+    }
 
     // ── the rules so far ──
     const rulesBox = document.createElement('div');

@@ -1353,6 +1353,19 @@ body {
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
+.wb-cf-field-warn {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0 0;
+  padding: 7px 10px; border-radius: 6px; font-size: 12px;
+  background: rgba(202, 80, 16, .08); border: 1px solid rgba(202, 80, 16, .3);
+}
+.wb-cf-field-warn span { flex: 1; color: #ca5010; }
+.wb-cf-field-warn button {
+  padding: 3px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-cf-field-warn button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-cf-field-warn-ok { border-color: #ca5010 !important; color: #ca5010 !important; }
+.wb-cf-field-warn-ok:hover { background: rgba(202, 80, 16, .08) !important; }
 .wb-cf-group { margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--wb-border); border-radius: 6px; }
 .wb-cf-grouplab {
   font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
