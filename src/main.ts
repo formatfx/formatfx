@@ -436,14 +436,17 @@ document.getElementById('wb-playground')!.addEventListener('click', () => openPl
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());
 document.getElementById('wb-about')!.addEventListener('click', () => openAbout());
 
-// toast
+// toast — duration scales with length: short messages vanish quickly; long
+// refusals (e.g. the lint-gate "not deploying" message at ~110 chars) stay
+// visible long enough to read. Floor 2600ms, ceiling 8000ms.
 let toastTimer = 0;
 function toast(message: string): void {
   const el = document.getElementById('wb-toast')!;
   el.textContent = message;
   el.hidden = false;
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { el.hidden = true; }, 2600);
+  const ms = Math.max(2600, Math.min(8000, message.length * 50));
+  toastTimer = window.setTimeout(() => { el.hidden = true; }, ms);
 }
 
 document.title = `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`;
