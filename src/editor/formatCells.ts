@@ -183,8 +183,19 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
-    head.innerHTML = `<span class="wb-fc-title">Format cells — ${nameOf(node)}</span>
-      <span class="wb-fc-sub">nothing changes until you Apply (then Ctrl+Z undoes)</span>`;
+
+    // Security Fix: Prevent XSS by using secure DOM manipulation instead of innerHTML
+    // for user-derived element names.
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'wb-fc-title';
+    titleSpan.textContent = `Format cells — ${nameOf(node)}`;
+    head.appendChild(titleSpan);
+
+    const subSpan = document.createElement('span');
+    subSpan.className = 'wb-fc-sub';
+    subSpan.textContent = 'nothing changes until you Apply (then Ctrl+Z undoes)';
+    head.appendChild(subSpan);
+
     const close = document.createElement('button');
     close.className = 'wb-fc-close';
     close.textContent = '✕';
