@@ -19,7 +19,7 @@
 
 import { state } from './state';
 import { slotsFor, readSlot, writeSlot, slotIdForProp, type FxSlot } from './fxSlots';
-import { fxSuggestions } from './fxSuggest';
+import { fxSuggestions, completionAt } from './fxSuggest';
 import { resolveSubtype } from './subtypes';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
@@ -60,6 +60,8 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
   let float: { panel: HTMLElement; cleanup: () => void } | null = null;
   /** The on-focus value drop-down, when open. */
   let menu: FxMenu | null = null;
+  /** The as-you-type inline autocomplete menu, when open. */
+  let acMenu: AcMenu | null = null;
   /** Pending auto-fade for a transient refusal message, if any. */
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -70,6 +72,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     float = null;
   };
   const closeMenu = (): void => { if (menu) { menu.el.remove(); menu = null; } };
+  const closeAc = (): void => { if (acMenu) { acMenu.close(); acMenu = null; } };
 
   // The accessory (Title-column toggle) rides on the edit bar; re-home it on
   // every rebuild so it survives the host.innerHTML reset.
@@ -80,6 +83,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // across selections and clicks elsewhere, so render() leaves it alone. The
     // on-focus value menu, however, belongs to this bar's editor — drop it.
     closeMenu();
+    closeAc();
     if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
     host.innerHTML = '';
     const node = state.selectedNode;
@@ -232,14 +236,44 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       closeMenu();
     };
 
+    // ── inline autocomplete: column refs, functions / context tokens, and
+    // IF() condition / result templates appear as you type a formula. ──
+    const updateAc = (): void => {
+      if (view.readOnly) { closeAc(); return; }
+      const caret = editor.selectionStart ?? editor.value.length;
+      const comp = completionAt(editor.value, caret, slot, state.fields);
+      if (!comp || comp.items.length === 0) { closeAc(); return; }
+      closeMenu(); // the inline typeahead supersedes the on-focus value menu
+      closeAc();
+      const pick = (value: string): void => {
+        const v = editor.value;
+        editor.value = v.slice(0, comp.from) + value + v.slice(comp.to);
+        editor.classList.remove('wb-fx-draft');
+        const pos = comp.from + value.length;
+        editor.setSelectionRange(pos, pos);
+        editor.focus();
+        updateAc(); // chain: picking 'IF(' immediately offers the condition list
+      };
+      acMenu = openAcMenu(editor, comp.items, pick);
+    };
+
     if (!view.readOnly) {
       editor.addEventListener('focus', () => {
-        if (menu || suggestions.length === 0) return;
+        if (menu || acMenu || suggestions.length === 0) return;
         menu = openMenu(editor, slot, suggestions, currentIcon, onPickValue);
       });
-      editor.addEventListener('blur', () => closeMenu());
+      editor.addEventListener('blur', () => { closeMenu(); closeAc(); });
+      editor.addEventListener('input', updateAc);
       editor.addEventListener('change', () => applyText(editor.value, setFeedback));
       editor.addEventListener('keydown', (e) => {
+        if (acMenu) {
+          if (e.key === 'ArrowDown') { e.preventDefault(); acMenu.move(1); return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); acMenu.move(-1); return; }
+          if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+          if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+            if (acMenu.accept()) { e.preventDefault(); return; }
+          }
+        }
         if (menu) {
           if (e.key === 'ArrowDown') { e.preventDefault(); menu.move(1); return; }
           if (e.key === 'ArrowUp') { e.preventDefault(); menu.move(-1); return; }
@@ -577,6 +611,58 @@ function openMenu(
   el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
   el.style.minWidth = `${Math.max(220, r.width)}px`;
   return { el, move, activeValue };
+}
+
+// ─── inline autocomplete menu (caret-driven typeahead) ───────────────────────
+
+interface AcMenu {
+  el: HTMLElement;
+  move: (delta: number) => void;
+  /** Accept the highlighted item; false when there's nothing to accept. */
+  accept: () => boolean;
+  close: () => void;
+}
+
+/**
+ * A compact typeahead under the editor — column references, functions / context
+ * tokens and IF() condition / result templates, driven by completionAt(). Arrow
+ * keys highlight; Enter / Tab or click accepts (the picked text is spliced into
+ * the formula by the caller, which then re-runs completionAt to chain).
+ */
+function openAcMenu(editor: HTMLElement, items: string[], onPick: (value: string) => void): AcMenu {
+  const el = document.createElement('div');
+  el.className = 'wb-fx-acmenu';
+  const shown = items.slice(0, 10);
+  const nodes: HTMLElement[] = [];
+  let active = 0;
+  shown.forEach((value, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-fx-acopt' + (i === 0 ? ' active' : '');
+    b.textContent = value;
+    // keep focus in the editor so the click can't blur-commit first
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => onPick(value));
+    nodes.push(b);
+    el.appendChild(b);
+  });
+  const setActive = (i: number): void => {
+    nodes[active]?.classList.remove('active');
+    active = (i + nodes.length) % nodes.length;
+    nodes[active]?.classList.add('active');
+    nodes[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  document.body.appendChild(el);
+  const r = editor.getBoundingClientRect();
+  el.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 12)}px`;
+  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
+  el.style.minWidth = `${Math.max(180, r.width)}px`;
+  return {
+    el,
+    move: (d) => setActive(active + d),
+    accept: () => { if (!shown.length) return false; onPick(shown[active]); return true; },
+    close: () => el.remove(),
+  };
 }
 
 /** The single best default for a slot — what we pre-populate the bar with. */
