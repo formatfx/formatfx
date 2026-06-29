@@ -49,9 +49,8 @@ body.wb-dark {
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
 
-  /* Left Edit Pane — we must explicitly redeclare these variables in dark mode
-     because they are defined on :root and would otherwise evaluate using the light mode
-     root-level variable definitions. */
+  /* Left Edit Pane — restate the Left Pane token aliases in dark mode (mirrors :root)
+     so all dark-mode overrides live in one place. */
   --wb-lp-bg: var(--wb-surface);  /* elevated panel — one step lighter than the app bg */
   --wb-lp-surface: var(--wb-surface);
   --wb-lp-border: var(--wb-border);
