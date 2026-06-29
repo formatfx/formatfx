@@ -281,10 +281,14 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
  */
 export function selectFromSnapshot(
   snap: ListSnapshot,
-  opts: { fieldNames: string[]; includeCurrentView: boolean },
+  opts: { fieldNames: string[]; includeCurrentView: boolean; dropFormatterFor?: string[] },
 ): ListSnapshot {
   const keep = new Set(opts.fieldNames);
-  const fields = snap.fields.filter((f) => keep.has(f.internalName));
+  const dropFmt = new Set(opts.dropFormatterFor ?? []);
+  const fields = snap.fields
+    .filter((f) => keep.has(f.internalName))
+    // opt out of pulling a column's existing formatter without losing the column
+    .map((f) => (dropFmt.has(f.internalName) && f.customFormatter ? { ...f, customFormatter: undefined } : f));
   const rows = snap.rows.map((r) => {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(r)) if (keep.has(k)) out[k] = r[k];
