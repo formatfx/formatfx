@@ -2169,6 +2169,8 @@ body {
   font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1; font-style: italic;
 }
 .wb-expr-fx:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+/* ⓘ doc-card button on a dedicated visual field row */
+.wb-field-row .wb-field-info { flex: 0 0 auto; align-self: center; }
 
 /* multi-select: a property whose value differs across the selection reads "Mixed" */
 .wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }

@@ -736,6 +736,38 @@ function visualRow(node: SPElement, label: string, prop: string, control: HTMLEl
   }
   lab.append(label);
   row.append(lab, control);
+  // ⓘ doc card: the family diagram, plain-language story and clickable example
+  // chips for this property — the same teaching card the Style editor uses.
+  if (STYLE_PROP_DOCS[prop]) {
+    const info = document.createElement('button');
+    info.type = 'button';
+    info.className = 'wb-kv-info wb-kv-info-known wb-field-info';
+    info.textContent = 'ⓘ';
+    info.title = `What does ${prop} do?`;
+    const card = document.createElement('div');
+    card.className = 'wb-doccard';
+    card.hidden = true;
+    buildDocCard(card, prop, STYLE_PROP_DOCS, styleFamilyOf, (exProp, exValue) => {
+      if (exValue === null || exProp !== prop) return; // variant switches just re-read
+      // apply to every selected node as a normal (re-rendering) mutation so the
+      // field visibly updates to the value the maker just clicked.
+      state.mutateDocument(() => state.selectedNodes.forEach((n) => {
+        n.style = n.style ?? {};
+        if (exValue === '') delete n.style[prop]; else n.style[prop] = exValue;
+        if (Object.keys(n.style).length === 0) delete n.style;
+      }));
+    });
+    info.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willShow = card.hidden;
+      closeDocCards();
+      if (!willShow) return;
+      card.hidden = false;
+      openCardAnchor = { card, anchor: info };
+      positionDocCard();
+    });
+    row.append(info, card);
+  }
   return row;
 }
 function propInput(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLInputElement {
