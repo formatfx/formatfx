@@ -18,6 +18,43 @@ import type { ApplyPayload } from './applyPayload';
 /** SPO rejects queries expanding more lookup/person columns than this. */
 export const EXPAND_CAP = 12;
 
+/** A GUID-shaped LookupList marks a *real* relational column. System
+ *  pseudo-lookups (ItemChildCount, _Compliance*, AppAuthor → 'AppPrincipals')
+ *  carry none or a non-GUID name and are NOT $expand-able on /items. */
+const GUID_RE = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i;
+
+/** Field types that appear in /fields but cannot be $select'd on /items.
+ *  OData is all-or-nothing: one of these in the query 400s the whole request. */
+const UNQUERYABLE_TYPES = new Set(['Computed', 'Attachments']);
+
+interface FieldQuery {
+  /** $select fragments to add for this field. */
+  select: string[];
+  /** internal name to $expand, when the field is a real person/lookup column. */
+  expand?: string;
+}
+
+/**
+ * How (if at all) to ask /items for one field's data:
+ *  - genuine person/lookup columns expand (and select their projected props);
+ *  - plain scalar columns select by name;
+ *  - un-queryable system columns (Computed, Attachments, pseudo-lookups)
+ *    return null and are skipped — the import gap-fills them with samples.
+ * Pure; the inverse of the field-types /items rejects.
+ */
+export function fieldQuery(f: SnapshotField): FieldQuery | null {
+  const t = f.type || '';
+  if (t === 'User' || t === 'UserMulti') {
+    return { select: [f.internalName + '/Title', f.internalName + '/EMail', f.internalName + '/Id'], expand: f.internalName };
+  }
+  if (t === 'Lookup' || t === 'LookupMulti') {
+    if (!f.lookupList || !GUID_RE.test(f.lookupList)) return null; // pseudo-lookup → not expandable
+    return { select: [f.internalName + '/Id', f.internalName + '/' + (f.lookupColumn || 'Title')], expand: f.internalName };
+  }
+  if (UNQUERYABLE_TYPES.has(t)) return null;
+  return { select: [f.internalName] };
+}
+
 export interface SpPageContext {
   webAbsoluteUrl: string;
   pageListId?: string;
@@ -56,6 +93,13 @@ export interface ListSnapshot {
   rows: Record<string, unknown>[];
   /** The view the page is showing (from ?viewid=, else the default view). */
   currentViewId?: string;
+  /**
+   * Why `rows` is empty, when the items GET failed (vs. a genuinely empty
+   * list). Set only on a real fetch error so a failed capture can be flagged
+   * instead of silently showing synthetic sample data. Absent on success and
+   * when data was opted out.
+   */
+  rowsError?: string;
 }
 
 /** Read SharePoint's page context, or null when not on an SP page. */
@@ -123,11 +167,55 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
   return r.json();
 }
 
+/** SharePoint 400s that name an un-queryable field, e.g. `_ColorTag` (a Text
+ *  system column that exists in /fields but not on /items). The named field is
+ *  pruned and the query retried. */
+const FIELD_ERR_RE = /field or property '([^']+)' does not exist|query to field '([^']+)' is not valid/i;
+
+/** Safety cap on prune retries (each removes one field SharePoint rejected). */
+const PRUNE_LIMIT = 24;
+
+/**
+ * GET up to 10 sample rows, self-healing against system columns /items can't
+ * query. A type allow-list can't enumerate them all (`_ColorTag` is plain
+ * Text), so when SharePoint 400s naming a field we drop it and retry — the
+ * query converges on exactly the queryable columns, GET-only. Throws on a real
+ * error (403, etc.) so the caller can record why rows are empty.
+ */
+async function fetchSampleRows(listPath: string, fields: SnapshotField[]): Promise<Record<string, unknown>[]> {
+  let selects: string[] = [];
+  let expands: string[] = [];
+  for (const f of fields) {
+    const q = fieldQuery(f);
+    if (!q) continue;                                  // un-queryable by type → skip, gap-filled at import
+    if (q.expand) {
+      if (expands.length >= EXPAND_CAP) continue;      // beyond the expand cap → skip, gap-filled at import
+      expands.push(q.expand);
+    }
+    selects.push(...q.select);
+  }
+
+  for (let attempt = 0; attempt < PRUNE_LIMIT; attempt++) {
+    const r = await fetch(listPath + '/items?$top=10&$select=' + selects.join(',')
+      + (expands.length ? '&$expand=' + expands.join(',') : ''), {
+      headers: { Accept: 'application/json;odata=nometadata' },
+      credentials: 'same-origin',
+    });
+    if (r.ok) return ((await r.json()).value as Record<string, unknown>[]) || [];
+    const m = FIELD_ERR_RE.exec(await r.text());
+    const bad = m && (m[1] || m[2]);
+    if (!bad) throw new Error('FormatFX: GET failed (' + explainStatus(r.status) + ')');
+    selects = selects.filter((s) => s !== bad && !s.startsWith(bad + '/'));
+    expands = expands.filter((e) => e !== bad);
+  }
+  throw new Error('FormatFX: could not read this list’s rows after pruning system columns.');
+}
+
 /**
  * GET-only capture of the list the tab shows (or a named list on the same
  * web) into a List Snapshot. Mirrors the extract snippet, expands capped.
  */
-export async function captureSnapshot(opts: { listTitle?: string } = {}): Promise<ListSnapshot> {
+export async function captureSnapshot(opts: { listTitle?: string; includeData?: boolean } = {}): Promise<ListSnapshot> {
   const ctx = readPageContext();
   if (!ctx) throw new Error('FormatFX: this does not look like a SharePoint page. Open your list page first.');
   const listPath = listPathFor(ctx, opts.listTitle);
@@ -157,35 +245,16 @@ export async function captureSnapshot(opts: { listTitle?: string } = {}): Promis
   }));
 
   let rows: Record<string, unknown>[] = [];
-  try {
-    const selects: string[] = [];
-    const expands: string[] = [];
-    let expanded = 0;
-    for (const f of fields) {
-      const t = f.type || '';
-      if (t === 'User' || t === 'UserMulti') {
-        if (expanded < EXPAND_CAP) {
-          expanded++;
-          expands.push(f.internalName);
-          selects.push(f.internalName + '/Title', f.internalName + '/EMail', f.internalName + '/Id');
-        }
-      } else if (t === 'Lookup' || t === 'LookupMulti') {
-        if (expanded < EXPAND_CAP) {
-          expanded++;
-          expands.push(f.internalName);
-          selects.push(f.internalName + '/Id', f.internalName + '/' + (f.lookupColumn || 'Title'));
-        }
-      } else {
-        selects.push(f.internalName);
-      }
+  let rowsError: string | undefined;
+  if (opts.includeData !== false) {
+    try {
+      rows = await fetchSampleRows(listPath, fields);
+    } catch (e) {
+      // rows are best-effort: fields + formatters still captured, sample rows
+      // filled at import — but record WHY so the failure isn't silent.
+      rows = [];
+      rowsError = e instanceof Error ? e.message : String(e);
     }
-    const itemsRes = await getJson(listPath + '/items?$top=10'
-      + '&$select=' + selects.join(',')
-      + (expands.length ? '&$expand=' + expands.join(',') : ''));
-    rows = (itemsRes.value as Record<string, unknown>[]) || [];
-  } catch {
-    // rows are best-effort: fields + formatters still captured, sample rows filled at import
-    rows = [];
   }
 
   return {
@@ -199,6 +268,7 @@ export async function captureSnapshot(opts: { listTitle?: string } = {}): Promis
     views,
     rows,
     currentViewId: detectCurrentViewId(views),
+    ...(rowsError ? { rowsError } : {}),
   };
 }
 
