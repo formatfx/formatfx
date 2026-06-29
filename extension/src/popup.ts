@@ -110,17 +110,17 @@ function renderPicker(snap: ListSnapshot): void {
     // columns that carry a live formatter get a second checkbox to opt out of
     // pulling that formatter in (the column itself still comes across)
     if (f.customFormatter) {
-      const fmtLabel = document.createElement('label');
-      fmtLabel.className = 'fmt-opt';
-      fmtLabel.title = `Pull in this column's existing formatter. Uncheck to capture the column without its formatter.`;
+      const fmtWrap = document.createElement('span');
+      fmtWrap.className = 'fmt-opt';
+      fmtWrap.title = `Pull in this column's existing formatter. Uncheck to capture the column without its formatter.`;
       const fmtCb = document.createElement('input');
       fmtCb.type = 'checkbox';
       fmtCb.checked = true;
       fmtCb.value = f.internalName;
       fmtCb.className = 'fmt';
-      fmtLabel.append(fmtCb, document.createTextNode(' formatter'));
-      label.appendChild(fmtLabel);
-    }
+      fmtCb.setAttribute('aria-label', `Capture formatter for ${f.displayName || f.internalName}`);
+      fmtWrap.append(fmtCb, document.createTextNode(' formatter'));
+      label.appendChild(fmtWrap);
     list.appendChild(label);
   }
   // current view toggle, default on; hidden when there's no view to include
