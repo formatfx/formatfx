@@ -77,7 +77,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (msg?.action !== 'grabFormatter') return undefined;
   const id = Math.random().toString(36).slice(2);
   const timer = setTimeout(() => {
-    if (pendingGrabs.delete(id)) sendResponse({ ok: false, error: 'FormatFX did not respond — make sure the tab is loaded.' });
+    if (pendingGrabs.delete(id)) sendResponse({ ok: false, error: "FormatFX didn't answer — this formatfx.dev tab may be an older version that predates Grab. Use the in-app “Send to extension” button instead, or reload FormatFX." });
   }, 4000);
   pendingGrabs.set(id, (r) => { clearTimeout(timer); sendResponse(r); });
   window.postMessage(requestFormatterMessage(id), origin);
