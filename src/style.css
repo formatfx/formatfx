@@ -1972,7 +1972,7 @@ body {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px 10px;
 }
-.wb-lp-title { font-size: 15px; font-weight: 700; color: var(--wb-lp-text); }
+.wb-lp-title { font-size: 15px; font-weight: 700; color: var(--wb-accent); }
 .wb-lp-actions { display: flex; align-items: center; gap: 14px; }
 .wb-lp-discard {
   border: none; background: none; cursor: pointer; padding: 4px 2px;
@@ -1998,7 +1998,7 @@ body {
 }
 .wb-lens-tab:hover { color: var(--wb-lp-text); }
 .wb-lens-tab.active {
-  color: var(--wb-lp-text); font-weight: 600; border-bottom-color: var(--wb-lp-text);
+  color: var(--wb-accent); font-weight: 600; border-bottom-color: var(--wb-accent);
 }
 
 /* ── structure tree region ─────────────────────────────────────────────────── */
@@ -2145,7 +2145,10 @@ body {
   color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; padding: 3px 8px; border-radius: 5px;
 }
 .wb-preset:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-preset.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-preset.active {
+  background: color-mix(in srgb, var(--wb-accent) 16%, transparent);
+  color: var(--wb-accent); border-color: var(--wb-accent);
+}
 
 /* ── Simple lens: dedicated visual fields (color swatch, active dot) ────────── */
 .wb-color-control { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
