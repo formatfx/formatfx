@@ -36,14 +36,13 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   host.classList.add('wb-leftpane');
   host.innerHTML = `
     <div class="wb-lp-header">
-      <span class="wb-lp-title">Edit</span>
+      <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
+        ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
+      </div>
       <div class="wb-lp-actions">
         <button class="wb-lp-discard" title="Revert every change back to the last Save checkpoint">Discard</button>
         <button class="wb-lp-save" title="Confirm &amp; copy this formatter's JSON to the clipboard, and set the Discard checkpoint">Save</button>
       </div>
-    </div>
-    <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
-      ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
     </div>
     <div class="wb-lp-tree" id="wb-lp-tree">
       <section class="wb-tree-sec">
