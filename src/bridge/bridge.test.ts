@@ -11,6 +11,7 @@ import {
 import {
   isPageToExt, isExtToPage, pingMessage, stageApplyMessage, ackMessage,
   readyMessage, snapshotMessage, validateStagedPayload, EXT_CHANNEL_VERSION,
+  requestFormatterMessage, formatterMessage,
 } from './extChannel';
 import { importSchema } from '../core/schemaImport';
 import type { PersonValue, LookupValue } from '../core/types';
@@ -642,6 +643,22 @@ describe('extChannel (page ↔ extension protocol)', () => {
     expect(m.kind).toBe('snapshot');
     expect(m.text).toContain('list-snapshot');
   });
+
+  it('requestFormatter (ext→page) and formatter (page→ext) round-trip with their guards', () => {
+    const req = requestFormatterMessage('g1');
+    expect(isExtToPage(req)).toBe(true);   // the extension asks the page
+    expect(isPageToExt(req)).toBe(false);
+
+    const payload = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    const ok = formatterMessage('g1', { ok: true, payload });
+    expect(isPageToExt(ok)).toBe(true);    // the page replies with the formatter
+    expect(isExtToPage(ok)).toBe(false);
+    expect(ok.payload?.targets[0].name).toBe('Status');
+
+    const err = formatterMessage('g1', { ok: false, error: 'lint errors' });
+    expect(isPageToExt(err)).toBe(true);
+    expect(err.error).toBe('lint errors');
+  });
 });
 
 describe('extract-push selection (spClient)', () => {
@@ -664,6 +681,13 @@ describe('extract-push selection (spClient)', () => {
     expect(out.fields.map((f) => f.internalName)).toEqual(['Status']);
     expect(out.rows).toEqual([{ Status: 'Done' }, { Status: 'New' }]);
     expect(out.views).toEqual([]);
+  });
+
+  it('dropFormatterFor strips a column\'s formatter but keeps the column and its data', () => {
+    const out = selectFromSnapshot(SNAP, { fieldNames: ['Title', 'Status'], includeCurrentView: false, dropFormatterFor: ['Status'] });
+    expect(out.fields.map((f) => f.internalName)).toEqual(['Title', 'Status']); // column still present
+    expect(out.fields.find((f) => f.internalName === 'Status')!.customFormatter).toBeUndefined(); // formatter gone
+    expect(out.rows).toEqual([{ Title: 'a', Status: 'Done' }, { Title: 'b', Status: 'New' }]); // data intact
   });
 
   it('includes just the current view, flagged isDefault so it auto-loads', () => {

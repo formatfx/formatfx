@@ -15,7 +15,8 @@ import { mountCanvas } from './editor/canvas';
 import { mountFxBar } from './editor/fxBar';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
-import { onPushedSnapshot } from './editor/extensionBridge';
+import { onPushedSnapshot, onExtensionReady, onFormatterRequest, stageApplyToExtension } from './editor/extensionBridge';
+import { buildCurrentApplyPayload } from './editor/deployPayload';
 import { mountBreadcrumb } from './editor/breadcrumb';
 import { mountLeftPane } from './editor/leftPane';
 import { copyNodes, pasteNodes } from './editor/clipboard';
@@ -45,6 +46,7 @@ app.innerHTML = `
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
       <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
+      <button id="wb-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
@@ -415,6 +417,26 @@ mountBreadcrumb(document.getElementById('wb-breadcrumb')!, toast);
 // extract-push: a snapshot sent from the companion extension lands through the
 // same guarded import as a paste.
 onPushedSnapshot((snapshotJson) => { applyImportedSchema(snapshotJson, toast); });
+
+// ── companion extension hand-off (clipboard-free) ──
+// The current formatter, supplied on demand to the extension's "Grab this
+// formatter" button — the same payload the buttons below stage.
+onFormatterRequest(() => buildCurrentApplyPayload());
+
+// Top-level "Send to extension": surfaced only when the extension announces
+// itself, so the deploy hand-off no longer hides behind Advanced.
+const sendExtBtn = document.getElementById('wb-send-ext') as HTMLButtonElement;
+onExtensionReady(() => { sendExtBtn.hidden = false; });
+sendExtBtn.addEventListener('click', async () => {
+  const { payload, error } = buildCurrentApplyPayload();
+  if (!payload) { toast(error ?? 'Nothing to send.'); return; }
+  try {
+    const { staged } = await stageApplyToExtension(payload);
+    toast(`Sent to the extension (${staged} formatter) — switch to your SharePoint list tab and click the FormatFX extension → Apply staged`);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e));
+  }
+});
 
 // debug outlines
 (document.getElementById('wb-outlines') as HTMLInputElement).addEventListener('change', (e) => {

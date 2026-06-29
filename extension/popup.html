@@ -22,6 +22,7 @@
     #picker-fields { max-height: 220px; overflow: auto; border: 1px solid #8883; border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
     #picker label { display: block; padding: 2px 0; font-size: 12px; cursor: pointer; }
     #picker label .iname { opacity: 0.5; }
+    #picker label .fmt-opt { display: inline; margin-left: 8px; font-size: 11px; opacity: 0.7; }
     .picker-tools { display: flex; gap: 8px; margin: 0 0 8px; }
     .picker-tools button { margin: 0; padding: 4px 8px; font-size: 11px; }
     #picker-view-row, #picker-data-row { margin: 0 0 8px; padding: 6px 8px; border: 1px dashed #8884; border-radius: 6px; font-size: 12px; }
@@ -39,7 +40,8 @@
   </div>
 
   <div id="state-formatfx" hidden>
-    <p>You're on FormatFX — use the app to stage formatters, then open the popup on your SharePoint list tab to apply them.</p>
+    <p>You're on FormatFX. Grab the formatter you're editing, then open this popup on your SharePoint list tab and click <b>Apply staged</b>.</p>
+    <button id="grab-formatter">⬇ Grab this formatter</button>
   </div>
 
   <div id="state-other" hidden>
