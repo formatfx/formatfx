@@ -1972,12 +1972,11 @@ body {
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 
-/* ── action header (Edit · Discard · Save) ─────────────────────────────────── */
+/* ── action header (lens tabs · Discard · Save, one line) ──────────────────── */
 .wb-lp-header {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px 10px;
+  padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-lp-title { font-size: 15px; font-weight: 700; color: var(--wb-accent); }
 .wb-lp-actions { display: flex; align-items: center; gap: 14px; }
 .wb-lp-discard {
   border: none; background: none; cursor: pointer; padding: 4px 2px;
@@ -1993,11 +1992,10 @@ body {
 
 /* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
 .wb-lens-tabs {
-  flex: 0 0 auto; display: flex; gap: 18px; padding: 0 16px;
-  border-bottom: 1px solid var(--wb-lp-border);
+  flex: 0 0 auto; display: flex; gap: 18px;
 }
 .wb-lens-tab {
-  border: none; background: none; cursor: pointer; padding: 8px 0 9px;
+  border: none; background: none; cursor: pointer; padding: 11px 0 10px;
   font-size: 14px; color: var(--wb-lp-text-2);
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
