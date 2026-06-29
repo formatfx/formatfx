@@ -1,7 +1,11 @@
 # Left Edit Pane — status & continuation handoff
 
-> Branch: `claude/formatfx-left-edit-pane-ys3gsf` (12 commits on top of `main`).
-> Every commit: `npm run build` + `npm test` (472 unit tests) green.
+> **RESOLVED 2026-06-29** — every "What remains" item below has shipped: the e2e
+> rewrite merged in **#116**; the Function Bar (dock + autocomplete) and the
+> inspector polish in **#117**. Unit suite is now at **488**. Kept as a record of
+> the design and what landed; nothing here is outstanding.
+>
+> Branch (historical): `claude/formatfx-left-edit-pane-ys3gsf`.
 > Spec: the "FormatFX Left Edit Pane — Complete Specification" (Claude-style
 > consolidated editing surface).
 
@@ -34,39 +38,31 @@
   `contextMenu.ts` + `clipboard.ts`).
 - **Re-skin** — Microsoft-blue CTA + cool Fluent pane (tokenized in `style.css`).
 
-## What remains
+## What remained — now COMPLETE (2026-06-29)
 
-1. **Function Bar** (`fxBar.ts`, `fxSuggest.ts`, `inspector.ts`)
-   - Add a `focusFxSlot(prop)` export to `fxBar.ts`; have the inspector's
-     `exprField` formula preview call it (click formula → focus/dock the bar).
-   - Map a style prop → the fx slot id (curated: color→`ink`, background-color→
-     `fill`, font-weight→`weight`, font-size→`fontSize`, text-align→`align`,
-     border-radius→`radius`, opacity→`opacity`; else `style:<prop>`).
-   - Draggable detach (`openFloat()` already exists — add header drag + dock button).
-   - Inline autocomplete: typing `[$` (column refs), `@` (context tokens),
-     function names; property-type-aware result suggestions after `if(`. Extend
-     `fxSuggest.ts` (it is pure + tested — add `columnCompletions`/`contextCompletions`/
-     `operandSuggestions`/`resultSuggestions`).
+1. **Function Bar** (`fxBar.ts`, `fxSuggest.ts`, `inspector.ts`) — **done (#117).**
+   `focusFxSlot(prop)` + the inspector `=` field's **ƒx** dock button; the
+   `slotIdForProp` curated map; draggable detach **with a dock-back button**; and
+   inline autocomplete — `columnCompletions`/`contextCompletions`/
+   `operandSuggestions`/`resultSuggestions` plus the caret-driven `completionAt()`
+   dispatcher, all Excel-dialect and round-trip-safe.
 
-2. **Inspector polish**
-   - `section()` helper → collapse chevron + per-section **Reset** link +
-     section-level blue-dot aggregation (per-property `.wb-active-dot` exists).
-   - **Quick-add links** ("Add: min width · max width · shadow · …").
-   - `ⓘ` doc cards on the new dedicated fields (reuse `buildDocCard`).
-   - customCardProps nested editing; `inlineEditField`/`defaultHoverField`
-     autocomplete; forEach code-driven **amber warning card** ("These N elements
-     are code-driven").
+2. **Inspector polish** — **done (#117).** Section collapse chevron + per-section
+   **Reset** + the active-dot aggregated across the selection; **quick-add links**
+   (allow-list-filtered); **ⓘ doc cards** on the dedicated Simple/Pro fields
+   (reusing `buildDocCard`); and the **forEach amber "code-driven" card**.
+   (`inlineEditField`/`defaultHoverField` already autocomplete via the field-ref
+   datalist; the `customCardProps` subtree is editable via the tree's "Edit card
+   content" → so those two were pre-existing, not rebuilt.)
 
-3. **e2e rewrite** (`e2e/sandbox.spec.ts`, `e2e/workspace.spec.ts`)
-   - These assert the OLD layout (`#wb-pane-palette`, side tabs, peek/max, the
-     box-model in advanced, etc.) and will fail. Rewrite against the new
-     selectors: `.wb-leftpane`, `.wb-lens-tab[data-lens="simple|pro|code"]`,
-     `#wb-tree-view .wb-tree-check`, `.wb-tree-eye`, `.wb-seg`, `.wb-preset`,
-     `.wb-expr-toggle`, `.wb-code-box`, `#wb-json-toggle`, `.wb-governed-badge`.
-   - The **unit suite is the green contract** (CLAUDE.md) — keep it passing;
-     rewrite e2e to match the new DOM.
+3. **e2e rewrite** — **done (#116, merged).** All six affected specs
+   (`sandbox`, `workspace`, `maker`, `grid`, `import`, `icons`) rewritten against
+   the new DOM; the `e2e` check is green. The unit suite stayed the green contract.
 
-## How to continue
+Nothing here is outstanding. The broader product roadmap lives in
+`docs/SHEET-MODE.md`.
+
+## How to continue (historical)
 
 ```
 git checkout claude/formatfx-left-edit-pane-ys3gsf

@@ -1767,6 +1767,12 @@ body {
   background: var(--wb-surface); color: var(--wb-text-2);
 }
 .wb-fx-float-dismiss:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-fx-float-dock {
+  flex: none; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 6px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+}
+.wb-fx-float-dock:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-fx-float-editor {
   width: 100%; box-sizing: border-box; padding: 8px;
   font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.6;

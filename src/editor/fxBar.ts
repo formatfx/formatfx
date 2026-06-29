@@ -303,7 +303,13 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     expand.addEventListener('click', () => {
       closeMenu();
       closeFloat();
-      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render());
+      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render(), (text) => {
+        float = null;
+        editor.value = text;
+        editor.classList.remove('wb-fx-draft');
+        editor.focus();
+        updateAc();
+      });
     });
 
     const bar = document.createElement('div');
@@ -356,6 +362,7 @@ function openFloat(
   applyText: (text: string, setFb: SetFeedback) => boolean,
   onApplied: () => void,
   onDismissed: () => void,
+  onDock: (text: string) => void,
 ): { panel: HTMLElement; cleanup: () => void } {
   const panel = document.createElement('div');
   panel.className = 'wb-fx-float';
@@ -369,12 +376,17 @@ function openFloat(
   badge.className = 'wb-fx-badge';
   badge.textContent = 'ƒx';
   title.append(badge, ` ${targetLabel}`);
+  const dock = document.createElement('button');
+  dock.type = 'button';
+  dock.className = 'wb-fx-float-dock';
+  dock.textContent = '⤓';
+  dock.title = 'Dock back into the bar — keeps what you typed there, ready to apply';
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.className = 'wb-fx-float-dismiss';
   dismiss.textContent = '✕';
   dismiss.title = 'Dismiss this window — what you typed is kept (unapplied) until you reopen it. Use Apply to commit.';
-  head.append(title, dismiss);
+  head.append(title, dock, dismiss);
 
   const ta = document.createElement('textarea');
   ta.className = 'wb-fx-float-editor';
@@ -437,6 +449,16 @@ function openFloat(
     panel.remove();
     onDismissed(); // re-render so the stash dot appears / clears immediately
   };
+  const dockWin = (): void => {
+    if (done) return;
+    done = true;
+    // the in-progress text moves to the inline bar (uncommitted); clear any stash
+    const stash = floatStash.get(node);
+    if (stash) { delete stash[slot.id]; if (!Object.keys(stash).length) floatStash.delete(node); }
+    cleanup();
+    panel.remove();
+    onDock(ta.value);
+  };
   const doApply = (): void => {
     if (!applyText(ta.value, setFb)) return;
     // committed — it's no longer an unapplied stash
@@ -447,6 +469,7 @@ function openFloat(
 
   apply.addEventListener('click', doApply);
   dismiss.addEventListener('click', dismissWin);
+  dock.addEventListener('click', dockWin);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doApply(); }
     if (e.key === 'Escape') { e.preventDefault(); dismissWin(); }
@@ -467,7 +490,7 @@ function openFloat(
     document.removeEventListener('pointermove', onMove);
   };
   head.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('.wb-fx-float-dismiss')) return;
+    if ((e.target as HTMLElement).closest('.wb-fx-float-dismiss, .wb-fx-float-dock')) return;
     e.preventDefault();
     const box = panel.getBoundingClientRect();
     drag = { dx: e.clientX - box.left, dy: e.clientY - box.top };
