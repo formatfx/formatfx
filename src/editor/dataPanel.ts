@@ -38,6 +38,7 @@ export function applyImportedSchema(
     state.fields = schema.fields;
     state.rows = schema.rows ?? buildSampleRows(schema.fields, 3);
     const drop = new Set(opts.dropColumnFormatters ?? []);
+    for (const name of drop) delete state.columnRefs[name];
     if (schema.columnFormatters) {
       for (const [name, tree] of Object.entries(schema.columnFormatters)) {
         if (!drop.has(name)) state.columnRefs[name] = tree;
