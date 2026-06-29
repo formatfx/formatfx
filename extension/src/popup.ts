@@ -121,6 +121,7 @@ function renderPicker(snap: ListSnapshot): void {
       fmtCb.setAttribute('aria-label', `Capture formatter for ${f.displayName || f.internalName}`);
       fmtWrap.append(fmtCb, document.createTextNode(' formatter'));
       label.appendChild(fmtWrap);
+    }
     list.appendChild(label);
   }
   // current view toggle, default on; hidden when there's no view to include
