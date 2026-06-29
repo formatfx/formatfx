@@ -167,6 +167,50 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
   return r.json();
 }
 
+/** SharePoint 400s that name an un-queryable field, e.g. `_ColorTag` (a Text
+ *  system column that exists in /fields but not on /items). The named field is
+ *  pruned and the query retried. */
+const FIELD_ERR_RE = /field or property '([^']+)' does not exist|query to field '([^']+)' is not valid/i;
+
+/** Safety cap on prune retries (each removes one field SharePoint rejected). */
+const PRUNE_LIMIT = 24;
+
+/**
+ * GET up to 10 sample rows, self-healing against system columns /items can't
+ * query. A type allow-list can't enumerate them all (`_ColorTag` is plain
+ * Text), so when SharePoint 400s naming a field we drop it and retry — the
+ * query converges on exactly the queryable columns, GET-only. Throws on a real
+ * error (403, etc.) so the caller can record why rows are empty.
+ */
+async function fetchSampleRows(listPath: string, fields: SnapshotField[]): Promise<Record<string, unknown>[]> {
+  let selects: string[] = [];
+  let expands: string[] = [];
+  for (const f of fields) {
+    const q = fieldQuery(f);
+    if (!q) continue;                                  // un-queryable by type → skip, gap-filled at import
+    if (q.expand) {
+      if (expands.length >= EXPAND_CAP) continue;      // beyond the expand cap → skip, gap-filled at import
+      expands.push(q.expand);
+    }
+    selects.push(...q.select);
+  }
+
+  for (let attempt = 0; attempt < PRUNE_LIMIT; attempt++) {
+    const r = await fetch(listPath + '/items?$top=10&$select=' + selects.join(',')
+      + (expands.length ? '&$expand=' + expands.join(',') : ''), {
+      headers: { Accept: 'application/json;odata=nometadata' },
+      credentials: 'same-origin',
+    });
+    if (r.ok) return ((await r.json()).value as Record<string, unknown>[]) || [];
+    const m = FIELD_ERR_RE.exec(await r.text());
+    const bad = m && (m[1] || m[2]);
+    if (!bad) throw new Error('FormatFX: GET failed (' + explainStatus(r.status) + ')');
+    selects = selects.filter((s) => s !== bad && !s.startsWith(bad + '/'));
+    expands = expands.filter((e) => e !== bad);
+  }
+  throw new Error('FormatFX: could not read this list’s rows after pruning system columns.');
+}
+
 /**
  * GET-only capture of the list the tab shows (or a named list on the same
  * web) into a List Snapshot. Mirrors the extract snippet, expands capped.
@@ -204,21 +248,7 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
   let rowsError: string | undefined;
   if (opts.includeData !== false) {
     try {
-      const selects: string[] = [];
-      const expands: string[] = [];
-      for (const f of fields) {
-        const q = fieldQuery(f);
-        if (!q) continue;                                  // un-queryable system column → skip, gap-filled at import
-        if (q.expand) {
-          if (expands.length >= EXPAND_CAP) continue;      // beyond the expand cap → skip, gap-filled at import
-          expands.push(q.expand);
-        }
-        selects.push(...q.select);
-      }
-      const itemsRes = await getJson(listPath + '/items?$top=10'
-        + '&$select=' + selects.join(',')
-        + (expands.length ? '&$expand=' + expands.join(',') : ''));
-      rows = (itemsRes.value as Record<string, unknown>[]) || [];
+      rows = await fetchSampleRows(listPath, fields);
     } catch (e) {
       // rows are best-effort: fields + formatters still captured, sample rows
       // filled at import — but record WHY so the failure isn't silent.

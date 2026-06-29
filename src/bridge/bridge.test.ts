@@ -102,6 +102,11 @@ function stubEnvironment(opts: {
     calls.push({ url, init });
     const body = opts.routes(url, init);
     if (typeof body === 'number') return new Response('', { status: body });
+    // a non-200 WITH a body (e.g. SharePoint's field-naming 400)
+    if (body && typeof body === 'object' && '__status' in (body as Record<string, unknown>)) {
+      const b = body as { __status: number; body?: string };
+      return new Response(b.body ?? '', { status: b.__status });
+    }
     return new Response(JSON.stringify(body), { status: 200 });
   });
   Object.defineProperty(navigator, 'clipboard', {
@@ -466,6 +471,38 @@ describe('spClient.captureSnapshot (extension runtime)', () => {
       // ...but the reason is now explicit, not swallowed
       expect(snap.rowsError).toBeTruthy();
       expect(snap.rowsError).toMatch(/Manage Lists|Edit/);
+    });
+
+    it('prunes a system column /items rejects by name (e.g. _ColorTag) and still captures rows', async () => {
+      // _ColorTag is TypeAsString 'Text' yet /items can't $select it — a type
+      // deny-list can't catch it. SharePoint's 400 names the field; we drop it
+      // and retry. Confirmed live: _ColorTag and _UIVersionString both prune.
+      const FIELDS = {
+        value: [
+          { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text', ReadOnlyField: false, Hidden: false },
+          { InternalName: '_ColorTag', Title: 'Color Tag', TypeAsString: 'Text', ReadOnlyField: true, Hidden: false },
+          { InternalName: 'Status', Title: 'Status', TypeAsString: 'Choice', Choices: ['New', 'Done'], ReadOnlyField: false, Hidden: false },
+        ],
+      };
+      const fieldErr = (name: string) => ({ __status: 400, body: JSON.stringify({ 'odata.error': { message: { value: `The field or property '${name}' does not exist.` } } }) });
+      stubEnvironment({
+        routes: (url) => {
+          if (url.includes('/fields?')) return FIELDS;
+          if (url.includes('/views?')) return { value: [] };
+          if (url.includes('/items?')) {
+            if (/[=,]_ColorTag\b/.test(url)) return fieldErr('_ColorTag'); // poison until pruned
+            return { value: [{ Title: 'Real task', Status: 'Done' }] };
+          }
+          throw new Error(`unexpected fetch: ${url}`);
+        },
+      });
+      const snap = await captureSnapshot();
+      expect(snap.rows).toHaveLength(1);
+      expect(snap.rows[0].Title).toBe('Real task');
+      // recovered cleanly — no error surfaced
+      expect(snap.rowsError).toBeUndefined();
+      // _ColorTag is still in the schema, just not queried for data
+      expect(snap.fields.map((f) => f.internalName)).toContain('_ColorTag');
     });
 
     it('opting out of data leaves no rows and no error', async () => {
