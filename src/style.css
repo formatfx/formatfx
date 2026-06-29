@@ -49,9 +49,14 @@ body.wb-dark {
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
 
-  /* Left Edit Pane — only the non-aliased tokens need dark overrides (the
-     surface/border/text aliases follow the app tokens above automatically). */
+  /* Left Edit Pane — restate the Left Pane token aliases in dark mode (mirrors :root)
+     so all dark-mode overrides live in one place. */
   --wb-lp-bg: var(--wb-surface);  /* elevated panel — one step lighter than the app bg */
+  --wb-lp-surface: var(--wb-surface);
+  --wb-lp-border: var(--wb-border);
+  --wb-lp-field-border: var(--wb-border);
+  --wb-lp-text: var(--wb-text);
+  --wb-lp-text-2: var(--wb-text-2);
   --wb-lp-selected: #123a5c;     /* tree selected row (dark blue) */
   --wb-lp-seg-track: #322f2e;
   --wb-cta-hover: #2b88d8;
