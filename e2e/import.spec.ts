@@ -43,6 +43,8 @@ async function importExport(page: Page): Promise<void> {
   await page.click('button:has-text("Import schema…")');
   await page.fill('.wb-schema-form textarea', listSchemaCsv());
   await page.click('button:has-text("Import pasted text")');
+  // listSchemaCsv carries a column formatter (Pct) → confirm the opt-out review
+  await page.click('#wb-fmt-review-import');
 }
 
 test('native CSV-with-schema import: fields, real rows, formatters registered', async ({ page }) => {
@@ -59,6 +61,25 @@ test('native CSV-with-schema import: fields, real rows, formatters registered', 
   // (display names), and the recovered formatter renders immediately
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
   await expect(page.locator('.wb-grid-row').first()).toContainText('75%');
+});
+
+test('import review opts a column formatter out: unchecked → column imports but formatter is not registered', async ({ page }) => {
+  await openDataDock(page);
+  await page.click('button:has-text("Import schema…")');
+  await page.fill('.wb-schema-form textarea', listSchemaCsv());
+  await page.click('button:has-text("Import pasted text")');
+  // the review lists the one formatter-bearing column (Pct); uncheck it
+  const review = page.locator('#wb-fmt-review');
+  await expect(review).toContainText('[$Pct]');
+  await review.locator('input[type="checkbox"]').uncheck();
+  await page.click('#wb-fmt-review-import');
+  // the column + data still import…
+  await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
+  await expect(page.locator('.wb-data-fieldname', { hasText: 'Pct' })).toBeVisible();
+  // …but no live column formatter was registered, and the cell shows the raw value
+  await expect(page.locator('#wb-toast')).not.toContainText('live column formatters');
+  await expect(page.locator('.wb-schema-form', { hasText: 'Column formatter references' }))
+    .not.toContainText('[$Pct]');
 });
 
 test('columnFormatterReference renders the registered formatter with swapped @currentField', async ({ page }) => {
@@ -116,6 +137,7 @@ test('list snapshot import: fields + views land; the default view\'s row formatt
   await expect(page.locator('.wb-live-extract')).toContainText('Live from SharePoint');
   await page.fill('.wb-schema-form textarea', listSnapshot({ defaultViewFormatter: true }));
   await page.click('button:has-text("Import pasted text")');
+  await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
   await expect(page.locator('#wb-toast')).toContainText('2 views');
   await expect(page.locator('#wb-toast')).toContainText('"All Items" row formatting loaded');
@@ -133,6 +155,7 @@ test('list snapshot without a default-view formatter rebuilds the grid; Load-as-
   await page.click('button:has-text("Import schema…")');
   await page.fill('.wb-schema-form textarea', listSnapshot());
   await page.click('button:has-text("Import pasted text")');
+  await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   // grid rebuilt around the snapshot (display names as headers)
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
   // no view had a formatter — the views section still lists them, without Load buttons

@@ -460,6 +460,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     const showFormatterReview = (raw: string, fmtCols: string[]): void => {
       const panel = document.createElement('div');
       panel.className = 'wb-schema-form';
+      panel.id = 'wb-fmt-review';
       const head = document.createElement('div');
       head.className = 'wb-data-fieldname';
       head.textContent = `Pull in column formatters? (${fmtCols.length})`;
@@ -482,6 +483,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       const row = document.createElement('div');
       row.className = 'wb-data-toolbar';
       const imp = document.createElement('button');
+      imp.id = 'wb-fmt-review-import';
       imp.textContent = 'Import';
       imp.addEventListener('click', () => {
         const dropColumnFormatters = boxes.filter((b) => !b.checked).map((b) => b.value);
