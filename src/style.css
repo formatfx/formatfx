@@ -744,7 +744,39 @@ body {
 .wb-inspector-section { border-bottom: 1px solid var(--wb-border); padding: 4px 0 8px; }
 .wb-inspector-section summary {
   font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; color: var(--wb-text);
+  display: flex; align-items: center; gap: 6px; list-style: none;
 }
+/* custom collapse chevron (so flex layout doesn't drop the native triangle) */
+.wb-inspector-section summary::-webkit-details-marker { display: none; }
+.wb-inspector-section summary::before {
+  content: '▸'; font-size: 9px; color: var(--wb-text-2); flex: none; width: 9px;
+}
+.wb-inspector-section[open] > summary::before { content: '▾'; }
+.wb-sec-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-sec-dot { flex: none; }
+.wb-sec-reset {
+  flex: none; border: none; background: transparent; cursor: pointer; padding: 1px 4px;
+  font-size: 10.5px; font-weight: 600; color: var(--wb-text-2); border-radius: 4px;
+}
+.wb-sec-reset:hover:not(:disabled) { color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
+.wb-sec-reset:disabled { opacity: 0; pointer-events: none; }
+/* forEach: an amber "this element is code-driven" notice */
+.wb-inspector-warn {
+  display: flex; gap: 7px; align-items: flex-start; margin: 6px 0 10px; padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, #f9ae58 55%, var(--wb-border));
+  background: color-mix(in srgb, #f9ae58 14%, transparent);
+  border-radius: 6px; font-size: 11.5px; line-height: 1.35; color: var(--wb-text);
+}
+.wb-warn-icon { flex: none; color: #b3700f; font-weight: 700; }
+/* quick-add links for common-but-unlisted style properties (Pro lens) */
+.wb-quickadd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; }
+.wb-quickadd-lab { font-size: 11px; color: var(--wb-text-2); }
+.wb-quickadd-link {
+  border: 1px dashed var(--wb-border); background: transparent; cursor: pointer;
+  border-radius: 4px; padding: 2px 7px; font-size: 11px; color: var(--wb-text-2);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+.wb-quickadd-link:hover { border-color: var(--wb-accent); color: var(--wb-accent); border-style: solid; }
 .wb-field { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .wb-field > span { font-size: 11px; color: var(--wb-text-2); }
 .wb-field input[type="text"], .wb-field textarea, .wb-field select,
@@ -1631,6 +1663,22 @@ body {
 .wb-fx-opt-formula { font-family: 'Cascadia Code', Consolas, monospace; font-size: 11.5px; }
 .wb-fx-opt-fx { flex: none; font-style: italic; font-weight: 700; color: var(--wb-accent); font-size: 11px; }
 
+/* inline autocomplete typeahead (column refs / functions / IF templates) */
+.wb-fx-acmenu {
+  position: fixed; z-index: 56; max-height: 260px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px; padding: 4px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 8px; box-shadow: 0 14px 40px rgba(0, 0, 0, .28);
+}
+.wb-fx-acopt {
+  width: 100%; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--wb-text); cursor: pointer; text-align: left;
+  font-family: 'Cascadia Code', Consolas, monospace; font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-fx-acopt:hover,
+.wb-fx-acopt.active { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
+
 /* the property-styled previews that sit at the left of a value option */
 .wb-fx-prev { flex: none; }
 .wb-fx-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--wb-border); }
@@ -1719,6 +1767,12 @@ body {
   background: var(--wb-surface); color: var(--wb-text-2);
 }
 .wb-fx-float-dismiss:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-fx-float-dock {
+  flex: none; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 6px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+}
+.wb-fx-float-dock:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-fx-float-editor {
   width: 100%; box-sizing: border-box; padding: 8px;
   font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.6;
@@ -2122,6 +2176,16 @@ body {
 .wb-expr-toggle:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-expr-toggle.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
 .wb-expr-input { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11.5px; color: var(--wb-accent); }
+/* ƒx — dock the Function Bar onto this property's formula (shown in = mode) */
+.wb-expr-fx {
+  flex: 0 0 auto; height: 22px; padding: 0 6px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1; font-style: italic;
+}
+.wb-expr-fx:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+/* ⓘ doc-card button on a dedicated visual field row */
+.wb-field-row .wb-field-info { flex: 0 0 auto; align-self: center; }
 
 /* multi-select: a property whose value differs across the selection reads "Mixed" */
 .wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }

@@ -14,10 +14,23 @@ import {
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
 import { state, CARD_SEGMENT } from './state';
+import { focusFxSlot } from './fxBar';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
+
+/** Common-but-unlisted style properties offered as one-click "quick adds" in the
+ *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
+ *  use so we never offer a property SharePoint would silently drop. */
+const QUICK_ADD: Array<[string, string]> = [
+  ['min-width', '0'],
+  ['max-width', '100%'],
+  ['box-shadow', '0 1px 3px rgba(0,0,0,.2)'],
+  ['cursor', 'pointer'],
+  ['white-space', 'nowrap'],
+  ['transition', 'all .15s ease'],
+];
 
 /** True when 2+ nodes are selected and they disagree on this style property. */
 function propIsMixed(prop: string): boolean {
@@ -67,10 +80,45 @@ export function mountInspector(host: HTMLElement): void {
     }
     host.append(fieldList, forEachList);
 
+    // forEach: a code-driven element is rendered once per item, so edits here
+    // apply to every repeated copy. Flag it (amber, not an error) so that's
+    // never a surprise — counting across the selection for multi-edit.
+    const codeDriven = state.selectedNodes.filter((n) => n.forEach !== undefined);
+    if (codeDriven.length) {
+      const warn = document.createElement('div');
+      warn.className = 'wb-inspector-warn';
+      const icon = document.createElement('span');
+      icon.className = 'wb-warn-icon';
+      icon.textContent = '⟳';
+      const msg = document.createElement('span');
+      msg.textContent = codeDriven.length === 1
+        ? 'Code-driven: this element renders once per item (forEach). Edits apply to every copy.'
+        : `Code-driven: ${codeDriven.length} of these elements render once per item (forEach). Edits apply to every copy.`;
+      warn.append(icon, msg);
+      host.appendChild(warn);
+    }
+
     // Lens gating: Simple shows the visual essentials (Text / Alignment / Box
     // model / Style); Pro adds structure, attributes, and the superpower
     // sections. (The Code lens replaces this inspector with the declarations box.)
     const pro = state.activeLens === 'pro';
+
+    // section-level Reset + active-dot: a section is "active" when any property
+    // it governs is set; Reset clears them all in one undoable mutation (writes
+    // to every selected node, matching the dedicated controls' commitAll).
+    const sectionReset = (props: string[]): SectionReset => ({
+      // active when ANY selected node has one of these props set — Reset (commitAll)
+      // writes to every selected node, so the dot/button must reflect all of them.
+      active: state.selectedNodes.some((n) => props.some((p) => styleOf(n, p) !== '')),
+      onReset: () => commitAll((n) => {
+        if (!n.style) return;
+        for (const p of props) delete n.style[p];
+        if (Object.keys(n.style).length === 0) delete n.style;
+      }),
+    });
+    const TYPO_PROPS = ['font-size', 'color', 'font-weight', 'text-align', 'line-height', 'text-transform'];
+    const APPEARANCE_PROPS = ['background-color', 'border-radius', 'opacity', 'overflow'];
+    const BORDER_PROPS = ['border-width', 'border-style', 'border-color'];
 
     // document-level wrapper settings when the root is selected (Pro only)
     if (pro && state.selection && state.selection.length === 0) {
@@ -139,12 +187,12 @@ export function mountInspector(host: HTMLElement): void {
     // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
     if (!pro) {
       host.appendChild(section('Text', [txtContentField()]));
-      host.appendChild(section('Typography', typographySection(node, commitAll)));
+      host.appendChild(section('Typography', typographySection(node, commitAll), false, sectionReset(TYPO_PROPS)));
       // the click-only flex-arrangement chip is retained as a Simple convenience;
       // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
       host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
-      host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
-      host.appendChild(section('Border', borderSection(node, commitAll)));
+      host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
+      host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
     }
 
     // ── Pro: the mechanical layout engine + full control ──
@@ -165,8 +213,8 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
       host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
       host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
-      host.appendChild(section('Appearance', appearanceSection(node, commitAll)));
-      host.appendChild(section('Border', borderSection(node, commitAll)));
+      host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
+      host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
     }
 
     // Box model (DevTools-style): Simple's intuitive padding/margin editor; Pro
@@ -179,6 +227,34 @@ export function mountInspector(host: HTMLElement): void {
           if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
         }), governedProperties(node.attributes?.class)),
       ], true));
+
+      // quick-add: one-click links for common-but-unlisted properties, each with
+      // a sensible starter value. Only offers what the element doesn't already
+      // carry; clicking adds it (one undoable mutation) so it lands in the Style
+      // editor above, ready to tune.
+      const present = new Set(Object.keys(node.style ?? {}));
+      const addable = QUICK_ADD.filter(([p]) => !present.has(p) && ALLOWED_STYLES.has(p));
+      if (addable.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'wb-quickadd';
+        const lab = document.createElement('span');
+        lab.className = 'wb-quickadd-lab';
+        lab.textContent = 'Add:';
+        wrap.appendChild(lab);
+        for (const [p, dflt] of addable) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'wb-quickadd-link';
+          b.textContent = p;
+          b.title = `Add ${p}: ${dflt}`;
+          b.addEventListener('click', () => state.mutateDocument(() => state.selectedNodes.forEach((n) => {
+            n.style = n.style ?? {};
+            if (n.style[p] === undefined) n.style[p] = dflt;
+          })));
+          wrap.appendChild(b);
+        }
+        host.appendChild(wrap);
+      }
     }
 
     // ── Pro-only: attributes + the superpower sections ──────────────────────
@@ -287,12 +363,39 @@ let selfCommit = false;
  * click-driven controls (the Alignment section) — no free-text property
  * editing — so a misclick can't corrupt the formatter.
  */
-function section(title: string, children: HTMLElement[], adv = false): HTMLElement {
+interface SectionReset { active: boolean; onReset: () => void; }
+
+function section(title: string, children: HTMLElement[], adv = false, reset?: SectionReset): HTMLElement {
   const s = document.createElement('details');
   s.className = 'wb-inspector-section' + (adv ? ' wb-adv' : '');
   s.open = true;
   const h = document.createElement('summary');
-  h.textContent = title;
+  const t = document.createElement('span');
+  t.className = 'wb-sec-title';
+  t.textContent = title;
+  h.appendChild(t);
+  // a blue dot when any property this section governs is set, and a Reset link
+  // that clears them all in one undoable step (spec — section-level aggregation).
+  if (reset) {
+    if (reset.active) {
+      const dot = document.createElement('span');
+      dot.className = 'wb-active-dot wb-sec-dot';
+      dot.title = 'Some properties in this section are set';
+      h.appendChild(dot);
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'wb-sec-reset';
+    btn.textContent = 'Reset';
+    btn.title = `Clear every property in ${title}`;
+    btn.disabled = !reset.active;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();  // don't toggle the <details> open/closed
+      e.stopPropagation();
+      reset.onReset();
+    });
+    h.appendChild(btn);
+  }
   s.appendChild(h);
   children.forEach((c) => s.appendChild(c));
   return s;
@@ -673,6 +776,38 @@ function visualRow(node: SPElement, label: string, prop: string, control: HTMLEl
   }
   lab.append(label);
   row.append(lab, control);
+  // ⓘ doc card: the family diagram, plain-language story and clickable example
+  // chips for this property — the same teaching card the Style editor uses.
+  if (STYLE_PROP_DOCS[prop]) {
+    const info = document.createElement('button');
+    info.type = 'button';
+    info.className = 'wb-kv-info wb-kv-info-known wb-field-info';
+    info.textContent = 'ⓘ';
+    info.title = `What does ${prop} do?`;
+    const card = document.createElement('div');
+    card.className = 'wb-doccard';
+    card.hidden = true;
+    buildDocCard(card, prop, STYLE_PROP_DOCS, styleFamilyOf, (exProp, exValue) => {
+      if (exValue === null || exProp !== prop) return; // variant switches just re-read
+      // apply to every selected node as a normal (re-rendering) mutation so the
+      // field visibly updates to the value the maker just clicked.
+      state.mutateDocument(() => state.selectedNodes.forEach((n) => {
+        n.style = n.style ?? {};
+        if (exValue === '') delete n.style[prop]; else n.style[prop] = exValue;
+        if (Object.keys(n.style).length === 0) delete n.style;
+      }));
+    });
+    info.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willShow = card.hidden;
+      closeDocCards();
+      if (!willShow) return;
+      card.hidden = false;
+      openCardAnchor = { card, anchor: info };
+      positionDocCard();
+    });
+    row.append(info, card);
+  }
   return row;
 }
 function propInput(node: SPElement, commit: (fn: (n: SPElement) => void) => void, prop: string, placeholder: string): HTMLInputElement {
@@ -748,6 +883,15 @@ function exprField(
       inp.spellcheck = false;
       inp.addEventListener('change', () => setStyleProp(commit, prop, inp.value.trim()));
       wrap.append(inp);
+      // dock the Function Bar onto this property — edit the same formula there,
+      // with column/context/function autocomplete and the value menu.
+      const dock = document.createElement('button');
+      dock.type = 'button';
+      dock.className = 'wb-expr-fx';
+      dock.textContent = 'ƒx';
+      dock.title = 'Edit this formula in the Function Bar — with column and function autocomplete';
+      dock.addEventListener('click', () => { focusFxSlot(prop); });
+      wrap.append(dock);
       if (focusInput) requestAnimationFrame(() => inp.focus());
     } else {
       wrap.append(buildControl());

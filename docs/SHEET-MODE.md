@@ -1,5 +1,32 @@
 # Sheet mode — design, locked 2026-06-12
 
+> **READ FIRST — status, 2026-06-29.** This file is **principles + shipped
+> history, not an open roadmap.** When it surfaces in a chat, treat it by layer:
+>
+> - **Canon (binding — still the law):** the *principles*. "Ship only what will
+>   definitely work on a real list / confidence is the product" (round-trip-or-
+>   refuse); "the system does the thinking" (type-awareness + contextual
+>   filtering); "formats **display**, never sets values — every row, never one
+>   cell"; "SharePoint has no logical NOT". The codebase enforces these today and
+>   new work must too.
+> - **Shipped history (done — don't rebuild):** all three stages — the
+>   Format-cells dialog, the transpiler (`dialect.ts`) + fx bar
+>   (`fxSlots.ts` / `fxSuggest.ts`), and the unified shell. The Left Edit Pane
+>   (#116 / #117) is built on top of these.
+> - **Dead (superseded — ignore the framing):** the Basic/Advanced **mode
+>   toggle** and `uiPrefs.mode`. There is one always-on surface now. (The
+>   `'basic'` value and `wb-basic` class stay frozen ONLY so renames never wipe
+>   autosaved prefs — a compatibility relic, not a live concept.)
+> - **Still open (valid, unbuilt):** (1) **JSON host columns** — gating
+>   computed-output-replacement to purpose-made "display" columns so "where did
+>   my value go?" stays impossible (no implementation in `src` yet); (2) **column
+>   subtypes → settings** export (PowerShell / column-settings path), explicitly
+>   deferred past stages 1–3.
+>
+> This banner re-opens nothing — the locked decisions below stand. It just says
+> which parts are law, which are done, and which are dead, so the doc stops
+> reading as canon-to-build when most of it is canon-already-shipped.
+
 > **Superseded 2026-06-17:** the Sheet/Advanced *mode toggle* was removed
 > at the owner's request — there is now a single unified surface that
 > always shows everything (palette, Structure, ribbon's Formatted-columns
