@@ -401,6 +401,82 @@ describe('spClient.captureSnapshot (extension runtime)', () => {
     stubEnvironment({ routes: extractRoutes, pageCtx: null });
     await expect(captureSnapshot()).rejects.toThrow(/SharePoint page/);
   });
+
+  // Regression: a real list's /fields includes system columns (Computed,
+  // Attachments, and pseudo-lookups with no LookupList) that /items cannot
+  // $select or $expand. OData is all-or-nothing — ONE such field 400s the
+  // entire items request, and the old best-effort catch turned that into
+  // rows: [] (so the app showed synthetic sample data instead of real rows).
+  describe('un-queryable system fields must not poison the items query', () => {
+    const POISON = ['ContentType', 'Attachments', 'ItemChildCount'];
+    const REAL_LIST_FIELDS = {
+      value: [
+        { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text', ReadOnlyField: false, Hidden: false },
+        { InternalName: 'Status', Title: 'Status', TypeAsString: 'Choice', Choices: ['New', 'Done'], ReadOnlyField: false, Hidden: false },
+        // a genuine person column — has a GUID LookupList, is expandable
+        { InternalName: 'Owner', Title: 'Owner', TypeAsString: 'User', LookupList: '{328dd316-0d78-477c-a20e-c3439cbd6554}', ReadOnlyField: false, Hidden: false },
+        // a genuine lookup — GUID LookupList, expandable
+        { InternalName: 'Project', Title: 'Project', TypeAsString: 'Lookup', LookupList: '{99999999-aaaa-bbbb-cccc-dddddddddddd}', LookupField: 'Title', ReadOnlyField: false, Hidden: false },
+        // ── poison: present in /fields, fatal in /items ──
+        { InternalName: 'ContentType', Title: 'Content Type', TypeAsString: 'Computed', ReadOnlyField: true, Hidden: false },
+        { InternalName: 'Attachments', Title: 'Attachments', TypeAsString: 'Attachments', ReadOnlyField: false, Hidden: false },
+        // pseudo-lookup: TypeAsString 'Lookup' but NO LookupList → not expandable
+        { InternalName: 'ItemChildCount', Title: 'Item Child Count', TypeAsString: 'Lookup', LookupField: 'ItemChildCount', ReadOnlyField: true, Hidden: false },
+      ],
+    };
+
+    it('excludes them, so the items GET succeeds and real rows are captured', async () => {
+      stubEnvironment({
+        routes: (url) => {
+          if (url.includes('/fields?')) return REAL_LIST_FIELDS;
+          if (url.includes('/views?')) return { value: [] };
+          if (url.includes('/items?')) {
+            // mimic SharePoint: any poison field named in $select/$expand 400s the lot
+            for (const p of POISON) if (new RegExp(`[=,/]${p}\\b`).test(url)) return 400;
+            return { value: [{ Title: 'Real task', Status: 'Done', Owner: { Id: 1, Title: 'Sam', EMail: 's@c.com' }, Project: { Id: 3, Title: 'Apollo' } }] };
+          }
+          throw new Error(`unexpected fetch: ${url}`);
+        },
+      });
+      const snap = await captureSnapshot();
+      // the bug: rows came back [] because the 400 was swallowed
+      expect(snap.rows).toHaveLength(1);
+      expect(snap.rows[0].Title).toBe('Real task');
+      // genuine lookups still ride along expanded
+      expect(snap.rows[0].Owner).toMatchObject({ Title: 'Sam' });
+      // the system fields are still captured as schema fields (just not queried for data)
+      expect(snap.fields.map((f) => f.internalName)).toContain('ContentType');
+      // a clean capture carries no rowsError
+      expect(snap.rowsError).toBeUndefined();
+    });
+
+    it('records WHY rows are empty so a failed fetch never poses as an empty list', async () => {
+      stubEnvironment({
+        routes: (url) => {
+          if (url.includes('/fields?')) return FIELDS_RES;
+          if (url.includes('/views?')) return VIEWS_RES;
+          if (url.includes('/items?')) return 403; // e.g. no item-read despite list visibility
+          throw new Error(`unexpected fetch: ${url}`);
+        },
+      });
+      const snap = await captureSnapshot();
+      expect(snap.rows).toEqual([]);
+      // schema + formatters still captured — capture is still useful
+      expect(snap.fields.length).toBeGreaterThan(0);
+      // ...but the reason is now explicit, not swallowed
+      expect(snap.rowsError).toBeTruthy();
+      expect(snap.rowsError).toMatch(/Manage Lists|Edit/);
+    });
+
+    it('opting out of data leaves no rows and no error', async () => {
+      stubEnvironment({ routes: extractRoutes });
+      const snap = await captureSnapshot({ includeData: false });
+      expect(snap.rows).toEqual([]);
+      expect(snap.rowsError).toBeUndefined();
+      // never even asked /items
+      expect(calls.some((c) => c.url.includes('/items?'))).toBe(false);
+    });
+  });
 });
 
 describe('spClient.applyFormatters (extension runtime)', () => {

@@ -24,7 +24,8 @@
     #picker label .iname { opacity: 0.5; }
     .picker-tools { display: flex; gap: 8px; margin: 0 0 8px; }
     .picker-tools button { margin: 0; padding: 4px 8px; font-size: 11px; }
-    #picker-view-row { margin: 0 0 8px; padding: 6px 8px; border: 1px dashed #8884; border-radius: 6px; font-size: 12px; }
+    #picker-view-row, #picker-data-row { margin: 0 0 8px; padding: 6px 8px; border: 1px dashed #8884; border-radius: 6px; font-size: 12px; }
+    #picker-data-warn { margin: 0 0 8px; padding: 6px 8px; border: 1px solid #b4231855; border-radius: 6px; font-size: 11px; color: #b42318; background: #b4231810; }
   </style>
 </head>
 <body>
@@ -53,6 +54,8 @@
     </div>
     <div id="picker-fields"></div>
     <label id="picker-view-row"><input type="checkbox" id="picker-view"> <span id="picker-view-label">Include current view</span></label>
+    <label id="picker-data-row"><input type="checkbox" id="picker-data" checked> <span>Include sample data (up to 10 rows)</span></label>
+    <div id="picker-data-warn" hidden></div>
     <button id="picker-open">Open in FormatFX ↗</button>
     <button id="picker-copy" class="secondary">Copy to clipboard</button>
     <button id="picker-cancel" class="secondary">Cancel</button>

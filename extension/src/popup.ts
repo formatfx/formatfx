@@ -122,12 +122,32 @@ function renderPicker(snap: ListSnapshot): void {
     viewRow.hidden = true;
     viewCb.checked = false;
   }
+
+  // The capture couldn't read this list's rows: say so plainly instead of
+  // letting synthetic sample data pose as the real thing. With no real rows to
+  // ship, the data toggle is off and disabled.
+  const dataCb = document.getElementById('picker-data') as HTMLInputElement;
+  const dataWarn = document.getElementById('picker-data-warn') as HTMLElement;
+  if (snap.rowsError) {
+    dataCb.checked = false;
+    dataCb.disabled = true;
+    dataWarn.hidden = false;
+    dataWarn.textContent = `⚠ Couldn't read this list's rows (${snap.rowsError}). FormatFX will use synthetic sample data.`;
+  } else {
+    dataCb.checked = true;
+    dataCb.disabled = false;
+    dataWarn.hidden = true;
+  }
 }
 
 function selectedSnapshot(): ListSnapshot {
   const names = Array.from(document.querySelectorAll<HTMLInputElement>('#picker-fields .fld:checked')).map((c) => c.value);
   const includeCurrentView = (document.getElementById('picker-view') as HTMLInputElement).checked;
-  return selectFromSnapshot(captured!, { fieldNames: names, includeCurrentView });
+  const includeData = (document.getElementById('picker-data') as HTMLInputElement).checked;
+  const sel = selectFromSnapshot(captured!, { fieldNames: names, includeCurrentView });
+  // "Include sample data" off → ship schema/formatters only; the app fills
+  // synthetic sample rows at import (dataPanel: schema.rows ?? buildSampleRows).
+  return includeData ? sel : { ...sel, rows: [] };
 }
 
 function setAllFields(checked: boolean): void {
@@ -141,14 +161,14 @@ async function onPickerOpen(): Promise<void> {
   const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
   await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
   await chrome.tabs.create({ url: 'https://formatfx.dev' });
-  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''} — FormatFX is opening with it loaded.`, 'ok');
+  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'} — FormatFX is opening with it loaded.`, 'ok');
 }
 
 async function onPickerCopy(): Promise<void> {
   const sel = selectedSnapshot();
   if (!sel.fields.length) { setStatus('Pick at least one column.', 'err'); return; }
   await navigator.clipboard.writeText(JSON.stringify(sel, null, 1));
-  setStatus(`Copied ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}. Paste into FormatFX → Data → Import schema.`, 'ok');
+  setStatus(`Copied ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'}. Paste into FormatFX → Data → Import schema.`, 'ok');
 }
 
 function onPickerCancel(): void {
