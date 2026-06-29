@@ -768,6 +768,15 @@ body {
   border-radius: 6px; font-size: 11.5px; line-height: 1.35; color: var(--wb-text);
 }
 .wb-warn-icon { flex: none; color: #b3700f; font-weight: 700; }
+/* quick-add links for common-but-unlisted style properties (Pro lens) */
+.wb-quickadd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 4px; }
+.wb-quickadd-lab { font-size: 11px; color: var(--wb-text-2); }
+.wb-quickadd-link {
+  border: 1px dashed var(--wb-border); background: transparent; cursor: pointer;
+  border-radius: 4px; padding: 2px 7px; font-size: 11px; color: var(--wb-text-2);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+.wb-quickadd-link:hover { border-color: var(--wb-accent); color: var(--wb-accent); border-style: solid; }
 .wb-field { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .wb-field > span { font-size: 11px; color: var(--wb-text-2); }
 .wb-field input[type="text"], .wb-field textarea, .wb-field select,

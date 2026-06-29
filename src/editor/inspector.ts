@@ -20,6 +20,18 @@ import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
 
+/** Common-but-unlisted style properties offered as one-click "quick adds" in the
+ *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
+ *  use so we never offer a property SharePoint would silently drop. */
+const QUICK_ADD: Array<[string, string]> = [
+  ['min-width', '0'],
+  ['max-width', '100%'],
+  ['box-shadow', '0 1px 3px rgba(0,0,0,.2)'],
+  ['cursor', 'pointer'],
+  ['white-space', 'nowrap'],
+  ['transition', 'all .15s ease'],
+];
+
 /** True when 2+ nodes are selected and they disagree on this style property. */
 function propIsMixed(prop: string): boolean {
   const nodes = state.selectedNodes;
@@ -215,6 +227,34 @@ export function mountInspector(host: HTMLElement): void {
           if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
         }), governedProperties(node.attributes?.class)),
       ], true));
+
+      // quick-add: one-click links for common-but-unlisted properties, each with
+      // a sensible starter value. Only offers what the element doesn't already
+      // carry; clicking adds it (one undoable mutation) so it lands in the Style
+      // editor above, ready to tune.
+      const present = new Set(Object.keys(node.style ?? {}));
+      const addable = QUICK_ADD.filter(([p]) => !present.has(p) && ALLOWED_STYLES.has(p));
+      if (addable.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'wb-quickadd';
+        const lab = document.createElement('span');
+        lab.className = 'wb-quickadd-lab';
+        lab.textContent = 'Add:';
+        wrap.appendChild(lab);
+        for (const [p, dflt] of addable) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'wb-quickadd-link';
+          b.textContent = p;
+          b.title = `Add ${p}: ${dflt}`;
+          b.addEventListener('click', () => state.mutateDocument(() => state.selectedNodes.forEach((n) => {
+            n.style = n.style ?? {};
+            if (n.style[p] === undefined) n.style[p] = dflt;
+          })));
+          wrap.appendChild(b);
+        }
+        host.appendChild(wrap);
+      }
     }
 
     // ── Pro-only: attributes + the superpower sections ──────────────────────
