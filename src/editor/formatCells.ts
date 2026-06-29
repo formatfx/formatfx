@@ -183,8 +183,18 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
-    head.innerHTML = `<span class="wb-fc-title">Format cells — ${nameOf(node)}</span>
-      <span class="wb-fc-sub">nothing changes until you Apply (then Ctrl+Z undoes)</span>`;
+
+    // 🛡️ Sentinel: Prevent XSS by using textContent for user-defined element names
+    const title = document.createElement('span');
+    title.className = 'wb-fc-title';
+    title.textContent = `Format cells — ${nameOf(node)}`;
+
+    const sub = document.createElement('span');
+    sub.className = 'wb-fc-sub';
+    sub.textContent = 'nothing changes until you Apply (then Ctrl+Z undoes)';
+
+    head.append(title, sub);
+
     const close = document.createElement('button');
     close.className = 'wb-fc-close';
     close.textContent = '✕';
