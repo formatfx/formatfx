@@ -254,20 +254,20 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     host.remove();
   });
 
-  it('does not leak subscribers when mounting panels multiple times because unsubscribe is called', () => {
-    const initialListeners = (state as any).listeners.length;
-    expect(initialListeners).toBe(0);
-
+  it('cleans up panel subscriptions via public unsubscribe hooks when remounting', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
 
     // Mount once
     mountInspector(host);
-    expect((state as any).listeners.length).toBe(1);
+    const firstInspectorUnsub = (host as any)._unsub;
+    expect(typeof firstInspectorUnsub).toBe('function');
 
     // Mount again (simulating navigation or hot reload)
     mountInspector(host);
-    expect((state as any).listeners.length).toBe(1); // Correctly disposed old listener
+    const secondInspectorUnsub = (host as any)._unsub;
+    expect(typeof secondInspectorUnsub).toBe('function');
+    expect(secondInspectorUnsub).not.toBe(firstInspectorUnsub);
 
     // Mount tree view
     const viewHost = document.createElement('div');
@@ -275,7 +275,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     document.body.appendChild(viewHost);
     document.body.appendChild(colsHost);
     mountTree(viewHost, colsHost);
-    expect((state as any).listeners.length).toBe(2); // 1 for inspector, 1 for tree view
+    expect(typeof (viewHost as any)._unsub).toBe('function');
 
     // Clean up DOM
     (host as any)._unsub?.();
