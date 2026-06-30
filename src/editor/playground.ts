@@ -413,10 +413,25 @@ function mount(opts: Opts): void {
     // ── header ──
     const head = document.createElement('div');
     head.className = 'wb-pg-head';
-    head.innerHTML = `<span class="wb-pg-title">⚗ Style playground</span>
-      <span class="wb-pg-sub">${opts.mode === 'element' && targetNode
-        ? `restyling <b>${nameOf(targetNode)}</b> — nothing is saved until you apply`
-        : 'consequence-free — nothing touches your formatter unless you apply it'}</span>`;
+
+    const title = document.createElement('span');
+    title.className = 'wb-pg-title';
+    title.textContent = '⚗ Style playground';
+
+    const sub = document.createElement('span');
+    sub.className = 'wb-pg-sub';
+    if (opts.mode === 'element' && targetNode) {
+      sub.appendChild(document.createTextNode('restyling '));
+      const bold = document.createElement('b');
+      bold.textContent = nameOf(targetNode);
+      sub.appendChild(bold);
+      sub.appendChild(document.createTextNode(' — nothing is saved until you apply'));
+    } else {
+      sub.textContent = 'consequence-free — nothing touches your formatter unless you apply it';
+    }
+
+    head.append(title, sub);
+
     const close = document.createElement('button');
     close.className = 'wb-pg-close';
     close.textContent = '✕';
