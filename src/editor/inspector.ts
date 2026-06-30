@@ -1297,7 +1297,7 @@ const positionDocCard = () => {
   if (r.bottom < 0 || r.top > window.innerHeight) { closeDocCards(); return; }
   const lp = document.getElementById('wb-leftpane');
   const lpRight = lp ? lp.getBoundingClientRect().right : 360;
-  card.style.left = `${lpRight + 8}px`;
+  card.style.left = `${Math.min(lpRight + 8, window.innerWidth - card.offsetWidth - 8)}px`;
   card.style.top = `${Math.min(r.bottom + 6, Math.max(8, window.innerHeight - card.offsetHeight - 10))}px`;
 };
 document.addEventListener('pointerdown', (e) => {
