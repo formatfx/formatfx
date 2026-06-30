@@ -2,11 +2,11 @@
 
 ## Architecture
 The application is a Single Page Application (SPA) designed as a spreadsheet-faithful formatter editor.
-- **State Management (`src/state.ts`)**: Holds selection state (`selections: NodePath[]`), history stack for Undo/Redo, and savepoints.
-- **Left Edit Pane (`src/leftPane.ts`)**: Displays tabs (Simple, Pro, Code) and controls layout, sizing, padding, and draw tools.
-- **Tree View (`src/treeView.ts`)**: Visualizes document hierarchy, handles checkboxes for multi-select, and communicates with state.
-- **Inspector (`src/inspector.ts`)**: Rendered based on current selection, binds controls to edit fields, and supports multi-edit.
-- **Canvas / Preview Area (`src/canvas.ts` / `src/render.ts`)**: Renders the preview of the sheet, highlights active selections.
+- **State Management (`src/editor/state.ts`)**: Holds selection state (`selections: NodePath[]`), history stack for Undo/Redo, and savepoints.
+- **Left Edit Pane (`src/editor/leftPane.ts`)**: Displays tabs (Simple, Pro, Code) and controls layout, sizing, padding, and draw tools.
+- **Tree View (`src/editor/treeView.ts`)**: Visualizes document hierarchy, handles checkboxes for multi-select, and communicates with state.
+- **Inspector (`src/editor/inspector.ts`)**: Rendered based on current selection, binds controls to edit fields, and supports multi-edit.
+- **Canvas / Preview Area (`src/editor/canvas.ts` / `src/editor/render.ts`)**: Renders the preview of the sheet, highlights active selections.
 - **Styling (`src/style.css`)**: Contains design tokens (`--wb-*`) and Fluent UI styles.
 
 ## Milestones
