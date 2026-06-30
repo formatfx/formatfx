@@ -353,28 +353,42 @@ export const PALETTE: PaletteItem[] = [
   },
   {
     id: 'progress-ring', label: 'Progress donut', icon: 'DonutChart', group: 'Data & Charts', basic: true,
-    description: 'Conic-style donut faked with SVG stroke-dasharray (generic-gauge family)',
+    description: 'Filled path SVG donut with sin/cos logic (generic-gauge family)',
     create: () => ({
       elmType: 'div',
       style: { 'display': 'flex', 'align-items': 'center' },
       children: [
         {
-          elmType: 'svg',
-          attributes: { viewBox: '0 0 36 36' },
-          style: { 'width': '32px', 'height': '32px' },
+          elmType: 'div',
+          style: { 'position': 'relative', 'width': '32px', 'height': '32px' },
           children: [
             {
-              elmType: 'path',
-              attributes: { d: 'M18 2.5 a 15.5 15.5 0 1 1 0 31 a 15.5 15.5 0 1 1 0 -31' },
-              style: { 'fill': 'none', 'stroke': '#f3f2f1', 'stroke-width': '4' },
+              elmType: 'svg',
+              style: { 'fill': 'currentColor', 'position': 'absolute', 'top': '0', 'right': '0' },
+              attributes: { viewBox: '0 0 600 600', class: 'ms-fontColor-neutralQuaternaryAlt' },
+              children: [
+                {
+                  elmType: 'path',
+                  attributes: { d: 'M300,0 A300,300 0 1,1 299.998407846124,4.2249439502484165e-9 L299.99880588459297,75.00000000316868 A225,225 0 1,0 300,75 Z' },
+                },
+              ],
             },
             {
-              elmType: 'path',
-              attributes: { d: 'M18 2.5 a 15.5 15.5 0 1 1 0 31 a 15.5 15.5 0 1 1 0 -31' },
+              elmType: 'svg',
               style: {
-                'fill': 'none', 'stroke': "=if([$Progress]>=100,'#107c10','#0078d4')", 'stroke-width': '4',
-                'stroke-dasharray': "=([$Progress]*97/100)+',100'",
+                'fill': "=if([$Progress]>=100,'#107c10','#0078d4')",
+                'position': 'absolute', 'top': '0', 'right': '0',
+                'display': "=if([$Progress]<=0,'none','')",
               },
+              attributes: { viewBox: '0 0 600 600' },
+              children: [
+                {
+                  elmType: 'path',
+                  attributes: {
+                    d: "= 'M300,0 A300,300 0 ' + if([$Progress]/100 > 0.5 , '1,1 ' , '0,1 ') + (300 + 300 * sin(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ',' + (300 - 300 * cos(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ' L' + (300 + 225 * sin(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ',' + (300 - 225 * cos(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ' A225,225 0 ' + if([$Progress]/100 > 0.5 , '1,0 ' , '0,0 ') + ' 300,75 Z'",
+                  },
+                },
+              ],
             },
           ],
         },
