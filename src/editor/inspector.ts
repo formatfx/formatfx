@@ -223,9 +223,19 @@ export function mountInspector(host: HTMLElement): void {
 
     if (pro) {
       host.appendChild(section('Style (all properties)', [
-        kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => commit((n) => {
-          if (Object.keys(obj).length === 0) delete n.style; else n.style = obj;
-        }), governedProperties(node.attributes?.class)),
+        kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => {
+          const oldStyleKeys = Object.keys(node.style ?? {});
+          commitAll((n) => {
+            n.style = n.style ?? {};
+            for (const k of oldStyleKeys) {
+              if (!(k in obj)) delete n.style[k];
+            }
+            for (const [k, v] of Object.entries(obj)) {
+              n.style[k] = v;
+            }
+            if (Object.keys(n.style).length === 0) delete n.style;
+          });
+        }, governedProperties(node.attributes?.class)),
       ], true));
 
       // quick-add: one-click links for common-but-unlisted properties, each with
@@ -259,11 +269,21 @@ export function mountInspector(host: HTMLElement): void {
 
     // ── Pro-only: attributes + the superpower sections ──────────────────────
     if (pro) {
-    host.appendChild(section('Attributes', [
-      kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => commit((n) => {
-        if (Object.keys(obj).length === 0) delete n.attributes; else n.attributes = obj;
-      })),
-    ], true));
+      host.appendChild(section('Attributes', [
+        kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => {
+          const oldAttrKeys = Object.keys(node.attributes ?? {});
+          commitAll((n) => {
+            n.attributes = n.attributes ?? {};
+            for (const k of oldAttrKeys) {
+              if (!(k in obj)) delete n.attributes[k];
+            }
+            for (const [k, v] of Object.entries(obj)) {
+              n.attributes[k] = v;
+            }
+            if (Object.keys(n.attributes).length === 0) delete n.attributes;
+          });
+        }),
+      ], true));
 
     // customRowAction
     const cra = node.customRowAction;
@@ -345,12 +365,16 @@ export function mountInspector(host: HTMLElement): void {
     } // end Pro-only sections
   };
 
-  state.subscribe((reason) => {
+  if ((host as any)._unsub) {
+    (host as any)._unsub();
+  }
+  const unsub = state.subscribe((reason) => {
     // skip rebuilding for our own commits — keeps focus in the input being
     // edited (arrow-stepping, rapid toggles) while canvas/tree still update
     if (reason === 'document' && selfCommit) return;
     if (reason === 'selection' || reason === 'load' || reason === 'document' || reason === 'lens') render();
   });
+  (host as any)._unsub = unsub;
   render();
 }
 
@@ -1271,7 +1295,9 @@ const positionDocCard = () => {
   const { card, anchor } = openCardAnchor;
   const r = anchor.getBoundingClientRect();
   if (r.bottom < 0 || r.top > window.innerHeight) { closeDocCards(); return; }
-  card.style.left = `${Math.max(8, r.right - card.offsetWidth)}px`;
+  const lp = document.getElementById('wb-leftpane');
+  const lpRight = lp ? lp.getBoundingClientRect().right : 360;
+  card.style.left = `${Math.min(lpRight + 8, window.innerWidth - card.offsetWidth - 8)}px`;
   card.style.top = `${Math.min(r.bottom + 6, Math.max(8, window.innerHeight - card.offsetHeight - 10))}px`;
 };
 document.addEventListener('pointerdown', (e) => {

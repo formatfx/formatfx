@@ -327,11 +327,19 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     host.scrollIntoView({ block: 'nearest' });
   };
 
-  state.subscribe((reason) => {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  const unsub = state.subscribe((reason) => {
     if (reason === 'document' && selfCommit) return;
     if (reason === 'selection' || reason === 'load' || reason === 'document'
       || reason === 'data' || reason === 'kind') render();
   });
+  hostAny._unsub = () => {
+    unsub();
+    dockOntoProp = null;
+  };
   render();
 }
 

@@ -32,6 +32,16 @@ const LENSES: Array<{ id: EditorLens; label: string }> = [
 ];
 
 export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  host.querySelectorAll('*').forEach((el: any) => {
+    if (typeof el._unsub === 'function') {
+      el._unsub();
+    }
+  });
+
   const { toast } = opts;
   host.classList.add('wb-leftpane');
   host.innerHTML = `
@@ -206,11 +216,19 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   });
 
   // ── subscriptions ──────────────────────────────────────────────────────────
-  state.subscribe((reason) => {
+  const unsub = state.subscribe((reason) => {
     if (reason === 'lens') applyLens();
     if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo();
     if (reason !== 'selection' && reason !== 'lens' && reason !== 'theme') refreshActionHeader();
   });
+  hostAny._unsub = () => {
+    unsub();
+    host.querySelectorAll('*').forEach((el: any) => {
+      if (typeof el._unsub === 'function') {
+        el._unsub();
+      }
+    });
+  };
   applyLens();
   refreshUndoRedo();
   refreshActionHeader();

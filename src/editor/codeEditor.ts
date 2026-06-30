@@ -57,8 +57,10 @@ export function mountCodeEditor(host: HTMLElement): void {
     errs.hidden = true;
     dirty = false; // applied — let the re-render reformat to canonical
     state.mutateDocument(() => {
-      const n = state.nodeAt(path);
-      if (n) applyDeclarations(n, parsed);
+      state.selections.forEach((p) => {
+        const n = state.nodeAt(p);
+        if (n) applyDeclarations(n, parsed);
+      });
     });
   };
 
@@ -66,7 +68,11 @@ export function mountCodeEditor(host: HTMLElement): void {
   box.addEventListener('change', commit);
   box.addEventListener('blur', commit);
 
-  state.subscribe((reason) => {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  hostAny._unsub = state.subscribe((reason) => {
     if (reason === 'selection' || reason === 'load' || reason === 'document' || reason === 'lens') {
       // a fresh selection / external doc change supersedes any in-progress edit
       if (reason !== 'document') dirty = false;

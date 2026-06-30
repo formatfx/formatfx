@@ -441,6 +441,11 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       };
       state.fields.push(field);
       state.rows.forEach((row, i) => { row[n] = sampleValue(field, i); });
+      if (state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+        state.mutateDocument(() => {
+          state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+        });
+      }
       done();
       state.emit('data');
     });
@@ -612,6 +617,14 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         if (!confirm(`Remove field ${field.name}?`)) return;
         state.fields = state.fields.filter((f) => f !== field);
         for (const row of state.rows) delete row[field.name];
+        if (state.currentFieldName === field.name) {
+          state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0]?.name ?? '';
+        }
+        if (state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+          state.mutateDocument(() => {
+            state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+          });
+        }
         state.emit('data');
       });
 
@@ -678,7 +691,11 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     return table;
   };
 
-  state.subscribe((reason) => {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  hostAny._unsub = state.subscribe((reason) => {
     if (reason === 'data' || reason === 'load') render();
   });
   render();

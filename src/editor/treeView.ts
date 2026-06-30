@@ -168,6 +168,7 @@ export function mountTree(
     if (el.style?.['display'] === 'none') row.classList.add('wb-tree-hidden');
     row.draggable = path.length > 0;
     row.tabIndex = 0;
+    row.dataset.path = path.join('.');
 
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
@@ -284,6 +285,16 @@ export function mountTree(
       else state.select(path);
     });
 
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if (e.target !== row) return; // let buttons/checkboxes inside handle their own keys
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
+        else state.select(path);
+      }
+    });
+
     // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…)
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -342,8 +353,32 @@ export function mountTree(
     return wrap;
   };
 
-  state.subscribe((reason) => {
-    if (reason === 'document' || reason === 'selection' || reason === 'load' || reason === 'kind' || reason === 'data') render();
+  const updateSelectionOnly = () => {
+    const updateRows = (host: HTMLElement) => {
+      host.querySelectorAll<HTMLElement>('.wb-tree-row').forEach((row) => {
+        const pathStr = row.dataset.path;
+        if (pathStr === undefined) return;
+        const path = pathStr === '' ? [] : pathStr.split('.').map(Number);
+        const isSel = state.isSelected(path);
+        row.classList.toggle('selected', isSel);
+        const check = row.querySelector<HTMLInputElement>('.wb-tree-check');
+        if (check) check.checked = isSel;
+      });
+    };
+    updateRows(viewHost);
+    updateRows(colsHost);
+  };
+
+  if ((viewHost as any)._unsub) {
+    (viewHost as any)._unsub();
+  }
+  const unsub = state.subscribe((reason) => {
+    if (reason === 'selection') {
+      updateSelectionOnly();
+    } else if (reason === 'document' || reason === 'load' || reason === 'kind' || reason === 'data') {
+      render();
+    }
   });
+  (viewHost as any)._unsub = unsub;
   render();
 }

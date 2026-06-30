@@ -546,3 +546,210 @@ describe('lens + save checkpoint', () => {
     expect(JSON.stringify(s.doc)).toBe(snap);
   });
 });
+
+describe('view switching stashes and selection recovery', () => {
+  it('transitioning between views preserves undo/redo stacks, savepoint, and dirty state', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
+    s.markSavepoint();
+    expect(s.isDirtySinceSave).toBe(false);
+
+    // Make an edit in main
+    s.insertNode({ elmType: 'span', txtContent: 'main-edit' });
+    expect(s.isDirtySinceSave).toBe(true);
+    expect(s.canUndo).toBe(true);
+
+    // Switch to column ref
+    s.openColumnRef('StatusUI');
+    expect(s.activeDocKey).toBe('StatusUI');
+    // Column ref has a fresh/empty undo stack & savepoint when opened
+    expect(s.canUndo).toBe(false);
+    expect(s.isDirtySinceSave).toBe(false);
+
+    // Make an edit in column ref
+    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
+    expect(s.isDirtySinceSave).toBe(true);
+    expect(s.canUndo).toBe(true);
+
+    // Switch back to main
+    s.openMain();
+    expect(s.activeDocKey).toBe('main');
+    // Main's undo stack, savepoint, and dirty state are stashed and restored!
+    expect(s.canUndo).toBe(true);
+    expect(s.isDirtySinceSave).toBe(true);
+
+    // Undo should work and revert the main edit
+    s.undo();
+    expect(s.isDirtySinceSave).toBe(false);
+  });
+
+  it('undo/redo/discard restore the selection focus state', () => {
+    const s = new EditorState();
+    s.select([0]);
+    s.markSavepoint();
+    expect(s.selection).toEqual([0]);
+
+    const newPath = s.insertNode({ elmType: 'span', txtContent: 'x' });
+    s.select(newPath);
+    expect(s.selection).toEqual(newPath);
+
+    // Undo restores the previous selection state [0]
+    s.undo();
+    expect(s.selection).toEqual([0]);
+
+    // Redo restores selection newPath
+    s.redo();
+    expect(s.selection).toEqual(newPath);
+
+    // Discard restores the checkpoint selection [0]
+    s.discardToSavepoint();
+    expect(s.selection).toEqual([0]);
+  });
+});
+
+describe('adversarial state robustness challenges', () => {
+  it('challenge: main view undo clobbers column formatter edits due to shared columnRefs stashing', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
+    
+    // 1. Edit main view. This pushes a snapshot to main's undo stack capturing columnRefs.StatusUI as 'original'
+    s.insertNode({ elmType: 'span', txtContent: 'main-edit' });
+    
+    // 2. Switch to column ref StatusUI
+    s.openColumnRef('StatusUI');
+    
+    // 3. Edit StatusUI. This updates columnRefs.StatusUI to 'col-edit'
+    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
+    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit');
+    
+    // 4. Return to main view
+    s.openMain();
+    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit');
+    
+    // 5. Undo in main view. This pops the snapshot from step 1, restoring its columnRefs
+    s.undo();
+    
+    // 6. Check if StatusUI edit survived the main view undo
+    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit'); // Should fail if clobbered!
+  });
+
+  it('challenge: editing a column ref makes the main view dirty since save', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
+    s.markSavepoint();
+    expect(s.isDirtySinceSave).toBe(false);
+
+    // 1. Switch to StatusUI
+    s.openColumnRef('StatusUI');
+    
+    // 2. Edit StatusUI
+    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
+    
+    // 3. Switch back to main
+    s.openMain();
+    
+    // 4. Main document was never mutated, but is it dirty since save?
+    // Expect: false (main view itself should be clean because we only edited StatusUI, which has its own savepoint/history)
+    expect(s.isDirtySinceSave).toBe(false); // Should fail if main is considered dirty!
+  });
+
+  it('challenge: multi-view selection stashing and restore', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
+    s.select([0]); // select in main
+    expect(s.selection).toEqual([0]);
+
+    s.openColumnRef('StatusUI');
+    // expect column selection to start empty/root
+    expect(s.selection).toEqual([]);
+    
+    // select in StatusUI
+    s.select([0, 0]);
+    expect(s.selection).toEqual([0, 0]);
+
+    s.openMain();
+    // Challenge: does it restore main's selection?
+    expect(s.selection).toEqual([0]); // Should fail if lost/reset to []!
+  });
+
+  it('challenge: mixed gestures and heavy switching stress test', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'StatusOriginal' };
+    s.columnRefs['OwnerUI'] = { elmType: 'span', txtContent: 'OwnerOriginal' };
+    
+    // Edit main
+    s.insertNode({ elmType: 'span', txtContent: 'main-1' });
+    
+    // Switch to StatusUI and edit
+    s.openColumnRef('StatusUI');
+    s.insertNode({ elmType: 'span', txtContent: 'status-1' });
+    
+    // Switch to OwnerUI and edit
+    s.openColumnRef('OwnerUI');
+    s.insertNode({ elmType: 'span', txtContent: 'owner-1' });
+    
+    // Undo in OwnerUI
+    s.undo();
+    expect(s.doc.root.children).toBeUndefined(); // reverted to original (no children)
+    
+    // Switch to StatusUI
+    s.openColumnRef('StatusUI');
+    // StatusUI should still have status-1
+    expect(s.doc.root.children?.[0]?.txtContent).toBe('status-1');
+    
+    // Redo in StatusUI? There is no redo left because we didn't undo in StatusUI
+    expect(s.canRedo).toBe(false);
+    
+    // Switch to main
+    s.openMain();
+    expect(s.doc.root.children?.[s.doc.root.children.length - 1]?.txtContent).toBe('main-1');
+  });
+
+  it('subscribe returns an unsubscribe function that removes the listener', () => {
+    const s = new EditorState();
+    let count = 0;
+    const listener = () => { count++; };
+
+    const unsub = s.subscribe(listener);
+    s.emit('document');
+    expect(count).toBe(1);
+
+    // Calling the returned unsubscribe stops further notifications: emitting
+    // again must not increase the count, and the listener is gone from the list.
+    unsub();
+    s.emit('document');
+    expect(count).toBe(1);
+    expect((s as any).listeners).not.toContain(listener);
+  });
+
+  it('challenge: undoing in one column ref view clobbers edits made in another column ref view', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'StatusOriginal' };
+    s.columnRefs['OwnerUI'] = { elmType: 'span', txtContent: 'OwnerOriginal' };
+
+    // 1. Open StatusUI and edit it.
+    s.openColumnRef('StatusUI');
+    s.insertNode({ elmType: 'span', txtContent: 'status-edited' });
+    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('status-edited');
+
+    // 2. Open OwnerUI and edit it.
+    s.openColumnRef('OwnerUI');
+    s.insertNode({ elmType: 'span', txtContent: 'owner-edited' });
+    expect(s.columnRefs['OwnerUI'].children?.[0]?.txtContent).toBe('owner-edited');
+
+    // 3. Switch back to StatusUI
+    s.openColumnRef('StatusUI');
+
+    // 4. Undo in StatusUI.
+    s.undo();
+
+    // 5. Verify StatusUI was reverted
+    expect(s.doc.root.children).toBeUndefined();
+
+    // 6. Verify OwnerUI still has 'owner-edited'
+    expect(s.columnRefs['OwnerUI'].children?.[0]?.txtContent).toBe('owner-edited');
+  });
+});
+
+
+

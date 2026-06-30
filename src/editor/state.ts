@@ -171,6 +171,12 @@ export class EditorState {
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private saveTimer = 0;
+  private docUndoStash: Record<string, string[]> = {};
+  private docRedoStash: Record<string, string[]> = {};
+  private docSavepointStash: Record<string, string | null> = {};
+  private columnRefVersions: Record<string, number> = {};
+  private docSelectionStash: Record<string, NodePath[]> = {};
+  private inMutateDocument = false;
 
   get canUndo(): boolean { return this.undoStack.length > 0; }
   get canRedo(): boolean { return this.redoStack.length > 0; }
@@ -192,13 +198,21 @@ export class EditorState {
       .filter((n): n is SPElement => n != null);
   }
 
-  subscribe(fn: Listener): void { this.listeners.push(fn); }
+  subscribe(fn: Listener): () => void {
+    this.listeners.push(fn);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== fn);
+    };
+  }
 
   emit(reason: ChangeReason): void {
     // keep the registry live while a column formatter is being edited, so
     // CFRs in the main formatter pick up edits the moment you switch back
     if (this.activeDocKey !== 'main' && (reason === 'document' || reason === 'load')) {
       this.columnRefs[this.activeDocKey] = this.doc.root;
+    }
+    if (this.activeDocKey !== 'main' && (reason === 'document' || reason === 'kind') && !this.inMutateDocument) {
+      this.incrementColumnVersion(this.activeDocKey);
     }
     for (const fn of this.listeners) fn(reason);
     // 'selection' and 'lens' are pure view state — neither autosaves (the lens
@@ -220,7 +234,15 @@ export class EditorState {
 
   /** Whether there are unsaved mutations since the last Save checkpoint. */
   get isDirtySinceSave(): boolean {
-    return this._savepoint != null && this._savepoint !== this.snapState();
+    if (this._savepoint == null) return false;
+    const clean = (snap: string) => {
+      const parsed = JSON.parse(snap);
+      delete parsed.selections;
+      delete parsed.refs;
+      delete parsed.refVersions;
+      return JSON.stringify(parsed);
+    };
+    return clean(this._savepoint) !== clean(this.snapState());
   }
 
   /** Discard every mutation back to the last Save checkpoint (multi-step undo).
@@ -233,6 +255,7 @@ export class EditorState {
     this.restoreSnap(this._savepoint);
     this.clampSelection();
     this.emit('document');
+    this.emit('selection');
   }
 
   // ─── Workspace: main formatter ⇄ column formatters ─────────────────────────
@@ -252,14 +275,26 @@ export class EditorState {
       this.mainDocStash = this.doc;
       this.mainFieldStash = this.currentFieldName;
     }
+    // Stash current activeDocKey's stacks, savepoint, and selections
+    this.docUndoStash[this.activeDocKey] = this.undoStack;
+    this.docRedoStash[this.activeDocKey] = this.redoStack;
+    this.docSavepointStash[this.activeDocKey] = this._savepoint;
+    this.docSelectionStash[this.activeDocKey] = this._selections;
+
     this.doc = { kind: 'column', root: this.columnRefs[name] };
     this.activeDocKey = name;
     // @currentField inside a column formatter is that column
     if (this.fields.some((f) => f.name === name)) this.currentFieldName = name;
-    this.selection = [];
-    this.undoStack = []; // undo history is per-document
-    this.redoStack = [];
-    this.markSavepoint(); // Discard reverts to the column as opened
+
+    // Restore new activeDocKey's selections, stacks, and savepoint
+    this._selections = this.docSelectionStash[name] ?? [[]];
+    this.undoStack = this.docUndoStash[name] ?? [];
+    this.redoStack = this.docRedoStash[name] ?? [];
+    if (name in this.docSavepointStash) {
+      this._savepoint = this.docSavepointStash[name];
+    } else {
+      this.markSavepoint();
+    }
     this.emit('load');
     this.emit('data');
   }
@@ -268,6 +303,13 @@ export class EditorState {
   openMain(): void {
     if (this.activeDocKey === 'main') return;
     this.flushActiveDoc();
+
+    // Stash current activeDocKey's stacks, savepoint, and selections
+    this.docUndoStash[this.activeDocKey] = this.undoStack;
+    this.docRedoStash[this.activeDocKey] = this.redoStack;
+    this.docSavepointStash[this.activeDocKey] = this._savepoint;
+    this.docSelectionStash[this.activeDocKey] = this._selections;
+
     this.doc = this.mainDocStash ?? this.doc;
     this.mainDocStash = null;
     this.activeDocKey = 'main';
@@ -275,10 +317,16 @@ export class EditorState {
       this.currentFieldName = this.mainFieldStash;
       this.mainFieldStash = null;
     }
-    this.selection = [];
-    this.undoStack = [];
-    this.redoStack = [];
-    this.markSavepoint();
+
+    // Restore main's selections, stacks, and savepoint
+    this._selections = this.docSelectionStash['main'] ?? [[]];
+    this.undoStack = this.docUndoStash['main'] ?? [];
+    this.redoStack = this.docRedoStash['main'] ?? [];
+    if ('main' in this.docSavepointStash) {
+      this._savepoint = this.docSavepointStash['main'];
+    } else {
+      this.markSavepoint();
+    }
     this.emit('load');
     this.emit('data');
   }
@@ -360,6 +408,11 @@ export class EditorState {
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
+    this.docUndoStash = {};
+    this.docRedoStash = {};
+    this.docSavepointStash = {};
+    this.columnRefVersions = {};
+    this.docSelectionStash = {};
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
@@ -393,6 +446,11 @@ export class EditorState {
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
+    this.docUndoStash = {};
+    this.docRedoStash = {};
+    this.docSavepointStash = {};
+    this.columnRefVersions = {};
+    this.docSelectionStash = {};
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
@@ -454,7 +512,13 @@ export class EditorState {
    *  live outside undo, so a later field edit is never clobbered by an unrelated
    *  doc undo. */
   private snapState(): string {
-    return JSON.stringify({ doc: this.doc, tags: this.subtypeTags(), refs: this.columnRefs });
+    return JSON.stringify({
+      doc: this.doc,
+      tags: this.subtypeTags(),
+      refs: this.columnRefs,
+      refVersions: this.columnRefVersions,
+      selections: this._selections,
+    });
   }
 
   private subtypeTags(): Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }> {
@@ -465,14 +529,45 @@ export class EditorState {
     return out;
   }
 
+  private incrementColumnVersion(name: string): void {
+    this.columnRefVersions[name] = (this.columnRefVersions[name] ?? 0) + 1;
+  }
+
   private restoreSnap(snap: string): void {
     const parsed = JSON.parse(snap) as {
       doc: FormatterDocument;
       tags?: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }>;
       refs?: Record<string, SPElement>;
+      refVersions?: Record<string, number>;
+      selections?: NodePath[];
     };
     this.doc = parsed.doc;
-    if (parsed.refs) this.columnRefs = parsed.refs;
+    if (parsed.refs) {
+      const refVersions = parsed.refVersions ?? {};
+      const nextRefs: Record<string, SPElement> = {};
+      for (const name of Object.keys(parsed.refs)) {
+        const currVer = this.columnRefVersions[name] ?? 0;
+        const snapVer = refVersions[name] ?? 0;
+        if (name === this.activeDocKey || currVer <= snapVer) {
+          nextRefs[name] = parsed.refs[name];
+        } else {
+          if (name in this.columnRefs) {
+            nextRefs[name] = this.columnRefs[name];
+          }
+        }
+      }
+      for (const name of Object.keys(this.columnRefs)) {
+        if (!(name in nextRefs)) {
+          const currVer = this.columnRefVersions[name] ?? 0;
+          const snapVer = refVersions[name] ?? 0;
+          if (name === this.activeDocKey || currVer > snapVer) {
+            nextRefs[name] = this.columnRefs[name];
+          }
+        }
+      }
+      this.columnRefs = nextRefs;
+    }
+    if (parsed.selections) this._selections = parsed.selections;
     const tags = parsed.tags ?? {};
     for (const f of this.fields) {
       const t = tags[f.name];
@@ -494,6 +589,7 @@ export class EditorState {
     this.restoreSnap(prev);
     this.clampSelection();
     this.emit('document');
+    this.emit('selection');
   }
 
   redo(): void {
@@ -503,6 +599,7 @@ export class EditorState {
     this.restoreSnap(next);
     this.clampSelection();
     this.emit('document');
+    this.emit('selection');
   }
 
   private clampSelection(): void {
@@ -542,8 +639,16 @@ export class EditorState {
     // value, arrow-step that re-commits the current value on blur) must not push
     // a phantom undo step.
     const before = this.snapState();
-    fn();
+    this.inMutateDocument = true;
+    try {
+      fn();
+    } finally {
+      this.inMutateDocument = false;
+    }
     if (this.snapState() === before) return;
+    if (this.activeDocKey !== 'main') {
+      this.incrementColumnVersion(this.activeDocKey);
+    }
     this.pushUndo(before);
     this.emit('document');
   }
@@ -812,8 +917,9 @@ export class EditorState {
     if (!el || el.columnFormatterReference) return null;
     const field = gridColumnField(el);
     if (!field) return null;
-    this.columnRefs[field] = toColumnFormatter(el, field);
+    this.incrementColumnVersion(field);
     this.mutateDocument(() => {
+      this.columnRefs[field] = toColumnFormatter(el, field);
       const cell = gridCellForField(
         this.fields.find((f) => f.name === field) ?? { name: field, type: 'text' },
         this.columnRefs,
@@ -846,6 +952,7 @@ export class EditorState {
   ): void {
     const field = this.fields.find((f) => f.name === fieldName);
     if (!field) return;
+    this.incrementColumnVersion(fieldName);
     this.mutateDocument(() => {
       this.columnRefs[fieldName] = baked; // captured by snapState → reverts on undo
       field.subtype = subtypeId;
@@ -881,8 +988,13 @@ export class EditorState {
   ): number {
     const targets = this.columnsUsingSubtype(subtypeId);
     if (targets.length === 0) return 0;
+    for (const f of targets) {
+      this.incrementColumnVersion(f.name);
+    }
     this.mutateDocument(() => {
-      for (const f of targets) this.columnRefs[f.name] = rebake(f.subtypeArgs ?? {});
+      for (const f of targets) {
+        this.columnRefs[f.name] = rebake(f.subtypeArgs ?? {});
+      }
     });
     return targets.length;
   }
