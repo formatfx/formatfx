@@ -705,17 +705,21 @@ describe('adversarial state robustness challenges', () => {
     expect(s.doc.root.children?.[s.doc.root.children.length - 1]?.txtContent).toBe('main-1');
   });
 
-  it('challenge: subscribing to state leaks listeners because there is no unsubscribe mechanism', () => {
+  it('subscribe returns an unsubscribe function that removes the listener', () => {
     const s = new EditorState();
     let count = 0;
     const listener = () => { count++; };
-    
-    s.subscribe(listener);
+
+    const unsub = s.subscribe(listener);
     s.emit('document');
     expect(count).toBe(1);
 
-    // There is no way to unsubscribe/remove the listener. It is stuck in the listeners list.
-    expect((s as any).listeners).toContain(listener);
+    // Calling the returned unsubscribe stops further notifications: emitting
+    // again must not increase the count, and the listener is gone from the list.
+    unsub();
+    s.emit('document');
+    expect(count).toBe(1);
+    expect((s as any).listeners).not.toContain(listener);
   });
 
   it('challenge: undoing in one column ref view clobbers edits made in another column ref view', () => {
