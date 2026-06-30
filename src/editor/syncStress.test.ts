@@ -7,8 +7,6 @@ import { mountCanvas } from './canvas';
 describe('Panel selection synchronization and multi-select stress tests', () => {
   beforeEach(() => {
     state.resetAll();
-    // Reset private listeners to keep tests clean and decoupled
-    (state as any).listeners = [];
   });
 
   it('updates selection on state and tree view rows when clicked or checkbox toggled', () => {
@@ -64,6 +62,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect(spanBRow!.classList.contains('selected')).toBe(true);
 
     // Cleanup DOM
+    (viewHost as any)._unsub?.();
     viewHost.remove();
     colsHost.remove();
   });
@@ -104,6 +103,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect(state.selections).toEqual([[1]]);
 
     // Cleanup DOM
+    (viewHost as any)._unsub?.();
     viewHost.remove();
     colsHost.remove();
   });
@@ -153,6 +153,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect(spanBEl!.classList.contains('wb-selected')).toBe(true);
 
     // Cleanup DOM
+    (host as any)._unsub?.();
     host.remove();
   });
 
@@ -204,6 +205,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect(nodeB?.style?.['font-weight']).toBe('bold');
 
     // Cleanup DOM
+    (host as any)._unsub?.();
     host.remove();
   });
 
@@ -248,6 +250,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect(colorValInput!.value).toBe('orange');
 
     // Cleanup DOM
+    (host as any)._unsub?.();
     host.remove();
   });
 
@@ -275,6 +278,8 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect((state as any).listeners.length).toBe(2); // 1 for inspector, 1 for tree view
 
     // Clean up DOM
+    (host as any)._unsub?.();
+    (viewHost as any)._unsub?.();
     host.remove();
     viewHost.remove();
     colsHost.remove();
