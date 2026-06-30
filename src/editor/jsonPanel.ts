@@ -221,7 +221,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       row.append(badge, msg);
       row.title = `Click to select node [${issue.path.join(' › ')}]`;
       row.setAttribute('aria-label', lintAriaLabel(issue.sev, issue.text));
-      row.addEventListener('click', () => state.select(issue.path));
+      // The row acts as a button (jump to the node), so make it operable — and
+      // its severity announceable — by keyboard, not mouse only.
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      const jump = (): void => state.select(issue.path);
+      row.addEventListener('click', jump);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
+      });
       lintEl.appendChild(row);
     }
   };

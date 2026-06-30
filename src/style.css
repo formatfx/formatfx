@@ -977,6 +977,7 @@ body {
 .wb-lint-badge { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
 .wb-lint-glyph { font-style: normal; }
 .wb-lint-msg { flex: 1 1 auto; min-width: 0; }
+.wb-lint-item:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
 .wb-lint-error { border-left-color: #d13438; }
 .wb-lint-error .wb-lint-badge { color: #d13438; }
 .wb-lint-warning { border-left-color: #ffb900; }

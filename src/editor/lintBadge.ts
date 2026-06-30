@@ -17,16 +17,19 @@ export interface LintBadge {
   label: string;
 }
 
-const BADGES: Record<string, LintBadge> = {
-  error: { glyph: '✕', label: 'Error' },
-  warning: { glyph: '⚠', label: 'Warning' },
-  info: { glyph: 'ⓘ', label: 'Info' },
-  runtime: { glyph: '◆', label: 'Runtime' },
-};
+// A Map (not a plain object) so an arbitrary severity string — including
+// prototype-chain keys like "__proto__" or "constructor" — can never resolve
+// to an inherited member; unknown levels fall through to the neutral badge.
+const BADGES = new Map<string, LintBadge>([
+  ['error', { glyph: '✕', label: 'Error' }],
+  ['warning', { glyph: '⚠', label: 'Warning' }],
+  ['info', { glyph: 'ⓘ', label: 'Info' }],
+  ['runtime', { glyph: '◆', label: 'Runtime' }],
+]);
 
 /** Map a severity to its badge; an unknown level gets a neutral, never-blank badge. */
 export function lintBadge(sev: string): LintBadge {
-  return BADGES[sev] ?? { glyph: '•', label: capitalise(sev) || 'Note' };
+  return BADGES.get(sev) ?? { glyph: '•', label: capitalise(sev) || 'Note' };
 }
 
 /** Screen-reader label that leads with the level word (not the decorative glyph). */

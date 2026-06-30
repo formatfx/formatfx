@@ -20,6 +20,16 @@ describe('lintBadge — severity is perceivable without colour (WCAG 1.4.1)', ()
     expect(b.label).toBe('Mystery'); // capitalised raw level, never blank
   });
 
+  it('is safe for prototype-chain keys (no Object.prototype leak)', () => {
+    for (const key of ['__proto__', 'constructor', 'hasOwnProperty', 'toString']) {
+      const b = lintBadge(key);
+      expect(b.glyph).toBe('•'); // the neutral fallback glyph, never an inherited member
+      expect(typeof b.label).toBe('string');
+      expect(b.label.length).toBeGreaterThan(0);
+    }
+    expect(lintAriaLabel('__proto__', 'x')).not.toMatch(/^undefined/);
+  });
+
   it('builds a screen-reader label that leads with the level word, not the glyph', () => {
     expect(lintAriaLabel('error', 'no-not: SharePoint has no logical NOT')).toBe(
       'Error: no-not: SharePoint has no logical NOT',
