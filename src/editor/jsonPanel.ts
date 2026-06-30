@@ -208,7 +208,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   };
 
-  state.subscribe((reason) => {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  hostAny._unsub = state.subscribe((reason) => {
     if (reason !== 'selection' && reason !== 'theme') { dirty = false; regenerate(); refreshDeployPanel(); }
   });
   regenerate();

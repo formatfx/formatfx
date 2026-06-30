@@ -306,8 +306,13 @@ body {
 .wb-tree-row:hover { background: var(--wb-bg); }
 .wb-tree-row.selected { background: var(--wb-accent); color: #fff; }
 .wb-tree-row.droptarget { outline: 2px dashed var(--wb-accent); }
+.wb-tree-row:focus,
+.wb-tree-row:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: -1px;
+}
 .wb-tree-label {
-  font-family: Consolas, monospace; font-size: 11px; white-space: nowrap;
+  font-size: 11px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
   display: inline-flex; align-items: center; gap: 4px;
   /* own the row's width so its center is a select target, not a hover button */
@@ -320,7 +325,7 @@ body {
 .wb-tree-elmtype-dim { font-weight: 400; color: var(--wb-text-2); font-size: 10px; }
 .wb-tree-row.selected .wb-tree-elmtype-dim { color: inherit; opacity: .85; }
 .wb-tree-rename {
-  font: 11px Consolas, monospace; padding: 1px 4px; width: 130px;
+  font-family: inherit; font-size: 11px; padding: 1px 4px; width: 130px;
   border: 1px solid var(--wb-accent); border-radius: 2px;
   background: var(--wb-surface); color: var(--wb-text);
 }
@@ -782,7 +787,7 @@ body {
 .wb-field > span { font-size: 11px; color: var(--wb-text-2); }
 .wb-field input[type="text"], .wb-field textarea, .wb-field select,
 .wb-kv input, .wb-data-table input, .wb-data-toolbar select {
-  font: 12px Consolas, monospace; padding: 4px 6px;
+  font-family: inherit; font-size: 12px; padding: 4px 6px;
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text); width: 100%;
 }
@@ -929,7 +934,7 @@ body {
 .wb-box-mid > .wb-box, .wb-box-mid > .wb-box-content { flex: 1; }
 .wb-boxmodel input.wb-box-side {
   width: 44px; flex: 0 0 44px; text-align: center;
-  font: 10px Consolas, monospace; padding: 2px;
+  font-family: inherit; font-size: 10px; padding: 2px;
   border: 1px solid transparent; border-radius: 2px;
   background: transparent; color: var(--wb-text);
 }
@@ -937,7 +942,7 @@ body {
   border-color: var(--wb-accent); background: var(--wb-surface);
 }
 .wb-box-content {
-  text-align: center; font: 10px Consolas, monospace;
+  text-align: center; font-family: inherit; font-size: 10px;
   background: var(--wb-surface); border: 1px solid var(--wb-border);
   border-radius: 3px; padding: 8px 4px; color: var(--wb-text-2);
 }
@@ -992,7 +997,7 @@ body {
 }
 .wb-schema-form input[type="text"], .wb-schema-form input:not([type]),
 .wb-schema-form select, .wb-schema-form textarea {
-  font: 12px Consolas, monospace; padding: 4px 6px;
+  font-family: inherit; font-size: 12px; padding: 4px 6px;
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-surface); color: var(--wb-text); width: 100%;
 }
@@ -1028,7 +1033,7 @@ body {
 .wb-deploy[hidden] { display: none; }
 .wb-deploy-target { font-size: 11px; font-weight: 600; }
 .wb-deploy input {
-  font: 12px Consolas, monospace; padding: 4px 6px;
+  font-family: inherit; font-size: 12px; padding: 4px 6px;
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-surface); color: var(--wb-text);
 }
@@ -2017,9 +2022,10 @@ body {
 
 /* ── splitter between tree and properties ──────────────────────────────────── */
 .wb-lp-splitter {
-  flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none; background: transparent;
+  flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none;
+  background: var(--wb-lp-border); border-top: 1px solid var(--wb-surface); border-bottom: 1px solid var(--wb-surface);
 }
-.wb-lp-splitter:hover, .wb-lp-splitter:active { background: var(--wb-accent); opacity: .4; }
+.wb-lp-splitter:hover, .wb-lp-splitter:active { background: var(--wb-accent); opacity: .6; }
 
 /* ── draw toolbar ──────────────────────────────────────────────────────────── */
 .wb-drawbar {
@@ -2096,6 +2102,11 @@ body {
 .wb-lp-tree .wb-tree-row:hover .wb-tree-eye,
 .wb-lp-tree .wb-tree-row.selected .wb-tree-eye { opacity: .65; }
 .wb-tree-eye:hover { opacity: 1; }
+.wb-tree-eye:focus-visible {
+  opacity: 1;
+  outline: 1.5px solid var(--wb-accent);
+  outline-offset: -1px;
+}
 .wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
 .wb-lp-tree .wb-tree-row.selected { background: var(--wb-lp-selected); border-radius: 5px; }
 
@@ -2124,12 +2135,13 @@ body {
 
 /* segmented control (Hug/Fixed/Fill, display modes) */
 .wb-segmented {
-  display: inline-flex; flex: 0 0 auto; flex-wrap: wrap; gap: 2px; padding: 2px;
+  display: inline-flex; flex: 0 0 auto; flex-wrap: nowrap; gap: 2px; padding: 2px;
   background: var(--wb-lp-seg-track); border-radius: 7px;
 }
 .wb-seg {
   border: none; background: transparent; cursor: pointer; color: var(--wb-lp-text-2);
   font-size: 11.5px; padding: 4px 9px; border-radius: 5px; white-space: nowrap;
+  flex: 1 1 auto; text-align: center;
 }
 .wb-seg:hover { color: var(--wb-lp-text); }
 .wb-seg.active {
@@ -2139,10 +2151,11 @@ body {
 .wb-contents > .wb-segmented { width: 100%; }
 
 /* flex alignment preset rows */
-.wb-presets { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+.wb-presets { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
 .wb-preset {
   border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
   color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; padding: 3px 8px; border-radius: 5px;
+  flex: 1 1 auto; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .wb-preset:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-preset.active {
