@@ -224,10 +224,10 @@ export function mountInspector(host: HTMLElement): void {
     if (pro) {
       host.appendChild(section('Style (all properties)', [
         kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => {
-          const oldStyle = node.style ?? {};
+          const oldStyleKeys = Object.keys(node.style ?? {});
           commitAll((n) => {
             n.style = n.style ?? {};
-            for (const k of Object.keys(oldStyle)) {
+            for (const k of oldStyleKeys) {
               if (!(k in obj)) delete n.style[k];
             }
             for (const [k, v] of Object.entries(obj)) {
@@ -269,21 +269,21 @@ export function mountInspector(host: HTMLElement): void {
 
     // ── Pro-only: attributes + the superpower sections ──────────────────────
     if (pro) {
-    host.appendChild(section('Attributes', [
-      kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => {
-        const oldAttrs = node.attributes ?? {};
-        commitAll((n) => {
-          n.attributes = n.attributes ?? {};
-          for (const k of Object.keys(oldAttrs)) {
-            if (!(k in obj)) delete n.attributes[k];
-          }
-          for (const [k, v] of Object.entries(obj)) {
-            n.attributes[k] = v;
-          }
-          if (Object.keys(n.attributes).length === 0) delete n.attributes;
-        });
-      }),
-    ], true));
+      host.appendChild(section('Attributes', [
+        kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => {
+          const oldAttrKeys = Object.keys(node.attributes ?? {});
+          commitAll((n) => {
+            n.attributes = n.attributes ?? {};
+            for (const k of oldAttrKeys) {
+              if (!(k in obj)) delete n.attributes[k];
+            }
+            for (const [k, v] of Object.entries(obj)) {
+              n.attributes[k] = v;
+            }
+            if (Object.keys(n.attributes).length === 0) delete n.attributes;
+          });
+        }),
+      ], true));
 
     // customRowAction
     const cra = node.customRowAction;
