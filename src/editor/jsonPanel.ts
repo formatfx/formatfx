@@ -14,6 +14,7 @@ import { buildDeploySnippet } from '../bridge/deploySnippet';
 import { serializeApplyPayload } from '../bridge/applyPayload';
 import { onExtensionReady, stageApplyToExtension } from './extensionBridge';
 import { buildCurrentApplyPayload } from './deployPayload';
+import { lintBadge, lintAriaLabel } from './lintBadge';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -203,9 +204,32 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     for (const issue of all) {
       const row = document.createElement('div');
       row.className = `wb-lint-item wb-lint-${issue.sev}`;
-      row.textContent = issue.text;
+      // Lead with a severity badge: glyph (shape) + word, so the level reads
+      // without relying on the stripe colour alone (WCAG 1.4.1). The glyph is
+      // decorative — the word carries the meaning, echoed in the row aria-label.
+      const { glyph, label } = lintBadge(issue.sev);
+      const badge = document.createElement('span');
+      badge.className = 'wb-lint-badge';
+      const glyphEl = document.createElement('span');
+      glyphEl.className = 'wb-lint-glyph';
+      glyphEl.setAttribute('aria-hidden', 'true');
+      glyphEl.textContent = glyph;
+      badge.append(glyphEl, document.createTextNode(` ${label}`));
+      const msg = document.createElement('span');
+      msg.className = 'wb-lint-msg';
+      msg.textContent = issue.text;
+      row.append(badge, msg);
       row.title = `Click to select node [${issue.path.join(' › ')}]`;
-      row.addEventListener('click', () => state.select(issue.path));
+      row.setAttribute('aria-label', lintAriaLabel(issue.sev, issue.text));
+      // The row acts as a button (jump to the node), so make it operable — and
+      // its severity announceable — by keyboard, not mouse only.
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      const jump = (): void => state.select(issue.path);
+      row.addEventListener('click', jump);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
+      });
       lintEl.appendChild(row);
     }
   };
