@@ -364,7 +364,7 @@ export const PALETTE: PaletteItem[] = [
           children: [
             {
               elmType: 'svg',
-              style: { 'fill': 'currentColor', 'position': 'absolute', 'top': '0', 'right': '0' },
+              style: { 'fill': 'currentColor', 'position': 'absolute', 'top': '0', 'right': '0', 'width': '100%', 'height': '100%' },
               attributes: { viewBox: '0 0 600 600', class: 'ms-fontColor-neutralQuaternaryAlt' },
               children: [
                 {
@@ -377,15 +377,20 @@ export const PALETTE: PaletteItem[] = [
               elmType: 'svg',
               style: {
                 'fill': "=if([$Progress]>=100,'#107c10','#0078d4')",
-                'position': 'absolute', 'top': '0', 'right': '0',
+                'position': 'absolute', 'top': '0', 'right': '0', 'width': '100%', 'height': '100%',
                 'display': "=if([$Progress]<=0,'none','')",
               },
               attributes: { viewBox: '0 0 600 600' },
               children: [
                 {
                   elmType: 'path',
+                  // At Progress>=100 the two clamped angles are identical (both 360°), so a
+                  // single arc command would have coincident start/end points — SVG then
+                  // treats it as a no-op and draws nothing (the "can't arc a full circle"
+                  // trap). Cap the ratio just short of a full turn so the arc always sweeps
+                  // a real (if imperceptibly short-of-360°) angle and stays visible at 100%.
                   attributes: {
-                    d: "= 'M300,0 A300,300 0 ' + if([$Progress]/100 > 0.5 , '1,1 ' , '0,1 ') + (300 + 300 * sin(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ',' + (300 - 300 * cos(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ' L' + (300 + 225 * sin(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ',' + (300 - 225 * cos(360 * if([$Progress]/100 > 1 , 1 , [$Progress]/100) * (3.14159 / 180))) + ' A225,225 0 ' + if([$Progress]/100 > 0.5 , '1,0 ' , '0,0 ') + ' 300,75 Z'",
+                    d: "= 'M300,0 A300,300 0 ' + if([$Progress]/100 > 0.5 , '1,1 ' , '0,1 ') + (300 + 300 * sin(360 * if([$Progress]/100 > 0.9999 , 0.9999 , [$Progress]/100) * (3.14159 / 180))) + ',' + (300 - 300 * cos(360 * if([$Progress]/100 > 0.9999 , 0.9999 , [$Progress]/100) * (3.14159 / 180))) + ' L' + (300 + 225 * sin(360 * if([$Progress]/100 > 0.9999 , 0.9999 , [$Progress]/100) * (3.14159 / 180))) + ',' + (300 - 225 * cos(360 * if([$Progress]/100 > 0.9999 , 0.9999 , [$Progress]/100) * (3.14159 / 180))) + ' A225,225 0 ' + if([$Progress]/100 > 0.5 , '1,0 ' , '0,0 ') + ' 300,75 Z'",
                   },
                 },
               ],
