@@ -528,7 +528,15 @@ export function evalAst(node: AstNode, ctx: EvalContext): SPValue {
  */
 export function evaluate(raw: string, ctx: EvalContext): SPValue {
   if (raw.startsWith('=')) {
-    return evalAst(parseExpression(raw.slice(1)), ctx);
+    const src = raw.slice(1);
+    let ast = _AST_CACHE.get(src);
+    if (!ast) {
+      ast = parseExpression(src);
+      // Prevent unbounded memory growth from live typing
+      if (_AST_CACHE.size >= 2000) _AST_CACHE.clear();
+      _AST_CACHE.set(src, ast);
+    }
+    return evalAst(ast, ctx);
   }
   const trimmed = raw.trim();
   if (/^\[[$!][A-Za-z0-9_. ]+\]$/.test(trimmed)) {
@@ -539,6 +547,8 @@ export function evaluate(raw: string, ctx: EvalContext): SPValue {
   }
   return raw;
 }
+
+const _AST_CACHE = new Map<string, AstNode>();
 
 // ─── Abstract Syntax Tree syntax ─────────────────────────────────────────────
 // The older object form many community samples use:
