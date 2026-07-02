@@ -18,8 +18,8 @@
  */
 
 import { state } from './state';
-import { slotsFor, readSlot, writeSlot, type FxSlot } from './fxSlots';
-import { fxSuggestions } from './fxSuggest';
+import { slotsFor, readSlot, writeSlot, slotIdForProp, type FxSlot } from './fxSlots';
+import { fxSuggestions, completionAt } from './fxSuggest';
 import { resolveSubtype } from './subtypes';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
@@ -32,6 +32,24 @@ type SetFeedback = (text: string, tone?: Tone) => void;
  *  read, short enough not to nag. It also clears the instant the maker types. */
 const FEEDBACK_FADE_MS = 6000;
 
+/** The mounted bar's "dock onto this property" handler, so other panels (the
+ *  inspector's `=` formula preview) can hand a property to the fx bar. Null
+ *  until mountFxBar runs; the app mounts exactly one bar. */
+let dockOntoProp: ((prop: string) => void) | null = null;
+
+/**
+ * Dock the fx bar onto a given CSS property's slot and focus its editor — the
+ * inspector's `=` formula preview calls this so a maker can edit the same
+ * formula in the bar (with its column / function autocomplete). The element
+ * must already be selected (the bar reads state.selectedNode). Returns false
+ * when no bar is mounted, so callers can fall back gracefully.
+ */
+export function focusFxSlot(prop: string): boolean {
+  if (!dockOntoProp) return false;
+  dockOntoProp(prop);
+  return true;
+}
+
 export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } = {}): void {
   host.classList.add('wb-fxbar');
   /** Which slot is being edited — kept across selections so "Fill color" sticks. */
@@ -42,6 +60,8 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
   let float: { panel: HTMLElement; cleanup: () => void } | null = null;
   /** The on-focus value drop-down, when open. */
   let menu: FxMenu | null = null;
+  /** The as-you-type inline autocomplete menu, when open. */
+  let acMenu: AcMenu | null = null;
   /** Pending auto-fade for a transient refusal message, if any. */
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -52,6 +72,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     float = null;
   };
   const closeMenu = (): void => { if (menu) { menu.el.remove(); menu = null; } };
+  const closeAc = (): void => { if (acMenu) { acMenu.close(); acMenu = null; } };
 
   // The accessory (Title-column toggle) rides on the edit bar; re-home it on
   // every rebuild so it survives the host.innerHTML reset.
@@ -62,6 +83,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // across selections and clicks elsewhere, so render() leaves it alone. The
     // on-focus value menu, however, belongs to this bar's editor — drop it.
     closeMenu();
+    closeAc();
     if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
     host.innerHTML = '';
     const node = state.selectedNode;
@@ -86,19 +108,24 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     badge.title = 'Write an Excel-style formula for the selected property.';
 
     // ── slot picker (left-edge property dropdown) ──
-    // Slots that already carry a value on this element get a " ·" suffix in
-    // their label. This works in both the closed and open states of the select,
-    // and across all browsers (font-weight on <option> is invisible when closed
-    // and unsupported in Safari). The bold is kept as an additional signal when
-    // the dropdown is open.
+    // Slots with a value show a suffix: "ƒ" for formula-driven (a '=...' string
+    // or an AST-object); "·" for static literals (plain strings, numbers,
+    // booleans). Both also get heavy bold. This works in the closed select and
+    // across browsers (font-weight on <option> is invisible when closed and
+    // unsupported in Safari; the bold is an additional open-state signal only).
     const picker = document.createElement('select');
     picker.className = 'wb-fx-slot';
-    picker.title = 'Which property this formula paints. · = already has a value on this cell. The list changes with what you have selected.';
+    picker.title = 'Which property this formula paints. ƒ = formula-driven · = has a static value. The list changes with what you have selected.';
     for (const s of slots) {
       const o = document.createElement('option');
       o.value = s.id;
-      const hasValue = readSlot(node, s) !== undefined;
-      o.textContent = hasValue ? `${s.label} ·` : s.label;
+      const sv = readSlot(node, s);
+      const hasValue = sv !== undefined;
+      const isFormula = hasValue && (
+        (typeof sv === 'string' && sv.startsWith('=')) ||
+        (typeof sv === 'object' && sv !== null)
+      );
+      o.textContent = isFormula ? `${s.label} ƒ` : hasValue ? `${s.label} ·` : s.label;
       if (hasValue) o.style.fontWeight = '800';
       if (s.id === slot.id) o.selected = true;
       picker.appendChild(o);
@@ -202,7 +229,10 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
 
     // Silent by default. The one thing that can't vanish is a read-only note —
     // it explains why the field can't be edited here and where to go instead.
-    if (view.readOnly) setFeedback(`Shown read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
+    if (view.readOnly) {
+      setFeedback(`Shown read-only — ${view.note}`, 'raw');
+      feedback.appendChild(advancedLink());
+    }
 
     // ── the value menu: a styled drop-down, shown only while the bar is focused.
     // No permanent wall of buttons under the bar — the choices appear on demand,
@@ -215,14 +245,44 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       closeMenu();
     };
 
+    // ── inline autocomplete: column refs, functions / context tokens, and
+    // IF() condition / result templates appear as you type a formula. ──
+    const updateAc = (): void => {
+      if (view.readOnly) { closeAc(); return; }
+      const caret = editor.selectionStart ?? editor.value.length;
+      const comp = completionAt(editor.value, caret, slot, state.fields);
+      if (!comp || comp.items.length === 0) { closeAc(); return; }
+      closeMenu(); // the inline typeahead supersedes the on-focus value menu
+      closeAc();
+      const pick = (value: string): void => {
+        const v = editor.value;
+        editor.value = v.slice(0, comp.from) + value + v.slice(comp.to);
+        editor.classList.remove('wb-fx-draft');
+        const pos = comp.from + value.length;
+        editor.setSelectionRange(pos, pos);
+        editor.focus();
+        updateAc(); // chain: picking 'IF(' immediately offers the condition list
+      };
+      acMenu = openAcMenu(editor, comp.items, pick);
+    };
+
     if (!view.readOnly) {
       editor.addEventListener('focus', () => {
-        if (menu || suggestions.length === 0) return;
+        if (menu || acMenu || suggestions.length === 0) return;
         menu = openMenu(editor, slot, suggestions, currentIcon, onPickValue);
       });
-      editor.addEventListener('blur', () => closeMenu());
+      editor.addEventListener('blur', () => { closeMenu(); closeAc(); });
+      editor.addEventListener('input', updateAc);
       editor.addEventListener('change', () => applyText(editor.value, setFeedback));
       editor.addEventListener('keydown', (e) => {
+        if (acMenu) {
+          if (e.key === 'ArrowDown') { e.preventDefault(); acMenu.move(1); return; }
+          if (e.key === 'ArrowUp') { e.preventDefault(); acMenu.move(-1); return; }
+          if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+          if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+            if (acMenu.accept()) { e.preventDefault(); return; }
+          }
+        }
         if (menu) {
           if (e.key === 'ArrowDown') { e.preventDefault(); menu.move(1); return; }
           if (e.key === 'ArrowUp') { e.preventDefault(); menu.move(-1); return; }
@@ -252,22 +312,59 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     expand.addEventListener('click', () => {
       closeMenu();
       closeFloat();
-      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render());
+      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render(), (text) => {
+        float = null;
+        editor.value = text;
+        editor.classList.remove('wb-fx-draft');
+        editor.focus();
+        updateAc();
+      });
     });
+
+    // ── × clear-slot button: one-click remove when the slot has a set, editable value ──
+    // The slot already accepts an empty commit (applyText('') → spValue=undefined →
+    // writeSlot removes the key), but that requires select-all + delete + Enter.
+    // This button does it in one gesture. It is hidden when the slot is empty
+    // (nothing to clear) or read-only (AST/out-of-subset formula — clear via Advanced).
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'wb-fx-clear';
+    clearBtn.textContent = '×';
+    clearBtn.title = `Clear this ${slot.label} value (Ctrl+Z undoes)`;
+    clearBtn.hidden = stored === undefined || view.readOnly;
+    // Prevent the mousedown from blurring the editor before click fires,
+    // matching the same guard used on every other bar button.
+    clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    clearBtn.addEventListener('click', () => { applyText('', setFeedback); render(true); });
 
     const bar = document.createElement('div');
     bar.className = 'wb-fx-row';
-    bar.append(badge, picker, editor, expand);
+    bar.append(badge, picker, editor, clearBtn, expand);
     if (opts.accessory) bar.append(opts.accessory);
     host.append(bar, feedback);
     if (focusAfter) editor.focus();
   };
 
-  state.subscribe((reason) => {
+  // let the inspector (and anything else) dock the bar onto a property slot
+  dockOntoProp = (prop) => {
+    currentSlotId = slotIdForProp(prop);
+    render(true); // render() falls back to slots[0] if this element lacks the slot
+    host.scrollIntoView({ block: 'nearest' });
+  };
+
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  const unsub = state.subscribe((reason) => {
     if (reason === 'document' && selfCommit) return;
     if (reason === 'selection' || reason === 'load' || reason === 'document'
       || reason === 'data' || reason === 'kind') render();
   });
+  hostAny._unsub = () => {
+    unsub();
+    dockOntoProp = null;
+  };
   render();
 }
 
@@ -298,6 +395,7 @@ function openFloat(
   applyText: (text: string, setFb: SetFeedback) => boolean,
   onApplied: () => void,
   onDismissed: () => void,
+  onDock: (text: string) => void,
 ): { panel: HTMLElement; cleanup: () => void } {
   const panel = document.createElement('div');
   panel.className = 'wb-fx-float';
@@ -311,13 +409,18 @@ function openFloat(
   badge.className = 'wb-fx-badge';
   badge.textContent = 'ƒx';
   title.append(badge, ` ${targetLabel}`);
+  const dock = document.createElement('button');
+  dock.type = 'button';
+  dock.className = 'wb-fx-float-dock';
+  dock.textContent = '⤓';
+  dock.title = 'Dock back into the bar — keeps what you typed there, ready to apply';
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.className = 'wb-fx-float-dismiss';
   dismiss.textContent = '✕';
   dismiss.title = 'Dismiss this window — what you typed is kept (unapplied) until you reopen it. Use Apply to commit.';
   dismiss.setAttribute('aria-label', 'Dismiss');
-  head.append(title, dismiss);
+  head.append(title, dock, dismiss);
 
   const ta = document.createElement('textarea');
   ta.className = 'wb-fx-float-editor';
@@ -338,8 +441,10 @@ function openFloat(
     fb.setAttribute('role', tone === 'error' ? 'alert' : 'status');
     fb.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
   };
-  if (view.readOnly) setFb(`Read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
-  else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
+  if (view.readOnly) {
+    setFb(`Read-only — ${view.note}`, 'raw');
+    fb.appendChild(advancedLink());
+  } else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
 
   // chips fill the editor (the Apply button commits) — visible value choices
   const chips = buildChips(suggestions, view.readOnly, (value) => { ta.value = value; ta.focus(); });
@@ -380,6 +485,16 @@ function openFloat(
     panel.remove();
     onDismissed(); // re-render so the stash dot appears / clears immediately
   };
+  const dockWin = (): void => {
+    if (done) return;
+    done = true;
+    // the in-progress text moves to the inline bar (uncommitted); clear any stash
+    const stash = floatStash.get(node);
+    if (stash) { delete stash[slot.id]; if (!Object.keys(stash).length) floatStash.delete(node); }
+    cleanup();
+    panel.remove();
+    onDock(ta.value);
+  };
   const doApply = (): void => {
     if (!applyText(ta.value, setFb)) return;
     // committed — it's no longer an unapplied stash
@@ -390,6 +505,7 @@ function openFloat(
 
   apply.addEventListener('click', doApply);
   dismiss.addEventListener('click', dismissWin);
+  dock.addEventListener('click', dockWin);
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doApply(); }
     if (e.key === 'Escape') { e.preventDefault(); dismissWin(); }
@@ -410,7 +526,7 @@ function openFloat(
     document.removeEventListener('pointermove', onMove);
   };
   head.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('.wb-fx-float-dismiss')) return;
+    if ((e.target as HTMLElement).closest('.wb-fx-float-dismiss, .wb-fx-float-dock')) return;
     e.preventDefault();
     const box = panel.getBoundingClientRect();
     drag = { dx: e.clientX - box.left, dy: e.clientY - box.top };
@@ -426,6 +542,23 @@ function openFloat(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/** One-click shortcut to open the Advanced panel from a read-only fx-bar note. */
+function advancedLink(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'wb-fx-adv-link';
+  btn.textContent = 'Open Advanced';
+  btn.title = 'Open the Advanced panel to edit this formula in the raw SP dialect';
+  btn.addEventListener('click', () => {
+    // The "Advanced" topbar toggle opens the validated-JSON pane — the raw-SP
+    // escape hatch this link points at. (Was #wb-studio-toggle, which no longer
+    // exists; the pane IS the JSON surface, so there's no separate tab to click.)
+    const toggle = document.getElementById('wb-json-toggle') as HTMLButtonElement | null;
+    if (toggle && !toggle.classList.contains('active')) toggle.click();
+  });
+  return btn;
+}
 
 interface EditorView { text: string; readOnly: boolean; note: string }
 
@@ -554,6 +687,58 @@ function openMenu(
   el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
   el.style.minWidth = `${Math.max(220, r.width)}px`;
   return { el, move, activeValue };
+}
+
+// ─── inline autocomplete menu (caret-driven typeahead) ───────────────────────
+
+interface AcMenu {
+  el: HTMLElement;
+  move: (delta: number) => void;
+  /** Accept the highlighted item; false when there's nothing to accept. */
+  accept: () => boolean;
+  close: () => void;
+}
+
+/**
+ * A compact typeahead under the editor — column references, functions / context
+ * tokens and IF() condition / result templates, driven by completionAt(). Arrow
+ * keys highlight; Enter / Tab or click accepts (the picked text is spliced into
+ * the formula by the caller, which then re-runs completionAt to chain).
+ */
+function openAcMenu(editor: HTMLElement, items: string[], onPick: (value: string) => void): AcMenu {
+  const el = document.createElement('div');
+  el.className = 'wb-fx-acmenu';
+  const shown = items.slice(0, 10);
+  const nodes: HTMLElement[] = [];
+  let active = 0;
+  shown.forEach((value, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-fx-acopt' + (i === 0 ? ' active' : '');
+    b.textContent = value;
+    // keep focus in the editor so the click can't blur-commit first
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => onPick(value));
+    nodes.push(b);
+    el.appendChild(b);
+  });
+  const setActive = (i: number): void => {
+    nodes[active]?.classList.remove('active');
+    active = (i + nodes.length) % nodes.length;
+    nodes[active]?.classList.add('active');
+    nodes[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  document.body.appendChild(el);
+  const r = editor.getBoundingClientRect();
+  el.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 12)}px`;
+  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
+  el.style.minWidth = `${Math.max(180, r.width)}px`;
+  return {
+    el,
+    move: (d) => setActive(active + d),
+    accept: () => { if (!shown.length) return false; onPick(shown[active]); return true; },
+    close: () => el.remove(),
+  };
 }
 
 /** The single best default for a slot — what we pre-populate the bar with. */

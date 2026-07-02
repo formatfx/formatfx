@@ -20,12 +20,12 @@ function header(page: Page, label: string) {
   return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
-async function openStudio(page: Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
+// The JSON pane ("Advanced") is hidden by default — reveal it idempotently.
+async function openJson(page: Page): Promise<void> {
+  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
 test('header menu formats an unformatted column: scaffold registered, grid renders it via CFR', async ({ page }) => {
-  await openStudio(page);
   await header(page, 'DueDate').click();
   const menu = page.locator('.wb-grid-menu');
   await expect(menu.locator('.wb-grid-menu-title')).toHaveText('DueDate');
@@ -37,7 +37,7 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   await expect(page.locator('.wb-doc-header', { hasText: '[$DueDate]' })).toHaveClass(/active/);
   await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
   // style it so the round trip is visible, then return to the grid
-  await page.locator('.wb-tabs button[data-tab="json"]').click();
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div', txtContent: "='⏰ '+toLocaleDateString(@currentField)",
   }));
@@ -102,7 +102,6 @@ test('hide column is one undoable mutation; "+ column" re-adds fields, formatted
 });
 
 test('drop one column ONTO another → named row-formatter scaffolding, one undo step', async ({ page }) => {
-  await openStudio(page);
   // drag DueDate onto Status (center = group zone)
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
   await expect(page.locator('#wb-toast')).toContainText('Status + DueDate group');
@@ -146,12 +145,12 @@ test('header menu copies a registered column formatter as column JSON', async ({
 
 test('the same tree graduates: switch Type to row layout and back to grid', async ({ page }) => {
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
-  await openStudio(page);
-  await page.selectOption('#wb-kind', 'row');
+  await openJson(page);
+  await page.selectOption('#wb-pane-side #wb-kind', 'row');
   // free row layout now — same tree, root renders once per mock row
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('In Progress');
-  await page.selectOption('#wb-kind', 'grid');
+  await page.selectOption('#wb-pane-side #wb-kind', 'grid');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status + DueDate group', 'Progress', 'AssignedTo', 'Project']);
 });
@@ -167,7 +166,6 @@ test('right-click: column menu on headers, element menu on cell content, remove 
   const titleCell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first();
   await titleCell.locator('[data-sp-path]').first().click({ button: 'right' });
   await expect(page.locator('.wb-grid-menu-title')).toHaveText('Title');
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Restyle in playground' })).toBeVisible();
   await page.locator('.wb-grid-menu button', { hasText: 'Remove' }).click();
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS.filter((h) => h !== 'Title'));
   await page.keyboard.press('Control+z');
@@ -175,7 +173,6 @@ test('right-click: column menu on headers, element menu on cell content, remove 
 });
 
 test('conditional formatting from the header menu: condition → rule → data preview → apply lands on the column formatter', async ({ page }) => {
-  await openStudio(page);
   await header(page, 'DueDate').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
@@ -192,7 +189,7 @@ test('conditional formatting from the header menu: condition → rule → data p
   await cf.locator('.wb-cf-apply').click();
   // the column route registers a formatter and switches the workspace to it
   await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
-  await page.locator('.wb-tabs button[data-tab="json"]').click();
+  await openJson(page);
   const json = await page.inputValue('#wb-json-text');
   // the JSON tab shows the sanitized export (Zero Whitespace Rule)
   expect(json).toContain("=if(toString([$DueDate])!=''&&[$DueDate]<@now,'#d13438','')");
@@ -202,7 +199,6 @@ test('conditional formatting from the header menu: condition → rule → data p
 });
 
 test('conditional formatting can watch a different column than the one it paints', async ({ page }) => {
-  await openStudio(page);
   await header(page, 'DueDate').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
@@ -216,7 +212,7 @@ test('conditional formatting can watch a different column than the one it paints
   await cf.locator('.wb-cf-apply').click();
   // the PAINTED column gets the formatter; the rules inside watch Status
   await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
-  await page.locator('.wb-tabs button[data-tab="json"]').click();
+  await openJson(page);
   expect(await page.inputValue('#wb-json-text')).toContain("[$Status]=='Blocked'");
 });
 
@@ -282,7 +278,6 @@ test('✨ a color for each choice: one rule per choice, smart colors, formula-re
 test('the app lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await openStudio(page);
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
   // header menu works (Status is a linked instance → the Figma-model actions)
   await header(page, 'Status').click();

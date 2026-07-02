@@ -1,23 +1,25 @@
 /**
  * main.ts — FormatFX: the visual sandbox for SharePoint list formatting.
  *
- * App shell: toolbar (formatter kind, theme, undo/redo, examples),
- * palette | tree | canvas | inspector | JSON/data tabs.
+ * App shell. The editing surface is the Claude-style Left Edit Pane (structure
+ * tree + draw toolbar + Simple/Pro/Code property lenses), the center canvas
+ * (Function Bar + preview + Data dock), and a JSON-only right pane.
  */
 
 import './style.css';
-import { state } from './editor/state';
+import { state, type EditorLens } from './editor/state';
 import { PRODUCT_NAME, PRODUCT_TAGLINE, PROJECT_FILE_NAME } from './branding';
 import { applyTheme, setCustomPalette } from './core/theme';
-import { mountPalette } from './editor/palette';
-import { mountTree } from './editor/treeView';
+import { exportJson } from './core/serializer';
 import { mountCanvas } from './editor/canvas';
 import { mountFxBar } from './editor/fxBar';
-import { mountInspector } from './editor/inspector';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
-import { onPushedSnapshot } from './editor/extensionBridge';
+import { onPushedSnapshot, onExtensionReady, onFormatterRequest, stageApplyToExtension } from './editor/extensionBridge';
+import { buildCurrentApplyPayload } from './editor/deployPayload';
 import { mountBreadcrumb } from './editor/breadcrumb';
+import { mountLeftPane } from './editor/leftPane';
+import { copyNodes, pasteNodes } from './editor/clipboard';
 import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
@@ -43,11 +45,12 @@ app.innerHTML = `
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
-      <button id="wb-studio-toggle" title="Advanced — the single door to the developer tools: validated JSON (the escape hatch, with Deploy), plus the Palette, Structure and Properties panes. The maker grid stays primary."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
+      <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
+      <button id="wb-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
-          <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
+          <button id="wb-save" title="Save project file (formatter + schema + mock data) — Ctrl+S"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
           <label class="wb-menu-row" title="Load a ready-made example formatter to start from"><i class="ms-Icon ms-Icon--Lightbulb"></i> Load example
             <select id="wb-example">
@@ -74,39 +77,9 @@ app.innerHTML = `
     <div id="wb-breadcrumb" class="wb-breadcrumb"></div>
   </div>
   <main class="wb-layout" id="wb-layout">
-    <aside class="wb-pane wb-pane-palette" id="wb-pane-palette">
-      <h2><span class="wb-pane-title">Palette</span>
-        <button id="wb-palette-toggle" title="Collapse or expand the palette — drag still works; hover for names" aria-label="Toggle palette collapse">⮜</button>
-      </h2>
-      <div id="wb-palette"></div>
-    </aside>
-    <div class="wb-resizer" data-col="palette" title="Drag to resize"></div>
-    <aside class="wb-pane wb-pane-tree" id="wb-pane-tree">
-      <div class="wb-tree-rail" id="wb-tree-rail" title="Hover to open Structure — it stays open until you click somewhere else">⬚<span>structure</span></div>
-      <h2><span>Structure</span>
-        <button id="wb-tree-peek" title="Auto-hide: shrink Structure to a rail; hover the rail to open it, click anywhere else to close" aria-label="Toggle Structure auto-hide">📌</button>
-      </h2>
-      <div id="wb-tree" class="wb-tree-split">
-        <section class="wb-tree-sec" id="wb-tree-sec-view">
-          <div class="wb-tree-sec-head" id="wb-tree-view-head" title="The view formatter on the canvas — click to collapse">
-            <button class="wb-tree-sec-min" id="wb-tree-view-min" title="Collapse / expand the view formatter" aria-label="Collapse or expand view formatter">▾</button>
-            <span>View formatter</span>
-          </div>
-          <div class="wb-tree-sec-body" id="wb-tree-view"></div>
-        </section>
-        <div class="wb-tree-vsplit" id="wb-tree-vsplit" title="Drag to share space between the two sections"></div>
-        <section class="wb-tree-sec" id="wb-tree-sec-cols">
-          <div class="wb-tree-sec-head" id="wb-tree-cols-head" title="Column formatters in the workspace — click to collapse">
-            <button class="wb-tree-sec-min" id="wb-tree-cols-min" title="Collapse / expand the column formatters" aria-label="Collapse or expand column formatters">▾</button>
-            <span>Column formatters</span>
-          </div>
-          <div class="wb-tree-sec-body" id="wb-tree-cols"></div>
-        </section>
-      </div>
-    </aside>
-    <div class="wb-resizer" data-col="tree" title="Drag to resize"></div>
-    <section class="wb-pane wb-pane-canvas">
-      <div id="wb-fxbar" title="The Sheet formula bar — paint the selected cell's properties with Excel-style formulas."></div>
+    <aside class="wb-leftpane" id="wb-leftpane"></aside>
+    <section class="wb-pane-canvas">
+      <div id="wb-fxbar" title="The Function Bar — paint the selected element's properties with Excel-style formulas."></div>
       <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to show the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       <div id="wb-canvas" class="wb-canvas"></div>
       <div class="wb-data-split" id="wb-data-split" title="Drag to resize the data panel"></div>
@@ -123,164 +96,74 @@ app.innerHTML = `
     </section>
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>
     <aside class="wb-pane wb-pane-side" id="wb-pane-side">
-      <div class="wb-side-rail" title="Hover to open the panel — it stays open until you click somewhere else">◧<span>panel</span></div>
-      <nav class="wb-tabs">
-        <button data-tab="inspector" class="active">Properties</button>
-        <button data-tab="json" title="The validated-JSON escape hatch — paste/apply any formatter, copy the compiled output, or Deploy">JSON</button>
-        <button id="wb-side-peek" title="Auto-hide: shrink this pane to a rail; hover the rail to open it, click anywhere else to close" aria-label="Toggle side panel auto-hide">📌</button>
-        <button id="wb-side-max" title="Maximize or restore this pane — room for editing JSON" aria-label="Toggle side panel maximize">⛶</button>
-      </nav>
-      <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
-        <span>Formatter type</span>
-        <select id="wb-kind">
-          <option value="grid">Grid — view columns</option>
-          <option value="column">Column formatter</option>
-          <option value="row">View (row) formatter</option>
-          <option value="tile">Tile / Gallery</option>
-        </select>
+      <div class="wb-side-head">
+        <span class="wb-pane-title">JSON</span>
+        <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
+          <span>Type</span>
+          <select id="wb-kind">
+            <option value="grid">Grid — view columns</option>
+            <option value="column">Column formatter</option>
+            <option value="row">View (row) formatter</option>
+            <option value="tile">Tile / Gallery</option>
+          </select>
+        </div>
       </div>
-      <div id="wb-tab-inspector" class="wb-tab active"></div>
-      <div id="wb-tab-json" class="wb-tab"></div>
+      <div id="wb-tab-json" class="wb-tab active"></div>
     </aside>
   </main>
   <div id="wb-toast" class="wb-toast" hidden></div>
 `;
 
-// ─── resizable panes + collapsible palette (persisted UI prefs) ─────────────
+// ─── resizable JSON pane + Data dock (persisted UI prefs) ───────────────────
 const layout = document.getElementById('wb-layout')!;
 interface UiPrefs {
-  cols: { palette: number; tree: number; side: number };
-  paletteCollapsed: boolean;
-  sideMode: 'normal' | 'peek' | 'max';
-  /** Structure pane auto-hide (pin to a rail), mirroring the side pane. */
-  treeMode: 'normal' | 'peek';
-  /** Structure pane split: top (view) section height (px) and per-section minimize. */
-  treeViewH: number;
-  treeViewMin: boolean;
-  treeColsMin: boolean;
+  cols: { side: number };
   /** The center Data dock: its height (px) and minimize/maximize state. */
   dataH: number;
   dataMode: 'normal' | 'min' | 'max';
   titleCol: boolean;
-  /** When false (default), the studio panes are hidden — grid-first maker view. */
-  studioOpen: boolean;
+  /** The active Left Edit Pane lens — a view pref, not part of the project. */
+  activeLens: EditorLens;
+  /** Whether the right-hand validated-JSON pane (the Advanced escape hatch) is
+   *  shown. Collapsed by default so the maker landing is left pane + canvas. */
+  jsonOpen: boolean;
 }
 const uiPrefs: UiPrefs = {
-  cols: { palette: 220, tree: 250, side: 360 },
-  paletteCollapsed: false,
-  sideMode: 'normal',
-  treeMode: 'normal',
-  treeViewH: 240,
-  treeViewMin: false,
-  treeColsMin: false,
+  cols: { side: 360 },
   dataH: 220,
   dataMode: 'min',
   titleCol: true,
-  studioOpen: false,
+  activeLens: 'pro',
+  jsonOpen: false,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
 const sidePane = document.getElementById('wb-pane-side')!;
-const treePane = document.getElementById('wb-pane-tree')!;
+const sideResizer = layout.querySelector<HTMLElement>('.wb-resizer[data-col="side"]')!;
 const applyLayout = () => {
-  const p = uiPrefs.paletteCollapsed ? 58 : uiPrefs.cols.palette;
-  const side = uiPrefs.sideMode === 'peek' ? 30
-    : uiPrefs.sideMode === 'max' ? Math.max(560, Math.round(window.innerWidth * 0.62))
-    : uiPrefs.cols.side;
-  // Structure can auto-hide to a rail (pinned) just like the side pane.
-  const tree = uiPrefs.treeMode === 'peek' ? 30 : uiPrefs.cols.tree;
-  // Layout modes: maker view (grid-first, studio panes hidden) vs studio open
-  // (palette + Structure + preview/grid + Properties/JSON pane visible).
-  layout.classList.toggle('wb-maker', !uiPrefs.studioOpen);
-  document.getElementById('wb-studio-toggle')!.classList.toggle('active', uiPrefs.studioOpen);
-  layout.style.gridTemplateColumns = uiPrefs.studioOpen
-    ? `${p}px 5px ${tree}px 5px 1fr 5px ${side}px`
-    : '1fr';
-  document.getElementById('wb-pane-palette')!.classList.toggle('wb-collapsed', uiPrefs.paletteCollapsed);
-  (document.getElementById('wb-palette-toggle') as HTMLButtonElement).textContent = uiPrefs.paletteCollapsed ? '⮞' : '⮜';
-  sidePane.classList.toggle('wb-peek', uiPrefs.sideMode === 'peek');
-  if (uiPrefs.sideMode !== 'peek') sidePane.classList.remove('wb-peek-open');
-  sidePane.style.setProperty('--wb-side-w', `${uiPrefs.cols.side}px`);
-  document.getElementById('wb-side-peek')!.classList.toggle('active', uiPrefs.sideMode === 'peek');
-  document.getElementById('wb-side-max')!.classList.toggle('active', uiPrefs.sideMode === 'max');
-  treePane.classList.toggle('wb-peek', uiPrefs.treeMode === 'peek');
-  if (uiPrefs.treeMode !== 'peek') treePane.classList.remove('wb-peek-open');
-  treePane.style.setProperty('--wb-tree-w', `${uiPrefs.cols.tree}px`);
-  document.getElementById('wb-tree-peek')!.classList.toggle('active', uiPrefs.treeMode === 'peek');
+  const side = uiPrefs.cols.side;
+  // Left Edit Pane is always visible (spec); the JSON pane (Advanced escape
+  // hatch) can fold away so the maker default is left pane + canvas.
+  layout.style.gridTemplateColumns = uiPrefs.jsonOpen
+    ? `var(--wb-leftpane-w) 1fr 5px ${side}px`
+    : 'var(--wb-leftpane-w) 1fr';
+  sidePane.style.display = uiPrefs.jsonOpen ? '' : 'none';
+  sideResizer.style.display = uiPrefs.jsonOpen ? '' : 'none';
+  document.getElementById('wb-json-toggle')?.classList.toggle('active', uiPrefs.jsonOpen);
 };
 window.addEventListener('resize', applyLayout);
 
-// side pane modes: 📌 auto-hide (hover to open, outside click closes) · ⛶ maximize
-document.getElementById('wb-side-peek')!.addEventListener('click', () => {
-  uiPrefs.sideMode = uiPrefs.sideMode === 'peek' ? 'normal' : 'peek';
-  applyLayout();
-  saveUiPrefs();
-});
-document.getElementById('wb-side-max')!.addEventListener('click', () => {
-  uiPrefs.sideMode = uiPrefs.sideMode === 'max' ? 'normal' : 'max';
-  applyLayout();
-  saveUiPrefs();
-});
-sidePane.addEventListener('mouseenter', () => {
-  if (uiPrefs.sideMode === 'peek') sidePane.classList.add('wb-peek-open');
-});
-document.addEventListener('pointerdown', (e) => {
-  if (uiPrefs.sideMode === 'peek' && !sidePane.contains(e.target as Node)) {
-    sidePane.classList.remove('wb-peek-open');
-  }
-});
-// Structure pane: pin/auto-hide to a rail, mirroring the side pane
-document.getElementById('wb-tree-peek')!.addEventListener('click', () => {
-  uiPrefs.treeMode = uiPrefs.treeMode === 'peek' ? 'normal' : 'peek';
-  applyLayout();
-  saveUiPrefs();
-});
-treePane.addEventListener('mouseenter', () => {
-  if (uiPrefs.treeMode === 'peek') treePane.classList.add('wb-peek-open');
-});
-document.addEventListener('pointerdown', (e) => {
-  if (uiPrefs.treeMode === 'peek' && !treePane.contains(e.target as Node)) {
-    treePane.classList.remove('wb-peek-open');
-  }
-});
-document.getElementById('wb-palette-toggle')!.addEventListener('click', () => {
-  uiPrefs.paletteCollapsed = !uiPrefs.paletteCollapsed;
-  applyLayout();
-  saveUiPrefs();
-});
-document.getElementById('wb-studio-toggle')!.addEventListener('click', () => {
-  const opening = !uiPrefs.studioOpen;
-  uiPrefs.studioOpen = opening;
-  applyLayout();
-  saveUiPrefs();
-  // the single Advanced door opens on the validated-JSON view (the escape
-  // hatch); Palette/Structure/Properties stay one click away in the studio.
-  if (opening) activateSideTab('json');
-});
-
-/** Activate one of the side-pane tabs (Properties / JSON) programmatically. */
-function activateSideTab(tab: 'inspector' | 'json'): void {
-  app.querySelectorAll('.wb-tabs button[data-tab]').forEach((b) => b.classList.remove('active'));
-  app.querySelectorAll('.wb-tab').forEach((t) => t.classList.remove('active'));
-  document.querySelector(`.wb-tabs button[data-tab="${tab}"]`)?.classList.add('active');
-  document.getElementById(`wb-tab-${tab}`)?.classList.add('active');
-}
 for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
-  const col = resizer.dataset.col as keyof UiPrefs['cols'];
   resizer.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     resizer.setPointerCapture(e.pointerId);
     const startX = e.clientX;
-    const startW = uiPrefs.cols[col];
-    if (col === 'palette' && uiPrefs.paletteCollapsed) return;
-    if (col === 'tree' && uiPrefs.treeMode === 'peek') return;
+    const startW = uiPrefs.cols.side;
     const move = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX;
-      // the side pane grows leftwards
-      const next = col === 'side' ? startW - dx : startW + dx;
-      uiPrefs.cols[col] = Math.max(56, Math.min(640, next));
+      // the JSON pane grows leftwards
+      uiPrefs.cols.side = Math.max(220, Math.min(720, startW - (ev.clientX - startX)));
       applyLayout();
     };
     const up = () => {
@@ -294,79 +177,14 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
 }
 applyLayout();
 
-// ─── Structure pane: two stacked sections (view + columns) ──────────────────
-// The top section is the view formatter, the bottom is the column formatters.
-// Each minimizes independently; a splitter between them shares the height.
-const treeSplit = document.getElementById('wb-tree')!;
-const treeVSplit = document.getElementById('wb-tree-vsplit')!;
-const treeViewMinBtn = document.getElementById('wb-tree-view-min') as HTMLButtonElement;
-const treeColsMinBtn = document.getElementById('wb-tree-cols-min') as HTMLButtonElement;
-const applyTreeSplit = () => {
-  treeSplit.classList.toggle('wb-tv-min', uiPrefs.treeViewMin);
-  treeSplit.classList.toggle('wb-tc-min', uiPrefs.treeColsMin);
-  treeSplit.style.setProperty('--wb-tree-view-h', `${uiPrefs.treeViewH}px`);
-  treeViewMinBtn.textContent = uiPrefs.treeViewMin ? '▸' : '▾';
-  treeColsMinBtn.textContent = uiPrefs.treeColsMin ? '▸' : '▾';
-};
-const toggleSec = (which: 'view' | 'cols') => {
-  if (which === 'view') uiPrefs.treeViewMin = !uiPrefs.treeViewMin;
-  else uiPrefs.treeColsMin = !uiPrefs.treeColsMin;
-  applyTreeSplit();
+// Advanced: show/hide the validated-JSON pane (the left pane + canvas stay put)
+document.getElementById('wb-json-toggle')!.addEventListener('click', () => {
+  uiPrefs.jsonOpen = !uiPrefs.jsonOpen;
+  applyLayout();
   saveUiPrefs();
-};
-// the head toggles, but its minimize button does too (so don't double-fire)
-treeViewMinBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSec('view'); });
-treeColsMinBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleSec('cols'); });
-document.getElementById('wb-tree-view-head')!.addEventListener('click', () => toggleSec('view'));
-document.getElementById('wb-tree-cols-head')!.addEventListener('click', () => toggleSec('cols'));
-// drag the splitter to share height (dragging down grows the view section)
-treeVSplit.addEventListener('pointerdown', (e) => {
-  if (uiPrefs.treeViewMin || uiPrefs.treeColsMin) return; // nothing to share
-  e.preventDefault();
-  treeVSplit.setPointerCapture(e.pointerId);
-  const startY = e.clientY;
-  const startH = uiPrefs.treeViewH;
-  const move = (ev: PointerEvent) => {
-    const splitH = treeSplit.clientHeight;
-    uiPrefs.treeViewH = Math.max(60, Math.min(splitH - 120, startH + (ev.clientY - startY)));
-    treeSplit.style.setProperty('--wb-tree-view-h', `${uiPrefs.treeViewH}px`);
-  };
-  const up = () => {
-    treeVSplit.removeEventListener('pointermove', move);
-    treeVSplit.removeEventListener('pointerup', up);
-    saveUiPrefs();
-  };
-  treeVSplit.addEventListener('pointermove', move);
-  treeVSplit.addEventListener('pointerup', up);
 });
-applyTreeSplit();
-
-// Clicking a ⤷ chip opens that column formatter; make sure the bottom section
-// is expanded and scroll the target into view. For a registered column that's
-// the now-active header; for an unregistered reference (a no-op open) it's that
-// name's "referenced but not in the workspace" row, briefly highlighted — so
-// the click always lands somewhere meaningful.
-function revealColumnSection(name: string): void {
-  if (uiPrefs.treeColsMin) { uiPrefs.treeColsMin = false; applyTreeSplit(); saveUiPrefs(); }
-  // the re-render from openColumnRef has already run synchronously; scroll next frame
-  requestAnimationFrame(() => {
-    const cols = document.getElementById('wb-tree-cols');
-    if (!cols) return;
-    const active = cols.querySelector<HTMLElement>('.wb-doc-header.active');
-    if (active) { active.scrollIntoView({ block: 'nearest' }); return; }
-    const missing = [...cols.querySelectorAll<HTMLElement>('.wb-doc-missing')]
-      .find((el) => el.dataset.missingRef === name);
-    if (missing) {
-      missing.scrollIntoView({ block: 'nearest' });
-      missing.classList.add('wb-flash');
-      setTimeout(() => missing.classList.remove('wb-flash'), 1000);
-    }
-  });
-}
 
 // ─── center Data dock: collapse / maximize / drag-resize ────────────────────
-// The Data editor lives below the preview (both modes), as its own panel with a
-// draggable height and minimize/maximize — not a tab in the studio side pane.
 const dataDock = document.getElementById('wb-data-dock')!;
 const dataSplit = document.getElementById('wb-data-split')!;
 const dataMinBtn = document.getElementById('wb-data-min') as HTMLButtonElement;
@@ -395,7 +213,6 @@ document.getElementById('wb-data-dock-head')!.addEventListener('click', (e) => {
   uiPrefs.dataMode = uiPrefs.dataMode === 'min' ? 'normal' : 'min';
   applyDataDock(); saveUiPrefs();
 });
-// drag the splitter to set the dock height (dragging up grows it)
 dataSplit.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   dataSplit.setPointerCapture(e.pointerId);
@@ -403,8 +220,6 @@ dataSplit.addEventListener('pointerdown', (e) => {
   const startH = dataDock.getBoundingClientRect().height;
   if (uiPrefs.dataMode !== 'normal') { uiPrefs.dataMode = 'normal'; applyDataDock(); }
   const move = (ev: PointerEvent) => {
-    // clamp against the center column the dock lives in (leave room for the
-    // preview above), not the window — so it can't outgrow its container
     const paneH = dataDock.parentElement?.clientHeight ?? window.innerHeight;
     uiPrefs.dataH = Math.max(90, Math.min(paneH - 160, startH - (ev.clientY - startY)));
     dataDock.style.setProperty('--wb-data-h', `${uiPrefs.dataH}px`);
@@ -429,7 +244,6 @@ document.addEventListener('pointerdown', (e) => {
   if (!menuPanel.hidden && !menuEl.contains(e.target as Node)) menuPanel.hidden = true;
 });
 menuPanel.addEventListener('click', (e) => {
-  // button actions close the menu; the outlines checkbox keeps it open
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
 });
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
@@ -443,13 +257,15 @@ function toast(message: string): void {
   el.textContent = message;
   el.hidden = false;
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { el.hidden = true; }, 2600);
+  toastTimer = window.setTimeout(() => { el.hidden = true; }, Math.max(2600, (message.match(/\S+/g) ?? []).length * 350));
 }
 
 document.title = `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`;
 
 // restore autosaved project (before panels mount) — work survives refreshes
+state.activeLens = uiPrefs.activeLens; // seed the lens before the pane mounts
 const restored = state.restore();
+state.markSavepoint(); // baseline for Discard, whether restored or default
 
 // theme (stock light/dark base + optional tenant palette overrides)
 const applyAppTheme = () => {
@@ -470,7 +286,7 @@ state.subscribe((reason) => {
   if (reason === 'theme' || reason === 'load') applyAppTheme();
 });
 
-// kind switch
+// kind switch (Advanced: the wrapper this formatter compiles to)
 const kindSel = document.getElementById('wb-kind') as HTMLSelectElement;
 kindSel.addEventListener('change', () => {
   state.setKind(kindSel.value as DocumentKind);
@@ -481,9 +297,7 @@ kindSel.addEventListener('change', () => {
     : `Same element tree, new wrapper: this formatter now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 
-// wrapper kind/example only make sense on the main formatter — preserve the
-// disabling the old workspace <select> used to drive (the breadcrumb now owns
-// doc navigation; this just keeps the Studio controls coherent).
+// wrapper kind/example only make sense on the main formatter
 const refreshStudioDisabled = () => {
   kindSel.disabled = state.activeDocKey !== 'main';
   exampleSel.disabled = state.activeDocKey !== 'main';
@@ -497,7 +311,6 @@ state.subscribe((reason) => {
 
 // one-click copy of whatever is being edited
 document.getElementById('wb-copy')!.addEventListener('click', async () => {
-  const { exportJson } = await import('./core/serializer');
   await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
   toast(state.activeDocKey !== 'main'
     ? `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`
@@ -518,12 +331,12 @@ exampleSel.addEventListener('change', () => {
   const doc: FormatterDocument = { kind, root: instantiate(item, state.fields) };
   if (kind === 'tile') { doc.tileWidth = 254; doc.tileHeight = 220; }
   state.loadDocument(doc);
-  (document.getElementById('wb-menu-panel') as HTMLDivElement).hidden = true; // close the ☰ menu
+  (document.getElementById('wb-menu-panel') as HTMLDivElement).hidden = true;
   toast(`Loaded example: ${item.label}`);
 });
 
 // save / open / reset project
-document.getElementById('wb-save')!.addEventListener('click', () => {
+const saveProject = (): void => {
   const blob = new Blob([state.serializeProject()], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -531,7 +344,8 @@ document.getElementById('wb-save')!.addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
   toast('Project saved (formatter + schema + mock data)');
-});
+};
+document.getElementById('wb-save')!.addEventListener('click', saveProject);
 document.getElementById('wb-open')!.addEventListener('click', () => {
   const input = document.createElement('input');
   input.type = 'file';
@@ -540,7 +354,7 @@ document.getElementById('wb-open')!.addEventListener('click', () => {
     const file = input.files?.[0];
     if (!file) return;
     try {
-      state.loadProject(await file.text()); // theme reapplies via the 'load' subscriber
+      state.loadProject(await file.text());
       toast(`Opened ${file.name}`);
     } catch (e) {
       toast(`Open failed: ${(e as Error).message}`);
@@ -554,15 +368,12 @@ document.getElementById('wb-reset')!.addEventListener('click', () => {
   toast('Reset to defaults');
 });
 
-// undo/redo
+// undo/redo (topbar)
 const undoBtn = document.getElementById('wb-undo') as HTMLButtonElement;
 const redoBtn = document.getElementById('wb-redo') as HTMLButtonElement;
 const refreshUndoRedo = (): void => {
   undoBtn.disabled = !state.canUndo;
   redoBtn.disabled = !state.canRedo;
-  // Dynamic tooltip gives sighted users empty-state feedback. The aria-label is
-  // left as the state-agnostic "Undo"/"Redo" set in #66 — the disabled state
-  // already conveys unavailability to assistive tech.
   undoBtn.title = state.canUndo ? 'Undo (Ctrl+Z)' : 'Nothing to undo';
   redoBtn.title = state.canRedo ? 'Redo (Ctrl+Y)' : 'Nothing to redo';
 };
@@ -570,43 +381,64 @@ undoBtn.addEventListener('click', () => state.undo());
 redoBtn.addEventListener('click', () => state.redo());
 state.subscribe((reason) => { if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo(); });
 refreshUndoRedo();
+
+// ─── keyboard shortcuts ─────────────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
   const inText = (e.target as HTMLElement).matches('input, textarea, select');
+  const mod = e.ctrlKey || e.metaKey;
+  // lens switching works even from a focused field
+  if (mod && (e.key === '1' || e.key === '2' || e.key === '3')) {
+    e.preventDefault();
+    state.setLens(e.key === '1' ? 'simple' : e.key === '2' ? 'pro' : 'code');
+    return;
+  }
   if (inText) return;
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); state.undo(); }
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); state.redo(); }
-  if (e.key === 'Delete' && state.selection?.length) state.removeNode(state.selection);
+  if (mod && e.key === 'z') { e.preventDefault(); state.undo(); return; }
+  if (mod && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); state.redo(); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); return; }
+  if (mod && e.key === 'd' && state.selection) { e.preventDefault(); state.duplicateNode(state.selection); return; }
+  if (mod && e.key === 'c' && state.selections.length) { e.preventDefault(); void copyNodes(state.selections); return; }
+  if (mod && e.key === 'v') { e.preventDefault(); void pasteNodes(); return; }
+  if (e.key === 'Escape') { state.select(null); return; }
+  if (e.key === 'Delete' && state.selection?.length) { state.removeNode(state.selection); return; }
 });
 
-// tabs
-for (const btn of app.querySelectorAll<HTMLButtonElement>('.wb-tabs button[data-tab]')) {
-  btn.addEventListener('click', () => {
-    app.querySelectorAll('.wb-tabs button[data-tab]').forEach((b) => b.classList.remove('active'));
-    app.querySelectorAll('.wb-tab').forEach((t) => t.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(`wb-tab-${btn.dataset.tab}`)!.classList.add('active');
-  });
-}
+// persist the chosen lens (view pref, not the project)
+state.subscribe((reason) => {
+  if (reason === 'lens') { uiPrefs.activeLens = state.activeLens; saveUiPrefs(); }
+});
 
-// panels
-mountPalette(document.getElementById('wb-palette')!);
-mountTree(
-  document.getElementById('wb-tree-view')!,
-  document.getElementById('wb-tree-cols')!,
-  revealColumnSection,
-);
+// ─── panels ─────────────────────────────────────────────────────────────────
+mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
 const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
-// the Title-column view toggle rides on the right edge of the fx (edit) bar
 mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElementById('wb-titlecol-label')! });
-mountInspector(document.getElementById('wb-tab-inspector')!);
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
 mountBreadcrumb(document.getElementById('wb-breadcrumb')!, toast);
 
 // extract-push: a snapshot sent from the companion extension lands through the
-// same guarded import as a paste (a fresh tab auto-loads it; existing work is
-// protected by the pure-grid guard).
+// same guarded import as a paste.
 onPushedSnapshot((snapshotJson) => { applyImportedSchema(snapshotJson, toast); });
+
+// ── companion extension hand-off (clipboard-free) ──
+// The current formatter, supplied on demand to the extension's "Grab this
+// formatter" button — the same payload the buttons below stage.
+onFormatterRequest(() => buildCurrentApplyPayload());
+
+// Top-level "Send to extension": surfaced only when the extension announces
+// itself, so the deploy hand-off no longer hides behind Advanced.
+const sendExtBtn = document.getElementById('wb-send-ext') as HTMLButtonElement;
+onExtensionReady(() => { sendExtBtn.hidden = false; });
+sendExtBtn.addEventListener('click', async () => {
+  const { payload, error } = buildCurrentApplyPayload();
+  if (!payload) { toast(error ?? 'Nothing to send.'); return; }
+  try {
+    const { staged } = await stageApplyToExtension(payload);
+    toast(`Sent to the extension (${staged} formatter) — switch to your SharePoint list tab and click the FormatFX extension → Apply staged`);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e));
+  }
+});
 
 // debug outlines
 (document.getElementById('wb-outlines') as HTMLInputElement).addEventListener('change', (e) => {
@@ -624,7 +456,6 @@ titleColCb.addEventListener('change', () => {
   saveUiPrefs();
 });
 const refreshTitleColVisibility = () => {
-  // only meaningful in the column-kind preview (incl. open column formatters)
   titleColLabel.style.display = state.doc.kind === 'column' ? '' : 'none';
 };
 state.subscribe((reason) => {
@@ -632,13 +463,28 @@ state.subscribe((reason) => {
 });
 refreshTitleColVisibility();
 
-// lint refresh after each render pass
+// lint refresh after each render pass — also drives the topbar badge so makers
+// in the default maker view can see issues without opening the studio.
+const lintBadge = document.getElementById('wb-lint-badge') as HTMLElement;
+const refreshLintBadge = ({ errors, warnings, runtime }: { errors: number; warnings: number; runtime: number }): void => {
+  const errorTotal = errors + runtime;
+  const count = errorTotal || warnings;
+  if (!count) { lintBadge.hidden = true; lintBadge.removeAttribute('aria-label'); lintBadge.title = ''; return; }
+  lintBadge.textContent = String(count);
+  lintBadge.hidden = false;
+  lintBadge.classList.toggle('wb-badge-warn', errorTotal === 0);
+  const label = errorTotal
+    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open Advanced to review`
+    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open Advanced to review`;
+  lintBadge.setAttribute('aria-label', label);
+  lintBadge.title = label;
+};
 state.subscribe((reason) => {
-  if (reason !== 'selection' && reason !== 'theme') {
-    window.setTimeout(() => jsonPanel.refreshLint(canvas.getRuntimeIssues()), 0);
+  if (reason !== 'selection' && reason !== 'theme' && reason !== 'lens') {
+    window.setTimeout(() => refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues())), 0);
   }
 });
-jsonPanel.refreshLint(canvas.getRuntimeIssues());
+refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues()));
 refreshStudioDisabled();
 kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 

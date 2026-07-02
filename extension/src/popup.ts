@@ -11,7 +11,7 @@
 
 import type { ListSnapshot, ApplyOutcome } from '../../src/bridge/spClient';
 import { selectFromSnapshot } from '../../src/bridge/spClient';
-import { serializeApplyPayload } from '../../src/bridge/applyPayload';
+import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../../src/bridge/applyPayload';
 import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 import { classifyUrl } from './pageKind';
 
@@ -107,6 +107,21 @@ function renderPicker(snap: ListSnapshot): void {
       text.appendChild(iname);
     }
     label.append(cb, text);
+    // columns that carry a live formatter get a second checkbox to opt out of
+    // pulling that formatter in (the column itself still comes across)
+    if (f.customFormatter) {
+      const fmtWrap = document.createElement('span');
+      fmtWrap.className = 'fmt-opt';
+      fmtWrap.title = `Pull in this column's existing formatter. Uncheck to capture the column without its formatter.`;
+      const fmtCb = document.createElement('input');
+      fmtCb.type = 'checkbox';
+      fmtCb.checked = true;
+      fmtCb.value = f.internalName;
+      fmtCb.className = 'fmt';
+      fmtCb.setAttribute('aria-label', `Capture formatter for ${f.displayName || f.internalName}`);
+      fmtWrap.append(fmtCb, document.createTextNode(' formatter'));
+      label.appendChild(fmtWrap);
+    }
     list.appendChild(label);
   }
   // current view toggle, default on; hidden when there's no view to include
@@ -122,12 +137,34 @@ function renderPicker(snap: ListSnapshot): void {
     viewRow.hidden = true;
     viewCb.checked = false;
   }
+
+  // The capture couldn't read this list's rows: say so plainly instead of
+  // letting synthetic sample data pose as the real thing. With no real rows to
+  // ship, the data toggle is off and disabled.
+  const dataCb = document.getElementById('picker-data') as HTMLInputElement;
+  const dataWarn = document.getElementById('picker-data-warn') as HTMLElement;
+  if (snap.rowsError) {
+    dataCb.checked = false;
+    dataCb.disabled = true;
+    dataWarn.hidden = false;
+    dataWarn.textContent = `⚠ Couldn't read this list's rows (${snap.rowsError}). FormatFX will use synthetic sample data.`;
+  } else {
+    dataCb.checked = true;
+    dataCb.disabled = false;
+    dataWarn.hidden = true;
+  }
 }
 
 function selectedSnapshot(): ListSnapshot {
   const names = Array.from(document.querySelectorAll<HTMLInputElement>('#picker-fields .fld:checked')).map((c) => c.value);
   const includeCurrentView = (document.getElementById('picker-view') as HTMLInputElement).checked;
-  return selectFromSnapshot(captured!, { fieldNames: names, includeCurrentView });
+  const includeData = (document.getElementById('picker-data') as HTMLInputElement).checked;
+  // formatter boxes left unchecked → drop those columns' formatters at capture
+  const dropFormatterFor = Array.from(document.querySelectorAll<HTMLInputElement>('#picker-fields .fmt:not(:checked)')).map((c) => c.value);
+  const sel = selectFromSnapshot(captured!, { fieldNames: names, includeCurrentView, dropFormatterFor });
+  // "Include sample data" off → ship schema/formatters only; the app fills
+  // synthetic sample rows at import (dataPanel: schema.rows ?? buildSampleRows).
+  return includeData ? sel : { ...sel, rows: [] };
 }
 
 function setAllFields(checked: boolean): void {
@@ -141,14 +178,14 @@ async function onPickerOpen(): Promise<void> {
   const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
   await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
   await chrome.tabs.create({ url: 'https://formatfx.dev' });
-  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''} — FormatFX is opening with it loaded.`, 'ok');
+  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'} — FormatFX is opening with it loaded.`, 'ok');
 }
 
 async function onPickerCopy(): Promise<void> {
   const sel = selectedSnapshot();
   if (!sel.fields.length) { setStatus('Pick at least one column.', 'err'); return; }
   await navigator.clipboard.writeText(JSON.stringify(sel, null, 1));
-  setStatus(`Copied ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}. Paste into FormatFX → Data → Import schema.`, 'ok');
+  setStatus(`Copied ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'}. Paste into FormatFX → Data → Import schema.`, 'ok');
 }
 
 function onPickerCancel(): void {
@@ -186,6 +223,25 @@ async function readStaged(): Promise<StagedApply | null> {
   return (got[STAGE_KEY] as StagedApply | undefined) ?? null;
 }
 
+/** On a formatfx.dev tab: ask the page for the formatter it's editing and stage it. */
+async function onGrabFormatter(): Promise<void> {
+  setStatus('Grabbing the current formatter…', 'busy');
+  try {
+    const tabId = await activeTabId();
+    const res = await chrome.tabs.sendMessage<{ ok: boolean; payload?: ApplyPayload; error?: string }>(
+      tabId, { action: 'grabFormatter' },
+    );
+    if (!res?.ok || !res.payload) throw new Error(res?.error || 'FormatFX did not return a formatter.');
+    const payload = parseApplyPayload(serializeApplyPayload(res.payload)); // re-validate off the wire
+    const staged: StagedApply = { payload, stagedAt: new Date().toISOString() };
+    await chrome.storage.local.set({ [STAGE_KEY]: staged });
+    const t = payload.targets[0];
+    setStatus(`Got ${t.target === 'field' ? `[${t.name}]` : `the "${t.name}" view`} — switch to your SharePoint list tab and click Apply staged.`, 'ok');
+  } catch (e) {
+    setStatus(e instanceof Error ? e.message : String(e), 'err');
+  }
+}
+
 async function onApplyStaged(): Promise<void> {
   setStatus('Applying staged formatter…', 'busy');
   try {
@@ -214,6 +270,7 @@ async function refreshStagedButton(): Promise<void> {
 document.getElementById('extract')!.addEventListener('click', onExtract);
 document.getElementById('apply')!.addEventListener('click', onApply);
 document.getElementById('apply-staged')!.addEventListener('click', onApplyStaged);
+document.getElementById('grab-formatter')!.addEventListener('click', onGrabFormatter);
 document.getElementById('picker-open')!.addEventListener('click', onPickerOpen);
 document.getElementById('picker-copy')!.addEventListener('click', onPickerCopy);
 document.getElementById('picker-cancel')!.addEventListener('click', onPickerCancel);

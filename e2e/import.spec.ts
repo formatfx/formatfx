@@ -4,8 +4,8 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-async function openStudio(page: Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
+async function openJson(page: Page): Promise<void> {
+  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
 test.beforeEach(async ({ page }) => {
@@ -14,10 +14,6 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
 });
-
-async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
-  await page.click(`.wb-tabs button[data-tab="${tab}"]`);
-}
 
 /** The Data editor is a dock below the preview; reveal it (it starts collapsed). */
 async function openDataDock(page: Page): Promise<void> {
@@ -47,6 +43,8 @@ async function importExport(page: Page): Promise<void> {
   await page.click('button:has-text("Import schema…")');
   await page.fill('.wb-schema-form textarea', listSchemaCsv());
   await page.click('button:has-text("Import pasted text")');
+  // listSchemaCsv carries a column formatter (Pct) → confirm the opt-out review
+  await page.click('#wb-fmt-review-import');
 }
 
 test('native CSV-with-schema import: fields, real rows, formatters registered', async ({ page }) => {
@@ -65,10 +63,28 @@ test('native CSV-with-schema import: fields, real rows, formatters registered', 
   await expect(page.locator('.wb-grid-row').first()).toContainText('75%');
 });
 
+test('import review opts a column formatter out: unchecked → column imports but formatter is not registered', async ({ page }) => {
+  await openDataDock(page);
+  await page.click('button:has-text("Import schema…")');
+  await page.fill('.wb-schema-form textarea', listSchemaCsv());
+  await page.click('button:has-text("Import pasted text")');
+  // the review lists the one formatter-bearing column (Pct); uncheck it
+  const review = page.locator('#wb-fmt-review');
+  await expect(review).toContainText('[$Pct]');
+  await review.locator('input[type="checkbox"]').uncheck();
+  await page.click('#wb-fmt-review-import');
+  // the column + data still import…
+  await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
+  await expect(page.locator('.wb-data-fieldname', { hasText: 'Pct' })).toBeVisible();
+  // …but no live column formatter was registered, and the cell shows the raw value
+  await expect(page.locator('#wb-toast')).not.toContainText('live column formatters');
+  await expect(page.locator('.wb-schema-form', { hasText: 'Column formatter references' }))
+    .not.toContainText('[$Pct]');
+});
+
 test('columnFormatterReference renders the registered formatter with swapped @currentField', async ({ page }) => {
   await importExport(page);
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
     columnFormatterReference: '[$Pct]',
@@ -121,6 +137,7 @@ test('list snapshot import: fields + views land; the default view\'s row formatt
   await expect(page.locator('.wb-live-extract')).toContainText('Live from SharePoint');
   await page.fill('.wb-schema-form textarea', listSnapshot({ defaultViewFormatter: true }));
   await page.click('button:has-text("Import pasted text")');
+  await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
   await expect(page.locator('#wb-toast')).toContainText('2 views');
   await expect(page.locator('#wb-toast')).toContainText('"All Items" row formatting loaded');
@@ -138,6 +155,7 @@ test('list snapshot without a default-view formatter rebuilds the grid; Load-as-
   await page.click('button:has-text("Import schema…")');
   await page.fill('.wb-schema-form textarea', listSnapshot());
   await page.click('button:has-text("Import pasted text")');
+  await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   // grid rebuilt around the snapshot (display names as headers)
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
   // no view had a formatter — the views section still lists them, without Load buttons
@@ -148,8 +166,7 @@ test('list snapshot without a default-view formatter rebuilds the grid; Load-as-
 
 test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.click('#wb-json-deploy');
   // grid/row documents deploy as VIEW formatting
   await expect(page.locator('#wb-deploy-target')).toContainText('view');
@@ -170,8 +187,7 @@ test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ p
 });
 
 test('unregistered CFR shows the explanatory chip', async ({ page }) => {
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
     columnFormatterReference: '[$NotRegistered]',
