@@ -47,7 +47,9 @@ export function openRenamePopover(
 ): void {
   closeMenu();
   const pop = document.createElement('div');
-  pop.className = 'wb-grid-menu wb-rename-pop';
+  // wb-esc-owner: this popover closes itself on Escape (onGlobalKey below) —
+  // see the convention comment in editor/overlay.ts.
+  pop.className = 'wb-grid-menu wb-rename-pop wb-esc-owner';
   const head = document.createElement('div');
   head.className = 'wb-grid-menu-title';
   head.textContent = heading;
@@ -108,7 +110,9 @@ export function openRenamePopover(
 export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): void {
   closeMenu();
   const menu = document.createElement('div');
-  menu.className = 'wb-grid-menu';
+  // wb-esc-owner: this menu closes itself on Escape (menuCloser below) —
+  // see the convention comment in editor/overlay.ts.
+  menu.className = 'wb-grid-menu wb-esc-owner';
   const head = document.createElement('div');
   head.className = 'wb-grid-menu-title';
   head.textContent = title;

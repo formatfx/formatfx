@@ -331,6 +331,12 @@ export class EditorState {
     this.emit('data');
   }
 
+  /** The main (view) formatter root, even while drilled into a column style —
+   *  scope/blast-radius calculations need it and mainDocStash is private. */
+  get mainRootForScope(): SPElement | undefined {
+    return this.activeDocKey === 'main' ? this.doc.root : this.mainDocStash?.root;
+  }
+
   /** Rename the view. Project metadata, not a formatter edit — deliberately
    *  off the undo stack; emits 'data' so the breadcrumb + menus refresh and
    *  the change autosaves. */

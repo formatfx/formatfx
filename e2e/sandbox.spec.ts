@@ -41,9 +41,9 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   // workspace tree (always visible now): the view + Status/Progress/Owner column formatters
   await expect(page.locator('.wb-doc-header').first()).toContainText('View formatter — grid');
   await expect(page.locator('.wb-doc-header')).toHaveCount(4);
-  await expect(page.locator('.wb-doc-header', { hasText: '[$Status]' })).toContainText('in view');
+  await expect(page.locator('.wb-doc-header', { hasText: '§ Status style' })).toContainText('in view');
   // Owner is registered but unplaced — "+ column" can add it, formatted
-  await expect(page.locator('.wb-doc-header', { hasText: '[$Owner]' })).toContainText('unused');
+  await expect(page.locator('.wb-doc-header', { hasText: '§ Owner style' })).toContainText('unused');
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
   // formatted columns render their formatters (CFR resolves, pills not chips)
   await expect(page.locator('.wb-grid-row').first()).toContainText('In Progress');

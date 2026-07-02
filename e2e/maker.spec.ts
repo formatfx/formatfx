@@ -64,9 +64,9 @@ test('the kind control lives in the Advanced pane, and a column example flips th
   // the kind select moved into the side/JSON pane (revealed by Advanced)
   await openJson(page);
   await expect(page.locator('#wb-pane-side #wb-kind')).toBeVisible();
-  // a column-kind example flips the breadcrumb root to Column Formatters and
+  // a column-kind example flips the breadcrumb root to Column Styles and
   // names the column it targets in the tail
   await loadExample(page, 'status-pill');
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
   await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
 });
