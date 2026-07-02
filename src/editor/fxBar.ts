@@ -549,10 +549,11 @@ function advancedLink(): HTMLButtonElement {
   btn.textContent = 'Open Advanced';
   btn.title = 'Open the Advanced panel to edit this formula in the raw SP dialect';
   btn.addEventListener('click', () => {
-    const toggle = document.getElementById('wb-studio-toggle') as HTMLButtonElement | null;
+    // The "Advanced" topbar toggle opens the validated-JSON pane — the raw-SP
+    // escape hatch this link points at. (Was #wb-studio-toggle, which no longer
+    // exists; the pane IS the JSON surface, so there's no separate tab to click.)
+    const toggle = document.getElementById('wb-json-toggle') as HTMLButtonElement | null;
     if (toggle && !toggle.classList.contains('active')) toggle.click();
-    // Always land on the JSON tab — studio may already be open on Properties.
-    (document.querySelector('.wb-tabs button[data-tab="json"]') as HTMLButtonElement | null)?.click();
   });
   return btn;
 }
