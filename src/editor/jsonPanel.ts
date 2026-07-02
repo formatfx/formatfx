@@ -45,6 +45,7 @@ Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
     <textarea id="wb-json-text" spellcheck="false"></textarea>
+    <div id="wb-json-import-error" class="wb-import-error" role="alert" aria-live="assertive" hidden></div>
     <div id="wb-lint" class="wb-lint"></div>
   `;
 
@@ -52,9 +53,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
   const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
+  const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
   let dirty = false;
 
+  const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
   const setDirty = () => {
     dirty = true;
     textEl.classList.add('wb-json-dirty');
@@ -70,9 +73,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
     textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    clearImportError(); // stale error no longer matches what's in the textarea
   };
 
-  textEl.addEventListener('input', setDirty);
+  textEl.addEventListener('input', () => { setDirty(); clearImportError(); });
   sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
@@ -100,10 +104,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
       }
       clearDirty();
+      clearImportError();
       state.loadDocument(doc);
       onToast(`Imported ${doc.kind} formatter`);
     } catch (e) {
-      onToast(`Import failed: ${(e as Error).message}`);
+      const msg = `Import failed: ${(e as Error).message}`;
+      onToast(msg);
+      importErrorEl.textContent = msg;
+      importErrorEl.hidden = false;
     }
   });
 

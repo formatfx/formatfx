@@ -1004,6 +1004,10 @@ body {
 .wb-lint-info { border-left-color: #0078d4; }
 .wb-lint-info .wb-lint-badge { color: #0078d4; }
 .wb-lint-runtime { border-left-color: #8a8886; }
+.wb-import-error {
+  font-size: 11px; padding: 5px 8px; margin: 3px 0; border-radius: 3px;
+  border-left: 3px solid #d13438; background: var(--wb-bg);
+}
 .wb-lint-runtime .wb-lint-badge { color: #8a8886; }
 
 /* ── data panel ──────────────────────────────────────────── */
