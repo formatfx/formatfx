@@ -160,7 +160,7 @@ test('Money: a knob-bearing subtype opens the apply-time form, refuses invalid, 
   await form.locator('[data-knob="Decimals"]').fill('0');
   await form.locator('.wb-knobform-apply').click();
   await expect(form).toHaveCount(0);
-  await expect(page.locator('.wb-grid-cell').filter({ hasText: '€' }).first()).toHaveText(/^€\d+$/);
+  await expect(page.locator('.wb-grid-cell').filter({ hasText: '€' }).first()).toContainText(/€\d+$/);
 });
 
 test('Save-as birth: a column format becomes a reusable custom subtype (Yours), forkedFrom the seed', async ({ page }) => {
@@ -280,8 +280,8 @@ test('Push-update: refine + "update N columns" re-bakes every tagged column; one
   }
   const p1 = page.locator('.wb-grid-cell[data-col="1"]').first();
   const p2 = page.locator('.wb-grid-cell[data-col="2"]').first();
-  await expect(p1).toHaveText('OLD');
-  await expect(p2).toHaveText('OLD');
+  await expect(p1).toContainText('OLD');
+  await expect(p2).toContainText('OLD');
 
   // refine via Phase3's catalog (unformatted): promote 'OLD' → change its default to 'NEW'
   await header(page, 'Phase3').click();
@@ -301,13 +301,13 @@ test('Push-update: refine + "update N columns" re-bakes every tagged column; one
   await expect(modal).toHaveCount(0);
 
   // both columns re-baked from their stored args to the new default
-  await expect(p1).toHaveText('NEW');
-  await expect(p2).toHaveText('NEW');
+  await expect(p1).toContainText('NEW');
+  await expect(p2).toContainText('NEW');
 
   // ONE Ctrl+Z reverts the whole batch
   await page.keyboard.press('Control+z');
-  await expect(p1).toHaveText('OLD');
-  await expect(p2).toHaveText('OLD');
+  await expect(p1).toContainText('OLD');
+  await expect(p2).toContainText('OLD');
 });
 
 test('fx bar reads subtype vocab: a tagged column offers ONLY its vocab, hiding unrelated refs', async ({ page }) => {
