@@ -50,7 +50,7 @@ app.innerHTML = `
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
-          <button id="wb-save" title="Save project file (formatter + schema + mock data)"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
+          <button id="wb-save" title="Save project file (formatter + schema + mock data) — Ctrl+S"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
           <label class="wb-menu-row" title="Load a ready-made example formatter to start from"><i class="ms-Icon ms-Icon--Lightbulb"></i> Load example
             <select id="wb-example">
@@ -336,7 +336,7 @@ exampleSel.addEventListener('change', () => {
 });
 
 // save / open / reset project
-document.getElementById('wb-save')!.addEventListener('click', () => {
+const saveProject = (): void => {
   const blob = new Blob([state.serializeProject()], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -344,7 +344,8 @@ document.getElementById('wb-save')!.addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
   toast('Project saved (formatter + schema + mock data)');
-});
+};
+document.getElementById('wb-save')!.addEventListener('click', saveProject);
 document.getElementById('wb-open')!.addEventListener('click', () => {
   const input = document.createElement('input');
   input.type = 'file';
@@ -394,6 +395,7 @@ document.addEventListener('keydown', (e) => {
   if (inText) return;
   if (mod && e.key === 'z') { e.preventDefault(); state.undo(); return; }
   if (mod && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); state.redo(); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); return; }
   if (mod && e.key === 'd' && state.selection) { e.preventDefault(); state.duplicateNode(state.selection); return; }
   if (mod && e.key === 'c' && state.selections.length) { e.preventDefault(); void copyNodes(state.selections); return; }
   if (mod && e.key === 'v') { e.preventDefault(); void pasteNodes(); return; }
