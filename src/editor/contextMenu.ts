@@ -8,11 +8,11 @@
  */
 
 import type { NodePath, SPElement } from '../core/types';
-import { state, CARD_SEGMENT } from './state';
+import { state, CARD_SEGMENT, samePath } from './state';
 import { openMenu, openRenamePopover, type MenuItem } from './menu';
-import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { openFormatCells } from './formatCells';
+import { copyNodes, pasteNodes } from './clipboard';
 import { areaWeightOf, WEIGHT_FLEX, WEIGHT_LABEL, type AreaWeight } from './areas';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
@@ -29,13 +29,12 @@ export function elementMenuItems(
   // card roots live inside customCardProps — no sibling list to mutate
   const inSiblingList = path.length > 0 && path[path.length - 1] !== CARD_SEGMENT;
   const items: MenuItem[] = [];
+  // group: only when the current selection is 2+ siblings of this node
+  const sel = state.selections;
+  const groupable = sel.length >= 2
+    && sel.every((p) => p.length > 0 && p[p.length - 1] !== CARD_SEGMENT)
+    && sel.every((p) => samePath(p.slice(0, -1), path.slice(0, -1)));
 
-  items.push({
-    icon: 'Color',
-    label: 'Restyle in playground',
-    title: 'Open this element — with its parent, children and live data — in the consequence-free playground',
-    fn: () => { state.select(path); openElementPlayground(path); },
-  });
   items.push({
     icon: 'LightningBolt',
     label: 'Conditional formatting…',
@@ -88,6 +87,18 @@ export function elementMenuItems(
       onToast(`${label} wrapped in a new container — Ctrl+Z undoes`);
     },
   });
+  if (groupable && sel.length === 2) {
+    items.push({
+      icon: 'GroupObject',
+      label: 'Group selection',
+      title: 'Wrap the two selected siblings in a new flex container',
+      fn: () => {
+        const [a, b] = [...sel].sort((p, q) => p[p.length - 1] - q[q.length - 1]);
+        state.groupNodes(b, a, 'Group'); // onto = a (earlier, kept first), from = b
+        onToast('Grouped the selection — Ctrl+Z to ungroup');
+      },
+    });
+  }
   if (inSiblingList && node.children?.length) {
     items.push({
       icon: 'Separator',
@@ -110,14 +121,24 @@ export function elementMenuItems(
     });
   }
   items.push({
-    icon: 'Code',
-    label: 'Copy element JSON',
-    title: 'This element subtree as JSON — paste into a children array or keep as a snippet',
+    icon: 'Copy',
+    label: sel.length > 1 && state.isSelected(path) ? `Copy ${sel.length} elements` : 'Copy element',
+    title: 'Copy this element subtree (JSON) to the clipboard — paste into another container or keep as a snippet',
     fn: () => {
-      navigator.clipboard.writeText(JSON.stringify(node, null, 2)).then(() =>
-        onToast(`${label} JSON copied`));
+      const paths = state.isSelected(path) && sel.length > 1 ? sel : [path];
+      void copyNodes(paths).then((n) => onToast(`${n} element${n === 1 ? '' : 's'} copied`));
     },
   });
+  if (inSiblingList || node.children !== undefined || node.elmType === 'div') {
+    items.push({
+      icon: 'Paste',
+      label: 'Paste',
+      title: 'Paste the copied element(s) here (into this element, or beside it if it can\'t hold children)',
+      fn: () => {
+        void pasteNodes(path).then((n) => onToast(n ? `Pasted ${n} element${n === 1 ? '' : 's'}` : 'Nothing to paste'));
+      },
+    });
+  }
   if (inSiblingList) {
     items.push({
       icon: 'Delete',

@@ -15,7 +15,7 @@ export function resolveColumnRef(fieldRef: string): SPElement | null {
 
 export function ctxForRow(rowIndex: number): EvalContext {
   return {
-    row: state.rows[rowIndex],
+    row: state.rows[rowIndex] ?? {},
     rowIndex,
     currentFieldName: state.currentFieldName,
     me: state.me,

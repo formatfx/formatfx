@@ -79,6 +79,27 @@ export function humanizeProp(prop: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/**
+ * The fx bar's canonical slot id for a CSS property. Curated properties map to
+ * their named slot ('color' → 'ink', 'background-color' → 'fill', …); anything
+ * else addresses the generic `style:<prop>` slot that slotsFor() surfaces for a
+ * property already on the element. Lets other panels (the inspector's `=`
+ * formula preview) hand a property to the bar via focusFxSlot().
+ */
+const SLOT_ID_BY_PROP: Record<string, string> = {
+  'color': 'ink',
+  'background-color': 'fill',
+  'font-weight': 'weight',
+  'font-size': 'fontSize',
+  'text-align': 'align',
+  'border-radius': 'radius',
+  'opacity': 'opacity',
+  'border-left': 'leftBorder',
+};
+export function slotIdForProp(prop: string): string {
+  return SLOT_ID_BY_PROP[prop] ?? `style:${prop}`;
+}
+
 /** Hint for an arbitrary CSS property, seeded with playground value examples. */
 function genericHint(prop: string): string {
   const examples = (STYLE_VALUE_SUGGESTIONS[prop] ?? []).filter((v) => !v.startsWith('=')).slice(0, 3);

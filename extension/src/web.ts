@@ -10,10 +10,14 @@
  * payload from the page into local storage.
  */
 
-import { isPageToExt, readyMessage, ackMessage, snapshotMessage, validateStagedPayload } from '../../src/bridge/extChannel';
+import { isPageToExt, readyMessage, ackMessage, snapshotMessage, requestFormatterMessage, validateStagedPayload } from '../../src/bridge/extChannel';
+import type { ApplyPayload } from '../../src/bridge/applyPayload';
 import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 
 const origin = window.location.origin;
+
+/** Pending "Grab this formatter" relays, keyed by request id (popup ⇄ page). */
+const pendingGrabs = new Map<string, (r: { ok: boolean; payload?: ApplyPayload; error?: string }) => void>();
 
 /**
  * Deliver a pushed snapshot (extract-push) to the page, then clear it so it
@@ -53,5 +57,29 @@ window.addEventListener('message', async (ev: MessageEvent) => {
     } catch (e) {
       window.postMessage(ackMessage(data.id, { ok: false, error: e instanceof Error ? e.message : String(e) }), origin);
     }
+    return;
   }
+
+  if (data.kind === 'formatter') {
+    // the page's reply to a "Grab this formatter" request we relayed
+    const resolve = pendingGrabs.get(data.id);
+    if (resolve) { pendingGrabs.delete(data.id); resolve({ ok: data.ok, payload: data.payload, error: data.error }); }
+  }
+});
+
+/**
+ * The popup (on this formatfx.dev tab) asks us to grab the formatter the page
+ * is editing. We request it from the page over the channel and relay the reply.
+ * Reuses the page's lint gate — an erroring formatter comes back as an error.
+ */
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const msg = message as { action?: string };
+  if (msg?.action !== 'grabFormatter') return undefined;
+  const id = Math.random().toString(36).slice(2);
+  const timer = setTimeout(() => {
+    if (pendingGrabs.delete(id)) sendResponse({ ok: false, error: "FormatFX didn't answer — this formatfx.dev tab may be an older version that predates Grab. Use the in-app “Send to extension” button instead, or reload FormatFX." });
+  }, 4000);
+  pendingGrabs.set(id, (r) => { clearTimeout(timer); sendResponse(r); });
+  window.postMessage(requestFormatterMessage(id), origin);
+  return true; // keep the message channel open for the async sendResponse
 });
