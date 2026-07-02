@@ -28,13 +28,21 @@ import exportScript from '../../tools/Export-ListSchema.ps1?raw';
  * under the pure-grid guard; otherwise it rebuilds the grid around the new
  * schema — never clobbering someone's layout work, always one undo step.
  */
-export function applyImportedSchema(raw: string, toast: (m: string) => void): boolean {
+export function applyImportedSchema(
+  raw: string,
+  toast: (m: string) => void,
+  opts: { dropColumnFormatters?: string[] } = {},
+): boolean {
   try {
     const schema = importSchema(raw);
     state.fields = schema.fields;
     state.rows = schema.rows ?? buildSampleRows(schema.fields, 3);
+    const drop = new Set(opts.dropColumnFormatters ?? []);
+    for (const name of drop) delete state.columnRefs[name];
     if (schema.columnFormatters) {
-      Object.assign(state.columnRefs, schema.columnFormatters);
+      for (const [name, tree] of Object.entries(schema.columnFormatters)) {
+        if (!drop.has(name)) state.columnRefs[name] = tree;
+      }
     }
     state.importedViews = schema.views ?? [];
     if (!state.fields.some((f) => f.name === state.currentFieldName)) {
@@ -57,7 +65,7 @@ export function applyImportedSchema(raw: string, toast: (m: string) => void): bo
       }
     }
     state.emit('data');
-    const cfCount = Object.keys(schema.columnFormatters ?? {}).length;
+    const cfCount = Object.keys(schema.columnFormatters ?? {}).filter((n) => !drop.has(n)).length;
     const vCount = schema.views?.length ?? 0;
     toast(`Imported ${schema.fields.length} fields${schema.listName ? ` from "${schema.listName}"` : ''}`
       + `${schema.rows ? ` + ${schema.rows.length} rows` : ''}`
@@ -441,6 +449,11 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       };
       state.fields.push(field);
       state.rows.forEach((row, i) => { row[n] = sampleValue(field, i); });
+      if (state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+        state.mutateDocument(() => {
+          state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+        });
+      }
       done();
       state.emit('data');
     });
@@ -454,9 +467,60 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     const form = document.createElement('div');
     form.className = 'wb-schema-form';
 
+    // When a snapshot carries column formatters, let the user uncheck the ones
+    // they don't want before anything is registered (the columns/data still
+    // import). No formatters → import straight away, as before.
+    const showFormatterReview = (raw: string, fmtCols: string[]): void => {
+      const panel = document.createElement('div');
+      panel.className = 'wb-schema-form';
+      panel.id = 'wb-fmt-review';
+      const head = document.createElement('div');
+      head.className = 'wb-data-fieldname';
+      head.textContent = `Pull in column formatters? (${fmtCols.length})`;
+      head.title = 'Uncheck any column whose existing formatter you do NOT want to import. The columns and their data still import.';
+      panel.appendChild(head);
+
+      const boxes: HTMLInputElement[] = [];
+      for (const name of fmtCols) {
+        const lbl = document.createElement('label');
+        lbl.className = 'wb-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.value = name;
+        boxes.push(cb);
+        lbl.append(cb, document.createTextNode(` [$${name}]`));
+        panel.appendChild(lbl);
+      }
+
+      const row = document.createElement('div');
+      row.className = 'wb-data-toolbar';
+      const imp = document.createElement('button');
+      imp.id = 'wb-fmt-review-import';
+      imp.textContent = 'Import';
+      imp.addEventListener('click', () => {
+        const dropColumnFormatters = boxes.filter((b) => !b.checked).map((b) => b.value);
+        if (applyImportedSchema(raw, toast, { dropColumnFormatters })) done();
+      });
+      const cancel = document.createElement('button');
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', () => { panel.remove(); });
+      row.append(imp, cancel);
+      panel.appendChild(row);
+      form.append(panel);
+    };
+
     const applySchema = (raw: string): void => {
       // grid-first behaviour and teaching toasts live in the shared helper;
       // the form just closes itself on a successful import.
+      let fmtCols: string[] = [];
+      try {
+        fmtCols = Object.keys(importSchema(raw).columnFormatters ?? {});
+      } catch (e) {
+        toast(`Schema import failed: ${(e as Error).message}`);
+        return;
+      }
+      if (fmtCols.length) { showFormatterReview(raw, fmtCols); return; }
       if (applyImportedSchema(raw, toast)) done();
     };
 
@@ -565,6 +629,14 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         if (!confirm(`Remove field ${field.name}?`)) return;
         state.fields = state.fields.filter((f) => f !== field);
         for (const row of state.rows) delete row[field.name];
+        if (state.currentFieldName === field.name) {
+          state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0]?.name ?? '';
+        }
+        if (state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+          state.mutateDocument(() => {
+            state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+          });
+        }
         state.emit('data');
       });
 
@@ -619,6 +691,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       const del = document.createElement('button');
       del.innerHTML = '<i class="ms-Icon ms-Icon--Delete"></i>';
       del.title = 'Delete row';
+      del.setAttribute('aria-label', 'Delete row');
       del.addEventListener('click', () => {
         state.rows.splice(ri, 1);
         state.emit('data');
@@ -631,7 +704,11 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     return table;
   };
 
-  state.subscribe((reason) => {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  hostAny._unsub = state.subscribe((reason) => {
     if (reason === 'data' || reason === 'load') render();
   });
   render();

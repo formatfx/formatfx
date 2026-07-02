@@ -11,12 +11,14 @@ import { state } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
-import { buildApplyPayload, serializeApplyPayload } from '../bridge/applyPayload';
+import { serializeApplyPayload } from '../bridge/applyPayload';
 import { onExtensionReady, stageApplyToExtension } from './extensionBridge';
+import { buildCurrentApplyPayload } from './deployPayload';
+import { lintBadge, lintAriaLabel } from './lintBadge';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
-  refreshLint: (runtime: RenderIssue[]) => void;
+  refreshLint: (runtime: RenderIssue[]) => { errors: number; warnings: number; runtime: number };
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
@@ -43,6 +45,7 @@ Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
     <textarea id="wb-json-text" spellcheck="false"></textarea>
+    <div id="wb-json-import-error" class="wb-import-error" role="alert" aria-live="assertive" hidden></div>
     <div id="wb-lint" class="wb-lint"></div>
   `;
 
@@ -50,16 +53,31 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
   const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
+  const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
+  const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
   let dirty = false;
+
+  const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
+  const setDirty = () => {
+    dirty = true;
+    textEl.classList.add('wb-json-dirty');
+    applyBtn.classList.add('wb-json-apply-pending');
+  };
+  const clearDirty = () => {
+    dirty = false;
+    textEl.classList.remove('wb-json-dirty');
+    applyBtn.classList.remove('wb-json-apply-pending');
+  };
 
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
     textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    clearImportError(); // stale error no longer matches what's in the textarea
   };
 
-  textEl.addEventListener('input', () => { dirty = true; });
-  sanitizeEl.addEventListener('change', () => { dirty = false; regenerate(); });
+  textEl.addEventListener('input', () => { setDirty(); clearImportError(); });
+  sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
     try {
@@ -93,11 +111,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
         if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
       }
-      dirty = false;
+      clearDirty();
+      clearImportError();
       state.loadDocument(doc);
       onToast(`Imported ${doc.kind} formatter`);
     } catch (e) {
-      onToast(`Import failed: ${(e as Error).message}`);
+      const msg = `Import failed: ${(e as Error).message}`;
+      onToast(msg);
+      importErrorEl.textContent = msg;
+      importErrorEl.hidden = false;
     }
   });
 
@@ -165,13 +187,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   });
 
+  /** Current formatter as an apply payload, honouring the panel's toggles. */
+  const currentApplyPayload = () => buildCurrentApplyPayload({
+    viewTitle: deployViewEl.value,
+    listTitle: deployListEl.value,
+    sanitize: sanitizeEl.checked,
+    keepMeta: namesEl.checked,
+  });
+
   host.querySelector('#wb-deploy-apply-ext')!.addEventListener('click', async () => {
-    if (!passesLintGate()) return;
+    const { payload, error } = currentApplyPayload();
+    if (!payload) { onToast(error!); return; }
     const t = deployTarget();
-    const payload = buildApplyPayload(
-      [{ target: t.target, name: t.name, formatterJson: currentFormatterJson() }],
-      deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {},
-    );
     try {
       await navigator.clipboard.writeText(serializeApplyPayload(payload));
       onToast(`Copied for the extension (${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`}) — on your list tab, click the FormatFX extension → Apply from clipboard`);
@@ -185,12 +212,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sendExtBtn = host.querySelector('#wb-deploy-send-ext') as HTMLButtonElement;
   onExtensionReady(() => { sendExtBtn.hidden = false; });
   sendExtBtn.addEventListener('click', async () => {
-    if (!passesLintGate()) return;
-    const t = deployTarget();
-    const payload = buildApplyPayload(
-      [{ target: t.target, name: t.name, formatterJson: currentFormatterJson() }],
-      deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {},
-    );
+    const { payload, error } = currentApplyPayload();
+    if (!payload) { onToast(error!); return; }
     try {
       const { staged } = await stageApplyToExtension(payload);
       onToast(`Sent to the extension (${staged} formatter) — switch to your SharePoint list tab and click the FormatFX extension → Apply staged`);
@@ -199,7 +222,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   });
 
-  const renderLint = (runtime: RenderIssue[]) => {
+  const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number; runtime: number } => {
     const issues = lintDocument(
       state.doc,
       state.fields.map((f) => f.name),
@@ -210,22 +233,52 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ...issues.map((i: LintIssue) => ({ sev: i.severity, text: `${i.rule}: ${i.message}`, path: i.path })),
       ...runtime.map((r) => ({ sev: 'runtime', text: r.message, path: r.path })),
     ];
+    const errors = issues.filter((i: LintIssue) => i.severity === 'error').length;
+    const warnings = issues.filter((i: LintIssue) => i.severity === 'warning').length;
     if (all.length === 0) {
       lintEl.innerHTML = '<div class="wb-lint-ok">✓ No issues — schema-clean and expression-safe.</div>';
-      return;
+      return { errors: 0, warnings: 0, runtime: 0 };
     }
     for (const issue of all) {
       const row = document.createElement('div');
       row.className = `wb-lint-item wb-lint-${issue.sev}`;
-      row.textContent = issue.text;
+      // Lead with a severity badge: glyph (shape) + word, so the level reads
+      // without relying on the stripe colour alone (WCAG 1.4.1). The glyph is
+      // decorative — the word carries the meaning, echoed in the row aria-label.
+      const { glyph, label } = lintBadge(issue.sev);
+      const badge = document.createElement('span');
+      badge.className = 'wb-lint-badge';
+      const glyphEl = document.createElement('span');
+      glyphEl.className = 'wb-lint-glyph';
+      glyphEl.setAttribute('aria-hidden', 'true');
+      glyphEl.textContent = glyph;
+      badge.append(glyphEl, document.createTextNode(` ${label}`));
+      const msg = document.createElement('span');
+      msg.className = 'wb-lint-msg';
+      msg.textContent = issue.text;
+      row.append(badge, msg);
       row.title = `Click to select node [${issue.path.join(' › ')}]`;
-      row.addEventListener('click', () => state.select(issue.path));
+      row.setAttribute('aria-label', lintAriaLabel(issue.sev, issue.text));
+      // The row acts as a button (jump to the node), so make it operable — and
+      // its severity announceable — by keyboard, not mouse only.
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      const jump = (): void => state.select(issue.path);
+      row.addEventListener('click', jump);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
+      });
       lintEl.appendChild(row);
     }
+    return { errors, warnings, runtime: runtime.length };
   };
 
-  state.subscribe((reason) => {
-    if (reason !== 'selection' && reason !== 'theme') { dirty = false; regenerate(); refreshDeployPanel(); }
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  hostAny._unsub = state.subscribe((reason) => {
+    if (reason !== 'selection' && reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
   });
   regenerate();
   renderLint([]);
