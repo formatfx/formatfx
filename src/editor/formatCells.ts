@@ -43,6 +43,9 @@ const MANAGED = [
 
 let handle: OverlayHandle | null = null;
 let enterHandler: ((e: KeyboardEvent) => void) | null = null;
+/** Remember the last-used tab within the session so reopening the dialog
+ *  continues where you left off — matches the Excel Format Cells convention. */
+let _lastTab: Tab = 'font';
 
 export function closeFormatCells(): void {
   if (enterHandler) { document.removeEventListener('keydown', enterHandler); enterHandler = null; }
@@ -78,7 +81,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
   const base = node.style;
 
   // ── staged state, initialized from the element's plain values ──
-  let tab: Tab = 'font';
+  let tab: Tab = _lastTab;
   const patch: Record<string, string | null> = {};
 
   const staged = (prop: string): string => {
@@ -183,8 +186,18 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
-    head.innerHTML = `<span class="wb-fc-title">Format cells — ${nameOf(node)}</span>
-      <span class="wb-fc-sub">nothing changes until you Apply (then Ctrl+Z undoes)</span>`;
+
+    // 🛡️ Sentinel: Prevent XSS by using textContent for user-defined element names
+    const title = document.createElement('span');
+    title.className = 'wb-fc-title';
+    title.textContent = `Format cells — ${nameOf(node)}`;
+
+    const sub = document.createElement('span');
+    sub.className = 'wb-fc-sub';
+    sub.textContent = 'nothing changes until you Apply (then Ctrl+Z undoes)';
+
+    head.append(title, sub);
+
     const close = document.createElement('button');
     close.className = 'wb-fc-close';
     close.textContent = '✕';
@@ -216,7 +229,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
         dot.setAttribute('aria-hidden', 'true');
         b.appendChild(dot);
       }
-      b.addEventListener('click', () => { tab = t; render(); });
+      b.addEventListener('click', () => { tab = t; _lastTab = t; render(); });
       tabs.appendChild(b);
     }
     panel.appendChild(tabs);
@@ -339,7 +352,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
       fontLink.type = 'button';
       fontLink.className = 'wb-fc-hint-link';
       fontLink.textContent = 'set it on the Font tab';
-      fontLink.addEventListener('click', () => { tab = 'font'; render(); });
+      fontLink.addEventListener('click', () => { tab = 'font'; _lastTab = 'font'; render(); });
       hint.append(fontLink, '. For fills that follow the value, use Conditional formatting instead.');
       body.appendChild(hint);
     }
@@ -388,8 +401,9 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     const ok = document.createElement('button');
     ok.className = 'wb-fc-ok';
     ok.textContent = 'Apply';
-    ok.title = 'Apply everything staged here as one undoable change';
-    ok.disabled = Object.keys(patch).length === 0;
+    const hasChanges = Object.keys(patch).length > 0;
+    ok.title = hasChanges ? 'Apply everything staged here as one undoable change' : 'No changes to apply yet';
+    ok.disabled = !hasChanges;
     ok.addEventListener('click', () => {
       state.mutateDocument(() => {
         node.style = node.style ?? {};
@@ -408,6 +422,6 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
   render();
   document.body.appendChild(overlay);
-  // Put focus on the first tab so keyboard users land somewhere useful on open.
-  panel.querySelector<HTMLElement>('.wb-fc-tab')?.focus();
+  // Focus the active tab so keyboard users land on the right tab on open.
+  panel.querySelector<HTMLElement>('.wb-fc-tab.active')?.focus();
 }

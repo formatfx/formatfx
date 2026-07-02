@@ -11,7 +11,7 @@
 
 import type { ApplyPayload } from '../bridge/applyPayload';
 import {
-  EXT_CHANNEL_VERSION, isExtToPage, pingMessage, stageApplyMessage,
+  EXT_CHANNEL_VERSION, isExtToPage, pingMessage, stageApplyMessage, formatterMessage,
 } from '../bridge/extChannel';
 
 let detected = false;
@@ -20,6 +20,9 @@ const readyListeners = new Set<(version: number) => void>();
 
 let pushedHandler: ((snapshotJson: string) => void) | null = null;
 let pendingSnapshot: string | null = null; // arrived before a handler registered
+
+/** Builds the current formatter payload when the extension asks for it. */
+let formatterProvider: (() => { payload?: ApplyPayload; error?: string }) | null = null;
 
 // The extension's content script posts a `ready` when it loads; we also ping
 // in case the page's listener attached after that. Either path flips presence.
@@ -34,8 +37,22 @@ window.addEventListener('message', (ev: MessageEvent) => {
   } else if (data.kind === 'snapshot') {
     if (pushedHandler) pushedHandler(data.text);
     else pendingSnapshot = data.text; // buffer until the app registers a handler
+  } else if (data.kind === 'requestFormatter') {
+    // the extension's "Grab this formatter" — reply with the current payload
+    const result = formatterProvider
+      ? formatterProvider()
+      : { error: 'FormatFX is still loading — try again in a moment.' };
+    window.postMessage(
+      formatterMessage(data.id, { ok: !!result.payload, payload: result.payload, error: result.error }),
+      window.location.origin,
+    );
   }
 });
+
+/** Register how to build the formatter payload the extension grabs on demand. */
+export function onFormatterRequest(provider: () => { payload?: ApplyPayload; error?: string }): void {
+  formatterProvider = provider;
+}
 
 /**
  * Register the handler for a snapshot pushed from the extension (extract-push).

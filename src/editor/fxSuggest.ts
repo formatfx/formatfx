@@ -145,6 +145,127 @@ export function fxSuggestions(
   return dedupe(out);
 }
 
+// ─── inline autocomplete (pure) ──────────────────────────────────────────────
+// Completions for the fx bar's as-you-type typeahead. Everything offered is
+// Excel-dialect and round-trips through excelToSp without a refusal (the same
+// invariant fxSuggestions holds, pinned by fxSuggest.test.ts): the bar never
+// proposes a token it would then reject.
+
+/** Column references in the bar's Excel bracket form — offered while typing `[`. */
+export function columnCompletions(fields: MockField[]): string[] {
+  return dedupe(fields.map((f) => `[${f.displayName ?? f.name}]`));
+}
+
+/**
+ * The Excel-dialect words the bar understands — its functions, the context
+ * tokens (TODAY/NOW/ME) and the boolean constants — offered while typing a bare
+ * identifier (or after `@`). Entries ending in `(` are call openers (the maker
+ * keeps typing the arguments); the rest are complete and round-trip on their own.
+ */
+export function contextCompletions(): string[] {
+  return ['IF(', 'AND(', 'OR(', 'NOT(', 'TODAY()', 'NOW()', 'ME()', 'TRUE', 'FALSE'];
+}
+
+/** Condition starters for after `IF(` — one type-aware comparison per column. */
+export function operandSuggestions(fields: MockField[]): string[] {
+  const out: string[] = [];
+  const choice = sampleChoice(find(fields, 'choice', 'choiceMulti'));
+  const date = find(fields, 'date');
+  const num = find(fields, 'number', 'currency');
+  const bool = find(fields, 'boolean');
+  if (choice) out.push(`${fieldRef(choice.field)} = "${choice.value}"`);
+  if (date) out.push(`${fieldRef(date)} < TODAY()`);
+  if (num) out.push(`${fieldRef(num)} >= 100`);
+  if (bool) out.push(`${fieldRef(bool)} = TRUE`);
+  if (fields[0]) out.push(`${fieldRef(fields[0])} <> ""`, `${fieldRef(fields[0])} = ""`);
+  return dedupe(out);
+}
+
+/**
+ * Result values for a slot, in formula (quoted) form — the THEN / ELSE branches
+ * of an IF(). Property-type-aware: colours for paint, weights for bold, the
+ * slot's value vocabulary otherwise; text / attribute slots resolve to column
+ * references (plus an empty fallback). An empty string `""` clears the property.
+ */
+export function resultSuggestions(slot: FxSlot, fields: MockField[]): string[] {
+  if (slot.kind === 'text' || slot.kind === 'attr') {
+    return dedupe([...columnCompletions(fields), '""']);
+  }
+  const quote = (v: string) => `"${v}"`;
+  const kind = styleKindOf(slot.prop!);
+  if (kind === 'color') return dedupe([...COND_COLORS.map((c) => quote(c.strong)), '""']);
+  if (kind === 'weight') return dedupe(['"700"', '"600"', '"400"']);
+  if (kind === 'border') return dedupe(['"3px solid #d13438"', '"3px solid #0078d4"', '""']);
+  return dedupe([...playgroundValues(slot.prop).map(quote), '""']);
+}
+
+/** A live completion: the choices, and the [from, to) text range a pick replaces. */
+export interface Completion { items: string[]; from: number; to: number; }
+
+const WORD_RE = /[A-Za-z_][A-Za-z0-9_]*$/;
+const AT_RE = /@[A-Za-z]*$/;
+
+/**
+ * What to suggest for the caret position in an fx-bar formula — or null when
+ * nothing applies. Pure (no DOM) so it is unit-tested directly. Completions are
+ * offered only inside a formula (leading `=`); a plain literal gets none.
+ *   • inside an unclosed `[…`  → column references (filtered by the partial)
+ *   • after `@…`               → context tokens (the `@` is replaced)
+ *   • right after `IF(`/`AND(`… → condition operands
+ *   • right after a `,`        → slot-typed result values
+ *   • a bare word              → functions / context tokens / constants (by prefix)
+ */
+export function completionAt(text: string, caret: number, slot: FxSlot, fields: MockField[]): Completion | null {
+  const before = text.slice(0, caret);
+  if (!/^\s*=/.test(before)) return null; // literals get no dialect completions
+
+  // inside an open [column … (no ] between the '[' and the caret)
+  const lb = before.lastIndexOf('[');
+  if (lb >= 0 && !before.slice(lb).includes(']')) {
+    const partial = before.slice(lb + 1).toLowerCase();
+    const items = columnCompletions(fields).filter((c) => c.slice(1, -1).toLowerCase().includes(partial));
+    // if this bracket is already closed AFTER the caret, replace through its ']'
+    // so accepting a completion (which carries its own ']') doesn't duplicate it.
+    const close = text.indexOf(']', caret);
+    const nextOpen = text.indexOf('[', caret);
+    const to = close !== -1 && (nextOpen === -1 || close < nextOpen) ? close + 1 : caret;
+    return items.length ? { items, from: lb, to } : null;
+  }
+
+  // @context token (replace the whole @word)
+  const at = before.match(AT_RE);
+  if (at) {
+    const partial = at[0].slice(1).toLowerCase();
+    const items = contextCompletions().filter((c) => c.toLowerCase().startsWith(partial));
+    return items.length ? { items, from: caret - at[0].length, to: caret } : null;
+  }
+
+  // just opened a function call → condition operands; just typed a comma → results
+  const trimmed = before.replace(/\s+$/, '');
+  const last = trimmed.slice(-1);
+  if (last === '(') {
+    const fn = trimmed.slice(0, -1).match(WORD_RE)?.[0]?.toLowerCase();
+    if (fn === 'if' || fn === 'and' || fn === 'or' || fn === 'not') {
+      const items = operandSuggestions(fields);
+      return items.length ? { items, from: caret, to: caret } : null;
+    }
+  }
+  if (last === ',') {
+    const items = resultSuggestions(slot, fields);
+    return items.length ? { items, from: caret, to: caret } : null;
+  }
+
+  // a bare identifier word → functions / context tokens / constants by prefix
+  const w = before.match(WORD_RE);
+  if (w) {
+    const partial = w[0].toLowerCase();
+    const items = contextCompletions().filter((c) => c.toLowerCase().startsWith(partial));
+    return items.length ? { items, from: caret - w[0].length, to: caret } : null;
+  }
+
+  return null;
+}
+
 function dedupe(values: string[]): string[] {
   return [...new Set(values)];
 }

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { fxSuggestions } from './fxSuggest';
+import {
+  fxSuggestions, columnCompletions, contextCompletions,
+  operandSuggestions, resultSuggestions, completionAt,
+} from './fxSuggest';
 import { slotsFor } from './fxSlots';
 import { excelToSp } from './dialect';
 import type { MockField } from '../core/types';
@@ -132,6 +135,106 @@ describe('fxSuggestions — subtype vocab (US-8)', () => {
       if (!sug.startsWith('=')) continue;
       expect(excelToSp(sug, FIELDS).ok, `refused: ${sug}`).toBe(true);
     }
+  });
+});
+
+describe('inline autocomplete completions (pure)', () => {
+  const textSlot = slotsFor({ elmType: 'div' }).find((s) => s.id === 'text')!;
+  const fillSlot = slotsFor({ elmType: 'div' }).find((s) => s.id === 'fill')!;
+
+  it('columnCompletions offers every column in the Excel bracket form', () => {
+    expect(columnCompletions(FIELDS)).toEqual(
+      expect.arrayContaining(['[Task name]', '[Status]', '[Due date]', '[Percent done]', '[Approved?]']));
+  });
+
+  it('contextCompletions covers the dialect functions, context tokens and constants', () => {
+    expect(contextCompletions()).toEqual(
+      expect.arrayContaining(['IF(', 'AND(', 'OR(', 'NOT(', 'TODAY()', 'ME()', 'TRUE', 'FALSE']));
+  });
+
+  it('operandSuggestions are type-aware conditions that round-trip', () => {
+    const ops = operandSuggestions(FIELDS);
+    expect(ops.some((o) => /\[Status\] = "/.test(o))).toBe(true);
+    expect(ops.some((o) => /\[Due date\] < TODAY\(\)/.test(o))).toBe(true);
+    for (const o of ops) expect(excelToSp('=' + o, FIELDS).ok, `refused: ${o}`).toBe(true);
+  });
+
+  it('resultSuggestions are slot-typed and round-trip', () => {
+    expect(resultSuggestions(fillSlot, FIELDS).some((r) => /^"#/.test(r))).toBe(true); // colours, quoted
+    expect(resultSuggestions(textSlot, FIELDS)).toEqual(expect.arrayContaining(['[Task name]', '""']));
+    for (const slot of [fillSlot, textSlot]) {
+      for (const r of resultSuggestions(slot, FIELDS)) {
+        expect(excelToSp('=' + r, FIELDS).ok, `refused: ${r}`).toBe(true);
+      }
+    }
+  });
+
+  it('every complete (non-opener) completion round-trips through the transpiler', () => {
+    const all = [...columnCompletions(FIELDS), ...contextCompletions().filter((c) => !c.endsWith('('))];
+    for (const c of all) expect(excelToSp('=' + c, FIELDS).ok, `refused: ${c}`).toBe(true);
+  });
+
+  describe('completionAt — caret-driven dispatch', () => {
+    const weightSlot = slotsFor({ elmType: 'div' }).find((s) => s.id === 'weight')!;
+
+    it('offers column refs inside an unclosed bracket, filtered by the partial', () => {
+      const text = '=IF([Sta';
+      const c = completionAt(text, text.length, textSlot, FIELDS)!;
+      expect(c.items).toContain('[Status]');
+      expect(c.items).not.toContain('[Due date]'); // filtered by "Sta"
+      expect(c.from).toBe(text.indexOf('['));      // replaces from the '['
+      expect(c.to).toBe(text.length);
+    });
+
+    it('replaces through an existing closing ] so accepting does not duplicate it', () => {
+      const text = '=IF([Sta], "x", "")';
+      const caret = text.indexOf(']'); // caret right after "Sta", before the ]
+      const c = completionAt(text, caret, textSlot, FIELDS)!;
+      expect(c.from).toBe(text.indexOf('['));
+      expect(c.to).toBe(caret + 1); // range includes the existing ]
+      const spliced = text.slice(0, c.from) + '[Status]' + text.slice(c.to);
+      expect(spliced).toBe('=IF([Status], "x", "")');
+      expect(spliced).not.toContain(']]');
+    });
+
+    it('still ends the range at the caret when the bracket is genuinely unclosed', () => {
+      const text = '=[Sta';
+      const c = completionAt(text, text.length, textSlot, FIELDS)!;
+      expect(c.to).toBe(text.length);
+    });
+
+    it('offers condition operands right after IF(', () => {
+      const text = '=IF(';
+      const c = completionAt(text, text.length, textSlot, FIELDS)!;
+      expect(c.items.some((o) => /\[Status\] = "/.test(o))).toBe(true);
+      expect(c.from).toBe(text.length); // pure insertion at the caret
+    });
+
+    it('offers slot-typed results after a comma', () => {
+      const text = '=IF([Status] = "Done", ';
+      const c = completionAt(text, text.length, fillSlot, FIELDS)!;
+      expect(c.items.some((r) => /^"#/.test(r))).toBe(true);
+    });
+
+    it('offers functions/constants for a bare word, by prefix', () => {
+      const text = '=TO';
+      const c = completionAt(text, text.length, textSlot, FIELDS)!;
+      expect(c.items).toContain('TODAY()');
+      expect(c.items).not.toContain('IF(');
+      expect(c.from).toBe(1); // replaces "TO"
+    });
+
+    it('replaces an @word with context tokens', () => {
+      const text = '=@';
+      const c = completionAt(text, text.length, textSlot, FIELDS)!;
+      expect(c.items).toEqual(expect.arrayContaining(['TODAY()', 'ME()']));
+      expect(c.from).toBe(1);
+    });
+
+    it('gives nothing for a plain literal (no leading =)', () => {
+      expect(completionAt('#107c10', 7, fillSlot, FIELDS)).toBeNull();
+      expect(completionAt('bold', 4, weightSlot, FIELDS)).toBeNull();
+    });
   });
 });
 

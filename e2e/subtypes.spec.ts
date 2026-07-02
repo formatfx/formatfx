@@ -9,12 +9,7 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-/** The text a window.prompt() should return next (Save-as name); reset per test. */
-let promptAnswer: string | undefined;
-
 test.beforeEach(async ({ page }) => {
-  promptAnswer = undefined;
-  page.on('dialog', (d) => { void d.accept(promptAnswer); });
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -176,9 +171,11 @@ test('Save-as birth: a column format becomes a reusable custom subtype (Yours), 
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
   await page.locator('.wb-grid-menu button', { hasText: 'Due-date badge' }).click();
 
-  promptAnswer = 'My Due Look';
+  // "Save as reusable subtype…" now opens an inline popover — type the name and commit
   await header(page, 'Start').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Save as reusable subtype' }).click();
+  await page.locator('.wb-rename-input').fill('My Due Look');
+  await page.keyboard.press('Enter');
 
   // persisted to wb-subtypes: a custom, forked from the seed, baseTypes [date]
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-subtypes') || '{}'));
@@ -200,9 +197,11 @@ test('Save-as birth: a column format becomes a reusable custom subtype (Yours), 
 test('Save-as normalizes a hand-authored [$Field] column to @currentField (reusable, not frozen)', async ({ page }) => {
   // the showcase Status column ships a hand-authored [$Status] formatter; saving
   // it as a subtype must fold to @currentField so it works on other columns.
-  promptAnswer = 'My Status';
+  // "Save as reusable subtype…" opens an inline popover — fill and commit.
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Save as reusable subtype' }).click();
+  await page.locator('.wb-rename-input').fill('My Status');
+  await page.keyboard.press('Enter');
 
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-subtypes') || '{}'));
   const mine = stored.subtypes.find((s: { name: string }) => s.name === 'My Status');
