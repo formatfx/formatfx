@@ -42,9 +42,9 @@ test('"Detach from style" forks a linked cell local; undo relinks it', async ({ 
 test('"Edit the Status style" opens the shared column style', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
-  // the breadcrumb shows you're now editing the Status column style
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
+  // the COLUMN FORMATTERS tab lights up: you're editing the Status column style
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
 });
 
 test('"Save as the column style" promotes a plain column to a shared, linked style', async ({ page }) => {

@@ -34,15 +34,15 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   await expect(menu.locator('.wb-grid-menu-title')).toHaveText('Format DueDate');
   await menu.locator('button', { hasText: 'Format this column manually' }).click();
   // we land in the column-formatter editing context, scaffolded on @currentField
-  await expect(page.locator('.wb-doc-header', { hasText: '§ DueDate style' })).toHaveClass(/active/);
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate');
   // style it so the round trip is visible, then return to the grid
   await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div', txtContent: "='⏰ '+toLocaleDateString(@currentField)",
   }));
   await page.click('#wb-json-apply');
-  await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
+  await page.locator('.wb-fmt-tab-view').click();
   await expect(page.locator('.wb-grid-row').first()).toContainText('⏰');
   // the cell became a reference — resolved, not a placeholder chip
   await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
@@ -65,25 +65,22 @@ test('"Format this column" is the subtype catalog: type-aware looks, badged, sna
   // snapshot apply: stay on the grid (View Formatters, not drilled into a column),
   // the cell renders avatars, one Ctrl+Z reverts
   await facepile.click();
-  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
   await expect(page.locator('.wb-grid-cell img').first()).toBeVisible();
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
 });
 
-test('drilling into a column formatter shows a Back affordance that returns to the named view', async ({ page }) => {
+test('drilling into a column formatter lights the COLUMN tab; the VIEW tab returns to the named view', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
-  // the ribbon breadcrumb offers a way back to the view you drilled from
-  const back = page.locator('.wb-crumb-back');
-  await expect(back).toContainText('Back to View 1 view formatter');
-  await back.click();
-  // back on the view: root browses views, tail is the view name
-  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('View 1');
-  await expect(page.locator('.wb-crumb-back')).toHaveCount(0);
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
+  // the VIEW FORMATTERS tab is the way back to the view you drilled from
+  await page.locator('.wb-fmt-tab-view').click();
+  // back on the view: the dropdown names the view again
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
   await expect(page.locator('.wb-grid-header-label').first()).toBeVisible();
 });
 
@@ -188,13 +185,13 @@ test('conditional formatting from the header menu: condition → rule → data p
   await expect(cf.locator('.wb-cf-preview-lab').nth(1)).toHaveText('rule 1');
   await cf.locator('.wb-cf-apply').click();
   // the column route registers a formatter and switches the workspace to it
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate');
   await openJson(page);
   const json = await page.inputValue('#wb-json-text');
   // the JSON tab shows the sanitized export (Zero Whitespace Rule)
   expect(json).toContain("=if(toString([$DueDate])!=''&&[$DueDate]<@now,'#d13438','')");
   // back on the grid, the cell resolves the new formatter (no placeholder chip)
-  await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
+  await page.locator('.wb-fmt-tab-view').click();
   await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
 });
 
@@ -211,7 +208,7 @@ test('conditional formatting can watch a different column than the one it paints
   await expect(cf.locator('.wb-cf-rule-when').first()).toContainText('Status is Blocked');
   await cf.locator('.wb-cf-apply').click();
   // the PAINTED column gets the formatter; the rules inside watch Status
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate');
   await openJson(page);
   expect(await page.inputValue('#wb-json-text')).toContain("[$Status]=='Blocked'");
 });

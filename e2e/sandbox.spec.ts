@@ -38,12 +38,13 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-row')).toHaveCount(3);
-  // workspace tree (always visible now): the view + Status/Progress/Owner column formatters
-  await expect(page.locator('.wb-doc-header').first()).toContainText('View formatter — grid');
-  await expect(page.locator('.wb-doc-header')).toHaveCount(4);
-  await expect(page.locator('.wb-doc-header', { hasText: '§ Status style' })).toContainText('in view');
-  // Owner is registered but unplaced — "+ column" can add it, formatted
-  await expect(page.locator('.wb-doc-header', { hasText: '§ Owner style' })).toContainText('unused');
+  // formatter navigation: the VIEW FORMATTERS tab is active, the document
+  // dropdown names the view, and the tree shows the view's structure
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-type')).toHaveText('list row schema');
+  // the registered column formatters live behind the COLUMN FORMATTERS tab's
+  // gallery — Owner is registered but unplaced, so "+ column" can add it, formatted
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
   // formatted columns render their formatters (CFR resolves, pills not chips)
   await expect(page.locator('.wb-grid-row').first()).toContainText('In Progress');
@@ -121,24 +122,22 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('one unified surface — left pane (lens tabs + tree + draw bar), ribbon breadcrumb and fx bar all present', async ({ page }) => {
+test('one unified surface — left pane (lens + formatter tabs + tree + draw bar) and fx bar all present', async ({ page }) => {
   // there is no mode toggle anymore — everything is on screen at once
   await expect(page.locator('#wb-mode')).toHaveCount(0);
 
-  // the Left Edit Pane: lens tabs (Simple/Pro/Code), the structure tree and the
-  // draw toolbar are all visible together
+  // the Left Edit Pane: lens tabs (Simple/Pro/Code), the formatter tabs, the
+  // document dropdown, the structure tree and the draw toolbar are all visible
   await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-lens-tab')).toHaveCount(3);
-  await expect(page.locator('#wb-tree-view')).toBeVisible();
+  await expect(page.locator('.wb-fmt-tab')).toHaveCount(2);
+  await expect(page.locator('#wb-doc-pill')).toBeVisible();
+  await expect(page.locator('#wb-tree-body')).toBeVisible();
   await expect(page.locator('.wb-drawbar')).toBeVisible();
   await expect(page.locator('#wb-fxbar')).toBeVisible();
 
-  // the breadcrumb (where this saves) is up in the ribbon, not a palette of items
-  const ribbon = page.locator('#wb-ribbon');
-  await expect(ribbon).toBeVisible();
-  await expect(ribbon.locator('.wb-crumb-root')).toBeVisible();
-  await expect(ribbon.locator('.wb-crumb-tail')).toBeVisible();
-  await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
+  // the old ribbon breadcrumb strip is gone — the left pane owns navigation
+  await expect(page.locator('#wb-ribbon')).toHaveCount(0);
 
   // the palette popover shows the FULL set — basics AND actions/people/shells
   await openPalette(page);

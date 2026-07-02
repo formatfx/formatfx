@@ -1,6 +1,10 @@
 /**
  * editor/treeView.ts — Structure tree: selection, drag-reorder/reparent,
  * duplicate/delete/move, and a card-formatter affordance for customCardProps.
+ *
+ * Renders the ACTIVE document only (state.doc) — which formatter that is
+ * (the view, or one of the column formatters) is chosen by the Left Edit
+ * Pane's formatter tabs + document dropdown, not by headers in this tree.
  */
 
 import type { SPElement, NodePath } from '../core/types';
@@ -29,9 +33,8 @@ function nodeHint(el: SPElement): string {
 }
 
 /**
- * Small colored chips for behaviors attached to the element. The old ⤷
- * "renders another column" chip is retired — a host cell (one carrying a
- * columnFormatterReference) is now marked by an opaque style stub node
+ * Small colored chips for behaviors attached to the element. A host cell (one
+ * carrying a columnFormatterReference) is marked by the opaque reference row
  * rendered in `renderNode`, not a chip here.
  */
 function nodeChips(el: SPElement): HTMLElement[] {
@@ -52,100 +55,30 @@ function nodeChips(el: SPElement): HTMLElement[] {
 }
 
 /**
- * The Structure pane, split into two independently-collapsible sections that
- * share the pane's height (a draggable splitter between them lives in main.ts):
- *   • `viewHost`  — the view (main) formatter, exactly as shown before.
- *   • `colsHost`  — the column formatters, exactly as shown before.
- * `onRevealColumn` is called after the style stub opens a column, so the host can
- * un-minimize the bottom section and scroll the now-active column into view.
+ * The structure tree of the active document, mounted into `host` (the Left
+ * Edit Pane's tree body). Selection is shown by row highlight only —
+ * click = select, Ctrl/Cmd/Shift-click = multi-select.
  */
 export function mountTree(
-  viewHost: HTMLElement,
-  colsHost: HTMLElement,
-  onRevealColumn?: (name: string) => void,
+  host: HTMLElement,
   onToast: (m: string) => void = () => {},
 ): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click
   let renamePath: NodePath | null = null;
 
-  // Open + select another column's formatter, then let the host reveal it.
-  // If the column isn't registered, openColumnRef is a no-op and the host
-  // scrolls to that name's "referenced but not in the workspace" row instead,
-  // so the click always lands somewhere meaningful.
+  // Open + select another column's formatter. If the column isn't registered,
+  // openColumnRef is a no-op — the reference row for that case is inert.
   const jumpToColumn = (name: string) => {
     state.openColumnRef(name);
-    onRevealColumn?.(name);
   };
 
   const render = () => {
-    viewHost.innerHTML = '';
-    colsHost.innerHTML = '';
-    const referenced = state.referencedColumns();
-
-    // ── top section: the view (main) formatter ──
-    viewHost.appendChild(docHeader(
-      'main',
-      state.mainDocLabel(),
-      state.activeDocKey === 'main',
-      `${referenced.size} column reference${referenced.size === 1 ? '' : 's'}`,
-    ));
-    if (state.activeDocKey === 'main') {
-      viewHost.appendChild(renderNode(state.doc.root, []));
-    }
-
-    // ── bottom section: every column formatter ──
-    const names = Object.keys(state.columnRefs);
-    for (const name of names) {
-      const badge = referenced.has(name) ? 'used in view' : 'unused';
-      colsHost.appendChild(docHeader(name, `§ ${name} style`, state.activeDocKey === name, badge));
-      if (state.activeDocKey === name) {
-        colsHost.appendChild(renderNode(state.doc.root, []));
-      }
-    }
-    // unresolved references the main formatter uses but the workspace lacks
-    for (const name of referenced) {
-      if (!(name in state.columnRefs)) {
-        const miss = document.createElement('div');
-        miss.className = 'wb-doc-missing';
-        miss.dataset.missingRef = name; // so a style-stub jump can land on it
-        miss.textContent = `[$${name}] — referenced but not in the workspace`;
-        miss.title = 'The main formatter has a columnFormatterReference to this column, but its formatter isn\'t registered. Import the list export or register it in the Data tab to render and edit it.';
-        colsHost.appendChild(miss);
-      }
-    }
-    if (!names.length && !referenced.size) {
-      const none = document.createElement('div');
-      none.className = 'wb-doc-group';
-      none.textContent = 'No column formatters registered.';
-      colsHost.appendChild(none);
-    }
+    host.innerHTML = '';
+    host.appendChild(renderNode(state.doc.root, []));
     // focus after attach — the rename input is created during the tree walk
-    const renameInp = (viewHost.querySelector<HTMLInputElement>('.wb-tree-rename')
-      ?? colsHost.querySelector<HTMLInputElement>('.wb-tree-rename'));
+    const renameInp = host.querySelector<HTMLInputElement>('.wb-tree-rename');
     if (renameInp) { renameInp.focus(); renameInp.select(); }
-  };
-
-  const docHeader = (key: string, label: string, active: boolean, badge: string): HTMLElement => {
-    const h = document.createElement('div');
-    h.className = 'wb-doc-header' + (active ? ' active' : '');
-    if (key !== 'main') h.classList.add('wb-doc-style');
-    h.title = active
-      ? 'Currently on the canvas'
-      : 'Click to put this formatter on the canvas (your current edits are kept)';
-    const caret = document.createElement('span');
-    caret.textContent = active ? '▾' : '▸';
-    const text = document.createElement('span');
-    text.textContent = label;
-    const b = document.createElement('span');
-    b.className = 'wb-doc-badge';
-    b.textContent = badge;
-    h.append(caret, text, b);
-    h.addEventListener('click', () => {
-      if (key === 'main') state.openMain();
-      else state.openColumnRef(key);
-    });
-    return h;
   };
 
   const renderNode = (el: SPElement, path: NodePath): HTMLElement => {
@@ -163,15 +96,6 @@ export function mountTree(
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
     label.style.paddingLeft = `${path.length * 12}px`;
-    // Figma-style multi-select checkbox (13×13) — toggles this node in/out of
-    // the selection set without disturbing the others.
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.className = 'wb-tree-check';
-    check.checked = state.isSelected(path);
-    check.setAttribute('aria-label', `Select ${el._elmName ?? el.elmType}`);
-    check.addEventListener('click', (e) => { e.stopPropagation(); state.toggleSelect(path); });
-    label.appendChild(check);
     const typeIcon = document.createElement('i');
     typeIcon.className = `ms-Icon ms-Icon--${ELM_ICONS[el.elmType] ?? 'CubeShape'} wb-tree-elmicon`;
     label.appendChild(typeIcon);
@@ -187,13 +111,6 @@ export function mountTree(
     typeName.className = 'wb-tree-elmtype' + (el._elmName ? ' wb-tree-elmtype-dim' : '');
     typeName.textContent = el.elmType ?? '?';
     label.append(typeName, ...nodeChips(el));
-    if (el.columnFormatterReference) {
-      const hostBadge = document.createElement('span');
-      hostBadge.className = 'wb-tree-badge-host';
-      hostBadge.textContent = 'host · this view';
-      hostBadge.title = 'This box is yours — its size and borders live in this view. Its content comes from the shared style below.';
-      label.appendChild(hostBadge);
-    }
     const hint = el._elmName ? '' : nodeHint(el);
     if (hint) {
       const h = document.createElement('span');
@@ -284,7 +201,7 @@ export function mountTree(
 
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
-        if (e.target !== row) return; // let buttons/checkboxes inside handle their own keys
+        if (e.target !== row) return; // let buttons inside handle their own keys
         e.preventDefault();
         e.stopPropagation();
         if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
@@ -336,19 +253,32 @@ export function mountTree(
 
     wrap.appendChild(row);
 
-    // "violet = shared": the style is a door, not a folder — one opaque,
-    // non-expandable stub; opening it drills in (same lesson as the canvas).
+    // "violet = shared": the reference is a door, not a folder — one opaque,
+    // non-expandable row naming the referenced column; opening it drills in
+    // (same lesson as the canvas). Kept to the column name + the § mark so it
+    // reads like the COLUMN FORMATTERS tab it links to.
     if (el.columnFormatterReference) {
       const name = cfrFieldName(el.columnFormatterReference);
       const registered = name in state.columnRefs;
+      const display = state.fields.find((f) => f.name === name)?.displayName ?? name;
       const stub = document.createElement('div');
       stub.className = 'wb-tree-stylestub' + (registered ? '' : ' wb-tree-stylestub-missing');
       stub.style.paddingLeft = `${(path.length + 1) * 12 + 8}px`;
+      const mark = document.createElement('span');
+      mark.className = 'wb-style-mark';
+      mark.textContent = '§';
+      mark.setAttribute('aria-hidden', 'true');
+      const nm = document.createElement('span');
+      nm.className = 'wb-stub-name';
+      nm.textContent = display;
+      const tag = document.createElement('span');
+      tag.className = 'wb-stub-tag';
+      tag.textContent = 'column formatter reference';
+      stub.append(mark, nm, tag);
       if (registered) {
         const blast = cfrBlastRadius(name, state.mainRootForScope, state.columnRefs);
         const places = Math.max(blast.count, 1);
-        stub.textContent = `§ ${name} style · used in ${places} place${places === 1 ? '' : 's'} → open`;
-        stub.title = `This element renders the shared ${name} style. Open it to edit — changes apply everywhere it's used.`;
+        stub.title = `This element renders the shared ${display} column formatter (used in ${places} place${places === 1 ? '' : 's'}). Open it to edit — changes apply everywhere it's used.`;
         stub.setAttribute('role', 'button');
         stub.tabIndex = 0;
         const open = (e: Event) => { e.stopPropagation(); jumpToColumn(name); };
@@ -357,8 +287,7 @@ export function mountTree(
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); }
         });
       } else {
-        stub.textContent = `§ ${name} style — not in this workspace`;
-        stub.title = `The formatter references [$${name}], but that style isn't registered. Import the list export or register it in the Data tab.`;
+        stub.title = `The formatter references [$${name}], but that column formatter isn't registered. Import the list export or register it in the Data tab.`;
       }
       wrap.appendChild(stub);
     }
@@ -378,23 +307,16 @@ export function mountTree(
   };
 
   const updateSelectionOnly = () => {
-    const updateRows = (host: HTMLElement) => {
-      host.querySelectorAll<HTMLElement>('.wb-tree-row').forEach((row) => {
-        const pathStr = row.dataset.path;
-        if (pathStr === undefined) return;
-        const path = pathStr === '' ? [] : pathStr.split('.').map(Number);
-        const isSel = state.isSelected(path);
-        row.classList.toggle('selected', isSel);
-        const check = row.querySelector<HTMLInputElement>('.wb-tree-check');
-        if (check) check.checked = isSel;
-      });
-    };
-    updateRows(viewHost);
-    updateRows(colsHost);
+    host.querySelectorAll<HTMLElement>('.wb-tree-row').forEach((row) => {
+      const pathStr = row.dataset.path;
+      if (pathStr === undefined) return;
+      const path = pathStr === '' ? [] : pathStr.split('.').map(Number);
+      row.classList.toggle('selected', state.isSelected(path));
+    });
   };
 
-  if ((viewHost as any)._unsub) {
-    (viewHost as any)._unsub();
+  if ((host as any)._unsub) {
+    (host as any)._unsub();
   }
   const unsub = state.subscribe((reason) => {
     if (reason === 'selection') {
@@ -403,6 +325,6 @@ export function mountTree(
       render();
     }
   });
-  (viewHost as any)._unsub = unsub;
+  (host as any)._unsub = unsub;
   render();
 }

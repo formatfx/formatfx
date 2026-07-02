@@ -52,21 +52,22 @@ test('the example/sample loader lives in the ☰ menu, not the topbar', async ({
   await expect(page.locator('#wb-menu-panel #wb-example')).toBeVisible();
 });
 
-test('the ribbon breadcrumb states where you are, not a Type dropdown', async ({ page }) => {
+test('the formatter tabs state where you are, not a Type dropdown', async ({ page }) => {
   // the old upfront Type dropdown is gone from the topbar
   await expect(page.locator('.wb-topbar #wb-kind')).toHaveCount(0);
-  // default doc is a grid view → root browses views, tail is the view name
-  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('View 1');
+  // default doc is a grid view → the VIEW FORMATTERS tab is active and the
+  // document dropdown names the view
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
 });
 
-test('the kind control lives in the Advanced pane, and a column example flips the breadcrumb to the column', async ({ page }) => {
+test('the kind control lives in the Advanced pane, and a column example flips to the COLUMN tab', async ({ page }) => {
   // the kind select moved into the side/JSON pane (revealed by Advanced)
   await openJson(page);
   await expect(page.locator('#wb-pane-side #wb-kind')).toBeVisible();
-  // a column-kind example flips the breadcrumb root to Column Styles and
-  // names the column it targets in the tail
+  // a column-kind example lights the COLUMN FORMATTERS tab and names the
+  // column it targets in the document dropdown
   await loadExample(page, 'status-pill');
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
 });

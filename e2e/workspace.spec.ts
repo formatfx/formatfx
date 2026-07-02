@@ -44,8 +44,10 @@ async function loadRowFixture(page: Page): Promise<void> {
 }
 
 test('edit a column formatter, switch back, the view reflects it (CFR round-trip)', async ({ page }) => {
-  // open the Status column formatter from the workspace tree
-  await page.locator('.wb-doc-header', { hasText: '§ Status style' }).click();
+  // open the Status column formatter via the COLUMN FORMATTERS tab
+  // (Status is first in the registry, so the tab lands on it)
+  await page.locator('.wb-fmt-tab-cols').click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   await expect(page.locator('.wb-current-chip')).toContainText('@currentField → Status');
   // change the pill text via the JSON pane
   await openJson(page);
@@ -56,7 +58,7 @@ test('edit a column formatter, switch back, the view reflects it (CFR round-trip
   await page.click('#wb-json-apply');
   await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('»In Progress«');
   // back to the view — the grid's Status column renders the edited formatter
-  await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
+  await page.locator('.wb-fmt-tab-view').click();
   await expect(page.locator('.wb-grid-row').first()).toContainText('»In Progress«');
 });
 
@@ -277,7 +279,7 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
 });
 
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {
-  await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
+  await page.locator('.wb-fmt-tab-view').click();
   // inserts at the grid root — arrives as a new grid column
   await openPalette(page);
   await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
@@ -285,26 +287,29 @@ test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) =
   await expect(page.locator('.wb-flyout-beak')).toBeVisible();
 });
 
-test('Structure pane: view + column sections both render side-by-side', async ({ page }) => {
-  // both sections live side-by-side: the view formatter on top, columns below
-  await expect(page.locator('#wb-tree-view .wb-doc-header', { hasText: 'View formatter' })).toBeVisible();
-  await expect(page.locator('#wb-tree-cols .wb-doc-header', { hasText: '§ Status style' })).toBeVisible();
+test('Structure pane: formatter tabs + document dropdown frame the active tree', async ({ page }) => {
+  // the two formatter tabs are always present; the tree shows the active doc
+  await expect(page.locator('.wb-fmt-tab-view')).toBeVisible();
+  await expect(page.locator('.wb-fmt-tab-cols')).toBeVisible();
+  await expect(page.locator('#wb-doc-pill')).toBeVisible();
+  await expect(page.locator('#wb-tree-body .wb-tree-row').first()).toBeVisible();
 });
 
-test('Structure pane: the style stub opens & selects that column formatter below', async ({ page }) => {
-  // the grid's Status column renders another column's formatter — an opaque style stub
+test('Structure pane: the reference row opens & selects that column formatter', async ({ page }) => {
+  // the grid's Status column renders another column's formatter — an opaque reference row
   const statusRow = page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Status' }) });
-  // the stub is a sibling of the row (not inside it), so climb to the row's
-  // wrap node and find the stub there; clicking it (not the row) slips over
-  // to the column section and selects it
+  // the reference row is a sibling of the row (not inside it), so climb to the
+  // row's wrap node and find it there; clicking it (not the row) switches the
+  // workspace to that column formatter
   const statusStub = statusRow.locator('xpath=following-sibling::*[1]');
   await expect(statusStub).toHaveClass(/wb-tree-stylestub/);
   await statusStub.click();
-  await expect(page.locator('#wb-tree-cols .wb-doc-header.active')).toContainText('§ Status style');
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   await expect(page.locator('.wb-current-chip')).toContainText('@currentField → Status');
 });
 
-test('Structure pane: an unregistered style stub is inert; the missing row stays put', async ({ page }) => {
+test('Structure pane: an unregistered reference row is inert', async ({ page }) => {
   // a view referencing a column with no registered formatter
   await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
@@ -314,13 +319,11 @@ test('Structure pane: an unregistered style stub is inert; the missing row stays
     },
   }));
   await page.click('#wb-json-apply');
-  // the unresolved reference shows in the column section
-  const missing = page.locator('#wb-tree-cols .wb-doc-missing[data-missing-ref="Ghost"]');
-  await expect(missing).toBeVisible();
-  // the host node's stub reads "not in this workspace" and has no click handler
+  // the host node's reference row is marked missing and has no click handler
   const ghostStub = page.locator('.wb-tree-stylestub-missing').first();
-  await expect(ghostStub).toContainText('not in this workspace');
+  await expect(ghostStub.locator('.wb-stub-name')).toHaveText('Ghost');
+  await expect(ghostStub).toHaveAttribute('title', /isn't registered/);
   await ghostStub.click();
-  await expect(missing).toBeVisible();
-  await expect(page.locator('#wb-tree-cols .wb-doc-header.active')).toHaveCount(0);
+  // still on the view — the click went nowhere
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
 });

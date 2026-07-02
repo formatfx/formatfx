@@ -56,10 +56,10 @@ test('a field can be dragged from the palette onto a preview block', async ({ pa
   await expect(page.locator('[data-edit-area="0"]')).toHaveAttribute('data-field-name', 'DueDate');
 });
 
-test('New rowview is reachable from the View Formatters dropdown on the landing screen', async ({ page }) => {
+test('New rowview is reachable from the document dropdown on the landing screen', async ({ page }) => {
   await page.goto('/');
   // straight from the grid landing — no need to enter Row View first
-  await page.locator('.wb-crumb-root', { hasText: 'View Formatters' }).click();
+  await page.locator('#wb-doc-pill').click();
   await expect(page.locator('.wb-viewmenu')).toBeVisible();
   await page.locator('.wb-viewmenu-newrow').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();

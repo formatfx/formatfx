@@ -338,7 +338,7 @@ export class EditorState {
   }
 
   /** Rename the view. Project metadata, not a formatter edit — deliberately
-   *  off the undo stack; emits 'data' so the breadcrumb + menus refresh and
+   *  off the undo stack; emits 'data' so the document dropdown + menus refresh and
    *  the change autosaves. */
   setViewName(name: string): void {
     this.viewName = name.trim() || 'View 1';

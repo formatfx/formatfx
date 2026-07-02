@@ -17,7 +17,6 @@ import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
 import { onPushedSnapshot, onExtensionReady, onFormatterRequest, stageApplyToExtension } from './editor/extensionBridge';
 import { buildCurrentApplyPayload } from './editor/deployPayload';
-import { mountBreadcrumb } from './editor/breadcrumb';
 import { mountLeftPane } from './editor/leftPane';
 import { copyNodes, pasteNodes } from './editor/clipboard';
 import { paletteItemById } from './editor/palette';
@@ -80,9 +79,6 @@ app.innerHTML = `
       </div>
     </div>
   </header>
-  <div class="wb-ribbon" id="wb-ribbon" title="Where you are — and where this formatter saves">
-    <div id="wb-breadcrumb" class="wb-breadcrumb"></div>
-  </div>
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-leftpane" id="wb-leftpane"></aside>
     <section class="wb-pane-canvas">
@@ -443,7 +439,6 @@ mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElemen
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountExplainPanel(document.getElementById('wb-tab-explain')!);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
-mountBreadcrumb(document.getElementById('wb-breadcrumb')!, toast);
 
 // ── share: mint links, restore backups, open incoming links safely ──
 document.getElementById('wb-share')!.addEventListener('click', () => openShareDialog({ toast }));

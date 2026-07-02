@@ -1,6 +1,7 @@
 /**
- * E2E: column-style legibility — "violet = shared". Rails + § marks at rest,
- * the name-tag on a selected linked cell, and double-click drill-in.
+ * E2E: column-style legibility — "violet = shared". The § marks, the name-tag
+ * on a selected linked cell, and double-click drill-in. (The left-edge rail
+ * was retired: linked cells read via § + hover outline + name-tag only.)
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -15,11 +16,15 @@ function header(page: Page, label: string) {
   return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
-test('linked cells wear the shared rail; plain cells do not', async ({ page }) => {
+test('linked cells are marked; plain cells are not — and no rail is painted', async ({ page }) => {
   await expect(page.locator('.wb-grid-cell.wb-cell-linked').first()).toBeVisible();
   // Status ships linked; Title does not — compare within the first data row
   const firstRow = page.locator('.wb-grid-row').first();
   await expect(firstRow.locator('.wb-cell-linked')).toHaveCount(2); // Status + Progress ship linked
+  // the old violet left-edge rail (an inset box-shadow) is gone
+  const shadow = await firstRow.locator('.wb-cell-linked').first()
+    .evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(shadow).toBe('none');
 });
 
 test('the header badge shows the § style mark', async ({ page }) => {
@@ -36,8 +41,8 @@ test('selecting a linked cell reveals its name-tag', async ({ page }) => {
 
 test('double-clicking a linked cell drills into the style', async ({ page }) => {
   await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
 });
 
 test('the scope chip always names what an edit will hit', async ({ page }) => {
@@ -66,7 +71,7 @@ test('drilling in shows the § banner; Done and Esc both return to the view', as
   // Done returns
   await banner.locator('.wb-style-done').click();
   await expect(page.locator('.wb-style-banner')).toHaveCount(0);
-  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
   // …and Esc returns too
   await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
   await expect(page.locator('.wb-style-banner')).toBeVisible();
@@ -74,21 +79,24 @@ test('drilling in shows the § banner; Done and Esc both return to the view', as
   await expect(page.locator('.wb-style-banner')).toHaveCount(0);
 });
 
-test('the tree shows an opaque style stub under the host cell; opening it drills in', async ({ page }) => {
+test('the tree shows an opaque reference row under the host cell; opening it drills in', async ({ page }) => {
   const stub = page.locator('.wb-tree-stylestub').first();
-  await expect(stub).toContainText('Status style');
-  await expect(stub).toContainText('open');
+  // just the column name in violet, tagged as a reference — no rail, no counts
+  await expect(stub.locator('.wb-stub-name')).toHaveText('Status');
+  await expect(stub.locator('.wb-stub-tag')).toHaveText('column formatter reference');
+  await expect(stub.locator('.wb-style-mark')).toHaveText('§');
   await stub.click();
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
 });
 
 test('an Escape-closable overlay opened while drilled closes itself first; a second Esc exits the style', async ({ page }) => {
   await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
   const banner = page.locator('.wb-style-banner');
   await expect(banner).toBeVisible();
-  // open the breadcrumb's Column Styles gallery — an Escape-owning overlay
-  await page.locator('.wb-crumb-root').click();
+  // open the Column Formatters gallery from the document dropdown — an
+  // Escape-owning overlay
+  await page.locator('#wb-doc-pill').click();
   const gal = page.locator('.wb-colgal');
   await expect(gal).toBeVisible();
   // first Escape: the gallery owns it — it closes, the drilled style stays
@@ -100,9 +108,9 @@ test('an Escape-closable overlay opened while drilled closes itself first; a sec
   await expect(banner).toHaveCount(0);
 });
 
-test('the scope chip reads a style scope when a column formatter is the main document', async ({ page }) => {
+test('the COLUMN FORMATTERS tab lights up when a column formatter is the main document', async ({ page }) => {
   await page.click('#wb-menu-btn');
   await page.selectOption('#wb-example', 'status-pill');
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-scope-chip')).toContainText('style ·');
 });

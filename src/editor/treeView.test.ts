@@ -14,13 +14,12 @@ describe('tree action buttons (a11y)', () => {
       root: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'x' }] },
     };
     state.selection = null;
-    const viewHost = document.createElement('div');
-    const colsHost = document.createElement('div');
-    document.body.append(viewHost, colsHost);
+    const host = document.createElement('div');
+    document.body.append(host);
 
-    mountTree(viewHost, colsHost);
+    mountTree(host);
 
-    const buttons = Array.from(viewHost.querySelectorAll<HTMLButtonElement>('.wb-tree-actions button'));
+    const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>('.wb-tree-actions button'));
     expect(buttons.length).toBeGreaterThan(0);
     for (const b of buttons) {
       // accessible name: aria-label must be present and match the tooltip text

@@ -119,7 +119,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
 
     const kind = state.doc.kind;
     if (kind === 'column') {
-      // drilled into a column formatter → the ribbon breadcrumb offers Back
+      // drilled into a column formatter → the banner names it and offers Done
       if (state.activeDocKey !== 'main') {
         const fieldName = state.activeDocKey;
         const display = state.fields.find((f) => f.name === fieldName)?.displayName ?? fieldName;
