@@ -251,8 +251,10 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     // carry it — it has no Escape handler of its own, so it can't race with
     // this guard. If a document Escape would hit one of those owners first,
     // let it close on its own turn rather than also exiting the drilled
-    // style — otherwise one Esc press does both at once.
-    if (document.querySelector('.wb-esc-owner')) return;
+    // style — otherwise one Esc press does both at once. `:not([hidden])`
+    // matters: owners that hide instead of removing themselves (the
+    // inspector's doc cards) must stop owning Escape once dismissed.
+    if (document.querySelector('.wb-esc-owner:not([hidden])')) return;
     state.openMain();
     onToast(`Back to the ${state.viewName} view formatter`);
   };

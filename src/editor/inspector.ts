@@ -809,7 +809,11 @@ function visualRow(node: SPElement, label: string, prop: string, control: HTMLEl
     info.textContent = 'ⓘ';
     info.title = `What does ${prop} do?`;
     const card = document.createElement('div');
-    card.className = 'wb-doccard';
+    // wb-esc-owner: doc cards close on their own document-level Escape
+    // (closeDocCards) — the marker keeps the drilled-style Esc exit from also
+    // firing. Cards HIDE rather than remove themselves, so the canvas guard
+    // matches `.wb-esc-owner:not([hidden])`.
+    card.className = 'wb-doccard wb-esc-owner';
     card.hidden = true;
     buildDocCard(card, prop, STYLE_PROP_DOCS, styleFamilyOf, (exProp, exValue) => {
       if (exValue === null || exProp !== prop) return; // variant switches just re-read
@@ -1706,7 +1710,11 @@ function kvEditor(
     info.textContent = 'ⓘ';
     info.title = 'What does this property do?';
     const card = document.createElement('div');
-    card.className = 'wb-doccard';
+    // wb-esc-owner: doc cards close on their own document-level Escape
+    // (closeDocCards) — the marker keeps the drilled-style Esc exit from also
+    // firing. Cards HIDE rather than remove themselves, so the canvas guard
+    // matches `.wb-esc-owner:not([hidden])`.
+    card.className = 'wb-doccard wb-esc-owner';
     card.hidden = true;
     const refreshValueOptions = () => {
       const k = key.value.trim();
