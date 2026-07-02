@@ -2399,3 +2399,30 @@ body {
 .wb-scope-view { background: var(--wb-canvas-bg); color: var(--wb-text-2); }
 .wb-scope-host { background: var(--wb-lp-selected); color: var(--wb-text); }
 .wb-scope-style { background: var(--wb-shared-bg); border: 1px solid var(--wb-shared-border); color: var(--wb-shared); }
+
+/* ── drilled into a column style ───────────────────────────────────────── */
+.wb-style-editing { outline: 2px solid var(--wb-shared); outline-offset: -2px; }
+.wb-style-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--wb-shared-bg);
+  color: var(--wb-shared);
+  border-bottom: 1px solid var(--wb-shared-border);
+}
+.wb-style-banner .wb-style-done {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--wb-shared-border);
+  background: var(--wb-surface);
+  color: var(--wb-shared);
+  cursor: pointer;
+}
+/* the Title context column steps back while a style is edited */
+.wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }

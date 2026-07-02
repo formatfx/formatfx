@@ -18,6 +18,8 @@ import type { NodePath, SPElement } from '../core/types';
 import { cfrFieldName } from '../core/refs';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
 import { openTemplateModal } from './templateModal';
+import { styleBannerLabel } from './styleScope';
+import { cfrBlastRadius } from './cfr';
 
 /** The Stage-3 row-view toolbar: density (Roomy/Compact) + back to the grid.
  *  Per-area sizing lives on each area's right-click menu (independent weights). */
@@ -106,6 +108,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     closeFlyout();
     host.innerHTML = '';
     runtimeIssues = [];
+    host.classList.toggle('wb-style-editing', state.doc.kind === 'column' && state.activeDocKey !== 'main');
     const issues: RenderIssue[] = [];
     const opts = {
       issues,
@@ -117,6 +120,26 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     const kind = state.doc.kind;
     if (kind === 'column') {
       // drilled into a column formatter → the ribbon breadcrumb offers Back
+      if (state.activeDocKey !== 'main') {
+        const fieldName = state.activeDocKey;
+        const display = state.fields.find((f) => f.name === fieldName)?.displayName ?? fieldName;
+        const blast = cfrBlastRadius(fieldName, state.mainRootForScope, state.columnRefs);
+        const banner = document.createElement('div');
+        banner.className = 'wb-style-banner';
+        const mark = document.createElement('span');
+        mark.className = 'wb-style-mark';
+        mark.textContent = '§';
+        const text = document.createElement('span');
+        text.textContent = styleBannerLabel(display, Math.max(blast.count, 1));
+        const done = document.createElement('button');
+        done.type = 'button';
+        done.className = 'wb-style-done';
+        done.textContent = 'Done';
+        done.title = `Back to the ${state.viewName} view formatter`;
+        done.addEventListener('click', () => { state.openMain(); onToast(`Back to the ${state.viewName} view formatter`); });
+        banner.append(mark, text, done);
+        host.appendChild(banner);
+      }
       const table = document.createElement('div');
       table.className = 'wb-mock-list';
       const header = document.createElement('div');
@@ -215,6 +238,20 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   };
   document.addEventListener('click', onDocClick);
 
+  const onDocKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || state.activeDocKey === 'main') return;
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, select, [contenteditable], dialog')) return;
+    // an open menu/flyout/float owns its own Escape — don't also navigate
+    // (real class names verified in menu.ts / core/renderer.ts / fxBar.ts —
+    // the brief's `.wb-menu` is actually `.wb-grid-menu`; the fx-bar's own
+    // suggestion/autocomplete menus are textarea-scoped and already excluded above)
+    if (document.querySelector('.wb-grid-menu, .wb-flyout, .wb-fx-float')) return;
+    state.openMain();
+    onToast(`Back to the ${state.viewName} view formatter`);
+  };
+  document.addEventListener('keydown', onDocKeydown);
+
   // right-click an element (or a grid cell) for the common actions
   installPreviewContextMenu(host, onToast);
 
@@ -263,6 +300,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   (host as any)._unsub = () => {
     unsub();
     document.removeEventListener('click', onDocClick);
+    document.removeEventListener('keydown', onDocKeydown);
   };
   render();
 

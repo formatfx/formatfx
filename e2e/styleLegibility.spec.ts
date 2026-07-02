@@ -57,3 +57,19 @@ test('the scope chip always names what an edit will hit', async ({ page }) => {
   await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
   await expect(page.locator('.wb-scope-chip')).toContainText('Status style ·');
 });
+
+test('drilling in shows the § banner; Done and Esc both return to the view', async ({ page }) => {
+  await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
+  const banner = page.locator('.wb-style-banner');
+  await expect(banner).toContainText('Editing the Status style');
+  await expect(banner).toContainText('changes apply everywhere');
+  // Done returns
+  await banner.locator('.wb-style-done').click();
+  await expect(page.locator('.wb-style-banner')).toHaveCount(0);
+  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  // …and Esc returns too
+  await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
+  await expect(page.locator('.wb-style-banner')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wb-style-banner')).toHaveCount(0);
+});
