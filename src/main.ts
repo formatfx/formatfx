@@ -45,7 +45,7 @@ app.innerHTML = `
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
-      <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced</button>
+      <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
       <button id="wb-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
@@ -463,13 +463,28 @@ state.subscribe((reason) => {
 });
 refreshTitleColVisibility();
 
-// lint refresh after each render pass
+// lint refresh after each render pass — also drives the topbar badge so makers
+// in the default maker view can see issues without opening the studio.
+const lintBadge = document.getElementById('wb-lint-badge') as HTMLElement;
+const refreshLintBadge = ({ errors, warnings, runtime }: { errors: number; warnings: number; runtime: number }): void => {
+  const errorTotal = errors + runtime;
+  const count = errorTotal || warnings;
+  if (!count) { lintBadge.hidden = true; lintBadge.removeAttribute('aria-label'); lintBadge.title = ''; return; }
+  lintBadge.textContent = String(count);
+  lintBadge.hidden = false;
+  lintBadge.classList.toggle('wb-badge-warn', errorTotal === 0);
+  const label = errorTotal
+    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open Advanced to review`
+    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open Advanced to review`;
+  lintBadge.setAttribute('aria-label', label);
+  lintBadge.title = label;
+};
 state.subscribe((reason) => {
   if (reason !== 'selection' && reason !== 'theme' && reason !== 'lens') {
-    window.setTimeout(() => jsonPanel.refreshLint(canvas.getRuntimeIssues()), 0);
+    window.setTimeout(() => refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues())), 0);
   }
 });
-jsonPanel.refreshLint(canvas.getRuntimeIssues());
+refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues()));
 refreshStudioDisabled();
 kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 

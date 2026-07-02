@@ -18,7 +18,7 @@ import { lintBadge, lintAriaLabel } from './lintBadge';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
-  refreshLint: (runtime: RenderIssue[]) => void;
+  refreshLint: (runtime: RenderIssue[]) => { errors: number; warnings: number; runtime: number };
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
@@ -198,7 +198,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   });
 
-  const renderLint = (runtime: RenderIssue[]) => {
+  const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number; runtime: number } => {
     const issues = lintDocument(
       state.doc,
       state.fields.map((f) => f.name),
@@ -209,9 +209,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ...issues.map((i: LintIssue) => ({ sev: i.severity, text: `${i.rule}: ${i.message}`, path: i.path })),
       ...runtime.map((r) => ({ sev: 'runtime', text: r.message, path: r.path })),
     ];
+    const errors = issues.filter((i: LintIssue) => i.severity === 'error').length;
+    const warnings = issues.filter((i: LintIssue) => i.severity === 'warning').length;
     if (all.length === 0) {
       lintEl.innerHTML = '<div class="wb-lint-ok">✓ No issues — schema-clean and expression-safe.</div>';
-      return;
+      return { errors: 0, warnings: 0, runtime: 0 };
     }
     for (const issue of all) {
       const row = document.createElement('div');
@@ -244,6 +246,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       });
       lintEl.appendChild(row);
     }
+    return { errors, warnings, runtime: runtime.length };
   };
 
   const hostAny = host as any;
