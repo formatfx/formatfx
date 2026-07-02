@@ -1,6 +1,6 @@
 /**
- * editor/viewMenu.ts — the View Formatters menu, anchored under the breadcrumb
- * root crumb when the main (view) formatter is on the canvas.
+ * editor/viewMenu.ts — the View Formatters menu, anchored under the Left Edit
+ * Pane's document dropdown when the main (view) formatter is on the canvas.
  *
  * v1 is deliberately tiny: it lists the one view and lets you Rename it inline.
  * It is the shell the spec's future multi-view grows into — the menu already

@@ -1,15 +1,13 @@
 /**
  * editor/leftPane.ts — the Claude-style Left Edit Pane container.
  *
- * Builds and wires the whole left column: the action header (Edit / Discard /
- * Save), the Simple/Pro/Code lens tabs, the structure tree (Pro/Code only), a
- * drag splitter, the draw toolbar (Select / Text / Frame / Icon / Undo / Redo +
- * a palette overflow popover), and the lower workspace that swaps between the
- * inspector (Simple/Pro) and the Code declarations box.
- *
- * It mounts the existing tree and inspector into the new geometry, so the
- * lens-aware property split (inspector) and tree multi-select land as follow-on
- * changes without re-plumbing the shell.
+ * Builds and wires the whole left column: the Simple/Pro/Code lens tabs, the
+ * VIEW FORMATTERS / COLUMN FORMATTERS tabs, the document dropdown (the pill
+ * naming what's on the canvas — its menu browses/renames views or the
+ * formatted-columns gallery), the structure tree, a drag splitter, the draw
+ * toolbar (Select / Text / Frame / Icon / Undo / Redo + a palette overflow
+ * popover), and the lower workspace that swaps between the inspector
+ * (Simple/Pro) and the Code declarations box.
  */
 
 import { state, type EditorLens } from './state';
@@ -18,8 +16,9 @@ import { mountInspector } from './inspector';
 import { mountCodeEditor } from './codeEditor';
 import { mountPalette } from './palette';
 import { openIconPicker } from './iconPicker';
-import { exportJson } from '../core/serializer';
-import type { SPElement } from '../core/types';
+import { openViewMenu } from './viewMenu';
+import { openColumnGallery } from './columnGallery';
+import type { FieldType, SPElement } from '../core/types';
 
 export interface LeftPaneOptions {
   toast: (msg: string) => void;
@@ -30,6 +29,25 @@ const LENSES: Array<{ id: EditorLens; label: string }> = [
   { id: 'pro', label: 'Pro' },
   { id: 'code', label: 'Code' },
 ];
+
+/** Subtle schema tag for the view dropdown — which wrapper this view compiles
+ *  to. Only read in view mode, where the main doc is on the canvas: grid and
+ *  row layouts both ship as the list's row schema; tile is its own schema. */
+function viewSchemaLabel(): string {
+  return state.doc.kind === 'tile' ? 'tile schema' : 'list row schema';
+}
+
+/** Subtle column-type tag for the column dropdown, e.g. "person column". */
+const FIELD_TYPE_LABEL: Record<FieldType, string> = {
+  text: 'text', note: 'multiline text', number: 'number', currency: 'currency',
+  choice: 'choice', choiceMulti: 'multi-choice', date: 'date',
+  person: 'person', personMulti: 'multi-person', boolean: 'yes/no',
+  hyperlink: 'hyperlink', lookup: 'lookup', lookupMulti: 'multi-lookup',
+};
+function columnTypeLabel(fieldName: string): string {
+  const field = state.fields.find((f) => f.name === fieldName);
+  return field ? `${FIELD_TYPE_LABEL[field.type] ?? field.type} column` : 'column';
+}
 
 export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const hostAny = host as any;
@@ -49,20 +67,18 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
         ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
       </div>
-      <div class="wb-lp-actions">
-        <button class="wb-lp-discard" title="Revert every change back to the last Save checkpoint">Discard</button>
-        <button class="wb-lp-save" title="Confirm &amp; copy this formatter's JSON to the clipboard, and set the Discard checkpoint">Save</button>
-      </div>
+    </div>
+    <div class="wb-fmt-tabs" role="tablist" aria-label="Formatter kind">
+      <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View formatters</span></button>
+      <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Column formatters</span></button>
     </div>
     <div class="wb-lp-tree" id="wb-lp-tree">
-      <section class="wb-tree-sec">
-        <div class="wb-tree-sec-head">View formatter</div>
-        <div class="wb-tree-sec-body" id="wb-tree-view"></div>
-      </section>
-      <section class="wb-tree-sec">
-        <div class="wb-tree-sec-head">Column formatters</div>
-        <div class="wb-tree-sec-body" id="wb-tree-cols"></div>
-      </section>
+      <button class="wb-doc-pill" id="wb-doc-pill" aria-haspopup="menu">
+        <span class="wb-doc-pill-name"></span>
+        <span class="wb-doc-pill-type"></span>
+        <span class="wb-doc-pill-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="wb-tree-sec-body" id="wb-tree-body"></div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-drawbar" role="toolbar" aria-label="Draw tools">
@@ -84,37 +100,70 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   `;
 
   // ── mount the relocated panels ─────────────────────────────────────────────
-  mountTree(
-    host.querySelector<HTMLElement>('#wb-tree-view')!,
-    host.querySelector<HTMLElement>('#wb-tree-cols')!,
-    (name) => revealColumn(host, name),
-    toast,
-  );
+  mountTree(host.querySelector<HTMLElement>('#wb-tree-body')!, toast);
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!);
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
 
-  // ── action header: Discard / Save ──────────────────────────────────────────
-  const discardBtn = host.querySelector<HTMLButtonElement>('.wb-lp-discard')!;
-  const saveBtn = host.querySelector<HTMLButtonElement>('.wb-lp-save')!;
-  discardBtn.addEventListener('click', () => {
-    if (!state.isDirtySinceSave) { toast('Nothing to discard — no changes since the last save'); return; }
-    state.discardToSavepoint();
-    toast('Reverted to the last saved checkpoint');
-  });
-  saveBtn.addEventListener('click', async () => {
-    state.markSavepoint();
-    try {
-      await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
-      toast('Saved — JSON copied to the clipboard');
-    } catch {
-      toast('Saved (clipboard unavailable — copy from the JSON pane)');
+  // ── formatter tabs + document dropdown ─────────────────────────────────────
+  // Which tab is active derives from workspace state, exactly like the old
+  // breadcrumb did: drilled into a column ref, or a main doc whose kind is
+  // 'column', reads as the COLUMN FORMATTERS tab.
+  const isColumnMode = (): boolean =>
+    state.activeDocKey !== 'main' || state.doc.kind === 'column';
+
+  const viewTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-view')!;
+  const colsTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-cols')!;
+  const pill = host.querySelector<HTMLButtonElement>('#wb-doc-pill')!;
+  const pillName = pill.querySelector<HTMLElement>('.wb-doc-pill-name')!;
+  const pillType = pill.querySelector<HTMLElement>('.wb-doc-pill-type')!;
+
+  // the column formatter last on the canvas — where the COLUMN tab returns to
+  let lastColumnKey: string | null = null;
+
+  const refreshFmtNav = (): void => {
+    const cols = isColumnMode();
+    viewTab.classList.toggle('active', !cols);
+    viewTab.setAttribute('aria-selected', String(!cols));
+    colsTab.classList.toggle('active', cols);
+    colsTab.setAttribute('aria-selected', String(cols));
+    pill.classList.toggle('wb-doc-pill-col', cols);
+    if (cols) {
+      const fieldName = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
+      pillName.textContent = state.fields.find((f) => f.name === fieldName)?.displayName ?? fieldName;
+      pillType.textContent = columnTypeLabel(fieldName);
+      pill.title = 'Browse the columns that have a formatter, or start one';
+    } else {
+      pillName.textContent = state.viewName;
+      pillType.textContent = viewSchemaLabel();
+      pill.title = 'This view formatter — rename it or start a new row view';
     }
-    refreshActionHeader();
-  });
-  const refreshActionHeader = (): void => {
-    discardBtn.disabled = !state.isDirtySinceSave;
-    saveBtn.classList.toggle('wb-dirty', state.isDirtySinceSave);
   };
+
+  viewTab.addEventListener('click', () => {
+    if (state.activeDocKey !== 'main') {
+      state.openMain();
+      toast(`Back to the ${state.viewName} view formatter`);
+    } else if (state.doc.kind === 'column') {
+      toast('The document on the canvas is a column formatter — switch its type under Advanced to build a view.');
+    }
+  });
+  colsTab.addEventListener('click', () => {
+    if (isColumnMode()) return;
+    const names = Object.keys(state.columnRefs);
+    const target = lastColumnKey && lastColumnKey in state.columnRefs ? lastColumnKey : names[0];
+    if (target) {
+      state.openColumnRef(target);
+      toast(`Editing the ${target} column formatter`);
+    } else {
+      // nothing registered yet — the gallery's "Not yet formatted" list is the on-ramp
+      openColumnGallery(pill, toast);
+    }
+  });
+  pill.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isColumnMode()) openColumnGallery(pill, toast);
+    else openViewMenu(pill, toast);
+  });
 
   // ── lens tabs ──────────────────────────────────────────────────────────────
   for (const btn of host.querySelectorAll<HTMLButtonElement>('.wb-lens-tab')) {
@@ -219,7 +268,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const unsub = state.subscribe((reason) => {
     if (reason === 'lens') applyLens();
     if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo();
-    if (reason !== 'selection' && reason !== 'lens' && reason !== 'theme') refreshActionHeader();
+    if (reason === 'load' && state.activeDocKey !== 'main') lastColumnKey = state.activeDocKey;
+    if (reason === 'load' || reason === 'data' || reason === 'kind') refreshFmtNav();
   });
   hostAny._unsub = () => {
     unsub();
@@ -231,28 +281,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   };
   applyLens();
   refreshUndoRedo();
-  refreshActionHeader();
+  refreshFmtNav();
 }
 
-/** Clicking a ⤷ CFR chip opens that column; scroll the cols section to it. */
-function revealColumn(host: HTMLElement, name: string): void {
-  requestAnimationFrame(() => {
-    const cols = host.querySelector<HTMLElement>('#wb-tree-cols');
-    if (!cols) return;
-    const active = cols.querySelector<HTMLElement>('.wb-doc-header.active');
-    if (active) { active.scrollIntoView({ block: 'nearest' }); return; }
-    const missing = [...cols.querySelectorAll<HTMLElement>('.wb-doc-missing')]
-      .find((el) => el.dataset.missingRef === name);
-    if (missing) {
-      missing.scrollIntoView({ block: 'nearest' });
-      missing.classList.add('wb-flash');
-      setTimeout(() => missing.classList.remove('wb-flash'), 1000);
-    }
-  });
-}
-
-// Inline SVG glyphs for the draw toolbar — crisp at any size, theme via currentColor.
+// Inline SVG glyphs for the toolbar + tabs — crisp at any size, theme via currentColor.
 const ICONS = {
+  view: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M2.5 3.5h11v9h-11zM2.5 6.5h11M2.5 9.5h11"/></svg>',
   select: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 2l9 5-3.6 1.2L10 12l-1.4.6L7 9 4 11z"/></svg>',
   text: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 3h10v2.2h-1.1V4.1H8.6v7.8H10V13H6v-1.1h1.4V4.1H4.1v1.1H3z"/></svg>',
   frame: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',

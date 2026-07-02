@@ -71,7 +71,9 @@ test('tile is an explicit layout pick from the selection', async ({ page }) => {
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await page.locator('.wb-areas-bar button', { hasText: 'Make a tile' }).click();
   await expect(page.locator('.wb-mock-tile')).toHaveCount(3);
-  // a tile is still a view formatter → the breadcrumb browses views, named View 1
-  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('View 1');
+  // a tile is still a view formatter → the VIEW FORMATTERS tab stays active,
+  // the document dropdown still names View 1 (as a tile schema now)
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-type')).toHaveText('tile schema');
 });

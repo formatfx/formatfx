@@ -9,7 +9,7 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     state.resetAll();
   });
 
-  it('updates selection on state and tree view rows when clicked or checkbox toggled', () => {
+  it('updates selection on state and tree view rows when clicked or ctrl-toggled', () => {
     state.doc = {
       kind: 'row',
       root: {
@@ -23,11 +23,9 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     state.selection = []; // Select root initially
 
     const viewHost = document.createElement('div');
-    const colsHost = document.createElement('div');
     document.body.appendChild(viewHost);
-    document.body.appendChild(colsHost);
 
-    mountTree(viewHost, colsHost);
+    mountTree(viewHost);
 
     const rows = viewHost.querySelectorAll<HTMLElement>('.wb-tree-row');
     expect(rows).toHaveLength(3); // root + two children
@@ -51,10 +49,9 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     expect(rootRow!.classList.contains('selected')).toBe(false);
     expect(spanARow!.classList.contains('selected')).toBe(true);
 
-    // 2. Toggle Span B selection via its checkbox
-    const checkboxB = spanBRow!.querySelector<HTMLInputElement>('.wb-tree-check');
-    expect(checkboxB).toBeTruthy();
-    checkboxB!.click(); // triggers toggleSelect([1])
+    // 2. Toggle Span B into the selection with Ctrl+click (checkboxes are gone —
+    // the row highlight IS the selection UI)
+    spanBRow!.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
 
     // Under multi-select, Span A and Span B should both be selected
     expect(state.selections).toEqual([[0], [1]]);
@@ -64,7 +61,6 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     // Cleanup DOM
     (viewHost as any)._unsub?.();
     viewHost.remove();
-    colsHost.remove();
   });
 
   it('handles Ctrl/Cmd/Shift key modifiers in tree view to multi-select', () => {
@@ -81,11 +77,9 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     state.selection = [];
 
     const viewHost = document.createElement('div');
-    const colsHost = document.createElement('div');
     document.body.appendChild(viewHost);
-    document.body.appendChild(colsHost);
 
-    mountTree(viewHost, colsHost);
+    mountTree(viewHost);
 
     const spanARow = viewHost.querySelector<HTMLElement>('[data-path="0"]');
     const spanBRow = viewHost.querySelector<HTMLElement>('[data-path="1"]');
@@ -105,7 +99,6 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     // Cleanup DOM
     (viewHost as any)._unsub?.();
     viewHost.remove();
-    colsHost.remove();
   });
 
   it('updates selection on canvas clicks and updates canvas highlights on selection changes', () => {
@@ -271,10 +264,8 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
 
     // Mount tree view
     const viewHost = document.createElement('div');
-    const colsHost = document.createElement('div');
     document.body.appendChild(viewHost);
-    document.body.appendChild(colsHost);
-    mountTree(viewHost, colsHost);
+    mountTree(viewHost);
     expect(typeof (viewHost as any)._unsub).toBe('function');
 
     // Clean up DOM
@@ -282,6 +273,5 @@ describe('Panel selection synchronization and multi-select stress tests', () => 
     (viewHost as any)._unsub?.();
     host.remove();
     viewHost.remove();
-    colsHost.remove();
   });
 });

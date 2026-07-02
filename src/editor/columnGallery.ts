@@ -1,5 +1,6 @@
 /**
- * editor/columnGallery.ts — the formatted-columns picker (a ribbon affordance).
+ * editor/columnGallery.ts — the formatted-columns picker (the COLUMN
+ * FORMATTERS dropdown in the Left Edit Pane).
  *
  * A floating gallery of the columns that currently HAVE a formatter
  * (state.columnRefs), each shown as a live preview rendered against the mock

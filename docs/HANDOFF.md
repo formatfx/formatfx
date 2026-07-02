@@ -169,6 +169,22 @@ Key structural invariants:
   derived via `formatterDestination()`); the kind-switching `#wb-kind` select
   moved into the Studio side pane as "Advanced: formatter type" (`setKind`
   semantics unchanged).
+- **Left Edit Pane formatter navigation (2026-07-02, owner mockup)**: the
+  ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE. The Left
+  Edit Pane owns navigation: two **formatter tabs** under the lens tabs —
+  VIEW FORMATTERS (accent blue, grid icon) and COLUMN FORMATTERS (violet, §)
+  — and a **document dropdown** (`#wb-doc-pill`) naming what's on the canvas
+  with a subtle type tag ("list row schema"/"tile schema" for views, "<type>
+  column" for columns). The pill opens the View Formatters menu (rename,
+  "+ New rowview") or the Column Formatters gallery (previews + "Not yet
+  formatted"). The tree renders the ACTIVE document only (no doc headers, no
+  per-row checkboxes — the row highlight is the selection UI; Ctrl/Cmd-click
+  multi-selects). A CFR in the tree renders as `§ <ColumnName>` + a
+  right-aligned "COLUMN FORMATTER REFERENCE" tag (violet, no left rail —
+  the canvas `wb-cell-linked` rail is retired too, § + hover outline +
+  name-tag remain). The Save/Discard checkpoint buttons were removed
+  (issue #140 tracks their snapshot-based replacement; the state API —
+  `markSavepoint`/`discardToSavepoint` — is kept for it).
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -432,7 +448,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 516 vitest unit tests across 33 files (engine semantics incl.
+- `npm test` — 535 vitest unit tests across 34 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -441,7 +457,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   round trips against stubbed fetch). Run headlessly anywhere. (Keep this
   count honest when you add tests — a stale number here is how the docs
   drift out from under the code.)
-- `npm run test:ui` — 90 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 101 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
@@ -451,8 +467,9 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   hide/add, drag-to-group/reorder), `guide.spec.ts` (field guide),
   `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
   row-view builder, CFR linked instances, Studio/Advanced toggle),
-  `breadcrumb.spec.ts`, `icons.spec.ts`, `subtypes.spec.ts` and
-  `templates.spec.ts`.
+  `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
+  document dropdown), `styleLegibility.spec.ts` ("violet = shared"),
+  `icons.spec.ts`, `subtypes.spec.ts` and `templates.spec.ts`.
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).

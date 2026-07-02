@@ -160,37 +160,7 @@ body {
   background: var(--wb-bg); color: var(--wb-text);
 }
 
-/* ── ribbon: the breadcrumb strip ("where am I / where it saves") ────────── */
-.wb-ribbon {
-  display: flex; align-items: center; gap: 4px;
-  padding: 6px 12px; background: var(--wb-surface);
-  border-bottom: 1px solid var(--wb-border); overflow-x: auto;
-}
-.wb-breadcrumb {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
-}
-.wb-crumb { font-size: 12.5px; white-space: nowrap; }
-.wb-crumb-root {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 10px; cursor: pointer; font-weight: 600;
-  border: 1px solid var(--wb-border); border-radius: 4px;
-  background: var(--wb-surface); color: var(--wb-text);
-}
-.wb-crumb-root:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-crumb-sep { color: var(--wb-text-2); font-size: 13px; }
-.wb-crumb-tail {
-  font-weight: 600; color: var(--wb-text);
-  overflow: hidden; text-overflow: ellipsis;
-}
-.wb-crumb-back {
-  margin-left: auto; flex: none;
-  padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
-  border: 1px solid var(--wb-border); border-radius: 4px;
-  background: var(--wb-surface); color: var(--wb-text-2);
-}
-.wb-crumb-back:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-
-/* ── View Formatters menu (anchored under the breadcrumb root) ───────────── */
+/* ── View Formatters menu (anchored under the document dropdown) ─────────── */
 .wb-viewmenu {
   position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 16px);
   display: flex; flex-direction: column; gap: 6px; padding: 10px;
@@ -333,33 +303,6 @@ body {
 .wb-pane-palette.wb-collapsed .wb-palette-item span { display: none; }
 .wb-pane-palette.wb-collapsed .wb-palette-grid { grid-template-columns: 1fr; gap: 4px; }
 .wb-pane-palette.wb-collapsed .wb-palette-item { padding: 7px 0; }
-
-/* ── workspace tree: document headers ────────────────────── */
-.wb-doc-header {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 7px; margin: 4px 0 2px;
-  border: 1px solid var(--wb-border); border-radius: 4px;
-  cursor: pointer; font-size: 12px; font-weight: 600;
-  background: var(--wb-bg); color: var(--wb-text);
-}
-.wb-doc-header:hover { border-color: var(--wb-accent); }
-.wb-doc-header.active { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-doc-badge { margin-left: auto; font-size: 10px; font-weight: 400; color: var(--wb-text-2); white-space: nowrap; }
-.wb-doc-group {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--wb-text-2); margin: 12px 0 2px;
-}
-.wb-doc-missing {
-  font-size: 11px; color: var(--wb-text-2); font-style: italic;
-  border: 1px dashed var(--wb-border); border-radius: 4px;
-  padding: 4px 7px; margin: 4px 0;
-}
-/* brief attention pulse when a ⤷ jump lands on an unresolved reference */
-.wb-doc-missing.wb-flash { animation: wb-flash 1s ease-out; }
-@keyframes wb-flash {
-  0% { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 22%, transparent); }
-  100% { border-color: var(--wb-border); background: transparent; }
-}
 
 /* ── tree ────────────────────────────────────────────────── */
 .wb-tree-row {
@@ -728,18 +671,11 @@ body {
   outline-offset: 3px;
   animation: wb-sel-pulse 1.4s ease-in-out infinite;
 }
-/* Reduced-motion: the pulsing selection outline and the jump-to-reference
-   flash are decorative — hold them steady. These are the only keyframe
-   animations in the app; keep this in step with them. */
+/* Reduced-motion: the pulsing selection outline is decorative — hold it
+   steady. This is the only keyframe animation in the app; keep this in step
+   with it. */
 @media (prefers-reduced-motion: reduce) {
   .wb-selected { animation: none; outline-color: var(--wb-accent) !important; }
-  /* hold the flash's 0% (highlighted) state statically rather than animating —
-     the JS still clears .wb-flash after 1s, so the jump still gets feedback */
-  .wb-doc-missing.wb-flash {
-    animation: none;
-    border-color: var(--wb-accent);
-    background: color-mix(in srgb, var(--wb-accent) 22%, transparent);
-  }
 }
 .wb-drop-target { outline: 2px dashed var(--wb-accent) !important; outline-offset: -1px; background: rgba(0,120,212,.08); }
 .wb-outlines [data-sp-path] { outline: 1px dashed rgba(140,140,160,.6); outline-offset: -1px; }
@@ -2113,23 +2049,59 @@ body {
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 
-/* ── action header (lens tabs · Discard · Save, one line) ──────────────────── */
+/* ── action header (the lens tabs line) ────────────────────────────────────── */
 .wb-lp-header {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-lp-actions { display: flex; align-items: center; gap: 14px; }
-.wb-lp-discard {
-  border: none; background: none; cursor: pointer; padding: 4px 2px;
-  font-size: 13px; color: var(--wb-lp-text-2);
+
+/* ── formatter tabs (VIEW FORMATTERS · COLUMN FORMATTERS) ──────────────────
+   Blue = the view formatter; violet = the shared column formatters — the same
+   two color channels the canvas and tree teach, so the tabs read as "those
+   things I keep seeing with the § mark live here". */
+.wb-fmt-tabs {
+  flex: 0 0 auto; display: flex; gap: 4px; padding: 0 10px;
+  border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-lp-discard:hover:not(:disabled) { color: var(--wb-lp-text); }
-.wb-lp-discard:disabled { opacity: .4; cursor: default; }
-.wb-lp-save {
-  border: none; cursor: pointer; background: var(--wb-cta); color: var(--wb-cta-text);
-  font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: 8px;
+.wb-fmt-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: none; cursor: pointer; padding: 9px 8px 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--wb-lp-text-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
 }
-.wb-lp-save:hover { background: var(--wb-cta-hover); }
+.wb-fmt-tab .wb-fmt-mark { font-size: 12px; font-weight: 700; line-height: 1; }
+.wb-fmt-tab-view:hover { color: var(--wb-accent); }
+.wb-fmt-tab-cols:hover { color: var(--wb-shared); }
+.wb-fmt-tab-view.active { color: var(--wb-accent); border-bottom-color: var(--wb-accent); }
+.wb-fmt-tab-cols.active { color: var(--wb-shared); border-bottom-color: var(--wb-shared); }
+
+/* ── the document dropdown (what's on the canvas: a view, or a column) ────── */
+.wb-doc-pill {
+  display: flex; align-items: center; gap: 8px; width: calc(100% - 16px);
+  margin: 8px 8px 6px; padding: 6px 10px; cursor: pointer;
+  border: 1px solid var(--wb-accent); border-radius: 8px;
+  background: color-mix(in srgb, var(--wb-accent) 8%, transparent);
+  color: var(--wb-lp-text); font: inherit; text-align: left;
+}
+.wb-doc-pill:hover { background: color-mix(in srgb, var(--wb-accent) 16%, transparent); }
+.wb-doc-pill-name {
+  flex: 1 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-doc-pill-type {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--wb-accent); white-space: nowrap;
+}
+.wb-doc-pill-caret { flex: 0 0 auto; font-size: 10px; color: var(--wb-accent); }
+/* …violet when the document is a column formatter */
+.wb-doc-pill.wb-doc-pill-col {
+  border-color: var(--wb-shared);
+  background: color-mix(in srgb, var(--wb-shared) 8%, transparent);
+}
+.wb-doc-pill.wb-doc-pill-col:hover { background: var(--wb-shared-bg); }
+.wb-doc-pill.wb-doc-pill-col .wb-doc-pill-type,
+.wb-doc-pill.wb-doc-pill-col .wb-doc-pill-caret { color: var(--wb-shared); }
 
 /* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
 .wb-lens-tabs {
@@ -2145,19 +2117,17 @@ body {
   color: var(--wb-accent); font-weight: 600; border-bottom-color: var(--wb-accent);
 }
 
-/* ── structure tree region ─────────────────────────────────────────────────── */
+/* ── structure tree region (document dropdown + the tree itself) ───────────── */
 .wb-lp-tree {
-  flex: 0 0 auto; height: 230px; overflow: auto;
+  flex: 0 0 auto; height: 260px; display: flex; flex-direction: column;
   border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-leftpane.wb-lens-simple .wb-lp-tree,
-.wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; } /* Simple hides the tree */
-.wb-lp-tree .wb-tree-sec-head {
-  position: sticky; top: 0; z-index: 1; background: var(--wb-lp-bg);
-  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--wb-lp-text-2); padding: 8px 12px 4px;
-}
-.wb-lp-tree .wb-tree-sec-body { padding: 0 12px 6px; }
+/* Simple hides the tree itself, but keeps the formatter tabs + document
+   dropdown — they're navigation, not structure editing. */
+.wb-leftpane.wb-lens-simple .wb-lp-tree { height: auto; flex: 0 0 auto; }
+.wb-leftpane.wb-lens-simple .wb-lp-tree .wb-tree-sec-body,
+.wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; }
+.wb-lp-tree .wb-tree-sec-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 12px 6px; }
 
 /* ── splitter between tree and properties ──────────────────────────────────── */
 .wb-lp-splitter {
@@ -2227,13 +2197,9 @@ body {
 }
 .wb-side-head .wb-side-adv { margin-bottom: 0; }
 
-/* ── Left Edit Pane: structure tree multi-select + visibility ──────────────── */
+/* ── Left Edit Pane: structure tree visibility toggle ──────────────────────── */
 .wb-lp-tree .wb-tree-row { display: flex; align-items: center; }
 .wb-lp-tree .wb-tree-label { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
-.wb-tree-check {
-  flex: 0 0 auto; width: 13px; height: 13px; margin: 0 7px 0 0; cursor: pointer;
-  accent-color: var(--wb-accent);
-}
 .wb-tree-eye {
   flex: 0 0 auto; border: none; background: none; cursor: pointer; color: var(--wb-lp-text-2);
   font-size: 12px; line-height: 1; padding: 2px 4px; opacity: 0; transition: opacity .12s;
@@ -2358,9 +2324,10 @@ body {
 /* Advanced toggle: active when the JSON pane is shown */
 .wb-topbar-controls #wb-json-toggle.active { border-color: var(--wb-accent); color: var(--wb-accent); }
 
-/* ── "violet = shared" — grid at rest ──────────────────────────────────── */
+/* ── "violet = shared" — grid at rest ──────────────────────────────────────
+   No rail at rest: linked cells announce themselves via the header § mark,
+   the hover outline and the name-tag (the left-edge rail was retired). */
 .wb-cell-linked {
-  box-shadow: inset 3px 0 0 var(--wb-shared);
   position: relative;
 }
 .wb-cell-linked:hover { outline: 1.5px solid var(--wb-shared); outline-offset: -1.5px; }
@@ -2424,30 +2391,32 @@ body {
 /* the Title context column steps back while a style is edited */
 .wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }
 
-/* ── tree: the style is a door, not a folder ───────────────────────────── */
+/* ── tree: the reference is a door, not a folder ───────────────────────────
+   One opaque row per columnFormatterReference: § + the column name, with a
+   right-aligned "COLUMN FORMATTER REFERENCE" tag — the same violet + § the
+   COLUMN FORMATTERS tab wears, so the two connect at a glance. */
 .wb-tree-stylestub {
-  display: block;
-  margin: 1px 4px 3px 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 4px 3px 16px;
   padding: 3px 8px;
   font-size: 11px;
-  border-radius: 0 4px 4px 0;
+  border-radius: 4px;
   background: var(--wb-shared-bg);
-  box-shadow: inset 2px 0 0 var(--wb-shared);
   color: var(--wb-shared);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .wb-tree-stylestub:hover { filter: brightness(0.97); }
-.wb-tree-stylestub-missing { cursor: default; opacity: 0.75; }
-.wb-tree-badge-host {
-  font-size: 9px;
-  padding: 0 5px;
-  border-radius: 3px;
-  background: var(--wb-canvas-bg);
-  color: var(--wb-text-2);
-  white-space: nowrap;
+.wb-tree-stylestub .wb-stub-name {
+  flex: 0 1 auto; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis;
 }
-.wb-doc-header.wb-doc-style { color: var(--wb-shared); }
-.wb-doc-header.wb-doc-style.active { background: var(--wb-shared-bg); }
+.wb-tree-stylestub .wb-stub-tag {
+  flex: 0 0 auto; margin-left: auto;
+  font-size: 8.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  opacity: .8;
+}
+.wb-tree-stylestub-missing { cursor: default; opacity: 0.75; }

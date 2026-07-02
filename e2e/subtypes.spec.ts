@@ -124,7 +124,7 @@ test('picking a seed snapshot-applies it: the cell renders it and Ctrl+Z restore
   await page.locator('.wb-grid-menu button', { hasText: 'Due-date badge' }).click();
 
   // stayed on the grid (View Formatters, not drilled); the cell now renders the badge
-  await expect(page.locator('.wb-crumb-root')).toContainText('View Formatters');
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
   await expect(dueCell.locator('[style*="border-radius"]').first()).toBeVisible();
 
   // a single Ctrl+Z reverts to the plain cell
@@ -329,7 +329,7 @@ test('fx bar reads subtype vocab: a tagged column offers ONLY its vocab, hiding 
   await page.locator('.wb-grid-menu .wb-menu-main', { hasText: 'Due fx' }).click();
   await header(page, 'DueDate').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Edit the DueDate style' }).click();
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate'); // drilled into the DueDate column formatter
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate'); // drilled into the DueDate column formatter
 
   // the fx bar's text slot offers ONLY the vocab (the column's own value) and
   // suppresses the broad all-columns ref padding
