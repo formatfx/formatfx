@@ -184,4 +184,18 @@ describe('explainDocument — the element walk', () => {
     expect(line!.text).toContain('can’t explain this yet');
     expect(line!.text).toContain('mystery()');
   });
+
+  it('a setValue whose value can’t be read is flagged unexplained too', () => {
+    const doc: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'button',
+        txtContent: 'Set',
+        customRowAction: { action: 'setValue', actionInput: { Status: '=mystery()' } },
+      },
+    };
+    const line = explainDocument(doc)[0].lines.find((l) => l.text.includes('Clicking sets'))!;
+    expect(line.text).toContain('can’t read yet');
+    expect(line.unexplained).toBe(true);
+  });
 });

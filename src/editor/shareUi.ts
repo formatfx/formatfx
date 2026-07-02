@@ -148,7 +148,10 @@ export async function openSharedWorkspaceFromHash(opts: ShareUiOptions): Promise
     opts.toast(`This share link could not be opened: ${(e as Error).message}`);
     return false;
   }
-  const hadOwnWork = localStorage.getItem(EditorState.STORAGE_KEY) != null;
+  let hadOwnWork = false;
+  try {
+    hadOwnWork = localStorage.getItem(EditorState.STORAGE_KEY) != null;
+  } catch { /* private mode — even reads can throw; treat as no prior work */ }
   try {
     state.pauseAutosave(); // BEFORE loadProject — its emits schedule autosaves
     state.loadProject(projectJson);

@@ -8,9 +8,11 @@
  * targeted overrides; callers render them read-only and must never write
  * them into the workspace (the overlay honors that — see editor/stressTestUi).
  *
- * The generators respect the live-verified SP semantics (HANDOFF §3):
+ * The generators respect the live-verified SP semantics (HANDOFF §3) and the
+ * mock-data model's own blank conventions:
  *   - a truly empty Date cell is null, never '' (empty-date-compare)
- *   - empty multi-value fields are empty arrays
+ *   - empty person/lookup multi-values are empty arrays; an empty
+ *     multi-CHOICE is '' (the model stores choiceMulti as a ';#'-joined string)
  *   - Date columns cannot hold invalid strings on real SP, so no variant
  *     fabricates one (refuse-and-teach: we don't invent impossible data)
  *
@@ -55,7 +57,9 @@ const NUMERIC: FieldType[] = ['number', 'currency'];
 const MULTI: FieldType[] = ['choiceMulti', 'personMulti', 'lookupMulti'];
 
 /** The verified empty representation per field type (HANDOFF §3: blank dates
- *  are null; blank multi-values are empty arrays; yes/no has no blank). */
+ *  are null; blank person/lookup multi-values are empty arrays; a blank
+ *  multi-choice is '' because the model stores choiceMulti as a ';#'-joined
+ *  string; yes/no has no blank). */
 export function emptyValue(field: MockField): CellValue {
   switch (field.type) {
     case 'date': return null;

@@ -404,11 +404,17 @@ function actionLine(action: NonNullable<SPElement['customRowAction']>, ctx: Expl
   if (action.action === 'setValue') {
     const input = action.actionInput;
     if (input && typeof input === 'object' && Object.keys(input).length) {
+      let hasRefusal = false;
       const parts = Object.entries(input).map(([field, v]) => {
         const ex = explainValue(v as SPExpr, ctx);
+        if (!ex.ok) hasRefusal = true;
         return `${displayOf(field, ctx)} to ${ex.ok ? ex.text : 'a value Explain can’t read yet'}`;
       });
-      return { text: `Clicking sets ${parts.join(' and ')} on the item — no form, it just writes.` };
+      return {
+        text: `Clicking sets ${parts.join(' and ')} on the item — no form, it just writes.`,
+        // a partly-unreadable sentence is still a refusal — style it as one
+        ...(hasRefusal ? { unexplained: true } : {}),
+      };
     }
     return { text: 'Clicking is meant to set a field value, but no field/value is configured — it will do nothing on the real list.' };
   }
