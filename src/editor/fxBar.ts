@@ -228,7 +228,10 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
 
     // Silent by default. The one thing that can't vanish is a read-only note —
     // it explains why the field can't be edited here and where to go instead.
-    if (view.readOnly) setFeedback(`Shown read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
+    if (view.readOnly) {
+      setFeedback(`Shown read-only — ${view.note}`, 'raw');
+      feedback.appendChild(advancedLink());
+    }
 
     // ── the value menu: a styled drop-down, shown only while the bar is focused.
     // No permanent wall of buttons under the bar — the choices appear on demand,
@@ -436,8 +439,10 @@ function openFloat(
     fb.setAttribute('role', tone === 'error' ? 'alert' : 'status');
     fb.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
   };
-  if (view.readOnly) setFb(`Read-only — ${view.note} Edit it in Advanced mode.`, 'raw');
-  else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
+  if (view.readOnly) {
+    setFb(`Read-only — ${view.note}`, 'raw');
+    fb.appendChild(advancedLink());
+  } else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
 
   // chips fill the editor (the Apply button commits) — visible value choices
   const chips = buildChips(suggestions, view.readOnly, (value) => { ta.value = value; ta.focus(); });
@@ -535,6 +540,23 @@ function openFloat(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/** One-click shortcut to open the Advanced panel from a read-only fx-bar note. */
+function advancedLink(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'wb-fx-adv-link';
+  btn.textContent = 'Open Advanced';
+  btn.title = 'Open the Advanced panel to edit this formula in the raw SP dialect';
+  btn.addEventListener('click', () => {
+    // The "Advanced" topbar toggle opens the validated-JSON pane — the raw-SP
+    // escape hatch this link points at. (Was #wb-studio-toggle, which no longer
+    // exists; the pane IS the JSON surface, so there's no separate tab to click.)
+    const toggle = document.getElementById('wb-json-toggle') as HTMLButtonElement | null;
+    if (toggle && !toggle.classList.contains('active')) toggle.click();
+  });
+  return btn;
+}
 
 interface EditorView { text: string; readOnly: boolean; note: string }
 
