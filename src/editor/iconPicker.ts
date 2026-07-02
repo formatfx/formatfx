@@ -59,7 +59,12 @@ export function renderIconGrid(host: HTMLElement, opts: IconGridOptions): { focu
       btn.title = noPreview ? `${opts.verb ?? 'Use'} ${name} (renders in SharePoint; no preview here)` : `${opts.verb ?? 'Use'} ${name}`;
       // a neutral glyph stands in where the bundled font has no preview
       const glyph = noPreview ? 'Picture' : name;
-      btn.innerHTML = `<i class="ms-Icon ms-Icon--${glyph}" aria-hidden="true"></i><span>${name}</span>`;
+      const i = document.createElement('i');
+      i.className = `ms-Icon ms-Icon--${glyph}`;
+      i.setAttribute('aria-hidden', 'true');
+      const span = document.createElement('span');
+      span.textContent = name;
+      btn.append(i, span);
       btn.addEventListener('click', () => opts.onPick(name));
       grid.appendChild(btn);
       cells.push({ btn, lc: name.toLowerCase() });

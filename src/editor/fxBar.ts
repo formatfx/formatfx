@@ -601,7 +601,13 @@ function openMenu(
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'wb-fx-menu-opt wb-fx-iconsug' + (name === currentIcon ? ' selected' : '');
-      b.innerHTML = `<i class="ms-Icon ms-Icon--${name}" aria-hidden="true"></i><span class="wb-fx-opt-label">${name}</span>`;
+      const i = document.createElement('i');
+      i.className = `ms-Icon ms-Icon--${name}`;
+      i.setAttribute('aria-hidden', 'true');
+      const span = document.createElement('span');
+      span.className = 'wb-fx-opt-label';
+      span.textContent = name;
+      b.append(i, span);
       b.title = `Use the ${name} icon`;
       wire(b, name);
       el.appendChild(b);

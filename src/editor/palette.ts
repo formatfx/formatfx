@@ -29,7 +29,12 @@ export function mountPalette(host: HTMLElement): void {
       btn.className = 'wb-palette-item';
       btn.title = `${item.label} — ${item.description}`;
       btn.draggable = true;
-      btn.innerHTML = `<i class="ms-Icon ms-Icon--${item.icon}" aria-hidden="true"></i><span>${item.label}</span>`;
+      const i = document.createElement('i');
+      i.className = `ms-Icon ms-Icon--${item.icon}`;
+      i.setAttribute('aria-hidden', 'true');
+      const span = document.createElement('span');
+      span.textContent = item.label;
+      btn.append(i, span);
       btn.addEventListener('click', () => {
         state.insertNode(instantiate(item, state.fields));
       });
