@@ -456,12 +456,35 @@ export class EditorState {
     this.emit('data');
   }
 
+  /**
+   * While true, nothing is written to localStorage — the share-link boot path
+   * (editor/shareUi.ts) views a shared workspace read-until-you-act: the
+   * recipient's own autosaved work is untouched until they explicitly choose
+   * "Save a copy" (which resumes autosave) or "Discard" (which restores it).
+   */
+  private autosavePaused = false;
+
+  get isAutosavePaused(): boolean { return this.autosavePaused; }
+
+  /** Stop persisting to the autosave key (viewing shared state). */
+  pauseAutosave(): void {
+    this.autosavePaused = true;
+    window.clearTimeout(this.saveTimer);
+  }
+
+  /** Resume persisting; pass `saveNow` to write the current state immediately. */
+  resumeAutosave(saveNow = false): void {
+    this.autosavePaused = false;
+    if (saveNow) this.flushAutosave();
+  }
+
   private scheduleAutosave(): void {
     window.clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => this.saveNow(), 400);
   }
 
   private saveNow(): void {
+    if (this.autosavePaused) return; // shared-view mode: never touch the key
     try { localStorage.setItem(EditorState.STORAGE_KEY, this.serializeProject()); } catch { /* quota/private mode */ }
   }
 
