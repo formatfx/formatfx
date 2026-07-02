@@ -57,8 +57,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   (the comfortable dialog: Font / Border / Fill / Alignment tabs, a live
   preview box, OK applies everything as one undo step), rename, wrap in a
   container, ungroup, duplicate, copy its JSON, remove. All click-only and
-  undoable and click-only, so a misclick can't corrupt the formatter; grid
-  headers answer right-click with their column menu.
+  undoable, so a misclick can't corrupt the formatter; grid headers answer
+  right-click with their column menu.
 - **Conditional formatting builder** — "when the value …, make it look …",
   without the dialog maze. The field's type
   drives the suggestions: choice columns arrive with **one ready chip per
