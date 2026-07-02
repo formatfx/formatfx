@@ -150,10 +150,12 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
     if (!panel.contains(e.target as Node) && e.target !== anchor) close();
   };
   const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close(); };
-  setTimeout(() => {
-    document.addEventListener('pointerdown', onOutside);
-    document.addEventListener('keydown', onKey);
-  }, 0);
+  // only the outside-click needs the deferred hookup (the opening click must
+  // not immediately close the panel) — Escape can listen right away, so a
+  // keypress in the same tick as opening still closes the gallery (and keeps
+  // the drilled-style Esc exit from firing instead).
+  setTimeout(() => document.addEventListener('pointerdown', onOutside), 0);
+  document.addEventListener('keydown', onKey);
   const cleanup = (): void => {
     document.removeEventListener('pointerdown', onOutside);
     document.removeEventListener('keydown', onKey);
