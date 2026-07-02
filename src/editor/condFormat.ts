@@ -162,6 +162,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     close.className = 'wb-cf-close';
     close.textContent = '✕';
     close.title = 'Close (Esc) — discards these rules';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeCondFormat);
     head.appendChild(close);
     panel.appendChild(head);
@@ -286,6 +287,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       del.className = 'wb-cf-rule-del';
       del.textContent = '✕';
       del.title = 'Remove this rule';
+      del.setAttribute('aria-label', 'Remove this rule');
       del.addEventListener('click', () => {
         rules.splice(i, 1);
         // if a field switch was pending and the user just cleared the last rule,

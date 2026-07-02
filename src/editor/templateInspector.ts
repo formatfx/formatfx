@@ -75,6 +75,7 @@ function renderBlockView(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
 
   const rm = el('button', 'wb-template-remove', '✕ Remove block') as HTMLButtonElement;
   rm.type = 'button';
+  rm.setAttribute('aria-label', 'Remove block');
   rm.addEventListener('click', () => api.remove(i));
   host.appendChild(rm);
 }

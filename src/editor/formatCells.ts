@@ -202,6 +202,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     close.className = 'wb-fc-close';
     close.textContent = '✕';
     close.title = 'Close (Esc) — discards these choices';
+    close.setAttribute('aria-label', 'Close');
     close.addEventListener('click', closeFormatCells);
     head.appendChild(close);
     panel.appendChild(head);
