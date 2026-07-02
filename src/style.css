@@ -243,6 +243,11 @@ body {
    each region takes its natural height. */
 @media (max-width: 900px) {
   .wb-layout { display: flex; flex-direction: column; overflow-y: auto; }
+  /* order:-1 is a deliberate trade-off: it moves the preview first VISUALLY
+     while DOM/tab order stays leftpane-first. Swapping the DOM instead would
+     put the same mismatch on desktop (the primary surface) permanently, and
+     JS node-moving at the breakpoint risks pane state. Tab order remains
+     logical and identical at every width: edit pane → canvas → JSON. */
   .wb-layout > .wb-pane-canvas {
     order: -1; flex: 0 0 auto; min-height: 60vh;
   }
