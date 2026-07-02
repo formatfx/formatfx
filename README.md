@@ -35,6 +35,16 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
    formatter to your column or view from the list page itself, using only
    your own permissions. It refuses to generate while the linter sees
    errors, and it shows exactly what it will replace before the one write.
+4. **Share it** — topbar **Share** mints a link carrying the *whole
+   workspace inside the URL* (same schema, same mock rows, same half-built
+   formatter). Nothing is uploaded anywhere: the payload rides in the URL
+   fragment, which browsers never send to a server. Whoever opens it lands
+   in your exact workspace — and their own saved work stays untouched until
+   they explicitly choose *Save a copy* (with a backup) or *Discard*. Stuck?
+   Share the link; whoever helps you fixes it visually and shares one back.
+   The encoding is stable and documented for third parties — a raw
+   pnp/List-Formatting sample JSON encodes directly into a working live
+   link: [docs/SHARE-URL.md](docs/SHARE-URL.md).
 
 ## Editor features
 
@@ -160,6 +170,24 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`
   depth, and more. Written for low-code makers, not compiler authors.
+- **Explain — the formatter, read back in plain English** (Advanced pane →
+  Explain tab) — the comprehension half of the teaching linter. Paste a wall
+  of community JSON and read what it *does*: "Shows “Status”. The background
+  color is: if “Status” is ‘Blocked’, then ‘#d13438’, otherwise ‘#107c10’.
+  Clicking runs the Power Automate flow …". Covers both expression syntaxes;
+  clicking a card selects that element, exactly like a lint warning; and
+  anything outside its vocabulary says "can't explain this yet" rather than
+  guessing.
+- **🧪 Stress test** (☰ menu) — "will this break in production?" One click
+  renders your formatter against a generated edge-case matrix: the
+  empty item (blank dates are *null* on real SP — the classic silent-blank
+  trap), maximum-length text and unbreakable tokens, extreme past/future
+  dates, boundary numbers **including the thresholds mined from your own
+  formatter's comparisons** (exactly-at and just-under, so `>=` vs `>`
+  off-by-ones show side by side), crowded and empty multi-values, and
+  unicode/RTL/emoji. Read-only by contract — browsing it never touches your
+  rows, document, undo stack or autosave; expression failures that would
+  render silently blank on SP are flagged per row.
 - **Built-in field guide** (☰ menu → 📖) — a full-screen, Learn-style reference
   with a chapter tree, "in this article" rail, diagrams and Microsoft Learn
   links — written for developers. What lists really are
@@ -181,7 +209,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 npm install
 npm run dev           # local dev server
 npm test              # engine test suite (vitest + happy-dom)
-npm run test:ui       # 90 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
+npm run test:ui       # 105 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
 npm run build         # type-check + production bundle in dist/
 npm run build:single  # everything inlined into one dist-single/index.html
 ```

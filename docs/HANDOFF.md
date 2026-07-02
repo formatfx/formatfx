@@ -67,6 +67,17 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
                whitespace sanitization, CSOM-safe & escaping
   schemaImport.ts native "Export to CSV with schema" parser (CAML field XML
                incl. live CustomFormatters), PS-script JSON, hand CSV
+  share.ts     the share-link codec: project JSON ⇄ URL fragment
+               (deflate-raw via native CompressionStream + base64url,
+               versioned schemes w1/w1r — contract in docs/SHARE-URL.md;
+               payload is serializeProject/loadProject verbatim)
+  stressTest.ts the edge-case matrix generators (empty/novel/time/numbers/
+               multi/unicode variants, honoring §3 blank semantics) +
+               threshold mining from the formatter's own comparisons
+  explain.ts   the plain-English decompiler: explainAst over the same 9
+               node kinds evalAst walks (both expression syntaxes) +
+               explainDocument element walk addressed by NodePath;
+               refuse-don't-guess on anything outside the vocabulary
 src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                schema-aware field rebinding), palette/treeView/canvas/
                inspector/jsonPanel/dataPanel, playground.ts (the
@@ -105,6 +116,13 @@ src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
 src/main.ts    app shell: panes (resize/peek/max), basic/advanced mode,
                doc switcher, copy, theme
 ```
+
+Collaborative-hub surfaces (issue #86, built 2026-07-02): shareUi.ts (the
+Share dialog, the incoming-link banner and the never-clobber boot path —
+autosave pausing lives in state.ts), stressTestUi.ts (the read-only 🧪
+overlay over core/stressTest), explainPanel.ts (the Explain tab, a side-pane
+peer of JSON). The autosave BACKUP key `….project.v1.bak` is additive —
+the frozen keys stay frozen.
 
 Key structural invariants:
 - **Grid-first workspace (kind 'grid', the landing default)**: a grid doc
@@ -430,6 +448,27 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    "Format this column manually". The dead `.wb-adv` markers (no CSS since the
    2026-06-17 unification) are being removed opportunistically. e2e:
    `areas.spec.ts`, `cfr.spec.ts`, plus grid/maker/bridge coverage.
+1.12. **Collaborative hub (issue #86) — BUILT 2026-07-02.** The CodePen
+   model: the whole workspace serializes into the URL fragment. W1 Share —
+   core/share.ts codec (native deflate-raw + base64url, versioned `w1`/`w1r`
+   schemes, zero deps), topbar Share dialog (privacy toggle for mock rows,
+   size warning ≥8k chars), and the never-clobber boot path (autosave paused
+   while viewing a shared workspace; Save-a-copy backs the prior autosave up
+   to the additive `.bak` key, restorable/swappable via ☰; Discard writes
+   nothing; fragment stripped via history.replaceState after load). A bare
+   formatter JSON payload (raw PnP sample) also opens — it gets wrapped in a
+   synthesized workspace (shareUi.normalizeSharedPayload), which is the W2
+   docs-runtime bridge; the stable third-party contract lives in
+   docs/SHARE-URL.md. W3 Stress Test — ☰ → 🧪: core/stressTest.ts variants
+   + threshold mining, read-only overlay (rendered rows are cloned so even
+   clicks are inert; the one write is the explicit "Add to my rows", a
+   normal data edit). W4 Explain — core/explain.ts + the Explain tab beside
+   JSON in the Advanced pane; entries select by NodePath like lint rows.
+   Unit tests: share/stressTest/explain/shareUi test files are the
+   contracts; e2e/share.spec.ts covers the real-browser round trip with
+   fresh-context recipients. Still open from the epic: W2's outreach motion
+   (badges/PRs into pnp docs — owner's call), oversized-workspace row
+   capping (the dialog warns + offers fallbacks instead).
 2. Re-point the private visual-compare harness at a local clone of this
    repo (it currently consumes the old in-repo copy), and have it invoke
    the tenant-theme import before captures so color becomes a first-class
@@ -448,16 +487,19 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 535 vitest unit tests across 34 files (engine semantics incl.
+- `npm test` — 594 vitest unit tests across 38 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
   through the real engine — that test file is the contract for
-  generated-condition semantics — and the bridge's EXECUTED-snippet
-  round trips against stubbed fetch). Run headlessly anywhere. (Keep this
-  count honest when you add tests — a stale number here is how the docs
-  drift out from under the code.)
-- `npm run test:ui` — 101 Playwright specs across `sandbox.spec.ts`
+  generated-condition semantics — the bridge's EXECUTED-snippet round trips
+  against stubbed fetch, and the collaborative-hub contracts: the share
+  codec byte-exact round trips, the stress-test variant catalog incl.
+  threshold mining, the Explain visitor over both expression syntaxes, and
+  the autosave-pause never-clobber guarantee). Run headlessly anywhere.
+  (Keep this count honest when you add tests — a stale number here is how
+  the docs drift out from under the code.)
+- `npm run test:ui` — 105 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
@@ -468,8 +510,11 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
   row-view builder, CFR linked instances, Studio/Advanced toggle),
   `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
-  document dropdown), `styleLegibility.spec.ts` ("violet = shared"),
-  `icons.spec.ts`, `subtypes.spec.ts` and `templates.spec.ts`.
+  document dropdown), `share.spec.ts` (the collaborative hub: real-browser
+  share round trips with fresh-context recipients, the never-clobber/backup/
+  restore flows, Explain, Stress Test), `styleLegibility.spec.ts`
+  ("violet = shared"), `icons.spec.ts`, `subtypes.spec.ts` and
+  `templates.spec.ts`.
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).
