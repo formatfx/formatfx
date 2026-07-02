@@ -348,7 +348,10 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       walk(f, path, state, cardIssues);
       path.pop();
       for (const issue of cardIssues) {
-        issues.push({ ...issue, message: `[customCardProps] ${issue.message}`, path: [...path] });
+        // keep each issue's walk-computed path (host path + -1 CARD_SEGMENT +
+        // card-internal indices) — overriding it with the host path here broke
+        // click-to-select on card-internal issues (#76)
+        issues.push({ ...issue, message: `[customCardProps] ${issue.message}` });
       }
     }
   }

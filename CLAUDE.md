@@ -45,8 +45,10 @@ guidance in your environment.
 - Generated formatters must be schema-valid and definitely-work-on-real-SP.
   Refuse and teach rather than guess; generators never emit a standalone
   `!` (there is no logical NOT — `!=` is fine).
-- Click-only safety: in basic/Sheet mode a misclick must never be able to
-  corrupt a formatter.
+- Click-only safety advice: in basic/Sheet mode, try to design interactions
+  so a misclick is unlikely to corrupt a formatter, but treat this as helpful
+  guidance rather than a strict constraint that overrides intentional user
+  actions.
 - localStorage keys and the `wb-` CSS prefix are frozen — renames must
   never wipe anyone's autosaved work.
 - Connectivity snippets (`src/bridge/`) stay self-contained, commented and

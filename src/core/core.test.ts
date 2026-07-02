@@ -147,6 +147,37 @@ describe('linter', () => {
     expect(lintDocument(doc).map((i) => i.rule)).not.toContain('flow-missing-id');
   });
 
+  it('keeps the card-internal path on issues inside customCardProps.formatter (#76)', () => {
+    const doc: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'span' },
+          {
+            elmType: 'div',
+            customCardProps: {
+              openOnEvent: 'hover',
+              formatter: {
+                elmType: 'div',
+                children: [
+                  { elmType: 'span' },
+                  { elmType: 'button', customRowAction: { action: 'executeFlow' } },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    };
+    const issue = lintDocument(doc).find((i) => i.rule === 'flow-missing-id')!;
+    expect(issue.message).toMatch(/^\[customCardProps\]/);
+    // the path must point at the offending node INSIDE the card (host path +
+    // the -1 CARD_SEGMENT + child indices), not at the host element — this is
+    // what jsonPanel click-to-select and the CLI's path printout consume
+    expect(issue.path).toEqual([1, -1, 1]);
+  });
+
   it('retracted canon stays retracted: CFR-in-card and inlineEditField-in-forEach are clean', () => {
     const doc: FormatterDocument = {
       kind: 'column',
