@@ -93,6 +93,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   let effectId: EffectId = defaultEffectFor(field);
   let colorId = 'blue';
   let colorTouched = false;
+  // tracks a field the user picked while rules exist; held until confirmed
+  let pendingField: MockField | null = null;
 
   /** Style object the generated chains will fall back to (the "else" look). */
   const existingStyle = (): Record<string, SPExpr | undefined> | undefined =>
@@ -178,17 +180,30 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       o.value = f.name;
       // the type is part of the name here — it decides which conditions appear
       o.textContent = `[$${f.name}] — ${typeLabel(f)}`;
-      if (f.name === field.name) o.selected = true;
+      o.selected = (pendingField ?? field).name === f.name;
       fieldSel.appendChild(o);
     }
     fieldSel.title = 'Which column the rules watch — pick any column in the row (no typing); the conditions below adapt to its type';
     fieldSel.addEventListener('change', () => {
-      field = state.fields.find((f) => f.name === fieldSel.value) ?? field;
-      rules.length = 0; // suggestions, defaults and rules are per-field
+      const next = state.fields.find((f) => f.name === fieldSel.value) ?? field;
+      if (next.name === field.name) {
+        // user reverted to the current field — clear any pending confirmation
+        pendingField = null;
+        render();
+        return;
+      }
+      if (rules.length > 0) {
+        // guard: don't wipe rules silently — hold the pick until confirmed
+        pendingField = next;
+        render();
+        return;
+      }
+      field = next;
       selOpt = null;
       inputVal = '';
       effectId = defaultEffectFor(field);
       colorTouched = false;
+      pendingField = null;
       render();
     });
     targetRow.appendChild(fieldSel);
@@ -213,6 +228,35 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
           : 'This column\'s formatter already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).';
         panel.appendChild(notice);
       }
+    }
+
+    // Switching the watched field clears the rules (they're per-field); if any
+    // exist, hold the pick and confirm first rather than silently wiping them.
+    if (pendingField) {
+      const warn = document.createElement('div');
+      warn.className = 'wb-cf-field-warn';
+      const msg = document.createElement('span');
+      msg.textContent = `Switching to [${pendingField.name}] will clear all ${rules.length} rule${rules.length === 1 ? '' : 's'} — confirm?`;
+      const yes = document.createElement('button');
+      yes.className = 'wb-cf-field-warn-yes';
+      yes.textContent = 'Clear rules and switch';
+      const switchTo = pendingField; // captured at render time — avoids non-null assertion on mutable var
+      yes.addEventListener('click', () => {
+        field = switchTo;
+        rules.length = 0;
+        selOpt = null;
+        inputVal = '';
+        effectId = defaultEffectFor(field);
+        colorTouched = false;
+        pendingField = null;
+        render();
+      });
+      const no = document.createElement('button');
+      no.className = 'wb-cf-field-warn-no';
+      no.textContent = 'Keep current column';
+      no.addEventListener('click', () => { pendingField = null; render(); });
+      warn.append(msg, yes, no);
+      panel.appendChild(warn);
     }
 
     // ── the rules so far ──
@@ -242,7 +286,20 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       del.className = 'wb-cf-rule-del';
       del.textContent = '✕';
       del.title = 'Remove this rule';
-      del.addEventListener('click', () => { rules.splice(i, 1); render(); });
+      del.addEventListener('click', () => {
+        rules.splice(i, 1);
+        // if a field switch was pending and the user just cleared the last rule,
+        // apply it now — no rules means no confirmation needed
+        if (pendingField && rules.length === 0) {
+          field = pendingField;
+          selOpt = null;
+          inputVal = '';
+          effectId = defaultEffectFor(field);
+          colorTouched = false;
+          pendingField = null;
+        }
+        render();
+      });
       // reorder controls — only meaningful when there are 2+ rules
       const actions = document.createElement('span');
       actions.className = 'wb-cf-rule-actions';

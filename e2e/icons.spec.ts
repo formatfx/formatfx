@@ -4,8 +4,8 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-async function openStudio(page: Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
+async function openPalette(page: Page): Promise<void> {
+  await page.click('.wb-tool[data-tool="palette"]');
 }
 
 test.beforeEach(async ({ page }) => {
@@ -16,10 +16,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('fx bar Icon slot: preview chips + searchable gallery applies a name', async ({ page }) => {
-  await openStudio(page);
-  await page.waitForSelector('.wb-palette-item');
   // insert an Icon element (a span with iconName) — it selects on insert
-  await page.locator('.wb-palette-item', { hasText: 'Icon' }).first().click();
+  await openPalette(page);
+  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first().click();
   // the fx bar offers an Icon slot
   const slot = page.locator('.wb-fx-slot');
   await expect(slot).toBeVisible();
@@ -39,8 +38,6 @@ test('fx bar Icon slot: preview chips + searchable gallery applies a name', asyn
 });
 
 test('Field guide: the icon gallery page embeds a searchable wall', async ({ page }) => {
-  await openStudio(page);
-  await page.waitForSelector('.wb-palette-item');
   await page.click('#wb-menu-btn');
   await page.click('#wb-guide');
   await page.locator('.wb-guide-navitem', { hasText: 'The icon gallery' }).click();

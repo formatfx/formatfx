@@ -9,6 +9,15 @@ declare namespace chrome {
     interface Tab { id?: number; url?: string }
     function query(info: { active: boolean; currentWindow: boolean }): Promise<Tab[]>;
     function create(props: { url: string; active?: boolean }): Promise<Tab>;
+    function sendMessage<R = unknown>(tabId: number, message: unknown): Promise<R>;
+  }
+  namespace runtime {
+    interface MessageSender { tab?: tabs.Tab; id?: string }
+    const onMessage: {
+      addListener(
+        cb: (message: unknown, sender: MessageSender, sendResponse: (response?: unknown) => void) => boolean | undefined | void,
+      ): void;
+    };
   }
   namespace scripting {
     interface InjectionTarget { tabId: number }
