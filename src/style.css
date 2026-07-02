@@ -2364,3 +2364,29 @@ body {
 
 /* Advanced toggle: active when the JSON pane is shown */
 .wb-topbar-controls #wb-json-toggle.active { border-color: var(--wb-accent); color: var(--wb-accent); }
+
+/* ── "violet = shared" — grid at rest ──────────────────────────────────── */
+.wb-cell-linked {
+  box-shadow: inset 3px 0 0 var(--wb-shared);
+  position: relative;
+}
+.wb-cell-linked:hover { outline: 1.5px solid var(--wb-shared); outline-offset: -1.5px; }
+.wb-style-mark { color: var(--wb-shared); font-weight: 700; font-style: normal; }
+.wb-grid-header .wb-cfr-link { color: var(--wb-shared); }
+.wb-style-nametag {
+  display: none;
+  position: absolute;
+  top: -8px;
+  right: 4px;
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--wb-shared-bg);
+  border: 1px solid var(--wb-shared-border);
+  color: var(--wb-shared);
+  pointer-events: none;
+  z-index: 2;
+}
+.wb-cell-linked:hover .wb-style-nametag,
+.wb-cell-linked:has(.wb-selected) .wb-style-nametag { display: inline-block; }

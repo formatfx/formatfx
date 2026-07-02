@@ -764,12 +764,13 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     label.className = 'wb-grid-header-label';
     label.textContent = gridColumnLabel(col.el, state.fields);
     h.append(label);
-    // teal link badge: this column is a LINKED INSTANCE of a shared column format
+    // § style mark: this column is a LINKED INSTANCE of a shared column format
     if (col.el.columnFormatterReference) {
       const linkField = cfrFieldName(col.el.columnFormatterReference);
       const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
-      const badge = document.createElement('i');
-      badge.className = 'ms-Icon ms-Icon--Link wb-cfr-link';
+      const badge = document.createElement('span');
+      badge.className = 'wb-cfr-link wb-style-mark';
+      badge.textContent = '§';
       badge.setAttribute('aria-hidden', 'true');
       badge.title = blast.count > 1
         ? `Uses the ${linkField} style — shared with ${blast.count} places. "Edit the ${linkField} style" changes them all; "Detach from style" makes a copy for this view.`
@@ -873,6 +874,23 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       const cell = document.createElement('div');
       cell.className = 'wb-grid-cell';
       cell.dataset.col = String(i);
+      if (col.el.columnFormatterReference) {
+        const linkField = cfrFieldName(col.el.columnFormatterReference);
+        const linkDisplay = state.fields.find((f) => f.name === linkField)?.displayName ?? linkField;
+        const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
+        cell.classList.add('wb-cell-linked');
+        cell.title = `${linkDisplay} style — double-click to edit (used in ${Math.max(blast.count, 1)} place${blast.count === 1 ? '' : 's'})`;
+        const tag = document.createElement('span');
+        tag.className = 'wb-style-nametag';
+        tag.textContent = `${linkDisplay} style`;
+        tag.setAttribute('aria-hidden', 'true');
+        cell.appendChild(tag);
+        cell.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          const field = state.fields.find((f) => f.name === linkField);
+          if (field) formatColumn(col, field, onToast);
+        });
+      }
       try {
         renderCellContent(cell, col, ctx, opts);
       } catch (err) {
