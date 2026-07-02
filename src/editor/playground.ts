@@ -162,6 +162,7 @@ function mount(opts: Opts): void {
   let targetPath: NodePath = opts.path ?? [];
   let pending: Record<string, string> =
     opts.mode === 'element' ? { ...(stashes.get(state.nodeAt(targetPath)!) ?? {}) } : {};
+  let pendingCfrSwitch: string | null = null;
 
   const stashCurrent = () => {
     const node = state.nodeAt(targetPath);
@@ -171,6 +172,7 @@ function mount(opts: Opts): void {
   };
   const switchTarget = (path: NodePath) => {
     stashCurrent();
+    pendingCfrSwitch = null;
     targetPath = path;
     pending = { ...(stashes.get(state.nodeAt(targetPath)!) ?? {}) };
     render();
@@ -394,10 +396,8 @@ function mount(opts: Opts): void {
       enter.textContent = `⤷ switch to [$${cfrName}] column formatter`;
       enter.title = `You're editing the view formatter. This slot's content comes from the [$${cfrName}] column formatter — click to switch to that column's formatter in the playground.`;
       enter.addEventListener('click', () => {
-        if (!confirm(`This slot's content comes from the [$${cfrName}] column formatter.\n\nYou're currently editing the view formatter. Switch the playground to the [$${cfrName}] column formatter instead?\n\n(Use the Structure pane or the Editing switcher in the toolbar to come back.)`)) return;
-        stashCurrent();
-        state.openColumnRef(cfrName);
-        openElementPlayground([]);
+        pendingCfrSwitch = cfrName;
+        render();
       });
       tree.appendChild(enter);
     }
@@ -438,6 +438,30 @@ function mount(opts: Opts): void {
     close.addEventListener('click', () => { stashCurrent(); closePlayground(); });
     head.appendChild(close);
     panel.appendChild(head);
+
+    // ── CFR switch confirmation banner ──
+    if (pendingCfrSwitch) {
+      const cfr = pendingCfrSwitch;
+      const banner = document.createElement('div');
+      banner.className = 'wb-pg-cfr-confirm';
+      const msg = document.createElement('span');
+      msg.textContent = `This slot's content comes from the [$${cfr}] column formatter. Switch the playground to edit that formatter instead?`;
+      const yes = document.createElement('button');
+      yes.className = 'wb-pg-cfr-confirm-yes';
+      yes.textContent = `Switch to [$${cfr}]`;
+      yes.addEventListener('click', () => {
+        pendingCfrSwitch = null;
+        stashCurrent();
+        state.openColumnRef(cfr);
+        openElementPlayground([]);
+      });
+      const no = document.createElement('button');
+      no.className = 'wb-pg-cfr-confirm-no';
+      no.textContent = 'Stay here';
+      no.addEventListener('click', () => { pendingCfrSwitch = null; render(); });
+      banner.append(msg, yes, no);
+      panel.appendChild(banner);
+    }
 
     // ── context: the structure tree beside the live stage ──
     if (opts.mode === 'element' && targetNode) {
