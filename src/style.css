@@ -16,6 +16,13 @@
   --wb-scroll-thumb: #c8c6c4;
   --wb-scroll-thumb-hover: #a19f9d;
 
+  /* ── "violet = shared" channel — reserved EXCLUSIVELY for column-style-owned
+        chrome (rails, § marks, scope chip, drilled banner/frame, tree stub).
+        Never reuse for anything else; that exclusivity is the feature. */
+  --wb-shared: #5c2d91;        /* ink + outlines on app surfaces (≥4.5:1 on --wb-surface) */
+  --wb-shared-bg: #f3ecfc;     /* tint fill behind shared chrome */
+  --wb-shared-border: #c9b3e8;
+
   /* ── Left Edit Pane design tokens (FormatFX-native; tokenized so a re-skin
         is a one-place edit). The warm surface is SCOPED to the left pane — the
         canvas + JSON stay Fluent-cool, so the dark-mode engine probe is safe. */
@@ -54,6 +61,10 @@ body.wb-dark {
   --wb-canvas-bg: #141312;
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
+
+  --wb-shared: #c5a3f2;        /* lightened for dark surfaces (≥4.5:1 on --wb-surface) */
+  --wb-shared-bg: #2b2140;
+  --wb-shared-border: #55407c;
 
   /* Left Edit Pane — restate the Left Pane token aliases in dark mode (mirrors :root)
      so all dark-mode overrides live in one place. */
