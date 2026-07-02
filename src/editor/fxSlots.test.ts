@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slotsFor, readSlot, writeSlot, humanizeProp, type FxSlot } from './fxSlots';
+import { slotsFor, readSlot, writeSlot, humanizeProp, slotIdForProp, type FxSlot } from './fxSlots';
 import type { SPElement } from '../core/types';
 
 const bySlot = (slots: FxSlot[], id: string): FxSlot => {
@@ -116,5 +116,32 @@ describe('humanizeProp', () => {
   it('reads CSS names as words', () => {
     expect(humanizeProp('background-color')).toBe('Background color');
     expect(humanizeProp('-webkit-line-clamp')).toBe('Webkit line clamp');
+  });
+});
+
+describe('slotIdForProp — CSS prop → canonical fx slot id', () => {
+  it('maps curated properties to their named slots', () => {
+    expect(slotIdForProp('color')).toBe('ink');
+    expect(slotIdForProp('background-color')).toBe('fill');
+    expect(slotIdForProp('font-weight')).toBe('weight');
+    expect(slotIdForProp('font-size')).toBe('fontSize');
+    expect(slotIdForProp('text-align')).toBe('align');
+    expect(slotIdForProp('border-radius')).toBe('radius');
+    expect(slotIdForProp('opacity')).toBe('opacity');
+    expect(slotIdForProp('border-left')).toBe('leftBorder');
+  });
+
+  it('falls back to the generic style:<prop> slot for anything else', () => {
+    expect(slotIdForProp('box-shadow')).toBe('style:box-shadow');
+    expect(slotIdForProp('width')).toBe('style:width');
+  });
+
+  it('every curated mapping resolves to a real slot the bar offers', () => {
+    // a text-capable element exposes both box and type slots, so all curated
+    // mappings must land on a slot slotsFor() actually produces.
+    const ids = new Set(slotsFor({ elmType: 'div' }).map((s) => s.id));
+    for (const prop of ['color', 'background-color', 'font-weight', 'font-size', 'text-align', 'border-radius', 'opacity', 'border-left']) {
+      expect(ids.has(slotIdForProp(prop)), prop).toBe(true);
+    }
   });
 });

@@ -1,12 +1,14 @@
 // e2e/maker.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-async function openStudio(page: import('@playwright/test').Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
+// The JSON pane (the "Advanced" escape hatch) is hidden by default; reveal it
+// idempotently. The left edit pane and canvas are always visible.
+async function openJson(page: Page): Promise<void> {
+  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
 // the example/sample loader now lives in the ☰ menu — open it, then pick
-async function loadExample(page: import('@playwright/test').Page, value: string): Promise<void> {
+async function loadExample(page: Page, value: string): Promise<void> {
   await page.click('#wb-menu-btn');
   await page.selectOption('#wb-example', value);
 }
@@ -17,31 +19,31 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test('first load is grid-first: studio panes hidden, grid full-bleed', async ({ page }) => {
-  await expect(page.locator('#wb-layout')).toHaveClass(/wb-maker/);
+test('first load is grid-first: left pane + canvas visible, JSON pane hidden', async ({ page }) => {
+  // the Left Edit Pane and the grid canvas are always on screen
+  await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-grid')).toBeVisible();
-  await expect(page.locator('.wb-pane-palette')).toBeHidden();
-  await expect(page.locator('.wb-pane-tree')).toBeHidden();
-  await expect(page.locator('.wb-pane-side')).toBeHidden();
-  await expect(page.locator('#wb-studio-toggle')).toBeVisible();
+  // the JSON pane (Advanced escape hatch) folds away by default
+  await expect(page.locator('#wb-pane-side')).toBeHidden();
+  // the single door into JSON is labeled Advanced
+  await expect(page.locator('#wb-json-toggle')).toContainText('Advanced');
 });
 
-test('Studio toggle reveals the panes and persists', async ({ page }) => {
-  await page.click('#wb-studio-toggle');
-  await expect(page.locator('.wb-pane-palette')).toBeVisible();
-  await expect(page.locator('.wb-pane-side')).toBeVisible();
-  await expect(page.locator('#wb-layout')).not.toHaveClass(/wb-maker/);
+test('Advanced toggle reveals the JSON pane and persists', async ({ page }) => {
+  await page.click('#wb-json-toggle');
+  await expect(page.locator('#wb-pane-side')).toBeVisible();
+  await expect(page.locator('#wb-json-text')).toBeVisible();
+  // the open state is remembered in uiPrefs.jsonOpen (wb-ui-prefs)
   await page.reload();
-  await expect(page.locator('.wb-pane-palette')).toBeVisible();
+  await expect(page.locator('#wb-pane-side')).toBeVisible();
 });
 
-test('the single Advanced door is labeled Advanced and opens on the validated-JSON view', async ({ page }) => {
-  await expect(page.locator('#wb-studio-toggle')).toContainText('Advanced');
-  await page.click('#wb-studio-toggle');
-  // opens straight to the JSON escape hatch; Properties stays one click away
-  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toHaveClass(/active/);
-  await expect(page.locator('#wb-tab-json')).toHaveClass(/active/);
-  await expect(page.locator('.wb-tabs button[data-tab="inspector"]')).not.toHaveClass(/active/);
+test('the single Advanced door is labeled Advanced and opens the validated-JSON pane', async ({ page }) => {
+  await expect(page.locator('#wb-json-toggle')).toContainText('Advanced');
+  await page.click('#wb-json-toggle');
+  // opens the JSON escape hatch; the left editing pane stays put
+  await expect(page.locator('#wb-pane-side')).toBeVisible();
+  await expect(page.locator('#wb-json-text')).toBeVisible();
 });
 
 test('the example/sample loader lives in the ☰ menu, not the topbar', async ({ page }) => {
@@ -58,10 +60,10 @@ test('the ribbon breadcrumb states where you are, not a Type dropdown', async ({
   await expect(page.locator('.wb-crumb-tail')).toHaveText('View 1');
 });
 
-test('the kind control lives in the Studio, and a column example flips the breadcrumb to the column', async ({ page }) => {
-  // the kind select moved into the side pane (revealed only in Studio)
-  await openStudio(page);
-  await expect(page.locator('.wb-pane-side #wb-kind')).toBeVisible();
+test('the kind control lives in the Advanced pane, and a column example flips the breadcrumb to the column', async ({ page }) => {
+  // the kind select moved into the side/JSON pane (revealed by Advanced)
+  await openJson(page);
+  await expect(page.locator('#wb-pane-side #wb-kind')).toBeVisible();
   // a column-kind example flips the breadcrumb root to Column Formatters and
   // names the column it targets in the tail
   await loadExample(page, 'status-pill');

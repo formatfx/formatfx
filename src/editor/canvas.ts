@@ -92,7 +92,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   };
 
   const ctxForRow = (rowIndex: number): EvalContext => ({
-    row: state.rows[rowIndex],
+    row: state.rows[rowIndex] ?? {},
     rowIndex,
     currentFieldName: state.currentFieldName,
     me: state.me,
@@ -191,9 +191,10 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
 
   const highlightSelection = () => {
     host.querySelectorAll('.wb-selected').forEach((n) => n.classList.remove('wb-selected'));
-    if (!state.selection) return;
-    const key = state.selection.join('.');
-    host.querySelectorAll(`[data-sp-path="${CSS.escape(key)}"]`).forEach((n) => n.classList.add('wb-selected'));
+    state.selections.forEach((path) => {
+      const key = path.join('.');
+      host.querySelectorAll(`[data-sp-path="${CSS.escape(key)}"]`).forEach((n) => n.classList.add('wb-selected'));
+    });
   };
 
   // click-to-select — flyouts are appended to <body>, so listen there too
@@ -203,14 +204,16 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     if (scope instanceof HTMLElement && !scope.contains(target)) return false;
     const path = pathFromAttr(target.dataset.spPath);
     if (path === undefined) return false;
-    state.select(path);
+    if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
+    else state.select(path);
     return true;
   };
   host.addEventListener('click', (e) => selectFrom(e, host));
-  document.addEventListener('click', (e) => {
+  const onDocClick = (e: MouseEvent) => {
     const inFlyout = (e.target as HTMLElement).closest?.('.wb-flyout');
     if (inFlyout) selectFrom(e, inFlyout as HTMLElement);
-  });
+  };
+  document.addEventListener('click', onDocClick);
 
   // right-click an element (or a grid cell) for the common actions
   installPreviewContextMenu(host, onToast);
@@ -250,10 +253,17 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     onToast(`Inserted "${item.label}" into ${describeNode(container)} — now selected (depth ${insertedAt.length})`);
   });
 
-  state.subscribe((reason) => {
+  if ((host as any)._unsub) {
+    (host as any)._unsub();
+  }
+  const unsub = state.subscribe((reason) => {
     if (reason === 'selection') highlightSelection();
     else render();
   });
+  (host as any)._unsub = () => {
+    unsub();
+    document.removeEventListener('click', onDocClick);
+  };
   render();
 
   return {

@@ -225,8 +225,21 @@ class Parser {
   }
 }
 
+// ⚡ Bolt: Cache parsed AST nodes to avoid redundant string parsing (which is expensive)
+// for frequently evaluated expressions. Prevents unbounded memory growth with a simple
+// bounded size clear.
+const PARSE_CACHE = new Map<string, AstNode>();
+
 export function parseExpression(src: string): AstNode {
-  return new Parser(tokenize(src)).parse();
+  let node = PARSE_CACHE.get(src);
+  if (node) return node;
+
+  node = new Parser(tokenize(src)).parse();
+
+  if (PARSE_CACHE.size > 1000) PARSE_CACHE.clear();
+  PARSE_CACHE.set(src, node);
+
+  return node;
 }
 
 // ─── Coercion helpers (SP-style loose semantics) ─────────────────────────────
