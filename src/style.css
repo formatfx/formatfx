@@ -10,6 +10,30 @@
   --wb-canvas-bg: #f3f2f1;
   --wb-scroll-thumb: #c8c6c4;
   --wb-scroll-thumb-hover: #a19f9d;
+
+  /* ── Left Edit Pane design tokens (FormatFX-native; tokenized so a re-skin
+        is a one-place edit). The warm surface is SCOPED to the left pane — the
+        canvas + JSON stay Fluent-cool, so the dark-mode engine probe is safe. */
+  --wb-leftpane-w: 360px;
+  /* The Left Edit Pane matches the rest of the app (cool/flat Fluent): these
+     alias the app tokens, so they flip automatically in dark mode too. */
+  --wb-lp-bg: var(--wb-bg);
+  --wb-lp-surface: var(--wb-surface);
+  --wb-lp-border: var(--wb-border);
+  --wb-lp-field-border: var(--wb-border);
+  --wb-lp-text: var(--wb-text);
+  --wb-lp-text-2: var(--wb-text-2);
+  --wb-lp-selected: #cfe4f7;     /* tree selected row (light blue) */
+  --wb-lp-seg-track: #f3f2f1;    /* segmented-control track */
+  /* CTA + active draw-tool = the Microsoft-blue primary (flat, app-consistent). */
+  --wb-cta: var(--wb-accent);
+  --wb-cta-hover: #106ebe;
+  --wb-cta-text: #ffffff;
+  --wb-tool-active: var(--wb-accent);
+  /* the active/override blue dot + focus reuse the same primary */
+  --wb-override-dot: var(--wb-accent);
+  --wb-governed-opacity: 0.5;
+
   /* tells the browser to paint native scrollbars & form controls light */
   color-scheme: light;
 }
@@ -24,6 +48,19 @@ body.wb-dark {
   --wb-canvas-bg: #141312;
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
+
+  /* Left Edit Pane — restate the Left Pane token aliases in dark mode (mirrors :root)
+     so all dark-mode overrides live in one place. */
+  --wb-lp-bg: var(--wb-surface);  /* elevated panel — one step lighter than the app bg */
+  --wb-lp-surface: var(--wb-surface);
+  --wb-lp-border: var(--wb-border);
+  --wb-lp-field-border: var(--wb-border);
+  --wb-lp-text: var(--wb-text);
+  --wb-lp-text-2: var(--wb-text-2);
+  --wb-lp-selected: #123a5c;     /* tree selected row (dark blue) */
+  --wb-lp-seg-track: #322f2e;
+  --wb-cta-hover: #2b88d8;
+
   /* …and dark in dark mode (covers Firefox + native widgets) */
   color-scheme: dark;
 }
@@ -274,8 +311,13 @@ body {
 .wb-tree-row:hover { background: var(--wb-bg); }
 .wb-tree-row.selected { background: var(--wb-accent); color: #fff; }
 .wb-tree-row.droptarget { outline: 2px dashed var(--wb-accent); }
+.wb-tree-row:focus,
+.wb-tree-row:focus-visible {
+  outline: 2px solid var(--wb-accent);
+  outline-offset: -1px;
+}
 .wb-tree-label {
-  font-family: Consolas, monospace; font-size: 11px; white-space: nowrap;
+  font-size: 11px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
   display: inline-flex; align-items: center; gap: 4px;
   /* own the row's width so its center is a select target, not a hover button */
@@ -288,7 +330,7 @@ body {
 .wb-tree-elmtype-dim { font-weight: 400; color: var(--wb-text-2); font-size: 10px; }
 .wb-tree-row.selected .wb-tree-elmtype-dim { color: inherit; opacity: .85; }
 .wb-tree-rename {
-  font: 11px Consolas, monospace; padding: 1px 4px; width: 130px;
+  font-family: inherit; font-size: 11px; padding: 1px 4px; width: 130px;
   border: 1px solid var(--wb-accent); border-radius: 2px;
   background: var(--wb-surface); color: var(--wb-text);
 }
@@ -709,16 +751,48 @@ body {
 .wb-tab.active { display: flex; flex-direction: column; }
 
 /* ── inspector ───────────────────────────────────────────── */
-.wb-inspector-empty { color: var(--wb-text-2); padding: 16px 6px; }
-.wb-inspector-section { border-bottom: 1px solid var(--wb-border); padding: 4px 0 8px; }
+.wb-inspector-empty { color: var(--wb-text-2); padding: 16px 12px; }
+.wb-inspector-section { border-bottom: 1px solid var(--wb-border); padding: 4px 12px 8px; }
 .wb-inspector-section summary {
   font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; color: var(--wb-text);
+  display: flex; align-items: center; gap: 6px; list-style: none;
 }
+/* custom collapse chevron (so flex layout doesn't drop the native triangle) */
+.wb-inspector-section summary::-webkit-details-marker { display: none; }
+.wb-inspector-section summary::before {
+  content: '▸'; font-size: 9px; color: var(--wb-text-2); flex: none; width: 9px;
+}
+.wb-inspector-section[open] > summary::before { content: '▾'; }
+.wb-sec-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-sec-dot { flex: none; }
+.wb-sec-reset {
+  flex: none; border: none; background: transparent; cursor: pointer; padding: 1px 4px;
+  font-size: 10.5px; font-weight: 600; color: var(--wb-text-2); border-radius: 4px;
+}
+.wb-sec-reset:hover:not(:disabled) { color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
+.wb-sec-reset:disabled { opacity: 0; pointer-events: none; }
+/* forEach: an amber "this element is code-driven" notice */
+.wb-inspector-warn {
+  display: flex; gap: 7px; align-items: flex-start; margin: 6px 0 10px; padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, #f9ae58 55%, var(--wb-border));
+  background: color-mix(in srgb, #f9ae58 14%, transparent);
+  border-radius: 6px; font-size: 11.5px; line-height: 1.35; color: var(--wb-text);
+}
+.wb-warn-icon { flex: none; color: #b3700f; font-weight: 700; }
+/* quick-add links for common-but-unlisted style properties (Pro lens) */
+.wb-quickadd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 12px 4px; }
+.wb-quickadd-lab { font-size: 11px; color: var(--wb-text-2); }
+.wb-quickadd-link {
+  border: 1px dashed var(--wb-border); background: transparent; cursor: pointer;
+  border-radius: 4px; padding: 2px 7px; font-size: 11px; color: var(--wb-text-2);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+.wb-quickadd-link:hover { border-color: var(--wb-accent); color: var(--wb-accent); border-style: solid; }
 .wb-field { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .wb-field > span { font-size: 11px; color: var(--wb-text-2); }
 .wb-field input[type="text"], .wb-field textarea, .wb-field select,
 .wb-kv input, .wb-data-table input, .wb-data-toolbar select {
-  font: 12px Consolas, monospace; padding: 4px 6px;
+  font-family: inherit; font-size: 12px; padding: 4px 6px;
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text); width: 100%;
 }
@@ -865,7 +939,7 @@ body {
 .wb-box-mid > .wb-box, .wb-box-mid > .wb-box-content { flex: 1; }
 .wb-boxmodel input.wb-box-side {
   width: 44px; flex: 0 0 44px; text-align: center;
-  font: 10px Consolas, monospace; padding: 2px;
+  font-family: inherit; font-size: 10px; padding: 2px;
   border: 1px solid transparent; border-radius: 2px;
   background: transparent; color: var(--wb-text);
 }
@@ -873,7 +947,7 @@ body {
   border-color: var(--wb-accent); background: var(--wb-surface);
 }
 .wb-box-content {
-  text-align: center; font: 10px Consolas, monospace;
+  text-align: center; font-family: inherit; font-size: 10px;
   background: var(--wb-surface); border: 1px solid var(--wb-border);
   border-radius: 3px; padding: 8px 4px; color: var(--wb-text-2);
 }
@@ -908,11 +982,22 @@ body {
 .wb-lint-item {
   font-size: 11px; padding: 5px 8px; margin: 3px 0; border-radius: 3px;
   cursor: pointer; border-left: 3px solid transparent; background: var(--wb-bg);
+  display: flex; gap: 6px; align-items: baseline;
 }
+/* the severity badge (glyph + word) — shape + text cues so the level reads
+   without colour; the per-severity colour below is a third, redundant cue. */
+.wb-lint-badge { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
+.wb-lint-glyph { font-style: normal; }
+.wb-lint-msg { flex: 1 1 auto; min-width: 0; }
+.wb-lint-item:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
 .wb-lint-error { border-left-color: #d13438; }
+.wb-lint-error .wb-lint-badge { color: #d13438; }
 .wb-lint-warning { border-left-color: #ffb900; }
+.wb-lint-warning .wb-lint-badge { color: #b07a00; } /* darker amber so the word stays legible on light surfaces */
 .wb-lint-info { border-left-color: #0078d4; }
+.wb-lint-info .wb-lint-badge { color: #0078d4; }
 .wb-lint-runtime { border-left-color: #8a8886; }
+.wb-lint-runtime .wb-lint-badge { color: #8a8886; }
 
 /* ── data panel ──────────────────────────────────────────── */
 .wb-data-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -935,7 +1020,7 @@ body {
 }
 .wb-schema-form input[type="text"], .wb-schema-form input:not([type]),
 .wb-schema-form select, .wb-schema-form textarea {
-  font: 12px Consolas, monospace; padding: 4px 6px;
+  font-family: inherit; font-size: 12px; padding: 4px 6px;
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-surface); color: var(--wb-text); width: 100%;
 }
@@ -971,7 +1056,7 @@ body {
 .wb-deploy[hidden] { display: none; }
 .wb-deploy-target { font-size: 11px; font-weight: 600; }
 .wb-deploy input {
-  font: 12px Consolas, monospace; padding: 4px 6px;
+  font-family: inherit; font-size: 12px; padding: 4px 6px;
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-surface); color: var(--wb-text);
 }
@@ -1256,7 +1341,7 @@ body {
 
 /* ── element-mode playground ─────────────────────────────── */
 .wb-inspector-play, .wb-inspector-cond {
-  display: block; width: 100%; margin: 0 0 8px; padding: 6px 10px;
+  display: block; margin: 0 12px 8px; padding: 6px 10px;
   border: 1px dashed var(--wb-accent); border-radius: 4px;
   background: transparent; color: var(--wb-accent); cursor: pointer; font-size: 12px;
 }
@@ -1360,6 +1445,22 @@ body {
   border: 1px solid var(--wb-border); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
+.wb-cf-field-warn {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 4px 0 0; padding: 5px 8px; font-size: 11px;
+  background: rgba(247, 162, 0, .10); border: 1px solid rgba(247, 162, 0, .40);
+  border-radius: 5px; color: var(--wb-text);
+}
+.wb-cf-field-warn-yes {
+  padding: 2px 9px; border-radius: 4px; border: 1px solid #ca5010;
+  background: transparent; color: #ca5010; font-size: 11px; cursor: pointer;
+}
+.wb-cf-field-warn-yes:hover { background: rgba(202, 80, 16, .08); }
+.wb-cf-field-warn-no {
+  padding: 2px 9px; border-radius: 4px; border: 1px solid var(--wb-border);
+  background: transparent; font-size: 11px; cursor: pointer; color: var(--wb-text-2);
+}
+.wb-cf-field-warn-no:hover { border-color: var(--wb-text-2); color: var(--wb-text); }
 .wb-cf-group { margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--wb-border); border-radius: 6px; }
 .wb-cf-grouplab {
   font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
@@ -1434,6 +1535,11 @@ body {
   border-top: 1px solid var(--wb-border); padding-top: 10px; margin-top: 12px;
 }
 .wb-cf-note { margin-right: auto; font-size: 10px; color: #ca5010; }
+.wb-cf-notice {
+  font-size: 11px; padding: 6px 8px; margin: 2px 0 6px;
+  background: rgba(202, 80, 16, .07); border: 1px solid rgba(202, 80, 16, .28);
+  border-radius: 4px; color: #ca5010;
+}
 .wb-cf-foot button {
   padding: 5px 14px; border-radius: 4px; cursor: pointer;
   background: var(--wb-surface); color: var(--wb-text); border: 1px solid var(--wb-border);
@@ -1476,6 +1582,12 @@ body {
   border-color: var(--wb-border); background: var(--wb-surface);
   color: var(--wb-accent); font-weight: 600; margin-bottom: -1px;
 }
+.wb-fc-tab-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--wb-accent); margin-left: 5px; vertical-align: middle;
+  opacity: .75;
+}
+.wb-fc-tab.active .wb-fc-tab-dot { opacity: 1; }
 .wb-fc-previewwrap {
   display: flex; align-items: center; justify-content: center; min-height: 64px;
   margin: 10px 0; padding: 12px; background: var(--wb-canvas-bg); border-radius: 6px;
@@ -1545,7 +1657,7 @@ body {
    suggestion, not a saved value — muted + italic until they engage with it */
 .wb-fx-editor.wb-fx-draft { color: var(--wb-text-2); font-style: italic; }
 .wb-fx-editor.wb-fx-expanded { white-space: pre-wrap; overflow: auto; resize: vertical; }
-.wb-fx-expand {
+.wb-fx-expand, .wb-fx-clear {
   flex: none; padding: 4px 7px; font-size: 13px; line-height: 1;
   border: 1px solid var(--wb-border); border-radius: 4px;
   background: var(--wb-surface); color: var(--wb-text-2); cursor: pointer;
@@ -1558,6 +1670,7 @@ body {
   border-radius: 50%; background: var(--wb-accent);
   pointer-events: none;
 }
+.wb-fx-clear:hover { border-color: #d13438; color: #d13438; }
 .wb-fx-feedback { font-size: 11px; color: var(--wb-text-2); margin: 4px 0 0 26px; min-height: 14px; }
 .wb-fx-feedback[data-tone="error"] { color: #d13438; }
 .wb-fx-feedback[data-tone="raw"] { color: #ca5010; }
@@ -1566,6 +1679,12 @@ body {
   border: none; background: none; color: inherit; cursor: pointer; opacity: 0.55;
 }
 .wb-fx-feedback-x:hover { opacity: 1; }
+.wb-fx-adv-link {
+  margin-left: 8px; padding: 0; font: inherit; line-height: 1;
+  border: none; background: none; color: var(--wb-accent); cursor: pointer;
+  text-decoration: underline;
+}
+.wb-fx-adv-link:hover { opacity: 0.8; }
 .wb-fx-empty { font-size: 12px; color: var(--wb-text-2); padding: 4px 0 4px 2px; }
 
 /* visible value choices (chips) — a datalist can't attach to a <textarea> */
@@ -1606,6 +1725,22 @@ body {
 .wb-fx-opt-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-fx-opt-formula { font-family: 'Cascadia Code', Consolas, monospace; font-size: 11.5px; }
 .wb-fx-opt-fx { flex: none; font-style: italic; font-weight: 700; color: var(--wb-accent); font-size: 11px; }
+
+/* inline autocomplete typeahead (column refs / functions / IF templates) */
+.wb-fx-acmenu {
+  position: fixed; z-index: 56; max-height: 260px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px; padding: 4px;
+  background: var(--wb-surface); border: 1px solid var(--wb-border);
+  border-radius: 8px; box-shadow: 0 14px 40px rgba(0, 0, 0, .28);
+}
+.wb-fx-acopt {
+  width: 100%; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--wb-text); cursor: pointer; text-align: left;
+  font-family: 'Cascadia Code', Consolas, monospace; font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-fx-acopt:hover,
+.wb-fx-acopt.active { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
 
 /* the property-styled previews that sit at the left of a value option */
 .wb-fx-prev { flex: none; }
@@ -1695,6 +1830,12 @@ body {
   background: var(--wb-surface); color: var(--wb-text-2);
 }
 .wb-fx-float-dismiss:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-fx-float-dock {
+  flex: none; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 6px;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+}
+.wb-fx-float-dock:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-fx-float-editor {
   width: 100%; box-sizing: border-box; padding: 8px;
   font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.6;
@@ -1877,3 +2018,253 @@ body {
 .wb-template-cancel { background: transparent; border: 1px solid var(--wb-border); border-radius: 4px; padding: 8px 16px; cursor: pointer; color: var(--wb-text); }
 .wb-template-apply { background: var(--wb-accent); color: #fff; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
 .wb-template-apply:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Left Edit Pane — the Claude-style consolidated editing surface
+   (action header · lens tabs · structure tree · draw toolbar · property lenses)
+   ══════════════════════════════════════════════════════════════════════════ */
+.wb-leftpane {
+  background: var(--wb-lp-bg); color: var(--wb-lp-text);
+  border-right: 1px solid var(--wb-lp-border);
+  display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+}
+
+/* ── action header (lens tabs · Discard · Save, one line) ──────────────────── */
+.wb-lp-header {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-lp-actions { display: flex; align-items: center; gap: 14px; }
+.wb-lp-discard {
+  border: none; background: none; cursor: pointer; padding: 4px 2px;
+  font-size: 13px; color: var(--wb-lp-text-2);
+}
+.wb-lp-discard:hover:not(:disabled) { color: var(--wb-lp-text); }
+.wb-lp-discard:disabled { opacity: .4; cursor: default; }
+.wb-lp-save {
+  border: none; cursor: pointer; background: var(--wb-cta); color: var(--wb-cta-text);
+  font-size: 13px; font-weight: 600; padding: 7px 16px; border-radius: 8px;
+}
+.wb-lp-save:hover { background: var(--wb-cta-hover); }
+
+/* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
+.wb-lens-tabs {
+  flex: 0 0 auto; display: flex; gap: 18px;
+}
+.wb-lens-tab {
+  border: none; background: none; cursor: pointer; padding: 11px 0 10px;
+  font-size: 14px; color: var(--wb-lp-text-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.wb-lens-tab:hover { color: var(--wb-lp-text); }
+.wb-lens-tab.active {
+  color: var(--wb-accent); font-weight: 600; border-bottom-color: var(--wb-accent);
+}
+
+/* ── structure tree region ─────────────────────────────────────────────────── */
+.wb-lp-tree {
+  flex: 0 0 auto; height: 230px; overflow: auto;
+  border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-leftpane.wb-lens-simple .wb-lp-tree,
+.wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; } /* Simple hides the tree */
+.wb-lp-tree .wb-tree-sec-head {
+  position: sticky; top: 0; z-index: 1; background: var(--wb-lp-bg);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--wb-lp-text-2); padding: 8px 12px 4px;
+}
+.wb-lp-tree .wb-tree-sec-body { padding: 0 12px 6px; }
+
+/* ── splitter between tree and properties ──────────────────────────────────── */
+.wb-lp-splitter {
+  flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none;
+  background: var(--wb-lp-border); border-top: 1px solid var(--wb-surface); border-bottom: 1px solid var(--wb-surface);
+}
+.wb-lp-splitter:hover, .wb-lp-splitter:active { background: var(--wb-accent); opacity: .6; }
+
+/* ── draw toolbar ──────────────────────────────────────────────────────────── */
+.wb-drawbar {
+  position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 3px;
+  padding: 6px 10px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: 7px;
+  background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
+}
+.wb-tool:hover:not(:disabled) { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-tool.active { background: var(--wb-tool-active); color: var(--wb-cta-text); }
+.wb-tool:disabled { opacity: .35; cursor: default; }
+.wb-tool-sep { width: 1px; height: 18px; background: var(--wb-lp-border); margin: 0 5px; }
+
+/* palette overflow popover (the collapsed palette) */
+.wb-palette-pop {
+  position: absolute; top: calc(100% + 4px); left: 8px; z-index: 40;
+  width: 320px; max-height: 360px; overflow: auto; padding: 10px;
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-border);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+}
+.wb-palette-pop[hidden] { display: none; }
+
+/* ── lower workspace (inspector / code) ────────────────────────────────────── */
+.wb-lp-props {
+  flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column;
+}
+.wb-lp-inspector { flex: 1 0 auto; }
+.wb-lp-code { display: none; flex: 1 1 auto; min-height: 0; }
+.wb-leftpane.wb-lens-code .wb-lp-inspector { display: none; }
+.wb-leftpane.wb-lens-code .wb-lp-code { display: flex; flex-direction: column; }
+
+/* ── Code lens declarations box ────────────────────────────────────────────── */
+.wb-codelens { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; height: 100%; }
+.wb-code-box {
+  flex: 1 1 auto; width: 100%; min-height: 220px; resize: none;
+  font-family: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, monospace;
+  font-size: 12.5px; line-height: 1.65; padding: 12px 14px; color: var(--wb-lp-text);
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-field-border); border-radius: 10px;
+}
+.wb-code-box:focus { outline: none; border-color: var(--wb-accent); }
+.wb-code-box:disabled { opacity: .6; }
+.wb-code-hint { flex: 0 0 auto; font-size: 12px; color: var(--wb-lp-text-2); }
+.wb-code-errors {
+  flex: 0 0 auto; font-size: 12px; color: #d13438;
+  background: rgba(209, 52, 56, .08); border: 1px solid rgba(209, 52, 56, .3);
+  border-radius: 6px; padding: 6px 10px;
+}
+.wb-code-errors[hidden] { display: none; }
+
+/* ── JSON side pane header (Type select lives here now) ─────────────────────── */
+.wb-side-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.wb-side-head .wb-pane-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
+}
+.wb-side-head .wb-side-adv { margin-bottom: 0; }
+
+/* ── Left Edit Pane: structure tree multi-select + visibility ──────────────── */
+.wb-lp-tree .wb-tree-row { display: flex; align-items: center; }
+.wb-lp-tree .wb-tree-label { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+.wb-tree-check {
+  flex: 0 0 auto; width: 13px; height: 13px; margin: 0 7px 0 0; cursor: pointer;
+  accent-color: var(--wb-accent);
+}
+.wb-tree-eye {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; color: var(--wb-lp-text-2);
+  font-size: 12px; line-height: 1; padding: 2px 4px; opacity: 0; transition: opacity .12s;
+}
+.wb-lp-tree .wb-tree-row:hover .wb-tree-eye,
+.wb-lp-tree .wb-tree-row.selected .wb-tree-eye { opacity: .65; }
+.wb-tree-eye:hover { opacity: 1; }
+.wb-tree-eye:focus-visible {
+  opacity: 1;
+  outline: 1.5px solid var(--wb-accent);
+  outline-offset: -1px;
+}
+.wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
+.wb-lp-tree .wb-tree-row.selected { background: var(--wb-lp-selected); border-radius: 5px; }
+
+/* ── class-precedence: inline-override badge on a governed Style row ────────── */
+.wb-governed-badge {
+  flex: 0 0 auto; font-size: 10px; font-weight: 600; line-height: 1;
+  padding: 2px 6px; border-radius: 4px; white-space: nowrap; cursor: help;
+  color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--wb-accent) 35%, transparent);
+}
+.wb-governed-badge[hidden] { display: none; }
+
+/* ── Pro controls: segmented · field rows · sizing · contents layout ───────── */
+.wb-sizing, .wb-contents { display: flex; flex-direction: column; gap: 8px; }
+.wb-field-row, .wb-preset-row { display: flex; align-items: center; gap: 8px; }
+.wb-field-label {
+  flex: 0 0 64px; font-size: 12px; color: var(--wb-lp-text-2);
+}
+.wb-field-input {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 5px 8px;
+  border: 1px solid var(--wb-lp-field-border); border-radius: 6px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text);
+}
+.wb-field-input:focus { outline: none; border-color: var(--wb-accent); }
+.wb-field-input:disabled { opacity: .55; }
+
+/* segmented control (Hug/Fixed/Fill, display modes) */
+.wb-segmented {
+  display: inline-flex; flex: 0 0 auto; flex-wrap: nowrap; gap: 2px; padding: 2px;
+  background: var(--wb-lp-seg-track); border-radius: 7px;
+}
+.wb-seg {
+  border: none; background: transparent; cursor: pointer; color: var(--wb-lp-text-2);
+  font-size: 11.5px; padding: 4px 9px; border-radius: 5px; white-space: nowrap;
+  flex: 1 1 auto; text-align: center;
+}
+.wb-seg:hover { color: var(--wb-lp-text); }
+.wb-seg.active {
+  background: var(--wb-lp-surface); color: var(--wb-lp-text); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+.wb-contents > .wb-segmented { width: 100%; }
+
+/* flex alignment preset rows */
+.wb-presets { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
+.wb-preset {
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; padding: 3px 8px; border-radius: 5px;
+  flex: 1 1 auto; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-preset:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-preset.active {
+  background: color-mix(in srgb, var(--wb-accent) 16%, transparent);
+  color: var(--wb-accent); border-color: var(--wb-accent);
+}
+
+/* ── Simple lens: dedicated visual fields (color swatch, active dot) ────────── */
+.wb-color-control { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.wb-color-control .wb-field-input { flex: 1 1 auto; min-width: 0; }
+.wb-swatch {
+  flex: 0 0 auto; width: 18px; height: 18px; border-radius: 4px;
+  border: 1px solid var(--wb-lp-field-border);
+  background-image:
+    linear-gradient(45deg, #c8c6c4 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c6c4 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c6c4 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c6c4 75%);
+  background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+.wb-active-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--wb-override-dot); margin-right: 5px; vertical-align: middle;
+}
+
+/* ── the `=` expression toggle (spec §4.A) ─────────────────────────────────── */
+.wb-expr-field { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.wb-expr-field > :first-child { flex: 1 1 auto; min-width: 0; }
+.wb-expr-toggle {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 12px; font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1;
+}
+.wb-expr-toggle:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-expr-toggle.active { background: var(--wb-accent); color: #fff; border-color: var(--wb-accent); }
+.wb-expr-input { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11.5px; color: var(--wb-accent); }
+/* ƒx — dock the Function Bar onto this property's formula (shown in = mode) */
+.wb-expr-fx {
+  flex: 0 0 auto; height: 22px; padding: 0 6px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1; font-style: italic;
+}
+.wb-expr-fx:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+/* ⓘ doc-card button on a dedicated visual field row */
+.wb-field-row .wb-field-info { flex: 0 0 auto; align-self: center; }
+
+/* multi-select: a property whose value differs across the selection reads "Mixed" */
+.wb-field-input.wb-mixed::placeholder { font-style: italic; color: var(--wb-lp-text-2); }
+
+/* padding/margin parameter-count selector header */
+.wb-spacing { display: flex; flex-direction: column; gap: 8px; }
+.wb-spacing-head { display: flex; justify-content: flex-end; }
+
+/* Advanced toggle: active when the JSON pane is shown */
+.wb-topbar-controls #wb-json-toggle.active { border-color: var(--wb-accent); color: var(--wb-accent); }

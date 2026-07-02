@@ -15,12 +15,16 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-async function openStudio(page: Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
+// The JSON pane (the Advanced escape hatch) is hidden by default — reveal it
+// idempotently.
+async function openJson(page: Page): Promise<void> {
+  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
-async function openTab(page: Page, tab: 'inspector' | 'json'): Promise<void> {
-  await page.click(`.wb-tabs button[data-tab="${tab}"]`);
+// The full palette is now a popover off the draw toolbar. Open it; items live
+// in #wb-palette-pop .wb-palette-item. Clicking one inserts AND closes the popover.
+async function openPalette(page: Page): Promise<void> {
+  await page.click('.wb-tool[data-tool="palette"]');
 }
 
 // the example/sample loader now lives in the ☰ menu — open it, then pick
@@ -34,9 +38,7 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-row')).toHaveCount(3);
-  // open Studio to access the workspace tree and other studio panes
-  await openStudio(page);
-  // workspace tree: the view + Status/Progress/Owner column formatters
+  // workspace tree (always visible now): the view + Status/Progress/Owner column formatters
   await expect(page.locator('.wb-doc-header').first()).toContainText('View formatter — grid');
   await expect(page.locator('.wb-doc-header')).toHaveCount(4);
   await expect(page.locator('.wb-doc-header', { hasText: '[$Status]' })).toContainText('in view');
@@ -60,16 +62,15 @@ test('status pill example renders colored pills per row', async ({ page }) => {
 });
 
 test('palette click inserts an element, selects it and toasts', async ({ page }) => {
-  await openStudio(page);
   await loadExample(page, 'status-pill'); // column-kind canvas
-  await page.locator('.wb-palette-item', { hasText: 'Traffic light' }).click();
+  await openPalette(page);
+  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Traffic light' }).click();
   await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('In Progress');
   await expect(page.locator('.wb-tree-row.selected')).toHaveCount(1);
 });
 
 test('JSON round-trip: edit JSON, apply, canvas updates', async ({ page }) => {
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   const json = {
     $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
     elmType: 'div',
@@ -81,8 +82,7 @@ test('JSON round-trip: edit JSON, apply, canvas updates', async ({ page }) => {
 });
 
 test('lint panel teaches: nested = gets a verbose, positioned error', async ({ page }) => {
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   const bad = { elmType: 'div', txtContent: "=if([$Title]=='x','y',=if(true,'a','b'))" };
   await page.fill('#wb-json-text', JSON.stringify(bad));
   await page.click('#wb-json-apply');
@@ -93,9 +93,9 @@ test('lint panel teaches: nested = gets a verbose, positioned error', async ({ p
 });
 
 test('hover card opens as flyout and its content is selectable', async ({ page }) => {
-  await openStudio(page);
   await loadExample(page, 'status-pill');
-  await page.locator('.wb-palette-item', { hasText: 'Hover card' }).click();
+  await openPalette(page);
+  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
   await page.locator('.wb-mock-cell-fmt .wb-has-card').first().click();
   const flyout = page.locator('.wb-flyout');
   await expect(flyout).toBeVisible();
@@ -121,52 +121,47 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('one unified surface — palette + Structure + Properties/JSON, ribbon and fx bar all present', async ({ page }) => {
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await openStudio(page);
-
+test('one unified surface — left pane (lens tabs + tree + draw bar), ribbon breadcrumb and fx bar all present', async ({ page }) => {
   // there is no mode toggle anymore — everything is on screen at once
   await expect(page.locator('#wb-mode')).toHaveCount(0);
 
-  // the full surface: palette, Structure, the Properties/JSON pane, JSON tab,
-  // the doc switcher and the fx bar are all visible together
-  await expect(page.locator('#wb-pane-palette')).toBeVisible();
-  await expect(page.locator('.wb-pane-tree')).toBeVisible();
-  await expect(page.locator('#wb-pane-side')).toBeVisible();
-  await expect(page.locator('.wb-tabs button[data-tab="json"]')).toBeVisible();
-  await expect(page.locator('.wb-crumb-root')).toBeVisible();
-  await expect(page.locator('.wb-crumb-tail')).toBeVisible();
+  // the Left Edit Pane: lens tabs (Simple/Pro/Code), the structure tree and the
+  // draw toolbar are all visible together
+  await expect(page.locator('.wb-leftpane')).toBeVisible();
+  await expect(page.locator('.wb-lens-tab')).toHaveCount(3);
+  await expect(page.locator('#wb-tree-view')).toBeVisible();
+  await expect(page.locator('.wb-drawbar')).toBeVisible();
   await expect(page.locator('#wb-fxbar')).toBeVisible();
+
+  // the breadcrumb (where this saves) is up in the ribbon, not a palette of items
+  const ribbon = page.locator('#wb-ribbon');
+  await expect(ribbon).toBeVisible();
+  await expect(ribbon.locator('.wb-crumb-root')).toBeVisible();
+  await expect(ribbon.locator('.wb-crumb-tail')).toBeVisible();
+  await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
+
+  // the palette popover shows the FULL set — basics AND actions/people/shells
+  await openPalette(page);
+  const pop = page.locator('#wb-palette-pop');
+  await expect(pop.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
+  await expect(pop.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeVisible();
+  await expect(pop.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeVisible();
+  await expect(pop.locator('.wb-palette-group', { hasText: 'Actions' })).toBeVisible();
+  // close the popover so the menu click below is unobstructed
+  await page.keyboard.press('Escape');
 
   // outlines lives in the ☰ menu
   await page.click('#wb-menu-btn');
   await expect(page.locator('#wb-outlines')).toBeVisible();
   await page.click('#wb-menu-btn');
 
-  // the palette pane shows the FULL set — basics AND actions/people/shells
-  const palette = page.locator('#wb-pane-palette');
-  await expect(palette.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
-  await expect(palette.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeVisible();
-  await expect(palette.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeVisible();
-  await expect(palette.locator('.wb-palette-group', { hasText: 'Actions' })).toBeVisible();
-
-  // the ribbon hosts the breadcrumb (not a palette of items)
-  const ribbon = page.locator('#wb-ribbon');
-  await expect(ribbon).toBeVisible();
-  await expect(ribbon.locator('.wb-crumb-root')).toBeVisible();
-  await expect(ribbon.locator('.wb-palette-item')).toHaveCount(0);
-
-  // the Properties pane edits the selected element (the Advanced door opens on
-  // JSON; Properties is one click away)
-  await page.click('.wb-tabs button[data-tab="inspector"]');
-  await page.locator('.wb-tree-row').first().click();
-  await expect(page.locator('#wb-tab-inspector').locator('textarea').first()).toBeVisible();
+  // the Advanced door reveals the validated-JSON pane (one click away)
+  await openJson(page);
+  await expect(page.locator('#wb-json-text')).toBeVisible();
 });
 
 test('applying name-less JSON over a named design warns before dropping names', async ({ page }) => {
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({ elmType: 'div', txtContent: 'plain' }));
   await page.click('#wb-json-apply');
   expect(lastDialog).toContain('element names');
@@ -175,9 +170,9 @@ test('applying name-less JSON over a named design warns before dropping names', 
 });
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {
-  await openStudio(page);
   await loadExample(page, 'status-pill');
-  const source = page.locator('.wb-palette-item', { hasText: 'Icon' }).first();
+  await openPalette(page);
+  const source = page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first();
   const target = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt [data-sp-path]').first();
   await source.dragTo(target);
   await expect(page.locator('#wb-toast')).toContainText('Inserted "Icon"');

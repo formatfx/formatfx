@@ -11,8 +11,10 @@ import { state } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
-import { buildApplyPayload, serializeApplyPayload } from '../bridge/applyPayload';
+import { serializeApplyPayload } from '../bridge/applyPayload';
 import { onExtensionReady, stageApplyToExtension } from './extensionBridge';
+import { buildCurrentApplyPayload } from './deployPayload';
+import { lintBadge, lintAriaLabel } from './lintBadge';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -165,13 +167,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     onToast(`Deploy snippet copied for ${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`} — run it in the console on your list page; it confirms before writing`);
   });
 
+  /** Current formatter as an apply payload, honouring the panel's toggles. */
+  const currentApplyPayload = () => buildCurrentApplyPayload({
+    viewTitle: deployViewEl.value,
+    listTitle: deployListEl.value,
+    sanitize: sanitizeEl.checked,
+    keepMeta: namesEl.checked,
+  });
+
   host.querySelector('#wb-deploy-apply-ext')!.addEventListener('click', async () => {
-    if (!passesLintGate()) return;
+    const { payload, error } = currentApplyPayload();
+    if (!payload) { onToast(error!); return; }
     const t = deployTarget();
-    const payload = buildApplyPayload(
-      [{ target: t.target, name: t.name, formatterJson: currentFormatterJson() }],
-      deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {},
-    );
     await navigator.clipboard.writeText(serializeApplyPayload(payload));
     onToast(`Copied for the extension (${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`}) — on your list tab, click the FormatFX extension → Apply from clipboard`);
   });
@@ -181,12 +188,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sendExtBtn = host.querySelector('#wb-deploy-send-ext') as HTMLButtonElement;
   onExtensionReady(() => { sendExtBtn.hidden = false; });
   sendExtBtn.addEventListener('click', async () => {
-    if (!passesLintGate()) return;
-    const t = deployTarget();
-    const payload = buildApplyPayload(
-      [{ target: t.target, name: t.name, formatterJson: currentFormatterJson() }],
-      deployListEl.value.trim() ? { listTitle: deployListEl.value.trim() } : {},
-    );
+    const { payload, error } = currentApplyPayload();
+    if (!payload) { onToast(error!); return; }
     try {
       const { staged } = await stageApplyToExtension(payload);
       onToast(`Sent to the extension (${staged} formatter) — switch to your SharePoint list tab and click the FormatFX extension → Apply staged`);
@@ -213,14 +216,41 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     for (const issue of all) {
       const row = document.createElement('div');
       row.className = `wb-lint-item wb-lint-${issue.sev}`;
-      row.textContent = issue.text;
+      // Lead with a severity badge: glyph (shape) + word, so the level reads
+      // without relying on the stripe colour alone (WCAG 1.4.1). The glyph is
+      // decorative — the word carries the meaning, echoed in the row aria-label.
+      const { glyph, label } = lintBadge(issue.sev);
+      const badge = document.createElement('span');
+      badge.className = 'wb-lint-badge';
+      const glyphEl = document.createElement('span');
+      glyphEl.className = 'wb-lint-glyph';
+      glyphEl.setAttribute('aria-hidden', 'true');
+      glyphEl.textContent = glyph;
+      badge.append(glyphEl, document.createTextNode(` ${label}`));
+      const msg = document.createElement('span');
+      msg.className = 'wb-lint-msg';
+      msg.textContent = issue.text;
+      row.append(badge, msg);
       row.title = `Click to select node [${issue.path.join(' › ')}]`;
-      row.addEventListener('click', () => state.select(issue.path));
+      row.setAttribute('aria-label', lintAriaLabel(issue.sev, issue.text));
+      // The row acts as a button (jump to the node), so make it operable — and
+      // its severity announceable — by keyboard, not mouse only.
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      const jump = (): void => state.select(issue.path);
+      row.addEventListener('click', jump);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
+      });
       lintEl.appendChild(row);
     }
   };
 
-  state.subscribe((reason) => {
+  const hostAny = host as any;
+  if (typeof hostAny._unsub === 'function') {
+    hostAny._unsub();
+  }
+  hostAny._unsub = state.subscribe((reason) => {
     if (reason !== 'selection' && reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
   });
   regenerate();
