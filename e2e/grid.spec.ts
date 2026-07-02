@@ -73,8 +73,8 @@ test('"Format this column" is the subtype catalog: type-aware looks, badged, sna
 
 test('drilling into a column formatter shows a Back affordance that returns to the named view', async ({ page }) => {
   await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Format this Column' }).click();
-  await expect(page.locator('.wb-crumb-root')).toContainText('Column Formatters');
+  await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
   await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
   // the ribbon breadcrumb offers a way back to the view you drilled from
   const back = page.locator('.wb-crumb-back');
@@ -281,7 +281,7 @@ test('the app lands on the grid and the whole on-ramp is click/drag-only', async
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
   // header menu works (Status is a linked instance → the Figma-model actions)
   await header(page, 'Status').click();
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this Column' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.wb-grid-menu')).toBeHidden();
   // grouping works

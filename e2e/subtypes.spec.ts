@@ -328,7 +328,7 @@ test('fx bar reads subtype vocab: a tagged column offers ONLY its vocab, hiding 
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
   await page.locator('.wb-grid-menu .wb-menu-main', { hasText: 'Due fx' }).click();
   await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Format this Column' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Edit the DueDate style' }).click();
   await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate'); // drilled into the DueDate column formatter
 
   // the fx bar's text slot offers ONLY the vocab (the column's own value) and

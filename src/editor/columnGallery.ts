@@ -58,7 +58,7 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
 
   const head = document.createElement('div');
   head.className = 'wb-colgal-head';
-  head.textContent = 'Column Formatters';
+  head.textContent = 'Column Styles';
   panel.appendChild(head);
 
   const names = formattedColumnNames();
@@ -83,7 +83,7 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'wb-colgal-card';
-    card.title = `Open the ${name} column formatter`;
+    card.title = `Open the ${name} column style`;
 
     const label = document.createElement('div');
     label.className = 'wb-colgal-label';
@@ -106,7 +106,7 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
     card.addEventListener('click', () => {
       closeColumnGallery();
       state.openColumnRef(name);
-      onToast(`Editing the ${name} column formatter`);
+      onToast(`Editing the ${name} column style`);
     });
     panel.appendChild(card);
   }
