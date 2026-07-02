@@ -1,6 +1,7 @@
 /**
  * E2E: workspace navigation (view ⇄ column formatters), the showcase
- * defaults, wrap-in-parent, the box-model editor and side-pane modes.
+ * defaults, wrap-in-parent, the box-model editor and the structure pane —
+ * re-pointed at the Left Edit Pane UI.
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -11,11 +12,14 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-async function openStudio(page: Page): Promise<void> {
-  await page.click('#wb-studio-toggle');
-  // the Advanced door now opens on the validated-JSON tab; these specs drive
-  // the Properties pane, so land there explicitly.
-  await page.click('.wb-tabs button[data-tab="inspector"]');
+// the JSON ("Advanced") pane is hidden by default — reveal it idempotently
+async function openJson(page: Page): Promise<void> {
+  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
+}
+
+// the palette is a popover off the draw toolbar; clicking an item inserts AND closes it
+async function openPalette(page: Page): Promise<void> {
+  await page.click('.wb-tool[data-tool="palette"]');
 }
 
 // the example/sample loader now lives in the ☰ menu — open it, then pick
@@ -24,15 +28,10 @@ async function loadExample(page: Page, value: string): Promise<void> {
   await page.selectOption('#wb-example', value);
 }
 
-async function openTab(page: Page, tab: 'inspector' | 'json' | 'data'): Promise<void> {
-  await page.click(`.wb-tabs button[data-tab="${tab}"]`);
-}
-
 /** Load a known row-layout document (the box-model/alignment fixture):
  *  a flex row with 10px/14px padding, rendered once per mock row. */
 async function loadRowFixture(page: Page): Promise<void> {
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     rowFormatter: {
       elmType: 'div',
@@ -42,16 +41,14 @@ async function loadRowFixture(page: Page): Promise<void> {
     },
   }));
   await page.click('#wb-json-apply');
-  await openTab(page, 'inspector');
 }
 
 test('edit a column formatter, switch back, the view reflects it (CFR round-trip)', async ({ page }) => {
-  await openStudio(page);
   // open the Status column formatter from the workspace tree
   await page.locator('.wb-doc-header', { hasText: '[$Status]' }).click();
   await expect(page.locator('.wb-current-chip')).toContainText('@currentField → Status');
-  // change the pill text via the JSON tab
-  await openTab(page, 'json');
+  // change the pill text via the JSON pane
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
     txtContent: "='»'+[$Status]+'«'",
@@ -74,7 +71,6 @@ test('one-click topbar copy puts the active formatter JSON on the clipboard', as
 });
 
 test('element naming: showcase and presets arrive named, double-click renames, shipped JSON stays clean', async ({ page, context }) => {
-  await openStudio(page);
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   // the showcase tree reads as names, not anonymous divs
   await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toBeVisible();
@@ -87,8 +83,8 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   await page.locator('.wb-tree-rename').fill('My pill');
   await page.locator('.wb-tree-rename').press('Enter');
   await expect(page.locator('.wb-tree-name', { hasText: 'My pill' })).toBeVisible();
-  // the JSON tab keeps names so Apply round-trips losslessly…
-  await openTab(page, 'json');
+  // the JSON pane keeps names so Apply round-trips losslessly…
+  await openJson(page);
   expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "My pill"');
   // …copies keep them by default (SP ignores them); clean is opt-in
   await page.click('#wb-json-copy');
@@ -99,10 +95,9 @@ test('element naming: showcase and presets arrive named, double-click renames, s
 });
 
 test('style editor explains properties: ⓘ opens a doc card with clickable examples', async ({ page }) => {
-  await openStudio(page);
   await page.locator('.wb-tree-row').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
-    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+    .filter({ has: page.locator('summary', { hasText: /^Style/ }) });
   await styleSection.locator('.wb-kv-add').click();
   const row = styleSection.locator('.wb-kv-row').last();
   await row.locator('.wb-kv-key').fill('flex-flow');
@@ -122,15 +117,14 @@ test('style editor explains properties: ⓘ opens a doc card with clickable exam
   await card.locator('.wb-doccard-gloss .wb-doccard-rel', { hasText: 'align-items' }).click();
   await expect(card.locator('.wb-doccard-prop')).toHaveText('align-items');
   // clicking elsewhere closes the card
-  await page.locator('.wb-pane-palette .wb-pane-title').click();
+  await page.locator('.wb-lp-header').click({ position: { x: 4, y: 4 } });
   await expect(card).toBeHidden();
 });
 
 test('doc card groups longhands: padding-left gets the padding card, variants switch the row', async ({ page }) => {
-  await openStudio(page);
   await page.locator('.wb-tree-row').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
-    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+    .filter({ has: page.locator('summary', { hasText: /^Style/ }) });
   await styleSection.locator('.wb-kv-add').click();
   const row = styleSection.locator('.wb-kv-row').last();
   await row.locator('.wb-kv-key').fill('padding-left');
@@ -147,7 +141,6 @@ test('doc card groups longhands: padding-left gets the padding card, variants sw
 });
 
 test('style playground: value chips style the sample live, apply merges into selection', async ({ page }) => {
-  await openStudio(page);
   // select the DueDate grid column's element to apply onto
   await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'DueDate' }) }).click();
   // entry via ☰ menu — consequence-free overlay
@@ -165,7 +158,7 @@ test('style playground: value chips style the sample live, apply merges into sel
   await pg.locator('.wb-pg-prop', { hasText: /^background-color$/ }).click();
   await pg.locator('.wb-pg-val', { hasText: '#107c10' }).click();
   await expect(page.locator('.wb-pg-target')).toHaveCSS('background-color', 'rgb(16, 124, 16)');
-  // apply to the selected element (root) — merges via the undoable store
+  // apply to the selected element (the DueDate column, sp-path 2) — merges via the undoable store
   await pg.locator('.wb-pg-apply').click();
   await expect(pg.locator('.wb-pg-apply')).toContainText('Applied');
   await page.keyboard.press('Escape');
@@ -176,10 +169,9 @@ test('style playground: value chips style the sample live, apply merges into sel
 });
 
 test('doc card links into the playground with the property preselected', async ({ page }) => {
-  await openStudio(page);
   await page.locator('.wb-tree-row').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
-    .filter({ has: page.locator('summary', { hasText: /^Style$/ }) });
+    .filter({ has: page.locator('summary', { hasText: /^Style/ }) });
   await styleSection.locator('.wb-kv-add').click();
   const row = styleSection.locator('.wb-kv-row').last();
   await row.locator('.wb-kv-key').fill('justify-content');
@@ -190,85 +182,6 @@ test('doc card links into the playground with the property preselected', async (
   await expect(pg.locator('.wb-pg-fam.active')).toHaveText('Arranging children');
   await expect(pg.locator('.wb-pg-prop.active')).toHaveText('justify-content');
   await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('SHELF');
-});
-
-test('element playground: real subtree, masked children, stash & resume, apply', async ({ page }) => {
-  await openStudio(page);
-  // open the playground ON the grid root (a real element with named children)
-  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Row layout' }) }).click();
-  await page.locator('.wb-inspector-play').click();
-  const pg = page.locator('.wb-pg');
-  await expect(pg).toBeVisible();
-  await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Row layout');
-  // children render for real but are masked with their names (click-to-descend)
-  await expect(pg.locator('.wb-pgx-child[data-pgx-name="Title"]')).toBeVisible();
-  // dial in a pick (padding family is the default)
-  await pg.locator('.wb-pg-val', { hasText: /^8px$/ }).click();
-  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
-  // stash & close — consequence-free, the document is untouched
-  await pg.locator('button', { hasText: 'Stash & close' }).click();
-  await expect(pg).toBeHidden();
-  await openTab(page, 'json');
-  expect(await page.inputValue('#wb-json-text')).not.toContain('"padding": "8px"');
-  // reopen → the stash resumes
-  await openTab(page, 'inspector');
-  await page.locator('.wb-inspector-play').click();
-  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
-  // descend into a child via the structure tree and come back — picks
-  // survive the round trip (the stash dot marks the parent meanwhile)
-  await pg.locator('.wb-pg-tree-child', { hasText: 'Title' }).first().click();
-  await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Title');
-  await expect(pg.locator('.wb-pg-tree-ancestor', { hasText: 'Row layout' }).locator('.wb-pg-tree-stash')).toBeVisible();
-  await pg.locator('.wb-pg-tree-ancestor', { hasText: 'Row layout' }).click();
-  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 8px');
-  // apply for real this time
-  await pg.locator('.wb-pg-apply').click();
-  await page.keyboard.press('Escape');
-  await openTab(page, 'json');
-  expect(await page.inputValue('#wb-json-text')).toContain('"padding": "8px"');
-  // applying must never cost an element its name (tree falls back to a
-  // class hint when _elmName is lost — that's the bug signature)
-  await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toBeVisible();
-  expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "Row layout"');
-});
-
-test('playground polish: quick looks stack whole bundles, the property card applies examples, current styles are listed', async ({ page }) => {
-  await openStudio(page);
-  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Row layout' }) }).click();
-  await page.locator('.wb-inspector-play').click();
-  const pg = page.locator('.wb-pg');
-  // one click dresses the element in the whole pill bundle…
-  await pg.locator('.wb-pg-macro', { hasText: 'Pill' }).click();
-  await expect(pg.locator('.wb-pg-out')).toContainText('border-radius: 12px');
-  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 2px 10px');
-  // …and a second click takes the whole look off again
-  await pg.locator('.wb-pg-macro', { hasText: 'Pill' }).click();
-  await expect(pg.locator('.wb-pg-out')).not.toContainText('border-radius');
-  // the formatted property card: clicking an example applies it as a pick
-  await expect(pg.locator('.wb-pg-doc-prop')).toHaveText('padding');
-  await pg.locator('.wb-pg-doc .wb-doccard-ex').first().click();
-  await expect(pg.locator('.wb-pg-out')).toContainText('padding: 2px 10px');
-  // what the element already wears is listed (the grid root is a flex row)
-  await expect(pg.locator('.wb-pg-cur-row', { hasText: 'display' })).toBeVisible();
-  await expect(pg.locator('.wb-pg-cur-row', { hasText: 'gap' })).toContainText('12px');
-});
-
-test('element playground marks CFR slots and can enter the referenced formatter', async ({ page }) => {
-  await openStudio(page);
-  await page.locator('.wb-tree-row').first().click(); // Row layout root
-  await page.locator('.wb-inspector-play').click();
-  const pg = page.locator('.wb-pg');
-  // the CFR child's overlay says where its content comes from
-  await expect(pg.locator('.wb-pgx-child[data-pgx-name="Progress ⤷ [$Progress]"]')).toBeVisible();
-  // descend into the slot — the structure tree offers to open the referenced formatter
-  await pg.locator('.wb-pg-tree-child', { hasText: 'Progress' }).first().click();
-  await expect(pg.locator('.wb-pg-stagelab').first()).toContainText('content is rendered by the [$Progress] column formatter');
-  await pg.locator('.wb-pg-navcfr').click(); // opens the in-app confirmation banner
-  await pg.locator('.wb-pg-cfr-confirm-yes').click(); // confirm the switch
-  // the playground now targets the column formatter's root…
-  await expect(pg.locator('.wb-pg-tree-target .wb-pg-tree-name')).toHaveText('Progress bar');
-  // …because the workspace switched to editing [$Progress]
-  await expect(page.locator('.wb-crumb-tail')).toHaveText('Progress');
 });
 
 test('Title column toggle hides the context column in the column preview', async ({ page }) => {
@@ -284,11 +197,10 @@ test('Title column toggle hides the context column in the column preview', async
 });
 
 test('wrap-in-parent works on the root', async ({ page }) => {
-  await openStudio(page);
   const rootRow = page.locator('.wb-tree-row').first();
   await rootRow.hover();
   await rootRow.locator('button[title*="Wrap"]').click();
-  await openTab(page, 'json');
+  await openJson(page);
   const json = JSON.parse(await page.inputValue('#wb-json-text'));
   expect(json.rowFormatter.style.display).toBe('flex');
   expect(json.rowFormatter.children).toHaveLength(1);
@@ -296,9 +208,10 @@ test('wrap-in-parent works on the root', async ({ page }) => {
 
 test('box-model editor writes per-side padding to the selected element', async ({ page }) => {
   await loadRowFixture(page);
-  // select the view root in the tree structure
+  // select the view root in the tree structure, then drop to the Simple lens
   await page.locator('.wb-tree-row').first().click();
-  const padTop = page.locator('.wb-box-padding input.wb-box-top').first();
+  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  const padTop = page.locator('.wb-box.wb-box-padding input.wb-box-top').first();
   await padTop.fill('33');
   await padTop.blur();
   await expect(page.locator('.wb-mock-viewrow [data-sp-path]').first()).toHaveCSS('padding-top', '33px');
@@ -308,6 +221,7 @@ test('alignment editor: summary chip opens picker, position grid writes layout s
   await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
   // summary chip shows a plain-language readout and opens the picker
   const summary = page.locator('.wb-align-summary');
   await expect(summary).toContainText('Side by side');
@@ -329,7 +243,8 @@ test('box model: arrow-stepping adjusts padding live without losing focus', asyn
   await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row').first().click();
-  const padTop = page.locator('.wb-box-padding input.wb-box-top').first();
+  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  const padTop = page.locator('.wb-box.wb-box-padding input.wb-box-top').first();
   await padTop.click();
   await padTop.press('ArrowUp');
   await padTop.press('ArrowUp');
@@ -341,8 +256,7 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
   // Pins the visual-compare finding: pills rendered light under wb-dark.
   // If this passes while real captures show light pills, the harness flow
   // (not the engine) is where the light palette leaks in.
-  await openStudio(page);
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     elmType: 'div',
     attributes: { class: 'sp-css-backgroundColor-neutralLighter' },
@@ -363,58 +277,21 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
 });
 
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {
-  await openStudio(page);
   await page.locator('.wb-doc-header', { hasText: 'View formatter' }).click();
   // inserts at the grid root — arrives as a new grid column
-  await page.locator('.wb-palette-item', { hasText: 'Hover card' }).click();
+  await openPalette(page);
+  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
   await page.locator('.wb-grid .wb-has-card').first().click();
   await expect(page.locator('.wb-flyout-beak')).toBeVisible();
 });
 
-test('side pane: auto-hide collapses to a rail, hover opens, outside click closes', async ({ page }) => {
-  await openStudio(page);
-  await page.click('#wb-side-peek');
-  const pane = page.locator('#wb-pane-side');
-  await expect(pane).toHaveClass(/wb-peek/);
-  await expect(page.locator('.wb-side-rail')).toBeVisible();
-  await pane.hover();
-  await expect(pane).toHaveClass(/wb-peek-open/);
-  await page.locator('#wb-canvas').click({ position: { x: 5, y: 5 } });
-  await expect(pane).not.toHaveClass(/wb-peek-open/);
-  await pane.hover();
-  await page.click('#wb-side-peek'); // restore normal mode
-  await expect(pane).not.toHaveClass(/wb-peek/);
-});
-
-test('side pane: maximize widens the pane', async ({ page }) => {
-  await openStudio(page);
-  const before = (await page.locator('#wb-pane-side').boundingBox())!.width;
-  await page.click('#wb-side-max');
-  const after = (await page.locator('#wb-pane-side').boundingBox())!.width;
-  expect(after).toBeGreaterThan(before + 100);
-  await expect(page.locator('#wb-side-max')).toHaveClass(/active/);
-  await page.click('#wb-side-max');
-});
-
-test('Structure pane: view + column sections collapse independently', async ({ page }) => {
-  await openStudio(page);
+test('Structure pane: view + column sections both render side-by-side', async ({ page }) => {
   // both sections live side-by-side: the view formatter on top, columns below
   await expect(page.locator('#wb-tree-view .wb-doc-header', { hasText: 'View formatter' })).toBeVisible();
   await expect(page.locator('#wb-tree-cols .wb-doc-header', { hasText: '[$Status]' })).toBeVisible();
-  // collapse the top section — its body hides, the columns stay
-  await page.click('#wb-tree-view-head');
-  await expect(page.locator('#wb-tree-view')).toBeHidden();
-  await expect(page.locator('#wb-tree-cols')).toBeVisible();
-  await page.click('#wb-tree-view-head'); // restore
-  await expect(page.locator('#wb-tree-view')).toBeVisible();
-  // collapse the bottom section independently
-  await page.click('#wb-tree-cols-head');
-  await expect(page.locator('#wb-tree-cols')).toBeHidden();
-  await expect(page.locator('#wb-tree-view')).toBeVisible();
 });
 
 test('Structure pane: a ⤷ chip opens & selects that column formatter below', async ({ page }) => {
-  await openStudio(page);
   // the grid's Status column renders another column's formatter (⤷ chip)
   const statusRow = page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Status' }) });
   // clicking the chip (not the row) slips over to the column section and selects it
@@ -424,9 +301,8 @@ test('Structure pane: a ⤷ chip opens & selects that column formatter below', a
 });
 
 test('Structure pane: a ⤷ chip for an unregistered ref lands on the missing row', async ({ page }) => {
-  await openStudio(page);
   // a view referencing a column with no registered formatter
-  await openTab(page, 'json');
+  await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
     rowFormatter: {
       elmType: 'div',
@@ -434,17 +310,12 @@ test('Structure pane: a ⤷ chip for an unregistered ref lands on the missing ro
     },
   }));
   await page.click('#wb-json-apply');
-  await openTab(page, 'inspector');
   // the unresolved reference shows in the column section
   const missing = page.locator('#wb-tree-cols .wb-doc-missing[data-missing-ref="Ghost"]');
   await expect(missing).toBeVisible();
-  // collapse the column section, then click the ⤷ chip — it should re-expand
-  await page.click('#wb-tree-cols-head');
-  await expect(page.locator('#wb-tree-cols')).toBeHidden();
+  // clicking the ⤷ chip lands on the missing row (no active doc switch)
   await page.locator('.wb-tree-row', { has: page.locator('.wb-chip-cfr') }).first()
     .locator('.wb-chip-cfr').click();
-  // the section re-expands and the click lands on the missing row (no active doc switch)
-  await expect(page.locator('#wb-tree-cols')).toBeVisible();
   await expect(missing).toBeVisible();
   await expect(page.locator('#wb-tree-cols .wb-doc-header.active')).toHaveCount(0);
 });

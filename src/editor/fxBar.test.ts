@@ -61,15 +61,34 @@ describe('fxBar', () => {
     expect(labels).toEqual(expect.arrayContaining(['Text shown', 'Fill color', 'Text color']));
   });
 
-  it('marks slots with a value with a · suffix and heavy bold; unset slots stay plain', () => {
+  it('marks slots with a static value with a · suffix and heavy bold; unset slots stay plain', () => {
     const host = mountWith({ elmType: 'div', style: { color: '#000' } });
     const opts = [...host.querySelectorAll<HTMLOptionElement>('.wb-fx-slot option')];
     const set = opts.find((o) => o.textContent === 'Text color ·');
     const unset = opts.find((o) => o.textContent === 'Fill color');
-    expect(set).toBeDefined();        // · suffix is present when a value is set
+    expect(set).toBeDefined();        // · suffix is present when a static value is set
     expect(set?.style.fontWeight).toBe('800');
     expect(unset).toBeDefined();      // no suffix when nothing is set
     expect(unset?.style.fontWeight).toBe('');
+  });
+
+  it('marks formula-driven slots with a ƒ suffix (not ·) so makers can spot dynamic slots at a glance', () => {
+    const host = mountWith({ elmType: 'div', style: { 'background-color': "=if([$Status] == 'Done', '#107c10', '#d13438')" } });
+    const opts = [...host.querySelectorAll<HTMLOptionElement>('.wb-fx-slot option')];
+    const formula = opts.find((o) => o.textContent === 'Fill color ƒ');
+    const literal = opts.find((o) => o.textContent === 'Text color');
+    expect(formula).toBeDefined();        // ƒ suffix for formula-driven
+    expect(formula?.style.fontWeight).toBe('800');
+    expect(literal).toBeDefined();        // no suffix when nothing is set
+    expect(literal?.style.fontWeight).toBe('');
+  });
+
+  it('treats number and boolean slot values as static (·), not formula-driven (ƒ)', () => {
+    // opacity: 0.6 is a number literal — a valid SPExpr but not a formula
+    const host = mountWith({ elmType: 'div', style: { opacity: 0.6 as unknown as string } });
+    const opts = [...host.querySelectorAll<HTMLOptionElement>('.wb-fx-slot option')];
+    const numericSlot = opts.find((o) => o.textContent === 'Opacity ·');
+    expect(numericSlot).toBeDefined();    // · not ƒ — a number is a static literal
   });
 
   it('transpiles Excel input to stored SP in one undoable mutation', () => {
@@ -125,6 +144,31 @@ describe('fxBar', () => {
     setSlot(host, 'text');
     type(host, '');
     expect(state.selectedNode!.txtContent).toBeUndefined();
+  });
+
+  describe('× clear-slot button', () => {
+    it('removes the slot value in one undoable mutation when clicked', () => {
+      const host = mountWith({ elmType: 'div', style: { 'background-color': '#107c10' } });
+      setSlot(host, 'fill');
+      const btn = $<HTMLButtonElement>(host, '.wb-fx-clear');
+      expect(btn.hidden).toBe(false);
+      btn.dispatchEvent(new Event('click'));
+      expect(state.selectedNode!.style?.['background-color']).toBeUndefined();
+      state.undo();
+      expect(state.selectedNode!.style!['background-color']).toBe('#107c10');
+    });
+
+    it('is hidden when the slot has no value', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      expect($<HTMLButtonElement>(host, '.wb-fx-clear').hidden).toBe(true);
+    });
+
+    it('is hidden when the slot holds a read-only AST-form formula', () => {
+      const host = mountWith({ elmType: 'div', style: { 'background-color': '=toString([$DueDate])' } });
+      setSlot(host, 'fill');
+      expect($<HTMLButtonElement>(host, '.wb-fx-clear').hidden).toBe(true);
+    });
   });
 
   it('pre-populates the bar with the best default as an uncommitted draft', () => {
