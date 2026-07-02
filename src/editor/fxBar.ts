@@ -87,7 +87,14 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     closeAc();
     if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
     host.innerHTML = '';
-    const scope = scopeFor(state.activeDocKey, state.selectedNode, state.mainRootForScope, state.columnRefs);
+    const scope = scopeFor(
+      state.activeDocKey,
+      state.doc.kind,
+      state.currentFieldName,
+      state.selectedNode,
+      state.mainRootForScope,
+      state.columnRefs,
+    );
     const chip = document.createElement('span');
     chip.className = `wb-scope-chip wb-scope-${scope.kind}`;
     chip.textContent = scopeChipLabel(scope, (n) => state.fields.find((f) => f.name === n)?.displayName ?? n);
@@ -409,7 +416,9 @@ function openFloat(
   onDock: (text: string) => void,
 ): { panel: HTMLElement; cleanup: () => void } {
   const panel = document.createElement('div');
-  panel.className = 'wb-fx-float';
+  // wb-esc-owner: this window dismisses itself on Escape (the ta keydown
+  // handler below) — see the convention comment in editor/overlay.ts.
+  panel.className = 'wb-fx-float wb-esc-owner';
 
   // ── draggable head, with a non-destructive ✕ dismiss ──
   const head = document.createElement('div');

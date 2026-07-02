@@ -54,7 +54,9 @@ export function openColumnGallery(anchor: HTMLElement, onToast: (m: string) => v
   closeColumnGallery();
 
   const panel = document.createElement('div');
-  panel.className = 'wb-colgal';
+  // wb-esc-owner: this gallery closes itself on Escape (onKey below) —
+  // see the convention comment in editor/overlay.ts.
+  panel.className = 'wb-colgal wb-esc-owner';
 
   const head = document.createElement('div');
   head.className = 'wb-colgal-head';

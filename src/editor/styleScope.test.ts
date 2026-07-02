@@ -18,19 +18,25 @@ const display = (n: string) => (n === 'Status' ? 'Status' : n);
 
 describe('scopeFor', () => {
   it('main doc + plain selection → view scope', () => {
-    expect(scopeFor('main', mainRoot.children![0], mainRoot, refs)).toEqual({ kind: 'view' });
+    expect(scopeFor('main', 'grid', 'Status', mainRoot.children![0], mainRoot, refs)).toEqual({ kind: 'view' });
   });
   it('main doc + no selection → view scope', () => {
-    expect(scopeFor('main', null, mainRoot, refs)).toEqual({ kind: 'view' });
+    expect(scopeFor('main', 'grid', 'Status', null, mainRoot, refs)).toEqual({ kind: 'view' });
   });
   it('main doc + host cell selected → host scope with the field name', () => {
-    expect(scopeFor('main', mainRoot.children![1], mainRoot, refs)).toEqual({ kind: 'host', field: 'Status' });
+    expect(scopeFor('main', 'grid', 'Status', mainRoot.children![1], mainRoot, refs)).toEqual({ kind: 'host', field: 'Status' });
   });
   it('drilled into a style → style scope with blast count', () => {
-    expect(scopeFor('Status', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Status', places: 1 });
+    expect(scopeFor('Status', 'grid', 'Status', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Status', places: 1 });
   });
   it('drilled, zero references → places clamps to 1 (the style itself)', () => {
-    expect(scopeFor('Owner', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Owner', places: 1 });
+    expect(scopeFor('Owner', 'grid', 'Status', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Owner', places: 1 });
+  });
+  it('a column-kind formatter IS the main doc → style scope, not view (the chip must not lie)', () => {
+    expect(scopeFor('main', 'column', 'Status', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Status', places: 1 });
+  });
+  it('main doc, column kind, zero references → places clamps to 1', () => {
+    expect(scopeFor('main', 'column', 'Owner', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Owner', places: 1 });
   });
 });
 

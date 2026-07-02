@@ -103,7 +103,9 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       : state.columnRefs[paintField!.name]?.style;
 
   overlay = document.createElement('div');
-  overlay.className = 'wb-cf-overlay';
+  // wb-esc-owner: this overlay closes itself on Escape (escHandler below) —
+  // see the convention comment in editor/overlay.ts.
+  overlay.className = 'wb-cf-overlay wb-esc-owner';
   overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) closeCondFormat(); });
   escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeCondFormat(); };
   document.addEventListener('keydown', escHandler);

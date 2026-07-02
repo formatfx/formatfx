@@ -400,7 +400,7 @@ body {
 }
 .wb-chip-loop { background: #ca5010; }
 .wb-chip-action { background: #0078d4; }
-.wb-chip-card { background: #5c2d91; }
+.wb-chip-card { background: var(--wb-accent); color: var(--wb-accent-text); }
 .wb-chip-edit { background: #767676; }
 /* Compact, right-pinned hover actions: the label (flex:1) keeps the row's
    center, so a center-click on a narrow split row lands on the label and
@@ -2365,7 +2365,7 @@ body {
 }
 .wb-cell-linked:hover { outline: 1.5px solid var(--wb-shared); outline-offset: -1.5px; }
 .wb-style-mark { color: var(--wb-shared); font-weight: 700; font-style: normal; }
-.wb-grid-header .wb-cfr-link { color: var(--wb-shared); }
+.wb-grid-header .wb-cfr-link { color: var(--wb-shared); flex: none; cursor: help; }
 .wb-style-nametag {
   display: none;
   position: absolute;

@@ -888,7 +888,13 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
         cell.addEventListener('dblclick', (e) => {
           e.stopPropagation();
           const field = state.fields.find((f) => f.name === linkField);
-          if (field) formatColumn(col, field, onToast);
+          // Drill-in is navigation, never a mutation: only open an already-
+          // registered style. formatColumn silently registers a default
+          // formatter when the name isn't in state.columnRefs yet — the
+          // header menu stays the one explicit creation path, mirroring the
+          // tree's inert unregistered stub.
+          if (!field || !(field.name in state.columnRefs)) return;
+          formatColumn(col, field, onToast);
         });
       }
       try {

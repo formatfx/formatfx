@@ -242,11 +242,17 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     if (e.key !== 'Escape' || state.activeDocKey === 'main') return;
     const t = e.target as HTMLElement;
     if (t.closest('input, textarea, select, [contenteditable], dialog')) return;
-    // an open menu/flyout/float owns its own Escape — don't also navigate
-    // (real class names verified in menu.ts / core/renderer.ts / fxBar.ts —
-    // the brief's `.wb-menu` is actually `.wb-grid-menu`; the fx-bar's own
-    // suggestion/autocomplete menus are textarea-scoped and already excluded above)
-    if (document.querySelector('.wb-grid-menu, .wb-flyout, .wb-fx-float')) return;
+    // Convention: any overlay/popover that closes ITSELF on a document-level
+    // Escape keydown carries the `wb-esc-owner` marker class on its root —
+    // added either by the shared `createOverlay` chokepoint (overlay.ts) or,
+    // for the handful of popovers that build their own root (grid menu,
+    // fx float, column gallery, cond-format overlay, icon picker), by hand
+    // at the point they set className. `.wb-flyout` deliberately does NOT
+    // carry it — it has no Escape handler of its own, so it can't race with
+    // this guard. If a document Escape would hit one of those owners first,
+    // let it close on its own turn rather than also exiting the drilled
+    // style — otherwise one Esc press does both at once.
+    if (document.querySelector('.wb-esc-owner')) return;
     state.openMain();
     onToast(`Back to the ${state.viewName} view formatter`);
   };

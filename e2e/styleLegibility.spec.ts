@@ -82,3 +82,27 @@ test('the tree shows an opaque style stub under the host cell; opening it drills
   await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
   await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
 });
+
+test('an Escape-closable overlay opened while drilled closes itself first; a second Esc exits the style', async ({ page }) => {
+  await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
+  const banner = page.locator('.wb-style-banner');
+  await expect(banner).toBeVisible();
+  // open the breadcrumb's Column Styles gallery — an Escape-owning overlay
+  await page.locator('.wb-crumb-root').click();
+  const gal = page.locator('.wb-colgal');
+  await expect(gal).toBeVisible();
+  // first Escape: the gallery owns it — it closes, the drilled style stays
+  await page.keyboard.press('Escape');
+  await expect(gal).toHaveCount(0);
+  await expect(banner).toBeVisible();
+  // second Escape: nothing else owns it now — it exits the style
+  await page.keyboard.press('Escape');
+  await expect(banner).toHaveCount(0);
+});
+
+test('the scope chip reads a style scope when a column formatter is the main document', async ({ page }) => {
+  await page.click('#wb-menu-btn');
+  await page.selectOption('#wb-example', 'status-pill');
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
+  await expect(page.locator('.wb-scope-chip')).toContainText('style ·');
+});

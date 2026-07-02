@@ -16,9 +16,13 @@ export type Scope =
   | { kind: 'style'; field: string; places: number };
 
 /** What the next edit hits: the view, the selected host cell, or (when
- *  drilled) the shared style — with its blast count, clamped to ≥1. */
+ *  drilled — or when a column-kind formatter IS the main document, e.g. an
+ *  imported/example column formatter opened standalone) the shared style —
+ *  with its blast count, clamped to ≥1. */
 export function scopeFor(
   activeDocKey: string,
+  docKind: string,
+  currentFieldName: string,
   selected: SPElement | null,
   mainRoot: SPElement | undefined,
   columnRefs: Record<string, SPElement>,
@@ -26,6 +30,10 @@ export function scopeFor(
   if (activeDocKey !== 'main') {
     const blast = cfrBlastRadius(activeDocKey, mainRoot, columnRefs);
     return { kind: 'style', field: activeDocKey, places: Math.max(blast.count, 1) };
+  }
+  if (docKind === 'column') {
+    const blast = cfrBlastRadius(currentFieldName, mainRoot, columnRefs);
+    return { kind: 'style', field: currentFieldName, places: Math.max(blast.count, 1) };
   }
   if (selected?.columnFormatterReference) {
     return { kind: 'host', field: cfrFieldName(selected.columnFormatterReference) };
