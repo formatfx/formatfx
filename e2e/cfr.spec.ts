@@ -1,7 +1,7 @@
 /**
  * E2E: Stage 4 — the CFR linked-instance (Figma) model. A grid column that
- * renders a shared column style is a LINKED INSTANCE, marked with a teal link
- * badge; its menu offers "Edit the [Field] style" (edit the shared style) and
+ * renders a shared column style is a LINKED INSTANCE, marked with a § style
+ * mark; its menu offers "Edit the [Field] style" (edit the shared style) and
  * "Detach from style" (fork to a local copy). A plain column promotes to a shared
  * style via "Save as the [Field] column style".
  */
@@ -18,7 +18,7 @@ function header(page: Page, label: string) {
   return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
-test('a linked column wears the teal link badge; plain columns do not', async ({ page }) => {
+test('a linked column wears the § style mark; plain columns do not', async ({ page }) => {
   // Status & Progress ship as CFR cells (registered formatters) → linked
   await expect(header(page, 'Status').locator('.wb-cfr-link')).toHaveCount(1);
   await expect(header(page, 'Progress').locator('.wb-cfr-link')).toHaveCount(1);
