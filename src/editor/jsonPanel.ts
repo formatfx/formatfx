@@ -24,13 +24,19 @@ export interface JsonPanelApi {
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
   host.innerHTML = `
     <div class="wb-json-toolbar">
-      <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
-      <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>
-      <button id="wb-json-copy" title="Copy to clipboard">Copy</button>
-      <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
-      <button id="wb-json-download" title="Download .json">Download</button>
-      <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
-      <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
+      <div class="wb-json-actions">
+        <button id="wb-json-copy" class="wb-json-primary" title="Copy to clipboard">Copy</button>
+        <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
+        <button id="wb-json-download" title="Download .json">Download</button>
+        <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
+      </div>
+      <div class="wb-json-options">
+        <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
+        <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>
+      </div>
+      <div class="wb-json-deploy-row">
+        <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
+      </div>
     </div>
     <div id="wb-deploy-panel" class="wb-deploy" hidden>
       <div id="wb-deploy-target" class="wb-deploy-target"></div>
