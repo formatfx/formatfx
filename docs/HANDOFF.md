@@ -432,22 +432,27 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 110 vitest unit tests (engine semantics incl. every
-  live-verified behavior in §3, serializer round-trips, schema import
+- `npm test` — 514 vitest unit tests across 32 files (engine semantics incl.
+  every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
   through the real engine — that test file is the contract for
   generated-condition semantics — and the bridge's EXECUTED-snippet
-  round trips against stubbed fetch). Run headlessly anywhere.
-- `npm run test:ui` — 53 Playwright specs across `sandbox.spec.ts`
-  (core flows), `import.spec.ts` (schema import + CFR + grid rebuild),
-  `workspace.spec.ts` (doc switching, box model, flex editor, playground
-  incl. quick looks/structure tree/property card, pane modes, dark-mode
-  probe), `grid.spec.ts` (grid-first workspace: header menus, right-click
-  context menus, conditional formatting incl. cross-column watching, the
-  Format cells dialog, format-column round trip, hide/add,
-  drag-to-group/reorder), `guide.spec.ts` (field guide),
-  plus the snapshot-import/views/deploy-panel specs in `import.spec.ts`.
+  round trips against stubbed fetch). Run headlessly anywhere. (Keep this
+  count honest when you add tests — a stale number here is how the docs
+  drift out from under the code.)
+- `npm run test:ui` — 90 Playwright specs across `sandbox.spec.ts`
+  (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
+  snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
+  box model, flex editor, playground incl. quick looks/structure tree/property
+  card, pane modes, dark-mode probe), `grid.spec.ts` (grid-first workspace:
+  header menus, right-click context menus, conditional formatting incl.
+  cross-column watching, the Format cells dialog, format-column round trip,
+  hide/add, drag-to-group/reorder), `guide.spec.ts` (field guide),
+  `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
+  row-view builder, CFR linked instances, Studio/Advanced toggle),
+  `breadcrumb.spec.ts`, `icons.spec.ts`, `subtypes.spec.ts` and
+  `templates.spec.ts`.
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).

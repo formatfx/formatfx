@@ -57,8 +57,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   (the comfortable dialog: Font / Border / Fill / Alignment tabs, a live
   preview box, OK applies everything as one undo step), rename, wrap in a
   container, ungroup, duplicate, copy its JSON, remove. All click-only and
-  undoable, so it works in Basic mode too; grid headers answer right-click
-  with their column menu.
+  undoable and click-only, so a misclick can't corrupt the formatter; grid
+  headers answer right-click with their column menu.
 - **Conditional formatting builder** — "when the value …, make it look …",
   without the dialog maze. The field's type
   drives the suggestions: choice columns arrive with **one ready chip per
@@ -75,16 +75,18 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `=if(…)` chains (first match wins; an element's existing look becomes the
   no-match fallback). From a grid header it lands on that column's
   registered formatter, exactly like *format this column*.
-- **Basic & Advanced modes** — the app lands in **Basic**: a curated palette
-  of the pieces people actually reach for (status pills, traffic lights,
-  date badges, data bars, personas, stars…), the canvas, the structure tree,
-  your data, the inspect-outlines toggle, and a single click-only
-  **Alignment** control — nothing hand-editable, so a misclick can't corrupt
-  the formatter, and everything is undoable. **Advanced** (topbar toggle,
-  remembered per browser) restores the full surface: every preset, all
-  element/style/attribute properties, the box model, the raw JSON tab with
-  lint diagnostics, `forEach` loops, row actions, hover cards, inline edit,
-  the CFR registry and tenant themes.
+- **One maker-first surface** — there is no mode switch to get wrong. The app
+  lands on your list as a grid with the pieces people actually reach for
+  (status pills, traffic lights, date badges, data bars, personas, stars…),
+  the canvas, your data, the inspect-outlines toggle, and click-only
+  **Format cells**, **conditional formatting** and **Alignment** dialogs — so
+  a misclick can't corrupt the formatter, and every gesture is undoable. The
+  developer furniture is one door away, not a different mode: the topbar
+  **Advanced** toggle opens the validated-JSON pane (the escape hatch, with
+  **Deploy**) without moving the editor or canvas, and the Palette, Structure
+  and Properties panes — every preset, all element/style/attribute properties,
+  the box model, `forEach` loops, row actions, hover cards, inline edit, the
+  CFR registry and tenant themes — stay reachable the whole time.
 - **Named elements** — every element can carry a friendly name (double-click
   it in the Structure pane, or the ✎ action): presets arrive pre-named
   ("Status pill", not "div"). Names use the `_elmName` convention — SharePoint
@@ -109,7 +111,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   chip reads out the current arrangement ("Side by side · centered · middle ·
   gap 8px") and expands into a picker whose 3×3 grid buttons sit *where their
   result puts the content*, plus click-only direction/spread/spacing chips.
-  Advanced adds a devtools-style **box model** (per-side margin/padding with
+  Alongside it, a devtools-style **box model** (per-side margin/padding with
   ↑/↓ stepping) and full property editing with per-key value suggestions
   (theme class tokens, Fluent icon names, style values), row actions, hover
   cards, inline edit and CFRs. Every style property and attribute carries an
@@ -179,17 +181,16 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 npm install
 npm run dev           # local dev server
 npm test              # engine test suite (vitest + happy-dom)
-npm run test:ui       # 39 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
+npm run test:ui       # 90 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
 npm run build         # type-check + production bundle in dist/
 npm run build:single  # everything inlined into one dist-single/index.html
 ```
 
 `build:single` produces a single self-contained HTML file you can email,
 drop in a doc library, or open on a phone — no server needed.
-`.github/workflows/deploy-sandbox.yml` deploys `dist/` to GitHub Pages
-(Settings → Pages → Source = "GitHub Actions" to enable);
-`sandbox-e2e.yml` runs the visual suite on a GitHub runner
-(`PW_CHANNEL=bundled`).
+`.github/workflows/ci.yml` runs the unit tests and the Playwright suite on
+every push (`PW_CHANNEL=bundled`), builds `dist/`, and deploys it to GitHub
+Pages from `main` (Settings → Pages → Source = "GitHub Actions" to enable).
 
 ## The npm package
 
