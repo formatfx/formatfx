@@ -751,5 +751,18 @@ describe('adversarial state robustness challenges', () => {
   });
 });
 
+describe('mainRootForScope', () => {
+  it('returns the live root on main, and the stashed main root while drilled', () => {
+    const s = new EditorState();
+    const mainRoot = s.doc.root;
+    s.columnRefs['Status'] = { elmType: 'div', txtContent: '@currentField' };
+    s.openColumnRef('Status');
+    expect(s.activeDocKey).toBe('Status');
+    expect(s.mainRootForScope).toBe(mainRoot);
+    s.openMain();
+    expect(s.mainRootForScope).toBe(s.doc.root);
+  });
+});
+
 
 
