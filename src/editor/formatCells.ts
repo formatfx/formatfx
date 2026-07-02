@@ -207,12 +207,28 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     panel.appendChild(head);
 
     // ── tabs ──
+    // Which properties belong to each tab — used to show a "dirty" dot when
+    // a tab has staged-but-unapplied changes (helps tracking across tab switches).
+    const TAB_PROPS: Record<Tab, string[]> = {
+      font:      ['font-size', 'font-weight', 'font-style', 'text-decoration', 'color'],
+      border:    ['border', 'border-top', 'border-right', 'border-bottom', 'border-left', 'border-radius'],
+      fill:      ['background-color'],
+      alignment: ['text-align', 'white-space', 'overflow', 'text-overflow', 'padding-left'],
+    };
     const tabs = document.createElement('div');
     tabs.className = 'wb-fc-tabs';
     for (const t of ['font', 'border', 'fill', 'alignment'] as Tab[]) {
       const b = document.createElement('button');
-      b.className = 'wb-fc-tab' + (t === tab ? ' active' : '');
+      const hasPending = TAB_PROPS[t].some((p) => p in patch);
+      b.className = 'wb-fc-tab' + (t === tab ? ' active' : '') + (hasPending ? ' wb-fc-tab-dirty' : '');
       b.textContent = t[0].toUpperCase() + t.slice(1);
+      if (hasPending) {
+        b.setAttribute('aria-label', `${t[0].toUpperCase() + t.slice(1)} — has pending changes`);
+        const dot = document.createElement('span');
+        dot.className = 'wb-fc-tab-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        b.appendChild(dot);
+      }
       b.addEventListener('click', () => { tab = t; _lastTab = t; render(); });
       tabs.appendChild(b);
     }

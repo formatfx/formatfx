@@ -1570,6 +1570,12 @@ body {
   border-color: var(--wb-border); background: var(--wb-surface);
   color: var(--wb-accent); font-weight: 600; margin-bottom: -1px;
 }
+.wb-fc-tab-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--wb-accent); margin-left: 5px; vertical-align: middle;
+  opacity: .75;
+}
+.wb-fc-tab.active .wb-fc-tab-dot { opacity: 1; }
 .wb-fc-previewwrap {
   display: flex; align-items: center; justify-content: center; min-height: 64px;
   margin: 10px 0; padding: 12px; background: var(--wb-canvas-bg); border-radius: 6px;
