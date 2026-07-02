@@ -280,7 +280,7 @@ function mount(opts: Opts): void {
       ? 'children are masked with their names — click one to restyle it instead · '
       : '')
       + (targetNode.columnFormatterReference
-        ? `This element's content is rendered by the ${targetNode.columnFormatterReference} column formatter — you're in the view formatter now; click ⤷ in the Structure pane to switch to that column's formatter · `
+        ? `This element's content is rendered by the ${targetNode.columnFormatterReference} column formatter — you're in the view formatter now; open its § style entry in the Structure pane to edit that column's style · `
         : '')
       + 'rendered with row 1 of your data';
     stage.appendChild(lab);

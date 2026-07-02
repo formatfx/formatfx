@@ -8,7 +8,7 @@ import { createOverlay } from './overlay';
 describe('createOverlay', () => {
   it('builds an overlay element with the given class', () => {
     const h = createOverlay('wb-test-overlay', () => {});
-    expect(h.overlay.className).toBe('wb-test-overlay');
+    expect(h.overlay.className).toBe('wb-test-overlay wb-esc-owner');
     h.close();
   });
 

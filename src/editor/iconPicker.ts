@@ -114,7 +114,9 @@ export interface IconPickerOptions extends IconGridOptions {
  */
 export function openIconPicker(opts: IconPickerOptions): { close: () => void } {
   const panel = document.createElement('div');
-  panel.className = 'wb-iconpicker';
+  // wb-esc-owner: this picker closes itself on Escape (onKey below) —
+  // see the convention comment in editor/overlay.ts.
+  panel.className = 'wb-iconpicker wb-esc-owner';
 
   const head = document.createElement('div');
   head.className = 'wb-iconpicker-head';

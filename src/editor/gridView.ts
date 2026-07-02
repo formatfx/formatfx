@@ -68,7 +68,7 @@ function formatColumn(col: GridColumn, field: MockField, onToast: (m: string) =>
   }
   state.openColumnRef(name);
   onToast(existed
-    ? `Editing the ${name} column formatter — switch back via the topbar or Structure pane`
+    ? `Editing the ${name} style — switch back via the topbar or Structure pane`
     : `Started a formatter for ${name} — you're editing it now; the grid renders it live`);
 }
 
@@ -528,29 +528,29 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
     const registered = field.name in state.columnRefs;
     const isLinked = !!col.el.columnFormatterReference;
     if (isLinked) {
-      // a linked instance of the column's shared format (the Figma model):
-      // edit the shared format for everyone, or detach a local copy into this view.
+      // a linked instance of the column's shared style (the Figma model):
+      // edit the shared style for everyone, or detach a local copy into this view.
       const blast = cfrBlastRadius(field.name, state.doc.root, state.columnRefs);
       items.push({
         icon: 'Brush',
-        label: 'Format this Column',
-        badge: 'Shared',
+        label: `Edit the ${field.name} style`,
+        badge: '§ shared',
         title: blast.count > 1
-          ? `Edit the shared ${field.name} format — changes all ${blast.count} places it's used (${blast.places.join(', ')})`
-          : `Edit the shared ${field.name} column format`,
+          ? `Edit the shared ${field.name} style — changes all ${blast.count} places it's used (${blast.places.join(', ')})`
+          : `Edit the shared ${field.name} style — changes apply everywhere it's used`,
         fn: () => formatColumn(col, field, onToast),
       });
       items.push({
         icon: 'BranchFork2',
-        label: 'Override in this view',
-        title: `Detach this column into its own copy that lives only in this view — restyle it here without changing the ${field.name} format anywhere else`,
-        fn: () => { state.forkCfr(col.path); onToast(`"${label}" is overridden in this view now — your edits stay here. Ctrl+Z to relink.`); },
+        label: 'Detach from style',
+        title: `Format just this cell — a local copy that lives only in this view; the ${field.name} style everywhere else is untouched`,
+        fn: () => { state.forkCfr(col.path); onToast(`"${label}" is detached from the ${field.name} style — edits stay in this view. Ctrl+Z to relink.`); },
       });
     } else if (registered) {
       items.push({
         icon: 'Edit',
-        label: 'Edit its formatter',
-        title: `Open the [$${field.name}] column formatter on the canvas`,
+        label: `Edit the ${field.name} style`,
+        title: `Open the ${field.name} column style on the canvas`,
         fn: () => formatColumn(col, field, onToast),
       });
     } else {
@@ -562,13 +562,13 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
       });
       items.push({
         icon: 'Link',
-        label: `Save as the ${field.name} column's format`,
-        title: `Register this cell's design as the ${field.name} column formatter and link this cell to it — then reuse it anywhere via "+ column" or a reference`,
+        label: `Save as the ${field.name} column style`,
+        title: `Register this cell's design as the ${field.name} column style and link this cell to it — reuse it anywhere via "+ column" or a reference`,
         fn: () => {
           const f = state.promoteToColumn(col.path);
           onToast(f
-            ? `Saved as the ${f} column format — this cell is linked to it now. Ctrl+Z to undo.`
-            : 'Could not save this cell as a column format.');
+            ? `Saved as the ${f} column style — this cell now uses it. Ctrl+Z to undo.`
+            : 'Could not save this cell as a column style.');
         },
       });
     }
@@ -764,16 +764,17 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     label.className = 'wb-grid-header-label';
     label.textContent = gridColumnLabel(col.el, state.fields);
     h.append(label);
-    // teal link badge: this column is a LINKED INSTANCE of a shared column format
+    // § style mark: this column is a LINKED INSTANCE of a shared column format
     if (col.el.columnFormatterReference) {
       const linkField = cfrFieldName(col.el.columnFormatterReference);
       const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
-      const badge = document.createElement('i');
-      badge.className = 'ms-Icon ms-Icon--Link wb-cfr-link';
+      const badge = document.createElement('span');
+      badge.className = 'wb-cfr-link wb-style-mark';
+      badge.textContent = '§';
       badge.setAttribute('aria-hidden', 'true');
       badge.title = blast.count > 1
-        ? `Linked to the ${linkField} column format — shared with ${blast.count} places. "Format this Column" edits them all; "Override in this view" detaches this one.`
-        : `Linked to the ${linkField} column format. "Format this Column" edits the shared format; "Override in this view" detaches this one.`;
+        ? `Uses the ${linkField} style — shared with ${blast.count} places. "Edit the ${linkField} style" changes them all; "Detach from style" makes a copy for this view.`
+        : `Uses the ${linkField} style. "Edit the ${linkField} style" changes the shared style; "Detach from style" makes a copy for this view.`;
       h.append(badge);
     }
     const caret = document.createElement('span');
@@ -873,6 +874,29 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       const cell = document.createElement('div');
       cell.className = 'wb-grid-cell';
       cell.dataset.col = String(i);
+      if (col.el.columnFormatterReference) {
+        const linkField = cfrFieldName(col.el.columnFormatterReference);
+        const linkDisplay = state.fields.find((f) => f.name === linkField)?.displayName ?? linkField;
+        const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
+        cell.classList.add('wb-cell-linked');
+        cell.title = `${linkDisplay} style — double-click to edit (used in ${Math.max(blast.count, 1)} place${blast.count === 1 ? '' : 's'})`;
+        const tag = document.createElement('span');
+        tag.className = 'wb-style-nametag';
+        tag.textContent = `${linkDisplay} style`;
+        tag.setAttribute('aria-hidden', 'true');
+        cell.appendChild(tag);
+        cell.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          const field = state.fields.find((f) => f.name === linkField);
+          // Drill-in is navigation, never a mutation: only open an already-
+          // registered style. formatColumn silently registers a default
+          // formatter when the name isn't in state.columnRefs yet — the
+          // header menu stays the one explicit creation path, mirroring the
+          // tree's inert unregistered stub.
+          if (!field || !(field.name in state.columnRefs)) return;
+          formatColumn(col, field, onToast);
+        });
+      }
       try {
         renderCellContent(cell, col, ctx, opts);
       } catch (err) {

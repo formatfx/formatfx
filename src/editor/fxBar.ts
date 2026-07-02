@@ -23,6 +23,7 @@ import { fxSuggestions, completionAt } from './fxSuggest';
 import { resolveSubtype } from './subtypes';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
+import { scopeFor, scopeChipLabel } from './styleScope';
 import type { SPExpr } from '../core/types';
 
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
@@ -86,6 +87,23 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     closeAc();
     if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
     host.innerHTML = '';
+    const scope = scopeFor(
+      state.activeDocKey,
+      state.doc.kind,
+      state.currentFieldName,
+      state.selectedNode,
+      state.mainRootForScope,
+      state.columnRefs,
+    );
+    const chip = document.createElement('span');
+    chip.className = `wb-scope-chip wb-scope-${scope.kind}`;
+    chip.textContent = scopeChipLabel(scope, (n) => state.fields.find((f) => f.name === n)?.displayName ?? n);
+    chip.title = scope.kind === 'style'
+      ? "Edits here change the shared style everywhere it's used"
+      : scope.kind === 'host'
+        ? 'The host cell is selected — box edits (width, borders, padding) stay in this view; the content inside belongs to the style'
+        : 'Edits apply to this view formatter only';
+    host.appendChild(chip);
     const node = state.selectedNode;
     if (!node) {
       host.appendChild(message('Select a cell to format it.'));
@@ -398,7 +416,9 @@ function openFloat(
   onDock: (text: string) => void,
 ): { panel: HTMLElement; cleanup: () => void } {
   const panel = document.createElement('div');
-  panel.className = 'wb-fx-float';
+  // wb-esc-owner: this window dismisses itself on Escape (the ta keydown
+  // handler below) — see the convention comment in editor/overlay.ts.
+  panel.className = 'wb-fx-float wb-esc-owner';
 
   // ── draggable head, with a non-destructive ✕ dismiss ──
   const head = document.createElement('div');

@@ -35,9 +35,9 @@ export function mountBreadcrumb(host: HTMLElement, onToast: (m: string) => void)
     const root = document.createElement('button');
     root.type = 'button';
     root.className = 'wb-crumb wb-crumb-root';
-    root.textContent = isColumn ? 'Column Formatters ▾' : 'View Formatters ▾';
+    root.textContent = isColumn ? 'Column Styles ▾' : 'View Formatters ▾';
     root.title = isColumn
-      ? 'Browse the columns that have a formatter, or start one'
+      ? 'Browse the columns that have a style, or start one'
       : 'The view formatter on the canvas — rename it or manage views';
     root.addEventListener('click', (e) => {
       e.stopPropagation();

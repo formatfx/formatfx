@@ -16,6 +16,13 @@
   --wb-scroll-thumb: #c8c6c4;
   --wb-scroll-thumb-hover: #a19f9d;
 
+  /* ── "violet = shared" channel — reserved EXCLUSIVELY for column-style-owned
+        chrome (rails, § marks, scope chip, drilled banner/frame, tree stub).
+        Never reuse for anything else; that exclusivity is the feature. */
+  --wb-shared: #5c2d91;        /* ink + outlines on app surfaces (≥4.5:1 on --wb-surface) */
+  --wb-shared-bg: #f3ecfc;     /* tint fill behind shared chrome */
+  --wb-shared-border: #c9b3e8;
+
   /* ── Left Edit Pane design tokens (FormatFX-native; tokenized so a re-skin
         is a one-place edit). The warm surface is SCOPED to the left pane — the
         canvas + JSON stay Fluent-cool, so the dark-mode engine probe is safe. */
@@ -54,6 +61,10 @@ body.wb-dark {
   --wb-canvas-bg: #141312;
   --wb-scroll-thumb: #4a4948;
   --wb-scroll-thumb-hover: #5f5e5c;
+
+  --wb-shared: #c5a3f2;        /* lightened for dark surfaces (≥4.5:1 on --wb-surface) */
+  --wb-shared-bg: #2b2140;
+  --wb-shared-border: #55407c;
 
   /* Left Edit Pane — restate the Left Pane token aliases in dark mode (mirrors :root)
      so all dark-mode overrides live in one place. */
@@ -389,8 +400,7 @@ body {
 }
 .wb-chip-loop { background: #ca5010; }
 .wb-chip-action { background: #0078d4; }
-.wb-chip-card { background: #5c2d91; }
-.wb-chip-cfr { background: #038387; }
+.wb-chip-card { background: var(--wb-accent); color: var(--wb-accent-text); }
 .wb-chip-edit { background: #767676; }
 /* Compact, right-pinned hover actions: the label (flex:1) keeps the row's
    center, so a center-click on a narrow split row lands on the label and
@@ -402,8 +412,6 @@ body {
   padding: 0 1px; font-size: 10px;
 }
 .wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
-.wb-chip-link { cursor: pointer; }
-.wb-chip-link:hover { outline: 1px solid #fff; outline-offset: -1px; }
 
 /* ── Structure pane split: view section (top) + columns section (bottom) ──── */
 /* the pane becomes a flex column so the two sections can share its height */
@@ -517,10 +525,6 @@ body {
 .wb-grid-header-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-grid-header-caret { opacity: .55; font-size: 10px; }
 .wb-grid-header:hover .wb-grid-header-caret { opacity: 1; }
-/* teal link badge — a column that's a linked instance of a shared format
-   (same teal as the Structure pane's ⤷ CFR chip, .wb-chip-cfr) */
-.wb-cfr-link { color: #038387; font-size: 11px; flex-shrink: 0; cursor: help; }
-.wb-grid-header:hover .wb-cfr-link { color: #03a9af; }
 .wb-grid-addcol {
   margin: 4px 6px; padding: 2px 6px; font-size: 11px; align-self: center;
   border: 1px dashed var(--wb-border); border-radius: 3px;
@@ -2504,3 +2508,96 @@ body {
 }
 .wb-stress-foot-warn { color: #d13438; font-weight: 600; }
 body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
+/* ── "violet = shared" — grid at rest ──────────────────────────────────── */
+.wb-cell-linked {
+  box-shadow: inset 3px 0 0 var(--wb-shared);
+  position: relative;
+}
+.wb-cell-linked:hover { outline: 1.5px solid var(--wb-shared); outline-offset: -1.5px; }
+.wb-style-mark { color: var(--wb-shared); font-weight: 700; font-style: normal; }
+.wb-grid-header .wb-cfr-link { color: var(--wb-shared); flex: none; cursor: help; }
+.wb-style-nametag {
+  display: none;
+  position: absolute;
+  top: -8px;
+  right: 4px;
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--wb-shared-bg);
+  border: 1px solid var(--wb-shared-border);
+  color: var(--wb-shared);
+  pointer-events: none;
+  z-index: 2;
+}
+.wb-cell-linked:hover .wb-style-nametag,
+.wb-cell-linked:has(.wb-selected) .wb-style-nametag { display: inline-block; }
+
+/* ── scope chip: what will this edit hit ───────────────────────────────── */
+.wb-scope-chip {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.wb-scope-view { background: var(--wb-canvas-bg); color: var(--wb-text-2); }
+.wb-scope-host { background: var(--wb-lp-selected); color: var(--wb-text); }
+.wb-scope-style { background: var(--wb-shared-bg); border: 1px solid var(--wb-shared-border); color: var(--wb-shared); }
+
+/* ── drilled into a column style ───────────────────────────────────────── */
+.wb-style-editing { outline: 2px solid var(--wb-shared); outline-offset: -2px; }
+.wb-style-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--wb-shared-bg);
+  color: var(--wb-shared);
+  border-bottom: 1px solid var(--wb-shared-border);
+}
+.wb-style-banner .wb-style-done {
+  margin-left: auto;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--wb-shared-border);
+  background: var(--wb-surface);
+  color: var(--wb-shared);
+  cursor: pointer;
+}
+/* the Title context column steps back while a style is edited */
+.wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }
+
+/* ── tree: the style is a door, not a folder ───────────────────────────── */
+.wb-tree-stylestub {
+  display: block;
+  margin: 1px 4px 3px 20px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 0 4px 4px 0;
+  background: var(--wb-shared-bg);
+  box-shadow: inset 2px 0 0 var(--wb-shared);
+  color: var(--wb-shared);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-tree-stylestub:hover { filter: brightness(0.97); }
+.wb-tree-stylestub-missing { cursor: default; opacity: 0.75; }
+.wb-tree-badge-host {
+  font-size: 9px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--wb-canvas-bg);
+  color: var(--wb-text-2);
+  white-space: nowrap;
+}
+.wb-doc-header.wb-doc-style { color: var(--wb-shared); }
+.wb-doc-header.wb-doc-style.active { background: var(--wb-shared-bg); }
