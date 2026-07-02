@@ -503,15 +503,18 @@ export function openColumnFormatMenuFor(field: MockField, anchor: HTMLElement, o
   openFormatColumnMenu(gridColumnForField(field), field, anchor, onToast);
 }
 
-function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: string) => void): void {
+async function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: string) => void): Promise<void> {
   const registered = fieldName ? state.columnRefs[fieldName] : undefined;
   const root = registered ?? col.el;
   const json = exportJson({ kind: 'column', root }, { sanitizeWhitespace: true });
-  navigator.clipboard.writeText(json).then(() => {
+  try {
+    await navigator.clipboard.writeText(json);
     onToast(registered
       ? `[$${fieldName}] formatter JSON copied — paste into that column's Format pane`
       : 'Column JSON copied (this cell as a column-formatter starting point)');
-  });
+  } catch {
+    onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
+  }
 }
 
 function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => void): void {

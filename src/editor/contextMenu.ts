@@ -126,7 +126,9 @@ export function elementMenuItems(
     title: 'Copy this element subtree (JSON) to the clipboard — paste into another container or keep as a snippet',
     fn: () => {
       const paths = state.isSelected(path) && sel.length > 1 ? sel : [path];
-      void copyNodes(paths).then((n) => onToast(`${n} element${n === 1 ? '' : 's'} copied`));
+      void copyNodes(paths)
+        .then((n) => onToast(`${n} element${n === 1 ? '' : 's'} copied`))
+        .catch(() => onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)'));
     },
   });
   if (inSiblingList || node.children !== undefined || node.elmType === 'div') {
