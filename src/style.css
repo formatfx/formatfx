@@ -1528,6 +1528,11 @@ body {
   border-top: 1px solid var(--wb-border); padding-top: 10px; margin-top: 12px;
 }
 .wb-cf-note { margin-right: auto; font-size: 10px; color: #ca5010; }
+.wb-cf-notice {
+  font-size: 11px; padding: 6px 8px; margin: 2px 0 6px;
+  background: rgba(202, 80, 16, .07); border: 1px solid rgba(202, 80, 16, .28);
+  border-radius: 4px; color: #ca5010;
+}
 .wb-cf-foot button {
   padding: 5px 14px; border-radius: 4px; cursor: pointer;
   background: var(--wb-surface); color: var(--wb-text); border: 1px solid var(--wb-border);
