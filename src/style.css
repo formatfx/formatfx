@@ -401,7 +401,6 @@ body {
 .wb-chip-loop { background: #ca5010; }
 .wb-chip-action { background: #0078d4; }
 .wb-chip-card { background: #5c2d91; }
-.wb-chip-cfr { background: #038387; }
 .wb-chip-edit { background: #767676; }
 /* Compact, right-pinned hover actions: the label (flex:1) keeps the row's
    center, so a center-click on a narrow split row lands on the label and
@@ -413,8 +412,6 @@ body {
   padding: 0 1px; font-size: 10px;
 }
 .wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
-.wb-chip-link { cursor: pointer; }
-.wb-chip-link:hover { outline: 1px solid #fff; outline-offset: -1px; }
 
 /* ── Structure pane split: view section (top) + columns section (bottom) ──── */
 /* the pane becomes a flex column so the two sections can share its height */

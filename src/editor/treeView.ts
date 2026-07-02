@@ -56,7 +56,7 @@ function nodeChips(el: SPElement): HTMLElement[] {
  * share the pane's height (a draggable splitter between them lives in main.ts):
  *   • `viewHost`  — the view (main) formatter, exactly as shown before.
  *   • `colsHost`  — the column formatters, exactly as shown before.
- * `onRevealColumn` is called after a ⤷ chip opens a column, so the host can
+ * `onRevealColumn` is called after the style stub opens a column, so the host can
  * un-minimize the bottom section and scroll the now-active column into view.
  */
 export function mountTree(
@@ -108,7 +108,7 @@ export function mountTree(
       if (!(name in state.columnRefs)) {
         const miss = document.createElement('div');
         miss.className = 'wb-doc-missing';
-        miss.dataset.missingRef = name; // so a ⤷ jump can land on it
+        miss.dataset.missingRef = name; // so a style-stub jump can land on it
         miss.textContent = `[$${name}] — referenced but not in the workspace`;
         miss.title = 'The main formatter has a columnFormatterReference to this column, but its formatter isn\'t registered. Import the list export or register it in the Data tab to render and edit it.';
         colsHost.appendChild(miss);

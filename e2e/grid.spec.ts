@@ -34,7 +34,7 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
   await expect(menu.locator('.wb-grid-menu-title')).toHaveText('Format DueDate');
   await menu.locator('button', { hasText: 'Format this column manually' }).click();
   // we land in the column-formatter editing context, scaffolded on @currentField
-  await expect(page.locator('.wb-doc-header', { hasText: '[$DueDate]' })).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-header', { hasText: '§ DueDate style' })).toHaveClass(/active/);
   await expect(page.locator('.wb-crumb-tail')).toHaveText('DueDate');
   // style it so the round trip is visible, then return to the grid
   await openJson(page);
