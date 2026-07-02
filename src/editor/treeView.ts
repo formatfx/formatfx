@@ -63,7 +63,6 @@ export function mountTree(
   host: HTMLElement,
   onToast: (m: string) => void = () => {},
 ): void {
-  void onToast; // reserved for row actions that confirm via toast
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click
   let renamePath: NodePath | null = null;
