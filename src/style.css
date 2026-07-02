@@ -2426,3 +2426,31 @@ body {
 }
 /* the Title context column steps back while a style is edited */
 .wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }
+
+/* ── tree: the style is a door, not a folder ───────────────────────────── */
+.wb-tree-stylestub {
+  display: block;
+  margin: 1px 4px 3px 20px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 0 4px 4px 0;
+  background: var(--wb-shared-bg);
+  box-shadow: inset 2px 0 0 var(--wb-shared);
+  color: var(--wb-shared);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-tree-stylestub:hover { filter: brightness(0.97); }
+.wb-tree-stylestub-missing { cursor: default; opacity: 0.75; }
+.wb-tree-badge-host {
+  font-size: 9px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--wb-canvas-bg);
+  color: var(--wb-text-2);
+  white-space: nowrap;
+}
+.wb-doc-header.wb-doc-style { color: var(--wb-shared); }
+.wb-doc-header.wb-doc-style.active { background: var(--wb-shared-bg); }

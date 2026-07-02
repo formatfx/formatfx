@@ -73,3 +73,12 @@ test('drilling in shows the § banner; Done and Esc both return to the view', as
   await page.keyboard.press('Escape');
   await expect(page.locator('.wb-style-banner')).toHaveCount(0);
 });
+
+test('the tree shows an opaque style stub under the host cell; opening it drills in', async ({ page }) => {
+  const stub = page.locator('.wb-tree-stylestub').first();
+  await expect(stub).toContainText('Status style');
+  await expect(stub).toContainText('open');
+  await stub.click();
+  await expect(page.locator('.wb-crumb-root')).toContainText('Column Styles');
+  await expect(page.locator('.wb-crumb-tail')).toHaveText('Status');
+});

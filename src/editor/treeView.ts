@@ -6,6 +6,7 @@
 import type { SPElement, NodePath } from '../core/types';
 import { state, samePath, CARD_SEGMENT } from './state';
 import { cfrFieldName } from '../core/refs';
+import { cfrBlastRadius } from './cfr';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { openMenu } from './menu';
@@ -28,12 +29,12 @@ function nodeHint(el: SPElement): string {
 }
 
 /**
- * Small colored chips for behaviors attached to the element. When `onCfr` is
- * given, the ⤷ "renders another column" chip becomes a link that jumps to —
- * and selects — that column's formatter in the bottom section of the pane.
- * Only the chip is clickable; the row's own select handler is untouched.
+ * Small colored chips for behaviors attached to the element. The old ⤷
+ * "renders another column" chip is retired — a host cell (one carrying a
+ * columnFormatterReference) is now marked by an opaque style stub node
+ * rendered in `renderNode`, not a chip here.
  */
-function nodeChips(el: SPElement, onCfr?: (name: string) => void): HTMLElement[] {
+function nodeChips(el: SPElement): HTMLElement[] {
   const chips: HTMLElement[] = [];
   const mk = (text: string, cls: string, title: string): HTMLElement => {
     const c = document.createElement('span');
@@ -46,18 +47,6 @@ function nodeChips(el: SPElement, onCfr?: (name: string) => void): HTMLElement[]
   if (el.forEach) mk('⟳', 'wb-chip-loop', `Repeats per item: ${el.forEach}`);
   if (el.customRowAction) mk('▶', 'wb-chip-action', `Click action: ${el.customRowAction.action || '(no-op)'}`);
   if (el.customCardProps) mk('▣', 'wb-chip-card', 'Opens a hover/click card (nested below)');
-  if (el.columnFormatterReference) {
-    const name = cfrFieldName(el.columnFormatterReference);
-    const chip = mk('⤷', 'wb-chip-cfr',
-      onCfr
-        ? `Renders ${el.columnFormatterReference} — click to open & select that column formatter below`
-        : `Renders another column's formatter: ${el.columnFormatterReference}`);
-    if (onCfr) {
-      chip.classList.add('wb-chip-link');
-      // stop the row's click from also firing — jump just for this one icon
-      chip.addEventListener('click', (e) => { e.stopPropagation(); onCfr(name); });
-    }
-  }
   if (el.inlineEditField) mk('✎', 'wb-chip-edit', `Inline edit: ${el.inlineEditField}`);
   return chips;
 }
@@ -108,8 +97,8 @@ export function mountTree(
     // ── bottom section: every column formatter ──
     const names = Object.keys(state.columnRefs);
     for (const name of names) {
-      const badge = referenced.has(name) ? '⤷ in view' : 'unused';
-      colsHost.appendChild(docHeader(name, `[$${name}]`, state.activeDocKey === name, badge));
+      const badge = referenced.has(name) ? 'used in view' : 'unused';
+      colsHost.appendChild(docHeader(name, `§ ${name} style`, state.activeDocKey === name, badge));
       if (state.activeDocKey === name) {
         colsHost.appendChild(renderNode(state.doc.root, []));
       }
@@ -140,6 +129,7 @@ export function mountTree(
   const docHeader = (key: string, label: string, active: boolean, badge: string): HTMLElement => {
     const h = document.createElement('div');
     h.className = 'wb-doc-header' + (active ? ' active' : '');
+    if (key !== 'main') h.classList.add('wb-doc-style');
     h.title = active
       ? 'Currently on the canvas'
       : 'Click to put this formatter on the canvas (your current edits are kept)';
@@ -196,7 +186,14 @@ export function mountTree(
     const typeName = document.createElement('span');
     typeName.className = 'wb-tree-elmtype' + (el._elmName ? ' wb-tree-elmtype-dim' : '');
     typeName.textContent = el.elmType ?? '?';
-    label.append(typeName, ...nodeChips(el, jumpToColumn));
+    label.append(typeName, ...nodeChips(el));
+    if (el.columnFormatterReference) {
+      const hostBadge = document.createElement('span');
+      hostBadge.className = 'wb-tree-badge-host';
+      hostBadge.textContent = 'host · this view';
+      hostBadge.title = 'This box is yours — its size and borders live in this view. Its content comes from the shared style below.';
+      label.appendChild(hostBadge);
+    }
     const hint = el._elmName ? '' : nodeHint(el);
     if (hint) {
       const h = document.createElement('span');
@@ -338,6 +335,33 @@ export function mountTree(
     });
 
     wrap.appendChild(row);
+
+    // "violet = shared": the style is a door, not a folder — one opaque,
+    // non-expandable stub; opening it drills in (same lesson as the canvas).
+    if (el.columnFormatterReference) {
+      const name = cfrFieldName(el.columnFormatterReference);
+      const registered = name in state.columnRefs;
+      const stub = document.createElement('div');
+      stub.className = 'wb-tree-stylestub' + (registered ? '' : ' wb-tree-stylestub-missing');
+      stub.style.paddingLeft = `${(path.length + 1) * 12 + 8}px`;
+      if (registered) {
+        const blast = cfrBlastRadius(name, state.mainRootForScope, state.columnRefs);
+        const places = Math.max(blast.count, 1);
+        stub.textContent = `§ ${name} style · used in ${places} place${places === 1 ? '' : 's'} → open`;
+        stub.title = `This element renders the shared ${name} style. Open it to edit — changes apply everywhere it's used.`;
+        stub.setAttribute('role', 'button');
+        stub.tabIndex = 0;
+        const open = (e: Event) => { e.stopPropagation(); jumpToColumn(name); };
+        stub.addEventListener('click', open);
+        stub.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); }
+        });
+      } else {
+        stub.textContent = `§ ${name} style — not in this workspace`;
+        stub.title = `The formatter references [$${name}], but that style isn't registered. Import the list export or register it in the Data tab.`;
+      }
+      wrap.appendChild(stub);
+    }
 
     if (el.customCardProps?.formatter) {
       const cardNote = document.createElement('div');
