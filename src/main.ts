@@ -25,6 +25,10 @@ import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
 import { openGuide } from './editor/guide';
 import { openAbout } from './editor/about';
+import { openStressTest } from './editor/stressTestUi';
+import { mountExplainPanel } from './editor/explainPanel';
+import { openShareDialog, openSharedWorkspaceFromHash, wireRestoreBackup } from './editor/shareUi';
+import { parseShareHash } from './core/share';
 import { themeToggleView } from './editor/themeToggle';
 import type { DocumentKind, FormatterDocument } from './core/types';
 
@@ -43,6 +47,7 @@ app.innerHTML = `
     </div>
     <div class="wb-topbar-controls">
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
+      <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere"><i class="ms-Icon ms-Icon--Share"></i> Share</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
       <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
@@ -52,6 +57,7 @@ app.innerHTML = `
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
           <button id="wb-save" title="Save project file (formatter + schema + mock data) — Ctrl+S"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
+          <button id="wb-restore-backup" hidden title="Restore the project that was backed up when you saved a shared workspace over it — the current workspace swaps into the backup slot, so nothing is lost"><i class="ms-Icon ms-Icon--Undo"></i> Restore backed-up work</button>
           <label class="wb-menu-row" title="Load a ready-made example formatter to start from"><i class="ms-Icon ms-Icon--Lightbulb"></i> Load example
             <select id="wb-example">
               <option value="">— pick one —</option>
@@ -65,6 +71,7 @@ app.innerHTML = `
           <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon" id="wb-theme-icon"></i> <span id="wb-theme-label"></span></button>
           <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
           <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
+          <button id="wb-stress" title="Will this break in production? Render this formatter against generated edge-case data — empty items, extreme dates, boundary numbers, crowded multi-values — without touching your workspace">🧪 Stress test</button>
           <button id="wb-guide" title="What lists really are (SQL under React), the column type system and its constraints, the formatting JSON layer, and the field-tested gotchas — written for developers">📖 Field guide</button>
           <button id="wb-about" title="Version, build revision and the last merged pull request"><i class="ms-Icon ms-Icon--Info"></i> About</button>
           <hr>
@@ -97,7 +104,10 @@ app.innerHTML = `
     <div class="wb-resizer" data-col="side" title="Drag to resize"></div>
     <aside class="wb-pane wb-pane-side" id="wb-pane-side">
       <div class="wb-side-head">
-        <span class="wb-pane-title">JSON</span>
+        <div class="wb-side-tabs" role="tablist" aria-label="Advanced pane view">
+          <button class="wb-side-tab active" id="wb-side-tab-json" role="tab" aria-selected="true" data-tab="wb-tab-json">JSON</button>
+          <button class="wb-side-tab" id="wb-side-tab-explain" role="tab" aria-selected="false" data-tab="wb-tab-explain" title="Read this formatter back in plain English — what shows, what turns which color when, what clicking does">Explain</button>
+        </div>
         <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
           <span>Type</span>
           <select id="wb-kind">
@@ -109,6 +119,7 @@ app.innerHTML = `
         </div>
       </div>
       <div id="wb-tab-json" class="wb-tab active"></div>
+      <div id="wb-tab-explain" class="wb-tab"></div>
     </aside>
   </main>
   <div id="wb-toast" class="wb-toast" hidden></div>
@@ -247,8 +258,21 @@ menuPanel.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
 });
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
+document.getElementById('wb-stress')!.addEventListener('click', () => openStressTest(toast));
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());
 document.getElementById('wb-about')!.addEventListener('click', () => openAbout());
+
+// Advanced pane tabs: JSON (default, what every e2e flow drives) ⇄ Explain
+for (const tabBtn of document.querySelectorAll<HTMLButtonElement>('.wb-side-tab')) {
+  tabBtn.addEventListener('click', () => {
+    for (const b of document.querySelectorAll<HTMLButtonElement>('.wb-side-tab')) {
+      const active = b === tabBtn;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', String(active));
+      document.getElementById(b.dataset.tab!)?.classList.toggle('active', active);
+    }
+  });
+}
 
 // toast
 let toastTimer = 0;
@@ -417,8 +441,13 @@ mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
 const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
 mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElementById('wb-titlecol-label')! });
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
+mountExplainPanel(document.getElementById('wb-tab-explain')!);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
 mountBreadcrumb(document.getElementById('wb-breadcrumb')!, toast);
+
+// ── share: mint links, restore backups, open incoming links safely ──
+document.getElementById('wb-share')!.addEventListener('click', () => openShareDialog({ toast }));
+wireRestoreBackup({ toast });
 
 // extract-push: a snapshot sent from the companion extension lands through the
 // same guarded import as a paste.
@@ -492,4 +521,9 @@ refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues()));
 refreshStudioDisabled();
 kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
 
-if (restored) toast('Restored your autosaved project');
+// A share link in the fragment loads AFTER the panels mount (loadProject
+// re-renders them) and with autosave paused, so the recipient's own work is
+// never clobbered — see editor/shareUi.ts for the keep/discard flow.
+const sharedPending = parseShareHash(location.hash) != null;
+if (sharedPending) void openSharedWorkspaceFromHash({ toast });
+else if (restored) toast('Restored your autosaved project');
