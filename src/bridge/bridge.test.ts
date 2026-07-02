@@ -11,6 +11,7 @@ import {
 import {
   isPageToExt, isExtToPage, pingMessage, stageApplyMessage, ackMessage,
   readyMessage, snapshotMessage, validateStagedPayload, EXT_CHANNEL_VERSION,
+  requestFormatterMessage, formatterMessage,
 } from './extChannel';
 import { importSchema } from '../core/schemaImport';
 import type { PersonValue, LookupValue } from '../core/types';
@@ -102,6 +103,11 @@ function stubEnvironment(opts: {
     calls.push({ url, init });
     const body = opts.routes(url, init);
     if (typeof body === 'number') return new Response('', { status: body });
+    // a non-200 WITH a body (e.g. SharePoint's field-naming 400)
+    if (body && typeof body === 'object' && '__status' in (body as Record<string, unknown>)) {
+      const b = body as { __status: number; body?: string };
+      return new Response(b.body ?? '', { status: b.__status });
+    }
     return new Response(JSON.stringify(body), { status: 200 });
   });
   Object.defineProperty(navigator, 'clipboard', {
@@ -401,6 +407,114 @@ describe('spClient.captureSnapshot (extension runtime)', () => {
     stubEnvironment({ routes: extractRoutes, pageCtx: null });
     await expect(captureSnapshot()).rejects.toThrow(/SharePoint page/);
   });
+
+  // Regression: a real list's /fields includes system columns (Computed,
+  // Attachments, and pseudo-lookups with no LookupList) that /items cannot
+  // $select or $expand. OData is all-or-nothing — ONE such field 400s the
+  // entire items request, and the old best-effort catch turned that into
+  // rows: [] (so the app showed synthetic sample data instead of real rows).
+  describe('un-queryable system fields must not poison the items query', () => {
+    const POISON = ['ContentType', 'Attachments', 'ItemChildCount'];
+    const REAL_LIST_FIELDS = {
+      value: [
+        { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text', ReadOnlyField: false, Hidden: false },
+        { InternalName: 'Status', Title: 'Status', TypeAsString: 'Choice', Choices: ['New', 'Done'], ReadOnlyField: false, Hidden: false },
+        // a genuine person column — has a GUID LookupList, is expandable
+        { InternalName: 'Owner', Title: 'Owner', TypeAsString: 'User', LookupList: '{328dd316-0d78-477c-a20e-c3439cbd6554}', ReadOnlyField: false, Hidden: false },
+        // a genuine lookup — GUID LookupList, expandable
+        { InternalName: 'Project', Title: 'Project', TypeAsString: 'Lookup', LookupList: '{99999999-aaaa-bbbb-cccc-dddddddddddd}', LookupField: 'Title', ReadOnlyField: false, Hidden: false },
+        // ── poison: present in /fields, fatal in /items ──
+        { InternalName: 'ContentType', Title: 'Content Type', TypeAsString: 'Computed', ReadOnlyField: true, Hidden: false },
+        { InternalName: 'Attachments', Title: 'Attachments', TypeAsString: 'Attachments', ReadOnlyField: false, Hidden: false },
+        // pseudo-lookup: TypeAsString 'Lookup' but NO LookupList → not expandable
+        { InternalName: 'ItemChildCount', Title: 'Item Child Count', TypeAsString: 'Lookup', LookupField: 'ItemChildCount', ReadOnlyField: true, Hidden: false },
+      ],
+    };
+
+    it('excludes them, so the items GET succeeds and real rows are captured', async () => {
+      stubEnvironment({
+        routes: (url) => {
+          if (url.includes('/fields?')) return REAL_LIST_FIELDS;
+          if (url.includes('/views?')) return { value: [] };
+          if (url.includes('/items?')) {
+            // mimic SharePoint: any poison field named in $select/$expand 400s the lot
+            for (const p of POISON) if (new RegExp(`[=,/]${p}\\b`).test(url)) return 400;
+            return { value: [{ Title: 'Real task', Status: 'Done', Owner: { Id: 1, Title: 'Sam', EMail: 's@c.com' }, Project: { Id: 3, Title: 'Apollo' } }] };
+          }
+          throw new Error(`unexpected fetch: ${url}`);
+        },
+      });
+      const snap = await captureSnapshot();
+      // the bug: rows came back [] because the 400 was swallowed
+      expect(snap.rows).toHaveLength(1);
+      expect(snap.rows[0].Title).toBe('Real task');
+      // genuine lookups still ride along expanded
+      expect(snap.rows[0].Owner).toMatchObject({ Title: 'Sam' });
+      // the system fields are still captured as schema fields (just not queried for data)
+      expect(snap.fields.map((f) => f.internalName)).toContain('ContentType');
+      // a clean capture carries no rowsError
+      expect(snap.rowsError).toBeUndefined();
+    });
+
+    it('records WHY rows are empty so a failed fetch never poses as an empty list', async () => {
+      stubEnvironment({
+        routes: (url) => {
+          if (url.includes('/fields?')) return FIELDS_RES;
+          if (url.includes('/views?')) return VIEWS_RES;
+          if (url.includes('/items?')) return 403; // e.g. no item-read despite list visibility
+          throw new Error(`unexpected fetch: ${url}`);
+        },
+      });
+      const snap = await captureSnapshot();
+      expect(snap.rows).toEqual([]);
+      // schema + formatters still captured — capture is still useful
+      expect(snap.fields.length).toBeGreaterThan(0);
+      // ...but the reason is now explicit, not swallowed
+      expect(snap.rowsError).toBeTruthy();
+      expect(snap.rowsError).toMatch(/Manage Lists|Edit/);
+    });
+
+    it('prunes a system column /items rejects by name (e.g. _ColorTag) and still captures rows', async () => {
+      // _ColorTag is TypeAsString 'Text' yet /items can't $select it — a type
+      // deny-list can't catch it. SharePoint's 400 names the field; we drop it
+      // and retry. Confirmed live: _ColorTag and _UIVersionString both prune.
+      const FIELDS = {
+        value: [
+          { InternalName: 'Title', Title: 'Title', TypeAsString: 'Text', ReadOnlyField: false, Hidden: false },
+          { InternalName: '_ColorTag', Title: 'Color Tag', TypeAsString: 'Text', ReadOnlyField: true, Hidden: false },
+          { InternalName: 'Status', Title: 'Status', TypeAsString: 'Choice', Choices: ['New', 'Done'], ReadOnlyField: false, Hidden: false },
+        ],
+      };
+      const fieldErr = (name: string) => ({ __status: 400, body: JSON.stringify({ 'odata.error': { message: { value: `The field or property '${name}' does not exist.` } } }) });
+      stubEnvironment({
+        routes: (url) => {
+          if (url.includes('/fields?')) return FIELDS;
+          if (url.includes('/views?')) return { value: [] };
+          if (url.includes('/items?')) {
+            if (/[=,]_ColorTag\b/.test(url)) return fieldErr('_ColorTag'); // poison until pruned
+            return { value: [{ Title: 'Real task', Status: 'Done' }] };
+          }
+          throw new Error(`unexpected fetch: ${url}`);
+        },
+      });
+      const snap = await captureSnapshot();
+      expect(snap.rows).toHaveLength(1);
+      expect(snap.rows[0].Title).toBe('Real task');
+      // recovered cleanly — no error surfaced
+      expect(snap.rowsError).toBeUndefined();
+      // _ColorTag is still in the schema, just not queried for data
+      expect(snap.fields.map((f) => f.internalName)).toContain('_ColorTag');
+    });
+
+    it('opting out of data leaves no rows and no error', async () => {
+      stubEnvironment({ routes: extractRoutes });
+      const snap = await captureSnapshot({ includeData: false });
+      expect(snap.rows).toEqual([]);
+      expect(snap.rowsError).toBeUndefined();
+      // never even asked /items
+      expect(calls.some((c) => c.url.includes('/items?'))).toBe(false);
+    });
+  });
 });
 
 describe('spClient.applyFormatters (extension runtime)', () => {
@@ -529,6 +643,22 @@ describe('extChannel (page ↔ extension protocol)', () => {
     expect(m.kind).toBe('snapshot');
     expect(m.text).toContain('list-snapshot');
   });
+
+  it('requestFormatter (ext→page) and formatter (page→ext) round-trip with their guards', () => {
+    const req = requestFormatterMessage('g1');
+    expect(isExtToPage(req)).toBe(true);   // the extension asks the page
+    expect(isPageToExt(req)).toBe(false);
+
+    const payload = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    const ok = formatterMessage('g1', { ok: true, payload });
+    expect(isPageToExt(ok)).toBe(true);    // the page replies with the formatter
+    expect(isExtToPage(ok)).toBe(false);
+    expect(ok.payload?.targets[0].name).toBe('Status');
+
+    const err = formatterMessage('g1', { ok: false, error: 'lint errors' });
+    expect(isPageToExt(err)).toBe(true);
+    expect(err.error).toBe('lint errors');
+  });
 });
 
 describe('extract-push selection (spClient)', () => {
@@ -551,6 +681,13 @@ describe('extract-push selection (spClient)', () => {
     expect(out.fields.map((f) => f.internalName)).toEqual(['Status']);
     expect(out.rows).toEqual([{ Status: 'Done' }, { Status: 'New' }]);
     expect(out.views).toEqual([]);
+  });
+
+  it('dropFormatterFor strips a column\'s formatter but keeps the column and its data', () => {
+    const out = selectFromSnapshot(SNAP, { fieldNames: ['Title', 'Status'], includeCurrentView: false, dropFormatterFor: ['Status'] });
+    expect(out.fields.map((f) => f.internalName)).toEqual(['Title', 'Status']); // column still present
+    expect(out.fields.find((f) => f.internalName === 'Status')!.customFormatter).toBeUndefined(); // formatter gone
+    expect(out.rows).toEqual([{ Title: 'a', Status: 'Done' }, { Title: 'b', Status: 'New' }]); // data intact
   });
 
   it('includes just the current view, flagged isDefault so it auto-loads', () => {
