@@ -257,7 +257,7 @@ function toast(message: string): void {
   el.textContent = message;
   el.hidden = false;
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { el.hidden = true; }, 2600);
+  toastTimer = window.setTimeout(() => { el.hidden = true; }, Math.max(2600, (message.match(/\S+/g) ?? []).length * 350));
 }
 
 document.title = `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`;

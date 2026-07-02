@@ -385,8 +385,9 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     const ok = document.createElement('button');
     ok.className = 'wb-fc-ok';
     ok.textContent = 'Apply';
-    ok.title = 'Apply everything staged here as one undoable change';
-    ok.disabled = Object.keys(patch).length === 0;
+    const hasChanges = Object.keys(patch).length > 0;
+    ok.title = hasChanges ? 'Apply everything staged here as one undoable change' : 'No changes to apply yet';
+    ok.disabled = !hasChanges;
     ok.addEventListener('click', () => {
       state.mutateDocument(() => {
         node.style = node.style ?? {};
