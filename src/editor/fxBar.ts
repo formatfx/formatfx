@@ -108,19 +108,24 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     badge.title = 'Write an Excel-style formula for the selected property.';
 
     // ── slot picker (left-edge property dropdown) ──
-    // Slots that already carry a value on this element get a " ·" suffix in
-    // their label. This works in both the closed and open states of the select,
-    // and across all browsers (font-weight on <option> is invisible when closed
-    // and unsupported in Safari). The bold is kept as an additional signal when
-    // the dropdown is open.
+    // Slots with a value show a suffix: "ƒ" for formula-driven (a '=...' string
+    // or an AST-object); "·" for static literals (plain strings, numbers,
+    // booleans). Both also get heavy bold. This works in the closed select and
+    // across browsers (font-weight on <option> is invisible when closed and
+    // unsupported in Safari; the bold is an additional open-state signal only).
     const picker = document.createElement('select');
     picker.className = 'wb-fx-slot';
-    picker.title = 'Which property this formula paints. · = already has a value on this cell. The list changes with what you have selected.';
+    picker.title = 'Which property this formula paints. ƒ = formula-driven · = has a static value. The list changes with what you have selected.';
     for (const s of slots) {
       const o = document.createElement('option');
       o.value = s.id;
-      const hasValue = readSlot(node, s) !== undefined;
-      o.textContent = hasValue ? `${s.label} ·` : s.label;
+      const sv = readSlot(node, s);
+      const hasValue = sv !== undefined;
+      const isFormula = hasValue && (
+        (typeof sv === 'string' && sv.startsWith('=')) ||
+        (typeof sv === 'object' && sv !== null)
+      );
+      o.textContent = isFormula ? `${s.label} ƒ` : hasValue ? `${s.label} ·` : s.label;
       if (hasValue) o.style.fontWeight = '800';
       if (s.id === slot.id) o.selected = true;
       picker.appendChild(o);
