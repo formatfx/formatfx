@@ -350,6 +350,26 @@ Key structural invariants:
   everything before it is modal-local config (click-safety by
   construction). `composeRowStyle`, the kebab engine, and the dock pref
   (`wb-template-inspector-dock`) carried over unchanged.
+  **Round trip (owner request, same date — the builder is NOT a one-way
+  generator)**: `configFromView` parses an applied row view back into the
+  builder config, so reopening the builder on a row it produced lands in
+  the ZONE EDITOR with zones/items/mappings/styles intact (and re-Apply
+  skips the overwrite confirm — it's the edit flow). Correctness is the
+  **rebuild-verify gate**: the parse is best-effort, then rebuilt through
+  `buildTemplateView` and deep-compared against the original tree +
+  wrapper class; anything hand-edited beyond the builder vocabulary fails
+  the gate and falls back to the gallery with an honest note
+  (`wb-template-foreign-note`) — a lossy reopen-then-Apply is structurally
+  impossible. Zebra recognition is pinned to the exported
+  `ZEBRA_ROW_CLASS`; a baked leftStripe color verifies against the color
+  the ORIGINAL carries so theme flips between Apply and reopen still
+  round-trip. Same-date UX pass: the zone TREE rail (`wb-ztree-*` —
+  NAMESPACED; `wb-tree-*` belongs to the studio structure tree, a real
+  collision found by e2e) is the deterministic selection surface with
+  "＋ Zone" (empty zone, no drop required — the jarring edit/preview
+  end-gap is gone); zone tags lead with the zone NAME, and hovering an
+  inspector section (Width/Items/Align) stamps `data-peek` on the modal so
+  every tag peeks that setting's value — pure CSS switch, no rerender.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -644,7 +664,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 701 vitest unit tests across 42 files (engine semantics incl.
+- `npm test` — 726 vitest unit tests across 42 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -656,7 +676,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 124 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 125 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

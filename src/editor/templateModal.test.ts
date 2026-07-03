@@ -79,12 +79,20 @@ describe('row view builder — direct manipulation on the preview', () => {
     expect((items[items.length - 1] as HTMLElement).dataset.fieldName).toBe('Status');
   });
 
-  it('dropping a chip on the end-gap starts a NEW zone', () => {
+  it('＋ Zone adds an EMPTY zone (no drop required) and selects it for naming', () => {
     enterEditor();
     const before = document.querySelectorAll('.wb-edit-zone').length;
-    (document.querySelector('.wb-edit-endgap') as HTMLElement).dispatchEvent(fieldDrop('Due'));
+    (document.querySelector('.wb-template-addzone') as HTMLButtonElement).click();
     expect(document.querySelectorAll('.wb-edit-zone').length).toBe(before + 1);
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Zone 3 zone');
+    // the empty zone is a live drop target on the canvas
+    (document.querySelector(`[data-edit-zone="${before}"]`) as HTMLElement).dispatchEvent(fieldDrop('Due'));
     expect((document.querySelector(`[data-edit-item="${before}:0"]`) as HTMLElement).dataset.fieldName).toBe('Due');
+  });
+
+  it('the end-gap is gone — Edit and Preview render the same row shape', () => {
+    enterEditor();
+    expect(document.querySelector('.wb-edit-endgap')).toBeNull();
   });
 
   it('selecting a zone shows its behavior controls (width, wrap-when-tight, stacked)', () => {
@@ -121,6 +129,43 @@ describe('row view builder — direct manipulation on the preview', () => {
     expect(tag()).toContain('Fill 3×');   // wide → widest
     (document.querySelector('.wb-edit-divider') as HTMLElement).click();
     expect(tag()).toContain('Hug');       // widest → hug
+  });
+});
+
+describe('row view builder — the zone tree + name-first tags', () => {
+  it('the tree lists every zone with its items nested, and selects deterministically', () => {
+    enterEditor();
+    const labels = [...document.querySelectorAll('.wb-ztree-row .wb-ztree-label')].map((n) => n.textContent);
+    expect(labels).toEqual(['Lead', 'Title', 'Details', 'Status', 'Due']);
+    (document.querySelector('[data-tree-zone="1"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Details zone');
+    (document.querySelector('[data-tree-item="0:0"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Title');
+  });
+
+  it('zone tags lead with the NAME; hovering an inspector section peeks that setting', () => {
+    enterEditor();
+    const tag = document.querySelector('.wb-edit-zone-tag') as HTMLElement;
+    expect(tag.querySelector('.wb-zt-name')?.textContent).toBe('Lead');
+    expect(tag.querySelector('.wb-zt-size')?.textContent).toBe('Fill 2×'); // rendered, CSS-hidden until peeked
+    const modal = document.querySelector('.wb-template-modal') as HTMLElement;
+    expect(modal.dataset.peek).toBe('');
+    (document.querySelector('[data-tree-zone="0"]') as HTMLElement).click(); // zone inspector open
+    const widthSec = document.querySelector('[data-peek-section="size"]') as HTMLElement;
+    widthSec.dispatchEvent(new Event('mouseenter'));
+    expect(modal.dataset.peek).toBe('size');
+    widthSec.dispatchEvent(new Event('mouseleave'));
+    expect(modal.dataset.peek).toBe('');
+  });
+
+  it('the tree persists in Preview mode (no layout flip-shift) and a click returns to Edit', () => {
+    enterEditor();
+    (document.querySelector('[data-mode="preview"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-tree')).toBeTruthy();
+    expect((document.querySelector('.wb-template-addzone') as HTMLButtonElement).disabled).toBe(true);
+    (document.querySelector('[data-tree-zone="0"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-mode')).toBe('edit');
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Lead zone');
   });
 });
 
@@ -190,6 +235,72 @@ describe('row view builder — modes, squeeze & apply', () => {
     const apply = document.querySelector('.wb-template-apply') as HTMLButtonElement;
     expect(apply.disabled).toBe(true);
     expect(apply.title).toContain('at least one');
+  });
+});
+
+describe('row view builder — reopen as zones (the round trip)', () => {
+  const reopenAfterApply = (): void => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {});
+  };
+
+  it('reopening after Apply lands in the editor with the zones intact — not the gallery', () => {
+    reopenAfterApply();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    const tags = [...document.querySelectorAll('.wb-edit-zone-tag')].map((t) => t.textContent);
+    expect(tags.some((t) => t?.startsWith('Lead'))).toBe(true);
+    expect(tags.some((t) => t?.startsWith('Details'))).toBe(true);
+    expect((document.querySelector('[data-edit-item="0:0"]') as HTMLElement).dataset.fieldName).toBe('Title');
+  });
+
+  it('re-Apply on a reopened layout never asks the overwrite confirm (it IS the edit flow)', () => {
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    reopenAfterApply();
+    // tweak a zone, then re-apply
+    (document.querySelector('[data-edit-zone="1"]') as HTMLElement).click();
+    (document.querySelector('[data-zoneflow="stack"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(state.doc.kind).toBe('row');
+    vi.unstubAllGlobals();
+  });
+
+  it('a reopened tweak round-trips through the doc (flow change survives a second reopen)', () => {
+    reopenAfterApply();
+    (document.querySelector('[data-edit-zone="1"]') as HTMLElement).click();
+    (document.querySelector('[data-zoneflow="stack"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {});
+    (document.querySelector('[data-edit-zone="1"]') as HTMLElement).click();
+    expect(document.querySelector('[data-zoneflow="stack"]')?.classList.contains('wb-seg-on')).toBe(true);
+  });
+
+  it('picking a wireframe over a reopened layout confirms first (real work is at stake)', () => {
+    const confirmSpy = vi.fn(() => false); // maker says no
+    vi.stubGlobal('confirm', confirmSpy);
+    reopenAfterApply();
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // refused → still on the gallery, reopened config untouched
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    vi.unstubAllGlobals();
+  });
+
+  it('a hand-built row view falls back to the gallery with an honest note', () => {
+    state.loadDocument({ kind: 'row', root: { elmType: 'div', style: { 'display': 'flex' },
+      children: [{ elmType: 'div', txtContent: '=[$Title]+[$Status]' }] } });
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    expect(document.querySelector('.wb-template-foreign-note')?.textContent).toContain('outside this builder');
+  });
+
+  it('a grid landing still opens on the gallery with no foreign-row note', () => {
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    expect(document.querySelector('.wb-template-foreign-note')).toBeNull();
   });
 });
 
