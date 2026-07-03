@@ -24,6 +24,15 @@ describe('elmIconName', () => {
     expect(elmIconName('')).toBe(DEFAULT_ELM_ICON);
     expect(DEFAULT_ELM_ICON).toBe('CubeShape');
   });
+
+  it('never returns an inherited prototype value for an untrusted elmType', () => {
+    // a bare ELM_ICONS['toString'] would be Object.prototype.toString (a fn) and
+    // poison the className — the own-key guard must return the plain default
+    for (const key of ['toString', 'constructor', 'hasOwnProperty', '__proto__', 'valueOf']) {
+      expect(elmIconName(key)).toBe(DEFAULT_ELM_ICON);
+      expect(typeof elmIconName(key)).toBe('string');
+    }
+  });
 });
 
 describe('elementRefChip', () => {
@@ -52,6 +61,14 @@ describe('elementRefChip', () => {
     const chip = elementRefChip({});
     expect(chip.querySelector('i')!.className).toContain(`ms-Icon--${DEFAULT_ELM_ICON}`);
     expect(chip.querySelector('.wb-elmref-name')!.textContent).toBe('<element>');
+  });
+
+  it('treats an empty-string elmType as missing, never rendering "<>"', () => {
+    const named = elementRefChip({ _elmName: 'thing', elmType: '' });
+    expect(named.querySelector('.wb-elmref-type')!.textContent).toBe('element');
+    expect(named.title).toContain('<element>');
+    const unnamed = elementRefChip({ elmType: '' });
+    expect(unnamed.querySelector('.wb-elmref-name')!.textContent).toBe('<element>');
   });
 
   it('never lets an imported _elmName become live markup (XSS)', () => {

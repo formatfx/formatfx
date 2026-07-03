@@ -27,9 +27,14 @@ export const ELM_ICONS: Record<string, string> = {
 /** The tree's fallback glyph for anything unmapped (a plain container box). */
 export const DEFAULT_ELM_ICON = 'CubeShape';
 
-/** The ms-Icon glyph name for an elmType, defaulting like the tree does. */
+/**
+ * The ms-Icon glyph name for an elmType, defaulting like the tree does.
+ * elmType is untrusted (imported JSON), so we only honour OWN keys — a plain
+ * bracket lookup on "toString"/"constructor" would return a prototype value and
+ * poison the generated className.
+ */
 export const elmIconName = (elmType?: string): string =>
-  (elmType && ELM_ICONS[elmType]) || DEFAULT_ELM_ICON;
+  elmType && Object.hasOwn(ELM_ICONS, elmType) ? ELM_ICONS[elmType] : DEFAULT_ELM_ICON;
 
 type ElmLike = { _elmName?: string; elmType?: string };
 
@@ -48,7 +53,9 @@ export function elementRefChip(el: ElmLike): HTMLElement {
   icon.setAttribute('aria-hidden', 'true');
   chip.appendChild(icon);
 
-  const type = el.elmType ?? 'element';
+  // `||` (not `??`) so an empty-string elmType from malformed JSON also falls
+  // back — matching elmIconName()'s empty-string handling, no "<>" badge.
+  const type = el.elmType || 'element';
   const name = document.createElement('span');
   name.className = 'wb-elmref-name';
 
