@@ -29,8 +29,8 @@ function nodeHint(el: SPElement): string {
 
 /**
  * Small colored chips for behaviors attached to the element. A host cell (one
- * carrying a columnFormatterReference) is marked by the opaque reference row
- * rendered in `renderNode`, not a chip here.
+ * carrying a columnFormatterReference) is marked by the inline § mark and the
+ * right-aligned "reference" tag on its own row, not a chip here.
  */
 function nodeChips(el: SPElement): HTMLElement[] {
   const chips: HTMLElement[] = [];
@@ -88,6 +88,15 @@ export function mountTree(
     row.tabIndex = 0;
     row.dataset.path = path.join('.');
 
+    // "violet = shared" collapsed into the host row: a CFR host renders as ONE
+    // normal tree row (every reference has an inherent wrapper div, so a child
+    // row was noise) — the § ink + a right-aligned "reference" tag carry the
+    // lesson, and the tag is the explicit door into the shared formatter.
+    const cfrName = el.columnFormatterReference ? cfrFieldName(el.columnFormatterReference) : null;
+    const cfrDisplay = cfrName === null
+      ? null
+      : state.fields.find((f) => f.name === cfrName)?.displayName ?? cfrName;
+
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
     label.style.paddingLeft = `${path.length * 12}px`;
@@ -95,18 +104,27 @@ export function mountTree(
     typeIcon.className = `ms-Icon ms-Icon--${elmIconName(el.elmType)} wb-tree-elmicon`;
     label.appendChild(typeIcon);
     // _elmName (the throwaway-name convention SP ignores) is the primary
-    // label when present; the elmType steps back to a dim suffix
-    if (el._elmName) {
+    // label when present; a nameless CFR host borrows the referenced column's
+    // display name — either way the elmType steps back to a dim suffix
+    const primaryName = el._elmName ?? cfrDisplay;
+    if (primaryName) {
       const nm = document.createElement('span');
       nm.className = 'wb-tree-name';
-      nm.textContent = el._elmName;
+      nm.textContent = primaryName;
       label.appendChild(nm);
     }
+    if (cfrName !== null) {
+      const mark = document.createElement('span');
+      mark.className = 'wb-style-mark';
+      mark.textContent = '§';
+      mark.setAttribute('aria-hidden', 'true');
+      label.appendChild(mark);
+    }
     const typeName = document.createElement('span');
-    typeName.className = 'wb-tree-elmtype' + (el._elmName ? ' wb-tree-elmtype-dim' : '');
+    typeName.className = 'wb-tree-elmtype' + (primaryName ? ' wb-tree-elmtype-dim' : '');
     typeName.textContent = el.elmType ?? '?';
     label.append(typeName, ...nodeChips(el));
-    const hint = el._elmName ? '' : nodeHint(el);
+    const hint = primaryName ? '' : nodeHint(el);
     if (hint) {
       const h = document.createElement('span');
       h.className = 'wb-tree-hint';
@@ -185,6 +203,33 @@ export function mountTree(
         }
       });
     });
+    // the explicit drill-in affordance: a small "reference" tag-button that
+    // opens the shared column formatter (row click stays host-select). An
+    // unregistered reference keeps the teaching tooltip but opens nothing.
+    if (cfrName !== null) {
+      // own keys only — a column named 'toString' etc. must not read as registered
+      const registered = Object.hasOwn(state.columnRefs, cfrName);
+      if (registered) {
+        const blast = cfrBlastRadius(cfrName, state.mainRootForScope, state.columnRefs);
+        const places = Math.max(blast.count, 1);
+        const open = document.createElement('button');
+        open.type = 'button'; // never a submit button, wherever the tree mounts
+        open.className = 'wb-tree-cfr-open';
+        open.textContent = 'reference';
+        open.title = `This element renders the shared ${cfrDisplay} column formatter (used in ${places} place${places === 1 ? '' : 's'}). Open it to edit — changes apply everywhere it's used.`;
+        open.setAttribute('aria-label', `Open the ${cfrDisplay} column formatter — changes apply everywhere it's used`);
+        open.addEventListener('click', (e) => { e.stopPropagation(); jumpToColumn(cfrName); });
+        // a double-click on the button must not trip the row's rename
+        open.addEventListener('dblclick', (e) => e.stopPropagation());
+        row.appendChild(open);
+      } else {
+        const tag = document.createElement('span');
+        tag.className = 'wb-tree-cfr-open wb-tree-cfr-missing';
+        tag.textContent = 'reference';
+        tag.title = `The formatter references [$${cfrName}], but that column formatter isn't registered. Import the list export or register it in the Data tab.`;
+        row.appendChild(tag);
+      }
+    }
     row.appendChild(eye);
     row.appendChild(actions);
 
@@ -247,45 +292,6 @@ export function mountTree(
     });
 
     wrap.appendChild(row);
-
-    // "violet = shared": the reference is a door, not a folder — one opaque,
-    // non-expandable row naming the referenced column; opening it drills in
-    // (same lesson as the canvas). Kept to the column name + the § mark so it
-    // reads like the COLUMN FORMATTERS tab it links to.
-    if (el.columnFormatterReference) {
-      const name = cfrFieldName(el.columnFormatterReference);
-      const registered = name in state.columnRefs;
-      const display = state.fields.find((f) => f.name === name)?.displayName ?? name;
-      const stub = document.createElement('div');
-      stub.className = 'wb-tree-stylestub' + (registered ? '' : ' wb-tree-stylestub-missing');
-      stub.style.paddingLeft = `${(path.length + 1) * 12 + 8}px`;
-      const mark = document.createElement('span');
-      mark.className = 'wb-style-mark';
-      mark.textContent = '§';
-      mark.setAttribute('aria-hidden', 'true');
-      const nm = document.createElement('span');
-      nm.className = 'wb-stub-name';
-      nm.textContent = display;
-      const tag = document.createElement('span');
-      tag.className = 'wb-stub-tag';
-      tag.textContent = 'column formatter reference';
-      stub.append(mark, nm, tag);
-      if (registered) {
-        const blast = cfrBlastRadius(name, state.mainRootForScope, state.columnRefs);
-        const places = Math.max(blast.count, 1);
-        stub.title = `This element renders the shared ${display} column formatter (used in ${places} place${places === 1 ? '' : 's'}). Open it to edit — changes apply everywhere it's used.`;
-        stub.setAttribute('role', 'button');
-        stub.tabIndex = 0;
-        const open = (e: Event) => { e.stopPropagation(); jumpToColumn(name); };
-        stub.addEventListener('click', open);
-        stub.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); }
-        });
-      } else {
-        stub.title = `The formatter references [$${name}], but that column formatter isn't registered. Import the list export or register it in the Data tab.`;
-      }
-      wrap.appendChild(stub);
-    }
 
     if (el.customCardProps?.formatter) {
       const cardNote = document.createElement('div');

@@ -323,6 +323,81 @@ describe('pushSubtypeUpdate: batched re-bake, one undo reverts all columns (US-7
   });
 });
 
+describe('batchProjectUpdate: the component editor\'s one-step apply', () => {
+  it('doc replacement + registry re-bake + tag restamp revert on ONE undo', () => {
+    const s = new EditorState();
+    s.doc.root.children = [{ elmType: 'div', txtContent: 'OLD-VIEW', _component: { id: 'c-x', map: {} } }];
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD-COL' };
+    const due = s.fields.find((f) => f.name === 'DueDate')!;
+    due.subtype = 'c-x';
+    const before = JSON.stringify(s.doc);
+
+    s.batchProjectUpdate(['DueDate'], () => {
+      s.doc.root.children![0] = { elmType: 'div', txtContent: 'NEW-VIEW', _component: { id: 'c-x', map: {} } };
+      s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'NEW-COL' };
+      due.subtype = 'c-x-variant';
+    });
+    expect(s.doc.root.children![0].txtContent).toBe('NEW-VIEW');
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW-COL');
+    expect(due.subtype).toBe('c-x-variant');
+
+    s.undo(); // ONE Ctrl+Z reverts ALL THREE together
+    expect(JSON.stringify(s.doc)).toBe(before);
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD-COL');
+    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x');
+
+    s.redo(); // and redo re-applies the whole batch
+    expect(s.doc.root.children![0].txtContent).toBe('NEW-VIEW');
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW-COL');
+    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x-variant');
+  });
+
+  it('leaves a drilled column first, so the MAIN doc is live inside the snapshot', () => {
+    const s = new EditorState();
+    s.openColumnRef('Status');
+    expect(s.activeDocKey).toBe('Status');
+    s.batchProjectUpdate([], () => {
+      s.doc.root.children![0]._elmName = 'Renamed by the apply';
+    });
+    expect(s.activeDocKey).toBe('main'); // navigation happened before the mutate
+    expect(s.doc.root.children![0]._elmName).toBe('Renamed by the apply');
+    s.undo();
+    expect(s.doc.root.children![0]._elmName).not.toBe('Renamed by the apply');
+  });
+
+  // restoreSnap consults columnRefVersions for its registry restore/merge
+  // decisions, so these tests read the private counters directly
+  const versions = (s: EditorState): Record<string, number> =>
+    (s as unknown as { columnRefVersions: Record<string, number> }).columnRefVersions;
+
+  it('a no-op fn leaves ZERO trace — no undo step AND no leaked version bumps', () => {
+    const s = new EditorState();
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    expect(s.canUndo).toBe(false);
+    s.batchProjectUpdate(['DueDate'], () => { /* nothing */ });
+    expect(s.canUndo).toBe(false);
+    // the bump rolled back: a leaked version would silently change how a
+    // LATER undo of an older snapshot merges this column's registry entry
+    expect(versions(s)['DueDate']).toBeUndefined();
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+  });
+
+  it('a REAL apply keeps its bump INSIDE the undo snapshot, so undo restores the re-bake', () => {
+    const s = new EditorState();
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    s.batchProjectUpdate(['DueDate'], () => {
+      s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'NEW' };
+    });
+    expect(versions(s)['DueDate']).toBe(1); // the bump stays on a real apply
+    s.undo();
+    // currVer (1) <= snapVer (1): the snapshot's registry wins the merge —
+    // bumping AFTER the snapshot would make undo skip this restore
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+    s.redo();
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
+  });
+});
+
 describe('view name (project metadata)', () => {
   it('defaults to "View 1"', () => {
     expect(new EditorState().viewName).toBe('View 1');

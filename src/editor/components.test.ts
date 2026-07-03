@@ -9,17 +9,21 @@
 import { describe, it, expect } from 'vitest';
 import {
   remapFieldRefs, fieldRefsIn, containsCfr, deriveSlots, widenType,
-  bestGuessMapping, mappingComplete, bindComponent, isSingleColumnComponent,
+  bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
+  componentInsertTarget, isSingleColumnComponent,
   loadComponents, serializeComponents, addComponent, removeComponent, componentId,
   componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
+  uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
   type ComponentDef,
 } from './components';
+import { scanComponentUsages, mainUsageLabel } from './componentUsage';
+import { stylePlainValue, styleIsFormula } from './componentEditor';
 import { importJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
 import { defaultFields, defaultRows, state } from './state';
-import type { SPElement } from '../core/types';
+import type { SPElement, SPExpr, MockField } from '../core/types';
 import type { EvalContext } from '../core/expressions';
 
 const DEF: ComponentDef = {
@@ -237,6 +241,229 @@ describe('row components + the formatter-JSON import bridge', () => {
       version: 1, components: [{ ...row, additionalRowClass: 'zebra' }],
     }));
     expect(good[0].additionalRowClass).toBe('zebra');
+  });
+});
+
+describe('the component editor brain: variants, re-binding, restamping', () => {
+  const NOW = new Date('2026-07-03T12:00:00Z');
+
+  it('uniqueName / variantName: dated as-found names, counter-deduped case-insensitively', () => {
+    expect(uniqueName('X', ['Y'])).toBe('X');
+    expect(uniqueName('X', ['x'])).toBe('X 2');
+    expect(uniqueName('X', ['x', 'X 2'])).toBe('X 3');
+    expect(variantName('Chip', [], NOW)).toBe('Chip (as-found 2026-07-03)');
+    expect(variantName('Chip', ['Chip (as-found 2026-07-03)'], NOW)).toBe('Chip (as-found 2026-07-03) 2');
+  });
+
+  it('createVariant freezes the OLD recipe with lineage — pure, builtin stripped', () => {
+    const parent: ComponentDef = { ...DEF, builtin: true };
+    const v = createVariant(parent, 'c-v1', [], NOW);
+    expect(v.variantOf).toBe('c-test');
+    expect(v.id).toBe('c-v1');
+    expect(v.name).toBe('Test comp (as-found 2026-07-03)');
+    expect(v.builtin).toBeUndefined();
+    expect(v.root).toEqual(DEF.root);
+    // deep-cloned: mutating the variant never touches the parent recipe
+    v.root.txtContent = 'MUTATED';
+    expect(parent.root.txtContent).toBe(DEF.root.txtContent);
+    expect(parent.builtin).toBe(true);
+  });
+
+  it('variantOf round-trips the store; a corrupt (non-string) value is stripped, old stores load unchanged', () => {
+    const v = createVariant(DEF, 'c-v2', [], NOW);
+    const back = loadComponents(serializeComponents([v]));
+    expect(back[0].variantOf).toBe('c-test');
+    // corrupt lineage strips without sinking the entry (schema stays v1)
+    const corrupt = loadComponents(JSON.stringify({ version: 1, components: [{ ...v, variantOf: 7 }] }));
+    expect(corrupt).toHaveLength(1);
+    expect(corrupt[0].variantOf).toBeUndefined();
+    // a pre-variant store (no variantOf anywhere) loads exactly as before
+    const old = loadComponents(JSON.stringify({ version: 1, components: [DEF] }));
+    expect(old).toHaveLength(1);
+    expect(old[0].variantOf).toBeUndefined();
+  });
+
+  it('rebindInstance re-bakes with the instance\'s OWN map; preserves renames + grid layout artifacts', () => {
+    const newDef: ComponentDef = {
+      ...DEF,
+      root: { elmType: 'div', txtContent: '=[$Due]', style: { 'font-weight': '600' } },
+    };
+    const instance: SPElement = {
+      elmType: 'div',
+      _elmName: 'Test comp', // NOT renamed (it wears the old def name)
+      _component: { id: 'c-test', map: { Due: 'DueDate', Person: 'Owner' } },
+      style: { 'flex': '2', 'min-width': '0', 'color': 'red' },
+    };
+    const out = rebindInstance(newDef, instance, 'Test comp')!;
+    expect(out.txtContent).toBe('=[$DueDate]'); // bound with the stored map
+    expect(out._component).toEqual({ id: 'c-test', map: { Due: 'DueDate', Person: 'Owner' } });
+    expect(out._elmName).toBe('Test comp'); // un-renamed → the def's own naming
+    // grid-layout artifacts survive; the OLD look (color) does not
+    expect(out.style?.['flex']).toBe('2');
+    expect(out.style?.['min-width']).toBe('0');
+    expect(out.style?.['color']).toBeUndefined();
+    // a maker's rename is preserved verbatim
+    const renamed = rebindInstance(newDef, { ...instance, _elmName: 'My deadline' }, 'Test comp')!;
+    expect(renamed._elmName).toBe('My deadline');
+    // purity: the instance was not mutated
+    expect(instance.txtContent).toBeUndefined();
+    // unstamped elements have nothing to re-bind
+    expect(rebindInstance(newDef, { elmType: 'div' }, 'Test comp')).toBeNull();
+  });
+
+  it('replaceStampedIn substitutes stamped subtrees (children + card content) and stays pure', () => {
+    const stamped: SPElement = { elmType: 'div', _component: { id: 'c-test', map: {} } };
+    const tree: SPElement = {
+      elmType: 'div',
+      children: [
+        { elmType: 'span' },
+        stamped,
+        { elmType: 'div', customCardProps: { formatter: { ...stamped }, openOnEvent: 'hover' } },
+      ],
+    };
+    const out = replaceStampedIn(tree, 'c-test', () => ({ elmType: 'span', txtContent: 'NEW' }));
+    expect(out.children?.[1].txtContent).toBe('NEW');
+    expect(out.children?.[2].customCardProps?.formatter.txtContent).toBe('NEW');
+    expect(out.children?.[0].txtContent).toBeUndefined();
+    expect(tree.children?.[1]._component?.id).toBe('c-test'); // input untouched
+    // other ids untouched
+    const other = replaceStampedIn(tree, 'c-else', () => ({ elmType: 'span' }));
+    expect(other.children?.[1]._component?.id).toBe('c-test');
+  });
+
+  it('restampIn moves every matching stamp to the variant id (pinning), purely', () => {
+    const tree: SPElement = {
+      elmType: 'div',
+      _component: { id: 'c-test', map: { Due: 'DueDate' } },
+      children: [{ elmType: 'div', _component: { id: 'c-other', map: {} } }],
+    };
+    const out = restampIn(tree, 'c-test', 'c-variant');
+    expect(out._component).toEqual({ id: 'c-variant', map: { Due: 'DueDate' } }); // map kept
+    expect(out.children?.[0]._component?.id).toBe('c-other'); // foreign stamps untouched
+    expect(tree._component?.id).toBe('c-test'); // input untouched
+  });
+});
+
+describe('the editor style panel: SPExpr literal vs formula classification', () => {
+  // number/boolean style values are STATIC LITERALS in this codebase
+  // (opacity: 0.6, font-weight: 600) — only '='-strings and the AST object
+  // form ({operator, operands}) are formula-driven
+  const style: Record<string, SPExpr | undefined> = {
+    'color': '#0078d4',
+    'background-color': "=if([$Due]<@now,'#d13438','#107c10')",
+    'opacity': 0.6,
+    'font-weight': 600,
+    'border': { operator: '+', operands: ['1px solid ', '#e1dfdd'] },
+  };
+
+  it('numbers and booleans read as their stringified literal, never as formulas', () => {
+    expect(stylePlainValue(style, 'opacity')).toBe('0.6');
+    expect(stylePlainValue(style, 'font-weight')).toBe('600');
+    expect(styleIsFormula(style, 'opacity')).toBe(false);
+    expect(styleIsFormula(style, 'font-weight')).toBe(false);
+    expect(stylePlainValue({ 'x': true }, 'x')).toBe('true');
+    expect(styleIsFormula({ 'x': true }, 'x')).toBe(false);
+  });
+
+  it("plain strings are literals; '='-strings and AST objects are formulas", () => {
+    expect(stylePlainValue(style, 'color')).toBe('#0078d4');
+    expect(styleIsFormula(style, 'color')).toBe(false);
+    expect(stylePlainValue(style, 'background-color')).toBe('');
+    expect(styleIsFormula(style, 'background-color')).toBe(true);
+    expect(stylePlainValue(style, 'border')).toBe('');
+    expect(styleIsFormula(style, 'border')).toBe(true);
+  });
+
+  it('unset props are neither a literal nor a formula', () => {
+    expect(stylePlainValue(style, 'padding')).toBe('');
+    expect(styleIsFormula(style, 'padding')).toBe(false);
+    expect(stylePlainValue(undefined, 'color')).toBe('');
+    expect(styleIsFormula(undefined, 'color')).toBe(false);
+  });
+});
+
+describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
+  it('bindComponentInstance stamps { id, map }; plain bindComponent stays clean for previews', () => {
+    const inst = bindComponentInstance(DEF, { Due: 'DueDate', Person: 'Owner' });
+    expect(inst._component).toEqual({ id: 'c-test', map: { Due: 'DueDate', Person: 'Owner' } });
+    expect(inst.txtContent).toBe("=if([$DueDate]<@now,'late','ok')"); // still binds
+    expect(inst._elmName).toBe('Test comp'); // still names
+    expect(bindComponent(DEF, { Due: 'DueDate', Person: 'Owner' })._component).toBeUndefined();
+  });
+
+  const stamp = (label?: string): SPElement => ({
+    elmType: 'div',
+    _component: { id: 'c-test', map: { Due: 'DueDate' } },
+    ...(label ? { _elmName: label } : {}),
+  });
+
+  it('finds stamped view usages by NodePath — a stamped root, children, and card content', () => {
+    const main: SPElement = {
+      elmType: 'div',
+      children: [
+        { elmType: 'span' },
+        stamp('Deadline chip'),
+        {
+          elmType: 'div',
+          customCardProps: { formatter: stamp(), openOnEvent: 'hover' },
+        },
+      ],
+    };
+    const out = scanComponentUsages([DEF], main, {}, []);
+    expect(out.get('c-test')).toEqual([
+      { kind: 'view', path: [1], label: 'Deadline chip' },
+      // card content rides the CARD_SEGMENT (-1) path convention; the
+      // label falls back to the def's name when the subtree is unnamed
+      { kind: 'view', path: [2, -1], label: 'Test comp' },
+    ]);
+    // a row component IS the root — path [] is a usage too
+    const asRoot = scanComponentUsages([DEF], stamp('My row'), {}, []);
+    expect(asRoot.get('c-test')).toEqual([{ kind: 'view', path: [], label: 'My row' }]);
+  });
+
+  it('column usages: the subtype tag and a stamped subtree both count, ONCE per column, only when registered', () => {
+    const fields: MockField[] = [
+      { name: 'Status', type: 'choice', subtype: 'c-test' },
+      { name: 'Ghost', type: 'text', subtype: 'c-test' }, // tagged but never registered
+    ];
+    const refs: Record<string, SPElement> = {
+      // tag AND stamp agree → still one usage
+      Status: stamp(),
+      // no tag, but a stamped subtree deep in the registered tree
+      DueDate: { elmType: 'div', children: [{ elmType: 'span' }, stamp()] },
+    };
+    const out = scanComponentUsages([DEF], undefined, refs, fields);
+    expect(out.get('c-test')).toEqual([
+      { kind: 'column', field: 'Status' },
+      { kind: 'column', field: 'DueDate' },
+    ]);
+  });
+
+  it('a deleted component leaves no ghost rows; unused defs simply have no entry', () => {
+    const main: SPElement = {
+      elmType: 'div',
+      children: [{ elmType: 'div', _component: { id: 'c-gone', map: {} } }],
+    };
+    const out = scanComponentUsages([DEF], main, {}, []);
+    expect(out.get('c-gone')).toBeUndefined(); // no def carries that id
+    expect(out.get('c-test')).toBeUndefined(); // in the doc: nothing stamped for it
+  });
+
+  it('mainUsageLabel: "View — X" normally, the column-formatter noun when the MAIN doc is one', () => {
+    const u = { kind: 'view' as const, path: [1], label: 'Deadline chip' };
+    expect(mainUsageLabel(u, false, 'Status')).toBe('View — Deadline chip');
+    // a JSON-tab-imported column formatter IS the main doc — the jump row
+    // must agree with the insert copy ("Add to the X column formatter")
+    expect(mainUsageLabel(u, true, 'Due date')).toBe('Due date column formatter — Deadline chip');
+  });
+
+  it('componentInsertTarget: an open column formatter wins; otherwise the view (grid flagged)', () => {
+    expect(componentInsertTarget('main', 'grid', 'Status')).toEqual({ kind: 'view', grid: true });
+    expect(componentInsertTarget('main', 'row', 'Status')).toEqual({ kind: 'view', grid: false });
+    expect(componentInsertTarget('main', 'tile', 'Status')).toEqual({ kind: 'view', grid: false });
+    expect(componentInsertTarget('DueDate', 'column', 'Status')).toEqual({ kind: 'column', field: 'DueDate' });
+    // the MAIN doc itself can be a column formatter (a JSON-tab import)
+    expect(componentInsertTarget('main', 'column', 'Status')).toEqual({ kind: 'column', field: 'Status' });
   });
 });
 

@@ -23,7 +23,7 @@
  * stay frozen). Built-ins ship in code and are never persisted.
  */
 
-import type { SPElement, MockField, FieldType, FormatterDocument } from '../core/types';
+import type { SPElement, MockField, FieldType, FormatterDocument, DocumentKind } from '../core/types';
 import { inlineColumnFormatter } from './cfr';
 
 export interface ComponentSlot {
@@ -48,6 +48,11 @@ export interface ComponentDef {
   kind?: 'element' | 'row';
   /** Row components: the zebra/extra row class the layout shipped with. */
   additionalRowClass?: string;
+  /** Lineage of an as-found one-off: the parent def this variant was frozen
+   *  from ("keep as-found" in the component editor). ADDITIVE — absent on
+   *  every pre-variant store (schema stays version 1), and a dangling id
+   *  (parent deleted) just renders as a normal top-level card. */
+  variantOf?: string;
   /** Ships in code; not persisted, not deletable. */
   builtin?: boolean;
 }
@@ -243,6 +248,48 @@ export function bindComponent(def: ComponentDef, mapping: Record<string, string>
   return bound;
 }
 
+/** The provenance stamp a bound INSTANCE carries on its root (`_component`):
+ *  which def it came from and the slot→column mapping it was bound with. The
+ *  usage scan (componentUsage.ts) and the component editor both read it. */
+export interface ComponentInstanceTag {
+  id: string;
+  map: Record<string, string>;
+}
+
+/** Bind AND stamp: bindComponent plus the `_component: { id, map }` instance
+ *  tag the ⬡ inventory scans for. INSERTIONS go through this; previews stay
+ *  on plain bindComponent so a rendered preview never reads as a usage. */
+export function bindComponentInstance(def: ComponentDef, mapping: Record<string, string>): SPElement {
+  const bound = bindComponent(def, mapping);
+  bound._component = { id: def.id, map: { ...mapping } };
+  return bound;
+}
+
+// ─── context-aware insertion (where does "Add" land?) ────────────────────────
+
+/** Where an element component lands when inserted. */
+export type ComponentInsertTarget =
+  | { kind: 'view'; grid: boolean }
+  | { kind: 'column'; field: string };
+
+/**
+ * The destination for an element-component insert: the OPEN column formatter
+ * when one is on the canvas (owner decision — components in column formatters
+ * and CFRs are allowed; the bound tree references explicit `[$Field]`s, valid
+ * there), otherwise the view (on the grid it arrives as a new root column).
+ * Pure so the dialog copy and the insert itself share one truth.
+ */
+export function componentInsertTarget(
+  activeDocKey: string,
+  docKind: DocumentKind,
+  currentFieldName: string,
+): ComponentInsertTarget {
+  if (activeDocKey !== 'main') return { kind: 'column', field: activeDocKey };
+  // the MAIN doc itself can be a column formatter (a JSON-tab import)
+  if (docKind === 'column') return { kind: 'column', field: currentFieldName };
+  return { kind: 'view', grid: docKind === 'grid' };
+}
+
 // ─── persistence (caller owns localStorage, same split as snapshots) ─────────
 
 function isValidSlot(s: unknown): s is ComponentSlot {
@@ -278,6 +325,11 @@ export function loadComponents(raw: string | null): ComponentDef[] {
         && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
         delete def.additionalRowClass;
       }
+      // variantOf is optional lineage — strip a corrupt (non-string) value
+      // rather than sinking the entry; pre-variant stores simply lack it
+      if (def.variantOf !== undefined && typeof def.variantOf !== 'string') {
+        delete def.variantOf;
+      }
       return def;
     });
   } catch {
@@ -301,6 +353,87 @@ export function removeComponent(components: ComponentDef[], id: string): Compone
 
 export function componentId(now: Date): string {
   return `c-${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ─── the component editor brain: variants, re-binding, restamping ───────────
+// Pure helpers behind componentEditor.ts's Save-and-apply: freeze the OLD
+// recipe as a one-off variant for pinned ("keep as-found") usages, re-bind
+// every unpinned instance with its OWN stored slot map, and restamp pinned
+// instances onto the variant — all composed into ONE undoable state step by
+// state.batchProjectUpdate.
+
+/** `base`, made unique against `taken` (case-insensitive) with " 2", " 3", … */
+export function uniqueName(base: string, taken: string[]): string {
+  const has = (n: string): boolean => taken.some((t) => t.toLowerCase() === n.toLowerCase());
+  if (!has(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base} ${i}`;
+    if (!has(candidate)) return candidate;
+  }
+}
+
+/** The dated as-found name: `"<Name> (as-found 2026-07-03)"`, counter-deduped. */
+export function variantName(base: string, taken: string[], now: Date): string {
+  return uniqueName(`${base} (as-found ${now.toISOString().slice(0, 10)})`, taken);
+}
+
+/** Freeze `oldDef`'s CURRENT recipe as a one-off variant (the "keep as-found"
+ *  flow): a normal custom def carrying `variantOf` lineage. Pure — deep-clones,
+ *  never mutates `oldDef`. */
+export function createVariant(oldDef: ComponentDef, id: string, takenNames: string[], now: Date): ComponentDef {
+  const clone = JSON.parse(JSON.stringify(oldDef)) as ComponentDef;
+  delete clone.builtin;
+  return { ...clone, id, name: variantName(oldDef.name, takenNames, now), variantOf: oldDef.id };
+}
+
+/**
+ * Re-bind a stamped INSTANCE to a (new) recipe using ITS OWN stored slot map —
+ * the save-and-apply re-bake. Preserves the maker's rename (an `_elmName` that
+ * differs from the name the old def gave it) and the instance's grid-layout
+ * artifacts (flex/min-width — the forkCfr convention). Returns null for an
+ * unstamped element (nothing to re-bind). Pure.
+ */
+export function rebindInstance(def: ComponentDef, el: SPElement, oldDefName: string): SPElement | null {
+  const tag = el._component;
+  if (!tag) return null;
+  const next = bindComponentInstance(def, tag.map);
+  if (el._elmName && el._elmName !== oldDefName) next._elmName = el._elmName;
+  for (const prop of ['flex', 'min-width']) {
+    const v = el.style?.[prop];
+    if (v !== undefined && next.style?.[prop] === undefined) {
+      next.style = { ...next.style, [prop]: v };
+    }
+  }
+  return next;
+}
+
+/** Deep-map a tree, substituting every subtree stamped with `id` via `make`
+ *  (children and card content included; substitutes aren't re-walked — a fresh
+ *  bind carries no nested stamps). Pure — returns a new tree. */
+export function replaceStampedIn(tree: SPElement, id: string, make: (el: SPElement) => SPElement): SPElement {
+  const walk = (el: SPElement): SPElement => {
+    if (el._component?.id === id) return make(el);
+    const out: SPElement = { ...el };
+    if (el.children) out.children = el.children.map(walk);
+    if (el.customCardProps?.formatter) {
+      out.customCardProps = { ...el.customCardProps, formatter: walk(el.customCardProps.formatter) };
+    }
+    return out;
+  };
+  return walk(JSON.parse(JSON.stringify(tree)) as SPElement);
+}
+
+/** Restamp every `_component.id` `from` → `to` in a tree (pinning instances
+ *  onto their as-found variant). Pure — returns a new tree. */
+export function restampIn(tree: SPElement, from: string, to: string): SPElement {
+  const clone = JSON.parse(JSON.stringify(tree)) as SPElement;
+  const walk = (el: SPElement): void => {
+    if (el._component?.id === from) el._component = { ...el._component, id: to };
+    el.children?.forEach(walk);
+    if (el.customCardProps?.formatter) walk(el.customCardProps.formatter);
+  };
+  walk(clone);
+  return clone;
 }
 
 // ─── built-ins ───────────────────────────────────────────────────────────────

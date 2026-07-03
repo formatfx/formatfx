@@ -44,6 +44,9 @@
   --wb-lp-text-2: var(--wb-text-2);
   --wb-lp-selected: #cfe4f7;     /* tree selected row (light blue) */
   --wb-lp-seg-track: #f3f2f1;    /* segmented-control track */
+  /* the tree region sits one subtle step lighter than the pane (a quiet
+     elevation, not a new color) — owner request, 2026-07-03 */
+  --wb-lp-tree-bg: color-mix(in srgb, #fff 55%, var(--wb-lp-bg));
   /* CTA + active draw-tool = the Microsoft-blue primary (flat, app-consistent). */
   --wb-cta: var(--wb-accent);
   --wb-cta-hover: #106ebe;
@@ -87,6 +90,8 @@ body.wb-dark {
   --wb-lp-text-2: var(--wb-text-2);
   --wb-lp-selected: #123a5c;     /* tree selected row (dark blue) */
   --wb-lp-seg-track: #322f2e;
+  /* dark elevation = a whisper of white over the pane surface */
+  --wb-lp-tree-bg: color-mix(in srgb, #fff 5%, var(--wb-lp-bg));
   --wb-cta-hover: #2b88d8;
 
   /* …and dark in dark mode (covers Firefox + native widgets) */
@@ -216,12 +221,14 @@ body {
   background: var(--wb-bg); color: var(--wb-accent);
 }
 .wb-snap-take:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
-.wb-snap-take-all { color: var(--wb-text-2); font-weight: 400; }
-.wb-snap-take-all:hover { color: var(--wb-accent); }
 .wb-snapmenu-group {
   margin-top: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--wb-text-2);
 }
+/* legacy scoped snapshots (pre-full-workspace captures) stay restorable under
+   a collapsed group — taking new scoped ones is gone */
+.wb-snap-legacy > summary.wb-snapmenu-group { cursor: pointer; }
+.wb-snap-legacy > .wb-snap-row { margin-top: 5px; }
 .wb-snapmenu-empty { font-size: 11px; font-style: italic; color: var(--wb-text-2); }
 .wb-snap-row { display: flex; align-items: center; gap: 4px; }
 .wb-snap-restore {
@@ -253,7 +260,8 @@ body {
   color: var(--wb-lp-text-2); margin-top: 2px;
 }
 .wb-complib-empty { font-size: 11px; font-style: italic; color: var(--wb-lp-text-2); }
-.wb-comp-card {
+.wb-comp-card,
+.wb-comp-used {
   display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
   border: 1px solid var(--wb-component-border); border-radius: 8px;
   background: color-mix(in srgb, var(--wb-component) 5%, transparent);
@@ -293,6 +301,40 @@ body {
 .wb-comp-rowlink:hover { border-color: var(--wb-component); }
 .wb-comp-rowlink-name { font-size: 12px; font-weight: 600; }
 .wb-comp-rowlink-desc { font-size: 10.5px; color: var(--wb-lp-text-2); line-height: 1.4; }
+/* the project inventory ("In this project"): top-level headers, the usage
+   count chip, and the show-usages jump rows */
+.wb-complib-h1 {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-lp-text); margin-top: 4px;
+  padding-bottom: 3px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-comp-count {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; white-space: nowrap;
+  padding: 2px 7px; border-radius: 9px;
+  color: var(--wb-component); background: var(--wb-component-bg);
+  border: 1px solid var(--wb-component-border);
+}
+.wb-comp-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wb-comp-addmore {
+  padding: 4px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--wb-component); border-radius: 5px;
+  background: transparent; color: var(--wb-component);
+}
+.wb-comp-addmore:hover { background: var(--wb-component-bg); }
+.wb-comp-showuses {
+  padding: 4px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--wb-lp-border); border-radius: 5px;
+  background: transparent; color: var(--wb-lp-text);
+}
+.wb-comp-showuses:hover { border-color: var(--wb-component); color: var(--wb-component); }
+.wb-comp-usages { display: flex; flex-direction: column; gap: 3px; }
+.wb-comp-usages[hidden] { display: none; }
+.wb-comp-usage {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer;
+  border: 1px solid transparent; border-radius: 5px; text-align: left; font: inherit;
+  font-size: 11px; background: var(--wb-canvas-bg); color: var(--wb-lp-text);
+}
+.wb-comp-usage:hover { border-color: var(--wb-component); color: var(--wb-component); }
 
 /* ── the mapping / save-as dialog (shared shell) ───────────────────────────── */
 .wb-compmap-overlay {
@@ -347,6 +389,126 @@ body {
 body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-compmap-insert:hover:not(:disabled) { filter: brightness(1.08); }
 .wb-compmap-insert:disabled { opacity: .45; cursor: default; }
+
+/* ── as-found variants (the component editor's "keep as-found" one-offs) ──── */
+.wb-comp-vtag {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 8px;
+  color: var(--wb-component); background: var(--wb-component-bg);
+  border: 1px dashed var(--wb-component-border);
+}
+.wb-comp-lineage { font-size: 10.5px; font-style: italic; color: var(--wb-lp-text-2); }
+.wb-comp-variantcard { margin-left: 14px; border-left: 3px solid var(--wb-component-border); }
+.wb-comp-edit {
+  font-size: 11px; padding: 4px 8px; cursor: pointer;
+  border: 1px solid var(--wb-lp-border); border-radius: 5px;
+  background: transparent; color: var(--wb-lp-text-2);
+}
+.wb-comp-edit:hover { border-color: var(--wb-component); color: var(--wb-component); }
+
+/* ── the component EDITOR (over the canvas pane; JS pins it to .wb-pane-canvas) ── */
+.wb-compedit-overlay {
+  position: fixed; inset: 0; z-index: 300; /* inset is the no-canvas fallback */
+  background: rgba(0, 0, 0, .35);
+  display: flex; padding: 10px; box-sizing: border-box;
+}
+.wb-ce {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-top: 3px solid var(--wb-component);
+  border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  padding: 12px 16px; font-size: 12px;
+}
+.wb-ce-head { display: flex; align-items: baseline; gap: 10px; }
+.wb-ce-title { font-size: 15px; font-weight: 600; }
+.wb-ce-sub { color: var(--wb-text-2); font-size: 11px; }
+.wb-ce-close {
+  margin-left: auto; border: none; background: transparent; color: var(--wb-text-2);
+  font-size: 14px; cursor: pointer; padding: 2px 6px;
+}
+.wb-ce-close:hover { color: var(--wb-component); }
+.wb-ce-body { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.wb-ce-col { flex: 1 1 300px; min-width: 260px; display: flex; flex-direction: column; }
+.wb-ce-seclab {
+  margin-top: 8px; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--wb-text-2);
+}
+.wb-ce-sec { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+.wb-ce-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wb-ce-rowlab { flex: 0 0 72px; font-size: 11px; font-weight: 600; color: var(--wb-text-2); }
+.wb-ce-input {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 5px 8px;
+  border: 1px solid var(--wb-border); border-radius: 5px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-ce-input:focus { outline: none; border-color: var(--wb-component); }
+.wb-ce-note { font-size: 11px; font-style: italic; color: var(--wb-text-2); line-height: 1.45; }
+.wb-ce-slot { display: flex; align-items: center; gap: 6px; }
+.wb-ce-slotkey {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 8px;
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  color: var(--wb-component); background: var(--wb-component-bg);
+  border: 1px solid var(--wb-component-border);
+}
+.wb-ce-slotlabel { flex: 1 1 40%; }
+.wb-ce-slotdesc { flex: 1 1 40%; }
+.wb-ce-preview {
+  padding: 12px; border: 1px dashed var(--wb-component-border); border-radius: 6px;
+  background: var(--wb-bg); cursor: pointer;
+}
+.wb-ce-picked { outline: 2px solid var(--wb-component); outline-offset: 1px; }
+.wb-ce-struct { display: flex; flex-direction: column; gap: 1px; max-height: 130px; overflow-y: auto; }
+.wb-ce-struct-row {
+  text-align: left; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
+}
+.wb-ce-struct-row:hover { background: var(--wb-component-bg); color: var(--wb-component); }
+.wb-ce-struct-row.active { background: var(--wb-component-bg); color: var(--wb-component); font-weight: 600; }
+.wb-ce-style { display: flex; flex-direction: column; gap: 6px; }
+.wb-ce-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wb-ce-chip {
+  font-size: 11px; padding: 3px 8px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 10px;
+  background: transparent; color: var(--wb-text);
+}
+.wb-ce-chip:hover { border-color: var(--wb-component); }
+.wb-ce-chip.active {
+  border-color: var(--wb-component); color: var(--wb-component);
+  background: var(--wb-component-bg); font-weight: 600;
+}
+.wb-ce-swatch {
+  width: 18px; height: 18px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--wb-border); padding: 0;
+}
+.wb-ce-swatch.active { outline: 2px solid var(--wb-component); outline-offset: 1px; }
+.wb-ce-usage { display: flex; align-items: center; gap: 8px; }
+.wb-ce-jump {
+  flex: 1 1 auto; min-width: 0; text-align: left; font-size: 11px; padding: 4px 8px;
+  cursor: pointer; border: 1px solid var(--wb-border); border-radius: 5px;
+  background: transparent; color: var(--wb-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-ce-jump:hover { border-color: var(--wb-component); color: var(--wb-component); }
+.wb-ce-pinlab {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; color: var(--wb-text-2); cursor: pointer;
+}
+.wb-ce-foot {
+  display: flex; justify-content: flex-end; gap: 8px; align-items: center;
+  margin-top: auto; padding-top: 8px; border-top: 1px solid var(--wb-border);
+}
+.wb-ce-foot button { font-size: 12px; padding: 6px 12px; cursor: pointer; border-radius: 6px; }
+.wb-ce-savenew {
+  border: 1px solid var(--wb-component); background: transparent; color: var(--wb-component);
+}
+.wb-ce-savenew:hover { background: var(--wb-component-bg); }
+.wb-ce-save {
+  font-weight: 600; border: 1px solid var(--wb-component);
+  background: var(--wb-component); color: #ffffff;
+}
+body.wb-dark .wb-ce-save { color: #10393b; }
+.wb-ce-save:hover { filter: brightness(1.08); }
 
 /* ── topbar ☰ menu ───────────────────────────────────────── */
 .wb-menu { position: relative; }
@@ -2236,20 +2398,35 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
   padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
 
-/* ── formatter tabs (VIEW FORMATTERS · COLUMN FORMATTERS) ──────────────────
+/* ── the Formatters bar (header · VIEW / COLUMNS / COMPONENTS · ← · 🕘) ────
    Blue = the view formatter; violet = the shared column formatters — the same
    two color channels the canvas and tree teach, so the tabs read as "those
-   things I keep seeing with the § mark live here". */
+   things I keep seeing with the § mark live here". One row in a ~300px pane:
+   the "Formatters" header leads, the back + snapshot buttons right-align, and
+   paddings/font sizes stay tight so the common case never scrolls. */
 .wb-fmt-tabs {
   flex: 0 0 auto; display: flex; gap: 2px; padding: 0 6px;
   border-bottom: 1px solid var(--wb-lp-border);
   overflow-x: auto; scrollbar-width: none;
 }
 .wb-fmt-tabs::-webkit-scrollbar { display: none; }
+/* the header is the one non-interactive item, so it alone may shrink: below
+   ~320px it ellipsizes before the controls ever have to scroll */
+.wb-fmt-head {
+  flex: 0 1 auto; min-width: 0; align-self: center; margin-right: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--wb-lp-text-2); opacity: .75;
+}
+/* a REAL flex box, deliberately not display:contents — contents can drop the
+   wrapper (and its role="tablist" semantics) from the accessibility tree in
+   some browser/AT combos (Safari/VoiceOver). overflow stays visible so the
+   tabs' -1px margin still lands their underline on the bar's border-bottom. */
+.wb-fmt-tablist { display: flex; gap: 2px; flex: 0 0 auto; min-width: 0; }
 .wb-fmt-tab {
   display: inline-flex; align-items: center; gap: 3px;
-  border: none; background: none; cursor: pointer; padding: 9px 4px 8px;
-  font-size: 9.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+  border: none; background: none; cursor: pointer; padding: 9px 2px 8px;
+  font-size: 9px; font-weight: 600; letter-spacing: .01em; text-transform: uppercase;
   color: var(--wb-lp-text-2);
   border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
 }
@@ -2261,20 +2438,24 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-fmt-tab-cols.active { color: var(--wb-shared); border-bottom-color: var(--wb-shared); }
 .wb-fmt-tab-comp.active { color: var(--wb-component); border-bottom-color: var(--wb-component); }
 
-/* ── the document dropdown row (back · dropdown · snapshots) ──────────────── */
-.wb-doc-pill-row {
-  display: flex; align-items: stretch; gap: 5px; margin: 8px 8px 6px;
-}
+/* …the ← back + 🕘 snapshot buttons live on the Formatters bar, right-aligned */
 .wb-nav-back, .wb-snap-btn {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; border: 1px solid var(--wb-lp-border); border-radius: 8px;
+  flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center;
+  justify-content: center; width: 22px; height: 22px;
+  border: 1px solid var(--wb-lp-border); border-radius: 6px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
-  font-size: 13px; line-height: 1;
+  font-size: 12px; line-height: 1;
 }
+.wb-nav-back { margin-left: auto; }
 .wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover {
   border-color: var(--wb-accent); color: var(--wb-accent);
 }
 .wb-nav-back:disabled { opacity: .35; cursor: default; }
+
+/* ── the document dropdown row (the pill spans it alone) ───────────────────── */
+.wb-doc-pill-row {
+  display: flex; align-items: stretch; gap: 5px; margin: 8px 8px 6px;
+}
 
 /* ── the document dropdown (what's on the canvas: a view, or a column) ────── */
 .wb-doc-pill {
@@ -2321,6 +2502,7 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-lp-tree {
   flex: 0 0 auto; height: 260px; display: flex; flex-direction: column;
   border-bottom: 1px solid var(--wb-lp-border);
+  background: var(--wb-lp-tree-bg);
 }
 /* Simple hides the tree itself, but keeps the formatter tabs + document
    dropdown — they're navigation, not structure editing. */
@@ -2741,32 +2923,25 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 /* the Title context column steps back while a style is edited */
 .wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }
 
-/* ── tree: the reference is a door, not a folder ───────────────────────────
-   One opaque row per columnFormatterReference: § + the column name, with a
-   right-aligned "COLUMN FORMATTER REFERENCE" tag — the same violet + § the
-   COLUMN FORMATTERS tab wears, so the two connect at a glance. */
-.wb-tree-stylestub {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 1px 4px 3px 16px;
-  padding: 3px 8px;
-  font-size: 11px;
-  border-radius: 4px;
-  background: var(--wb-shared-bg);
-  color: var(--wb-shared);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.wb-tree-stylestub:hover { filter: brightness(0.97); }
-.wb-tree-stylestub .wb-stub-name {
-  flex: 0 1 auto; min-width: 0; font-weight: 600;
-  overflow: hidden; text-overflow: ellipsis;
-}
-.wb-tree-stylestub .wb-stub-tag {
+/* ── tree: a CFR host is ONE normal row ────────────────────────────────────
+   Every columnFormatterReference has an inherent wrapper div, so a nested
+   "reference" row was noise: the host row carries the whole story itself.
+   "Violet = shared" survives as INK only (no fill): the § mark beside the
+   name, and a right-aligned "reference" tag-button — the explicit door into
+   the shared column formatter. Row click/Enter selects the HOST element. */
+.wb-tree-label .wb-style-mark { flex: 0 0 auto; font-size: 11px; }
+.wb-tree-cfr-open {
+  /* auto left margin pins the tag (and the controls after it) to the right
+     even where the base .wb-tree-row's space-between would otherwise float
+     it mid-row (the Left Edit Pane's flex:1 label masks this; other mounts
+     don't) */
   flex: 0 0 auto; margin-left: auto;
+  border: none; background: none; padding: 2px 4px;
   font-size: 8.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
-  opacity: .8;
+  color: var(--wb-shared); opacity: .75;
+  cursor: pointer; white-space: nowrap;
 }
-.wb-tree-stylestub-missing { cursor: default; opacity: 0.75; }
+.wb-tree-cfr-open:hover { opacity: 1; text-decoration: underline; }
+/* unregistered reference: teaching tooltip only — nothing to open */
+.wb-tree-cfr-missing { cursor: help; opacity: .55; }
+.wb-tree-cfr-missing:hover { opacity: .55; text-decoration: none; }

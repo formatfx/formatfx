@@ -56,6 +56,10 @@ export interface SPElement {
   _elmName?: string;
   _factory?: string;
   _debug?: Record<string, unknown>;
+  /** Component-instance provenance (the ⬡ inventory): the ComponentDef id +
+   *  the slot→column mapping this subtree was bound with. Ignored by
+   *  SharePoint, stripped by keepMeta:false like _elmName. */
+  _component?: { id: string; map: Record<string, string> };
 }
 
 /** Root wrapper for a list-view (row) formatter. */

@@ -1,12 +1,14 @@
 /**
  * editor/snapMenu.ts — the snapshot menu (issue #140), anchored under the 🕘
- * history button beside the Left Edit Pane's document dropdown.
+ * history button on the Left Edit Pane's Formatters bar.
  *
- * Placement decides the primary action (owner decision, 2026-07-02): the
- * button is grouped with the SELECTED formatter, so the primary action
- * snapshots/restores that selection — the view, or the column being edited —
- * and "everything" (view + every column formatter + the view name) is the
- * nearby alternative in the same menu. Every restore is one undoable step.
+ * Snapshots are full-workspace-only (owner decision, 2026-07-03): the ONE
+ * take action always captures scope { kind: 'all' } — the view formatter,
+ * every registered column formatter, and the view name together. The store
+ * format still knows the old view/column scopes (snapshots.ts is unchanged
+ * for compat), so any legacy scoped captures a maker already saved stay
+ * restorable under a collapsed "Older, scoped snapshots" group — but taking
+ * new scoped ones is gone. Every restore is one undoable step.
  *
  * Persistence: localStorage under snapshots.STORAGE_KEY ('wb-snapshots.v1',
  * additive — the frozen project/prefs keys stay untouched). The store brain
@@ -18,7 +20,7 @@ import { state } from './state';
 import {
   STORAGE_KEY, loadStore, serializeStore, addSnapshot, removeSnapshot,
   snapshotsFor, relativeTime,
-  type Snapshot, type SnapshotScope, type SnapshotStore,
+  type Snapshot, type SnapshotStore,
 } from './snapshots';
 
 function readStore(): SnapshotStore {
@@ -38,17 +40,6 @@ function writeStore(store: SnapshotStore): boolean {
   }
 }
 
-/** The scope the menu treats as "this" — mirrors the formatter tabs. */
-function currentScope(): SnapshotScope {
-  if (state.activeDocKey !== 'main') return { kind: 'column', field: state.activeDocKey };
-  if (state.doc.kind === 'column') return { kind: 'column', field: state.currentFieldName };
-  return { kind: 'view' };
-}
-
-function scopeNoun(scope: SnapshotScope): string {
-  return scope.kind === 'column' ? `the ${scope.field} column formatter` : `the ${state.viewName} view`;
-}
-
 let openPanel: { panel: HTMLElement; cleanup: () => void } | null = null;
 
 export function closeSnapMenu(): void {
@@ -66,9 +57,11 @@ export function openSnapMenu(anchor: HTMLElement, onToast: (m: string) => void):
   // wb-esc-owner: closes itself on Escape — see the convention in overlay.ts
   panel.className = 'wb-snapmenu wb-esc-owner';
 
+  // the legacy group survives re-renders (deleting one row must not collapse it)
+  let legacyOpen = false;
+
   const render = (): void => {
     panel.replaceChildren();
-    const scope = currentScope();
     const store = readStore();
 
     const head = document.createElement('div');
@@ -76,99 +69,103 @@ export function openSnapMenu(anchor: HTMLElement, onToast: (m: string) => void):
     head.textContent = 'Snapshots';
     panel.appendChild(head);
 
-    // ── take: the scoped primary, then the "everything" alternative ─────────
-    const take = (s: SnapshotScope, what: string): void => {
-      const snap = state.captureSnapshot(s);
-      if (!snap) { onToast(`Nothing to snapshot yet for ${what}`); return; }
+    // ── take: ONE action, always the whole workspace ────────────────────────
+    const take = document.createElement('button');
+    take.type = 'button';
+    take.className = 'wb-snap-take';
+    take.textContent = '📸 Take a snapshot';
+    take.title = 'Capture the whole workspace — the view formatter, every column formatter, and the view name — and restore it from this menu any time';
+    take.addEventListener('click', () => {
+      const snap = state.captureSnapshot({ kind: 'all' });
+      if (!snap) { onToast('Nothing to snapshot yet'); return; }
       if (!writeStore(addSnapshot(readStore(), snap))) {
         onToast('Could not save the snapshot — browser storage is full or blocked');
         return;
       }
-      onToast(`Snapshot taken of ${what}`);
+      onToast('Snapshot taken of the whole workspace');
       render(); // the new snapshot appears in the list right away
+    });
+    panel.appendChild(take);
+
+    // one restorable row (shared by the main list and the legacy group)
+    const rowFor = (snap: Snapshot, restoreTitle: string): HTMLElement => {
+      const row = document.createElement('div');
+      row.className = 'wb-snap-row';
+
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'wb-snap-restore';
+      restore.title = restoreTitle;
+      const name = document.createElement('span');
+      name.className = 'wb-snap-label';
+      name.textContent = snap.label;
+      const when = document.createElement('span');
+      when.className = 'wb-snap-when';
+      when.textContent = relativeTime(snap.takenAt, new Date());
+      when.title = new Date(snap.takenAt).toLocaleString();
+      restore.append(name, when);
+      restore.addEventListener('click', () => {
+        if (!state.applySnapshot(snap)) {
+          onToast('This snapshot could not be restored (its data is missing or corrupt)');
+          return;
+        }
+        closeSnapMenu();
+        onToast(`Restored ${snap.label} — Ctrl+Z brings back what you had`);
+      });
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'wb-snap-del';
+      del.textContent = '✕';
+      del.title = 'Delete this snapshot';
+      del.setAttribute('aria-label', `Delete snapshot ${snap.label}`);
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        writeStore(removeSnapshot(readStore(), snap.id));
+        render();
+      });
+
+      row.append(restore, del);
+      return row;
     };
 
-    const primary = document.createElement('button');
-    primary.type = 'button';
-    primary.className = 'wb-snap-take';
-    primary.textContent = `📸 Snapshot ${scopeNoun(scope)}`;
-    primary.title = `Capture ${scopeNoun(scope)} as it is right now — restore it from this menu any time`;
-    primary.addEventListener('click', () => take(scope, scopeNoun(scope)));
-    panel.appendChild(primary);
+    // ── the main list: the whole-workspace captures ──────────────────────────
+    const snaps = snapshotsFor(store, { kind: 'all' });
+    if (!snaps.length) {
+      const none = document.createElement('div');
+      none.className = 'wb-snapmenu-empty';
+      none.textContent = 'No snapshots yet — take one above before you experiment.';
+      panel.appendChild(none);
+    }
+    for (const snap of snaps) {
+      panel.appendChild(rowFor(
+        snap,
+        'Restore this snapshot — one undoable step (Ctrl+Z brings the current state back)',
+      ));
+    }
 
-    const everything = document.createElement('button');
-    everything.type = 'button';
-    everything.className = 'wb-snap-take wb-snap-take-all';
-    everything.textContent = '📸 Snapshot everything';
-    everything.title = 'Capture the view formatter, every column formatter, and the view name together';
-    everything.addEventListener('click', () => take({ kind: 'all' }, 'the whole workspace'));
-    panel.appendChild(everything);
-
-    // ── restore lists: this scope first, then the everything group ──────────
-    const section = (title: string, snaps: Snapshot[], empty: string): void => {
-      const label = document.createElement('div');
-      label.className = 'wb-snapmenu-group';
-      label.textContent = title;
-      panel.appendChild(label);
-      if (!snaps.length) {
-        const none = document.createElement('div');
-        none.className = 'wb-snapmenu-empty';
-        none.textContent = empty;
-        panel.appendChild(none);
-        return;
+    // ── legacy scoped captures: restorable, never orphaned, never re-taken ──
+    const legacy = store.snapshots
+      .filter((s) => s.scope.kind !== 'all')
+      .sort((a, b) => b.takenAt.localeCompare(a.takenAt));
+    if (legacy.length) {
+      const details = document.createElement('details');
+      details.className = 'wb-snap-legacy';
+      details.open = legacyOpen;
+      details.addEventListener('toggle', () => { legacyOpen = details.open; });
+      const summary = document.createElement('summary');
+      summary.className = 'wb-snapmenu-group';
+      summary.textContent = `Older, scoped snapshots (${legacy.length})`;
+      summary.title = 'Taken before snapshots covered the whole workspace — each restores only the view or column it captured';
+      details.appendChild(summary);
+      for (const snap of legacy) {
+        details.appendChild(rowFor(
+          snap,
+          'Restore this older snapshot — it only covers the view or column it captured (one undoable step)',
+        ));
       }
-      for (const snap of snaps) {
-        const row = document.createElement('div');
-        row.className = 'wb-snap-row';
-
-        const restore = document.createElement('button');
-        restore.type = 'button';
-        restore.className = 'wb-snap-restore';
-        restore.title = 'Restore this snapshot — one undoable step (Ctrl+Z brings the current state back)';
-        const name = document.createElement('span');
-        name.className = 'wb-snap-label';
-        name.textContent = snap.label;
-        const when = document.createElement('span');
-        when.className = 'wb-snap-when';
-        when.textContent = relativeTime(snap.takenAt, new Date());
-        when.title = new Date(snap.takenAt).toLocaleString();
-        restore.append(name, when);
-        restore.addEventListener('click', () => {
-          if (!state.applySnapshot(snap)) {
-            onToast('This snapshot could not be restored (its data is missing or corrupt)');
-            return;
-          }
-          closeSnapMenu();
-          onToast(`Restored ${snap.label} — Ctrl+Z brings back what you had`);
-        });
-
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'wb-snap-del';
-        del.textContent = '✕';
-        del.title = 'Delete this snapshot';
-        del.setAttribute('aria-label', `Delete snapshot ${snap.label}`);
-        del.addEventListener('click', (e) => {
-          e.stopPropagation();
-          writeStore(removeSnapshot(readStore(), snap.id));
-          render();
-        });
-
-        row.append(restore, del);
-        panel.appendChild(row);
-      }
-    };
-
-    section(
-      scope.kind === 'column' ? `${scope.field} column` : 'This view',
-      snapshotsFor(store, scope),
-      'No snapshots yet — take one above before you experiment.',
-    );
-    section(
-      'Everything',
-      snapshotsFor(store, { kind: 'all' }),
-      'No workspace snapshots yet.',
-    );
+      panel.appendChild(details);
+    }
   };
 
   render();
