@@ -82,6 +82,27 @@ test('the width presets squeeze the preview stage (watch zones wrap)', async ({ 
   await expect(page.locator('.wb-template-stage')).toHaveCSS('width', '360px');
 });
 
+test('reopening the builder edits the applied layout in place (no gallery restart)', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page);
+  await page.locator('.wb-template-apply').click();
+  await expect(page.locator('.wb-template-modal')).toHaveCount(0);
+
+  // reopen: straight into the zone editor with the applied zones — no gallery
+  await page.locator('.wb-rowview-templates').click();
+  await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+  await expect(page.locator('.wb-wf-card')).toHaveCount(0);
+  await expect(page.locator('.wb-edit-zone-tag').first()).toContainText('Lead');
+
+  // tweak one zone (selected via the TREE — the deterministic surface) and re-apply
+  await page.locator('[data-tree-zone="1"]').click();
+  await page.locator('[data-zoneflow="stack"]').click();
+  await page.locator('.wb-template-apply').click();
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3); // prior layout, still a row view
+});
+
 test('New rowview is reachable from the document dropdown on the landing screen', async ({ page }) => {
   await page.goto('/');
   // straight from the grid landing — no need to enter Row View first

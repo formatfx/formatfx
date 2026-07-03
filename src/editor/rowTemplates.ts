@@ -23,8 +23,9 @@
  */
 import type { MockField, FieldType, SPElement, CustomRowAction } from '../core/types';
 import type { AreaWeight, RowDensity } from './areas';
-import { WEIGHT_FLEX, setRowDensity } from './areas';
-import { gridCellForField } from './gridScaffold';
+import { WEIGHT_FLEX, setRowDensity, rowDensityOf } from './areas';
+import { gridCellForField, fieldRefsIn as gridFieldRefsIn } from './gridScaffold';
+import { cfrFieldName } from '../core/refs';
 import { bindComponentInstance, type ComponentDef } from './components';
 
 export type WireframeId = 'lead-detail' | 'avatar-card' | 'title-chips' | 'dashboard' | 'equal' | 'blank';
@@ -94,6 +95,10 @@ export interface RowTemplateConfig {
   kebab: KebabConfig;
 }
 
+/** The one zebra wrapper expression the builder emits — also what the
+ *  round-trip parser recognizes (any OTHER additionalRowClass refuses). */
+export const ZEBRA_ROW_CLASS = "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')";
+
 export interface ComposedRowStyle {
   rootStyle: Record<string, string>;
   rootClass: string[];
@@ -148,8 +153,7 @@ export function composeRowStyle(config: RowTemplateConfig, palette: Record<strin
   // --- layer 4: background/state ---
   if (zebraLive && config.zebraStriping) {
     // ROOT carries nothing; the stripe lives on the view wrapper (see buildTemplateView).
-    return finalize(rootStyle, rootClass, disabled,
-      "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')", config);
+    return finalize(rootStyle, rootClass, disabled, ZEBRA_ROW_CLASS, config);
   }
   return finalize(rootStyle, rootClass, disabled, undefined, config);
 }
@@ -573,6 +577,10 @@ export const ZONE_SIZE_LABEL: Record<ZoneSize, string> = {
   hug: 'Hug content', normal: 'Fill', wide: 'Fill 2×', widest: 'Fill 3×',
 };
 
+export const ZONE_FLOW_LABEL: Record<ZoneFlow, string> = {
+  side: 'Side by side', wrap: 'Wrap when tight', stack: 'Stacked',
+};
+
 /** Why Apply is blocked, or null when it may proceed (refuse-and-teach: an
  *  unmapped component slot would silently render blank on real SP). */
 export function applyBlocker(config: RowTemplateConfig, components: ComponentDef[]): string | null {
@@ -590,6 +598,200 @@ export function applyBlocker(config: RowTemplateConfig, components: ComponentDef
     }
   }
   return null;
+}
+
+// ─── the round-trip parser (reopen an applied layout as editable zones) ──────
+// configFromView is the builder's memory: it turns a row-view tree the builder
+// (or an exact equivalent) produced back into a RowTemplateConfig. The parse is
+// deliberately BEST-EFFORT — correctness comes from the rebuild-verify gate at
+// the end: the parsed config is rebuilt through buildTemplateView and must
+// deep-equal the original tree + wrapper class. Anything hand-edited beyond
+// what the builder can represent fails that gate and returns null, so a lossy
+// reopen-then-Apply can never silently destroy a maker's work (refuse-don't-
+// guess, structurally).
+
+/** Order-insensitive deep equality over plain JSON-ish values (objects compare
+ *  by key set — undefined-valued keys ignored; arrays stay ordered). */
+function deepEq(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+      && a.every((v, i) => deepEq(v, b[i]));
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+    const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+    if (ka.length !== kb.length) return false;
+    return ka.every((k) => deepEq((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+  }
+  return false;
+}
+
+const classListOf = (el: SPElement): string[] =>
+  (typeof el.attributes?.class === 'string' ? el.attributes.class : '').split(/\s+/).filter(Boolean);
+
+/** Kebab candidate: the exact trigger shape buildKebab emits. */
+function isKebabEl(el: SPElement): boolean {
+  return el.elmType === 'button' && el.txtContent === '⋯'
+    && (el.customRowAction?.action === 'openContextMenu' || Boolean(el.customCardProps));
+}
+
+function parseKebab(el: SPElement, index: number, lastIndex: number): KebabConfig | null {
+  const hover = classListOf(el).includes('sp-card-showOnHoverChild');
+  const position: KebabPosition = hover ? 'hover'
+    : index === 0 ? 'left' : index === lastIndex ? 'right' : index === 1 ? 'title' : 'right';
+  if (index !== 0 && index !== 1 && index !== lastIndex) return null; // not a spot placeKebab uses
+  const actions: KebabActionFlags = {
+    defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false,
+  };
+  if (el.customRowAction?.action === 'openContextMenu') {
+    return { enabled: true, behavior: 'native', position, actions };
+  }
+  const kebab: KebabConfig = { enabled: true, behavior: 'custom', position, actions };
+  for (const b of el.customCardProps?.formatter.children ?? []) {
+    const a = b.customRowAction;
+    switch (a?.action) {
+      case 'defaultClick': actions.defaultClick = true; break;
+      case 'editProps': actions.editProps = true; break;
+      case 'share': actions.share = true; break;
+      case 'delete': actions.delete = true; break;
+      case 'executeFlow': {
+        actions.executeFlow = true;
+        try { kebab.flowId = String((JSON.parse(a.actionParams ?? '{}') as { id?: string }).id ?? ''); } catch { return null; }
+        break;
+      }
+      case 'setValue': {
+        actions.setValue = true;
+        const entries = Object.entries(a.actionInput ?? {});
+        if (entries.length !== 1) return null;
+        kebab.setValueField = entries[0][0];
+        kebab.setValueVal = String(entries[0][1]);
+        break;
+      }
+      default: return null; // an action the builder never emits
+    }
+  }
+  return kebab;
+}
+
+function parseItemWidth(el: SPElement, flow: ZoneFlow): ItemWidth {
+  if (flow === 'stack') return el.style?.['width'] === '100%' ? 'fill' : 'natural';
+  const flex = String(el.style?.['flex'] ?? '');
+  return flex.startsWith('1') ? 'fill' : 'natural';
+}
+
+function parseItem(el: SPElement, flow: ZoneFlow, fields: MockField[]): ZoneItem | null {
+  if (el._component) {
+    return { kind: 'component', componentId: el._component.id, map: { ...el._component.map }, width: parseItemWidth(el, flow) };
+  }
+  // a field cell: the single field it renders is DERIVED, exactly like the
+  // grid's column↔field mapping (CFR target, else the one [$Field] referenced)
+  let fieldName: string | undefined;
+  if (el.columnFormatterReference) {
+    fieldName = cfrFieldName(el.columnFormatterReference);
+  } else {
+    const refs = [...gridFieldRefsIn(el)];
+    if (refs.length === 1) fieldName = refs[0];
+  }
+  if (!fieldName || !fields.some((f) => f.name === fieldName)) return null;
+  return {
+    kind: 'field', fieldName,
+    width: parseItemWidth(el, flow),
+    text: el.style?.['white-space'] === 'normal' ? 'wrap' : 'truncate',
+  };
+}
+
+function parseZone(el: SPElement, index: number, fields: MockField[]): ZoneConfig | null {
+  if (el.elmType !== 'div' || el.style?.['display'] !== 'flex') return null;
+  const flow: ZoneFlow = el.style['flex-direction'] === 'column' ? 'stack'
+    : el.style['flex-wrap'] === 'wrap' ? 'wrap' : 'side';
+  const size: ZoneSize = el.style['flex'] === '0 0 auto' ? 'hug'
+    : (['normal', 'wide', 'widest'] as const).find((w) => WEIGHT_FLEX[w] === el.style?.['flex']) ?? 'normal';
+  const alignKey = flow === 'stack' ? el.style['align-items'] : el.style['justify-content'];
+  const align: ZoneAlign = alignKey === 'center' ? 'center' : alignKey === 'flex-end' ? 'right' : 'left';
+  const label = typeof el._elmName === 'string' && el._elmName.endsWith(' zone')
+    ? el._elmName.slice(0, -' zone'.length)
+    : `Zone ${index + 1}`;
+  const items: ZoneItem[] = [];
+  for (const child of el.children ?? []) {
+    const item = parseItem(child, flow, fields);
+    if (!item) return null;
+    items.push(item);
+  }
+  return { label, size, flow, align, items };
+}
+
+/**
+ * Reopen an applied row view as the builder config that produced it, or null
+ * when the tree can't be represented losslessly (→ the caller falls back to
+ * the wireframe gallery and Apply keeps its overwrite confirm). Pure.
+ */
+export function configFromView(
+  root: SPElement,
+  additionalRowClass: string | undefined,
+  fields: MockField[],
+  columnRefs: Record<string, SPElement>,
+  components: ComponentDef[],
+): RowTemplateConfig | null {
+  if (root.elmType !== 'div' || root.style?.['display'] !== 'flex') return null;
+  if (additionalRowClass && additionalRowClass !== ZEBRA_ROW_CLASS) return null;
+
+  const classes = classListOf(root);
+  const rowStyle: RowStyle = classes.includes('ms-bgColor-white') && root.style['border-radius'] === '4px'
+    ? 'card'
+    : root.style['border-bottom-style'] === 'solid' && root.style['border-style'] === undefined
+      && classes.includes('sp-css-borderColor-neutralQuaternaryAlt')
+      ? 'minimalist' : 'flat';
+  const borderColorClass = classes.find((c) => c.startsWith('sp-css-borderColor-'));
+  const genericBorder = rowStyle === 'flat'
+    && (root.style['border-style'] === 'solid' || root.style['border-style'] === 'dashed');
+  const stripe = /^3px solid (.+)$/.exec(String(root.style['border-left'] ?? ''));
+  const hoverClass = classes.map((c) => /^ms-bgColor-(.+)--hover$/.exec(c)).find(Boolean);
+
+  const kids = root.children ?? [];
+  const kebabIdx = kids.findIndex(isKebabEl);
+  let kebab: KebabConfig = {
+    enabled: false, behavior: 'custom', position: 'right',
+    actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false },
+  };
+  if (kebabIdx !== -1) {
+    if (kids.some((k, i) => i !== kebabIdx && isKebabEl(k))) return null; // one kebab max
+    const parsed = parseKebab(kids[kebabIdx], kebabIdx, kids.length - 1);
+    if (!parsed) return null;
+    kebab = parsed;
+  }
+
+  const zones: ZoneConfig[] = [];
+  for (let i = 0; i < kids.length; i++) {
+    if (i === kebabIdx) continue;
+    const zone = parseZone(kids[i], zones.length, fields);
+    if (!zone) return null;
+    zones.push(zone);
+  }
+
+  const config: RowTemplateConfig = {
+    wireframeId: 'blank', // the source wireframe isn't recoverable (and nothing rebuilds from it)
+    rowStyle,
+    density: rowDensityOf(root),
+    zebraStriping: additionalRowClass === ZEBRA_ROW_CLASS,
+    hoverHighlight: Boolean(hoverClass),
+    hoverToken: hoverClass?.[1] ?? 'themeLighter',
+    borderStyle: genericBorder ? (root.style['border-style'] as BorderStyle) : 'none',
+    borderColor: borderColorClass?.slice('sp-css-borderColor-'.length) ?? 'neutralQuaternaryAlt',
+    leftStripe: stripe ? 'neutral' : 'none',
+    zones,
+    kebab,
+  };
+
+  // ── the losslessness gate: rebuild and require byte-equivalence ──
+  // leftStripe bakes a theme color at build time; verify against the color the
+  // ORIGINAL carries so a light/dark toggle between Apply and reopen still
+  // round-trips (the next Apply re-bakes the current theme, which is correct).
+  const verifyPalette = { themePrimary: stripe?.[1] ?? '' };
+  const rebuilt = buildTemplateView(config, fields, columnRefs, verifyPalette, components);
+  if (!deepEq(rebuilt.root, root)) return null;
+  if ((rebuilt.additionalRowClass ?? '') !== (additionalRowClass ?? '')) return null;
+  return config;
 }
 
 /** The order buildTemplateView lays out root children: each entry is a zone

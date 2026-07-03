@@ -21,6 +21,9 @@ export type Mode = 'edit' | 'preview';
 export type Dock = 'bottom' | 'left';
 /** 'pick' = the wireframe gallery; 'edit' = the zone canvas. */
 export type Stage = 'pick' | 'edit';
+/** Which zone setting the preview tags currently PEEK (hovering an inspector
+ *  section swaps every zone tag from its name to that setting's value). */
+export type Peek = 'size' | 'flow' | 'align';
 
 /** What's selected on the canvas: a zone, or one item inside a zone. */
 export type Selection = { zone: number; item: number | null } | null;
@@ -40,6 +43,9 @@ export interface ModalUI {
   dock: Dock;
   /** Simulated row width in px (the squeeze scrubber); null = full width. */
   stageWidth: number | null;
+  /** The canvas holds a row view the round-trip parser REFUSED (hand-built or
+   *  hand-edited) — the gallery says so instead of silently starting fresh. */
+  foreignRow: boolean;
 }
 
 /** Everything the region renderers may do — all mutations funnel through here so
@@ -53,8 +59,8 @@ export interface ModalApi {
   dropField(zi: number, field: string): void;
   /** Drop a component chip into a zone (appends a best-guess-mapped item). */
   dropComponent(zi: number, componentId: string): void;
-  /** Drop on the end gap: a NEW zone seeded with the payload. */
-  dropNewZone(payload: { field?: string; componentId?: string }): void;
+  /** Add an empty zone (the "+ Zone" button — no drop required) and select it. */
+  addEmptyZone(): void;
   removeZone(zi: number): void;
   reorderZone(from: number, to: number): void;
   cycleZoneSize(zi: number): void;
@@ -70,6 +76,8 @@ export interface ModalApi {
   setMode(m: Mode): void;
   toggleDock(): void;
   setStageWidth(w: number | null): void;
+  /** Transient hover state — stamps data-peek on the modal, NO rerender. */
+  setPeek(p: Peek | null): void;
   apply(): void;
   cancel(): void;
   notify(msg: string): void;

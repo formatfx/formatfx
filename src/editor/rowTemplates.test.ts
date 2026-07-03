@@ -3,7 +3,7 @@ import {
   composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView, buildZone,
   addZone, removeZone, moveZone, patchZone, newZone,
   addItem, removeItem, moveItem, patchItem, newFieldItem, newComponentItem,
-  nextZoneSize, childSlotOrder, applyBlocker, WIREFRAMES,
+  nextZoneSize, childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig,
 } from './rowTemplates';
 import type { ComponentDef } from './components';
@@ -380,6 +380,115 @@ describe('applyBlocker — refuse-and-teach before Apply', () => {
     let c = base({ zones: [newZone()] });
     c = addItem(c, 0, newComponentItem(CHIP.id, { Due: 'Due' }));
     expect(applyBlocker(c, [CHIP])).toBeNull();
+  });
+});
+
+describe('configFromView — the lossless round trip (reopen as zones)', () => {
+  /** Apply-then-reopen: build pruned (what Apply writes), parse it back. */
+  const reopen = (
+    config: RowTemplateConfig,
+    columnRefs: Record<string, import('../core/types').SPElement> = {},
+  ): RowTemplateConfig | null => {
+    const { root, additionalRowClass } = buildTemplateView(config, FIELDS, columnRefs, PAL, [CHIP], { prune: true });
+    return configFromView(root, additionalRowClass, FIELDS, columnRefs, [CHIP]);
+  };
+
+  it('every wireframe seed survives apply → reopen with zones intact', () => {
+    for (const wf of WIREFRAMES) {
+      const seeded = defaultConfigFor(wf.id, FIELDS);
+      const parsed = reopen(seeded);
+      expect(parsed, wf.id).not.toBeNull();
+      const kept = seeded.zones.filter((z) => z.items.length > 0); // Apply prunes empties
+      expect(parsed!.zones, wf.id).toEqual(kept);
+    }
+  });
+
+  it('row styling round-trips: card + hover + compact', () => {
+    const c = { ...defaultConfigFor('equal', FIELDS), rowStyle: 'card' as const, density: 'compact' as const,
+      hoverHighlight: true };
+    const parsed = reopen(c)!;
+    expect(parsed).toMatchObject({ rowStyle: 'card', density: 'compact', hoverHighlight: true });
+  });
+
+  it('zebra round-trips on a flat row (card suppresses it at build time)', () => {
+    const flat = { ...defaultConfigFor('equal', FIELDS), zebraStriping: true };
+    expect(reopen(flat)!.zebraStriping).toBe(true);
+    const card = { ...flat, rowStyle: 'card' as const };
+    expect(reopen(card)!.zebraStriping).toBe(false); // what actually painted
+  });
+
+  it('a dashed flat border and the left accent stripe round-trip', () => {
+    const c = { ...defaultConfigFor('equal', FIELDS), borderStyle: 'dashed' as const,
+      borderColor: 'themePrimary', leftStripe: 'neutral' as const };
+    const parsed = reopen(c)!;
+    expect(parsed).toMatchObject({ borderStyle: 'dashed', borderColor: 'themePrimary', leftStripe: 'neutral' });
+  });
+
+  it('a custom kebab with flow + setValue params round-trips', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    c.kebab = { enabled: true, behavior: 'custom', position: 'title',
+      actions: { defaultClick: true, editProps: false, share: false, delete: true, executeFlow: true, setValue: true },
+      flowId: 'flow-9', setValueField: 'Status', setValueVal: 'Done' };
+    const parsed = reopen(c)!;
+    expect(parsed.kebab).toMatchObject({ enabled: true, behavior: 'custom', position: 'title',
+      flowId: 'flow-9', setValueField: 'Status', setValueVal: 'Done' });
+    expect(parsed.kebab.actions).toEqual(c.kebab.actions);
+  });
+
+  it('zone behavior + item knobs round-trip (stack fill, wrap natural, text wrap)', () => {
+    let c = patchZone(defaultConfigFor('avatar-card', FIELDS), 1, { align: 'center' });
+    c = patchItem(c, 1, 0, { width: 'fill', text: 'wrap' });
+    const parsed = reopen(c)!;
+    expect(parsed.zones[1]).toMatchObject({ flow: 'stack', align: 'center' });
+    expect(parsed.zones[1].items[0]).toMatchObject({ width: 'fill', text: 'wrap' });
+  });
+
+  it('component items round-trip with their slot map and width', () => {
+    let c = defaultConfigFor('blank', FIELDS);
+    c = addItem(c, 0, { ...newComponentItem(CHIP.id, { Due: 'Due' }), width: 'fill' });
+    const parsed = reopen(c)!;
+    expect(parsed.zones[0].items.at(-1)).toEqual({ kind: 'component', componentId: CHIP.id, map: { Due: 'Due' }, width: 'fill' });
+  });
+
+  it('CFR cells parse back to their field (the derived-mapping rule)', () => {
+    const refs = { Title: { elmType: 'div' as const } };
+    const parsed = reopen(defaultConfigFor('equal', FIELDS), refs)!;
+    expect(parsed.zones.flatMap((z) => z.items)).toContainEqual(
+      expect.objectContaining({ kind: 'field', fieldName: 'Title' }));
+  });
+
+  it('refuses a root hand-styled beyond the builder vocabulary', () => {
+    const { root } = buildTemplateView(defaultConfigFor('equal', FIELDS), FIELDS, {}, PAL, [], { prune: true });
+    root.style!['background-color'] = '#ff0000';
+    expect(configFromView(root, undefined, FIELDS, {}, [])).toBeNull();
+  });
+
+  it('refuses a hand-styled item (the rebuild-verify gate, not key-by-key checks)', () => {
+    const { root } = buildTemplateView(defaultConfigFor('equal', FIELDS), FIELDS, {}, PAL, [], { prune: true });
+    root.children![0].children![0].style!['padding'] = '9px';
+    expect(configFromView(root, undefined, FIELDS, {}, [])).toBeNull();
+  });
+
+  it('refuses a foreign additionalRowClass (only the builder zebra is known)', () => {
+    const { root } = buildTemplateView({ ...defaultConfigFor('equal', FIELDS), zebraStriping: true }, FIELDS, {}, PAL, [], { prune: true });
+    expect(configFromView(root, ZEBRA_ROW_CLASS, FIELDS, {}, [])).not.toBeNull();
+    expect(configFromView(root, "=if([$Status]=='Done','ms-bgColor-green','')", FIELDS, {}, [])).toBeNull();
+  });
+
+  it('refuses a hand-built multi-field cell and a non-flex child', () => {
+    const { root } = buildTemplateView(defaultConfigFor('equal', FIELDS), FIELDS, {}, PAL, [], { prune: true });
+    root.children![0].children![0] = { elmType: 'div', txtContent: '=[$Title]+[$Status]' };
+    expect(configFromView(root, undefined, FIELDS, {}, [])).toBeNull();
+    const { root: root2 } = buildTemplateView(defaultConfigFor('equal', FIELDS), FIELDS, {}, PAL, [], { prune: true });
+    root2.children!.push({ elmType: 'div', txtContent: 'hand-made' });
+    expect(configFromView(root2, undefined, FIELDS, {}, [])).toBeNull();
+  });
+
+  it('a theme flip between Apply and reopen still round-trips the stripe', () => {
+    const c = { ...defaultConfigFor('equal', FIELDS), leftStripe: 'neutral' as const };
+    const { root } = buildTemplateView(c, FIELDS, {}, themePalette('dark'), [], { prune: true });
+    // reopened under the light palette — the baked dark stripe color must not refuse
+    expect(configFromView(root, undefined, FIELDS, {}, [])).not.toBeNull();
   });
 });
 

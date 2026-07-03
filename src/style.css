@@ -2333,6 +2333,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-wf-zone--stack .wb-wf-mark { flex: 0 0 auto; height: 6px; }
 .wb-wf-name { font-size: 13px; font-weight: 600; }
 .wb-wf-blurb { font-size: 11px; color: var(--wb-text-2); line-height: 1.35; }
+.wb-template-foreign-note {
+  margin-bottom: 12px; padding: 8px 10px; border-radius: 6px; font-size: 12px;
+  border: 1px solid var(--wb-warn, #c08a00); color: var(--wb-text);
+  background: rgba(192, 138, 0, .08);
+}
 
 /* MAIN — preview + inspector; column by default, row-reverse when docked left */
 .wb-template-main { flex: 1; display: flex; min-height: 0; }
@@ -2398,6 +2403,14 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   position: absolute; top: -16px; left: 0; white-space: nowrap; pointer-events: none;
   font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: var(--wb-text-2);
 }
+/* the tag leads with the zone NAME; hovering an inspector section peeks that
+   setting's value instead (data-peek on the modal root — pure CSS switch) */
+.wb-edit-zone-tag .wb-zt { display: none; }
+.wb-template-modal[data-peek=""] .wb-zt-name,
+.wb-template-modal:not([data-peek]) .wb-zt-name { display: inline; }
+.wb-template-modal[data-peek="size"] .wb-zt-size,
+.wb-template-modal[data-peek="flow"] .wb-zt-flow,
+.wb-template-modal[data-peek="align"] .wb-zt-align { display: inline; color: var(--wb-accent); font-weight: 600; }
 .wb-edit-zone-hint {
   flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
   min-height: 24px; font-size: 11px; color: var(--wb-text-2);
@@ -2405,7 +2418,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-edit-item { cursor: pointer; border-radius: 4px; outline: 1px solid transparent; }
 .wb-edit-item:hover { outline-color: var(--wb-accent); }
 .wb-edit-selected { outline: 2px solid var(--wb-accent) !important; outline-offset: 1px; }
-.wb-edit-zone.wb-drop-hover, .wb-edit-item.wb-drop-hover, .wb-edit-endgap.wb-drop-hover {
+.wb-edit-zone.wb-drop-hover, .wb-edit-item.wb-drop-hover {
   outline: 2px solid var(--wb-accent); background: rgba(0, 120, 212, .08);
 }
 .wb-edit-kebab { cursor: pointer; }
@@ -2414,11 +2427,30 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   cursor: ew-resize; border-radius: 3px; background: var(--wb-border); opacity: .5;
 }
 .wb-edit-divider:hover { opacity: 1; background: var(--wb-accent); }
-.wb-edit-endgap {
-  flex: 0 0 auto; min-width: 110px; align-self: stretch; display: flex;
-  align-items: center; justify-content: center; padding: 4px 8px; margin-left: 6px;
-  border: 1px dashed var(--wb-border); border-radius: 6px; font-size: 11px; color: var(--wb-text-2);
+
+/* the zone TREE rail — the builder's structure pane */
+.wb-template-tree {
+  flex: 0 0 150px; display: flex; flex-direction: column; gap: 4px; min-height: 0;
+  padding: 4px 10px 4px 0; margin-right: 10px; border-right: 1px solid var(--wb-border);
 }
+.wb-template-tree-head { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--wb-text-2); }
+.wb-template-tree-rows { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
+/* wb-ztree-*: the zone tree's own namespace — wb-tree-* belongs to the studio
+   structure tree (treeView.ts) and must not be restyled from here */
+.wb-ztree-row {
+  display: flex; align-items: center; gap: 5px; text-align: left; width: 100%;
+  background: transparent; border: none; border-radius: 4px; padding: 3px 6px;
+  font-size: 12px; color: var(--wb-text); cursor: pointer;
+}
+.wb-ztree-row:hover { background: var(--wb-surface); }
+.wb-ztree-zone { font-weight: 600; }
+.wb-ztree-item { padding-left: 22px; font-size: 11.5px; color: var(--wb-text-2); }
+.wb-ztree-comp { color: var(--wb-component, #038387); }
+.wb-ztree-on { background: var(--wb-accent) !important; color: var(--wb-accent-text) !important; }
+.wb-ztree-icon { font-size: 10px; opacity: .7; }
+.wb-ztree-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-template-addzone { align-self: stretch; text-align: center; }
+.wb-template-addzone:disabled { opacity: .45; cursor: default; }
 
 /* inspector controls */
 .wb-template-section { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--wb-text-2); margin: 12px 0 5px; }
