@@ -100,7 +100,8 @@ export function openTemplateModal(onToast: (m: string) => void): void {
     const key = e.key.toLowerCase();
     if (key !== 'z' && key !== 'y') return;
     const t = e.target as HTMLElement | null;
-    if (t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
+    // editable surfaces keep their native editing undo (same guard as canvas.ts)
+    if (t?.closest?.('input, textarea, select, [contenteditable], dialog')) return;
     e.preventDefault();
     e.stopPropagation();
     if (key === 'y' || e.shiftKey) redo();

@@ -13,8 +13,7 @@ import { cfrFieldName } from '../core/refs';
 import { cfrBlastRadius } from './cfr';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
-import { openMenu } from './menu';
-import { elementMenuItems } from './contextMenu';
+import { openElementMenu } from './contextMenu';
 import { elmIconName } from './elmRef';
 
 function nodeHint(el: SPElement): string {
@@ -249,16 +248,14 @@ export function mountTree(
       }
     });
 
-    // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…)
+    // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…),
+    // headed like this very row plus a clickable parent crumb. Keep a live
+    // multi-selection so "Group"/"Copy N" stay offered when several are picked.
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
       if (!state.isSelected(path)) state.select(path);
-      openMenu(
-        { x: e.clientX, y: e.clientY },
-        el._elmName ?? `<${el.elmType}>`,
-        elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }),
-      );
+      openElementMenu(path, { x: e.clientX, y: e.clientY }, onToast);
     });
 
     // drag & drop reparent

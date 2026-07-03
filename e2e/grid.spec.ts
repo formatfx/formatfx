@@ -162,11 +162,28 @@ test('right-click: column menu on headers, element menu on cell content, remove 
   // right-clicking rendered cell content gets the element menu for that column
   const titleCell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first();
   await titleCell.locator('[data-sp-path]').first().click({ button: 'right' });
-  await expect(page.locator('.wb-grid-menu-title')).toHaveText('Title');
+  // the element menu heads with the element drawn like its Structure-tree row
+  // (icon + name), and a clickable parent crumb sits before it
+  await expect(page.locator('.wb-elmmenu-head > .wb-elmref .wb-elmref-name')).toHaveText('Title');
+  await expect(page.locator('.wb-grid-menu-title .wb-elmmenu-parent')).toBeVisible();
   await page.locator('.wb-grid-menu button', { hasText: 'Remove' }).click();
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS.filter((h) => h !== 'Title'));
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
+});
+
+test('element menu: the parent crumb walks the selection up a level', async ({ page }) => {
+  // right-click a rendered cell's content → the element menu for that column
+  const titleCell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first();
+  await titleCell.locator('[data-sp-path]').first().click({ button: 'right' });
+  // the crumb names the parent element; remember it, then click to climb
+  const crumb = page.locator('.wb-grid-menu-title .wb-elmmenu-parent');
+  const parentName = await crumb.locator('.wb-elmref-name').textContent();
+  await crumb.click();
+  // the menu is now the parent's — its subject chip is what the crumb named…
+  await expect(page.locator('.wb-elmmenu-head > .wb-elmref .wb-elmref-name')).toHaveText(parentName!);
+  // …and the root has nothing above it, so the crumb is gone at the top
+  await expect(page.locator('.wb-grid-menu-title .wb-elmmenu-parent')).toBeHidden();
 });
 
 test('conditional formatting from the header menu: condition → rule → data preview → apply lands on the column formatter', async ({ page }) => {
