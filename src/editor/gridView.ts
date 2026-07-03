@@ -26,7 +26,7 @@ import {
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
 import { cfrBlastRadius, toColumnFormatter } from './cfr';
-import { bindComponent, isSingleColumnComponent } from './components';
+import { bindComponentInstance, isSingleColumnComponent } from './components';
 import { customComponents, openSaveColumnAsComponent } from './componentLibrary';
 import {
   subtypesForType, bakeSubtype, coerceKnob, knobError,
@@ -229,8 +229,10 @@ function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLEle
       fn: () => {
         // same snapshot-apply semantics as a built-in seed: stay on the grid,
         // one Ctrl+Z reverts (the recipe tag is the component id — harmless
-        // to the vocab lookup, which optional-chains unknown ids)
-        const bound = bindComponent(def, { [def.slots[0].key]: field.name });
+        // to the vocab lookup, which optional-chains unknown ids). The bound
+        // root is STAMPED so the ⬡ inventory sees the instance too (the scan
+        // dedupes it against the subtype tag — one usage per column).
+        const bound = bindComponentInstance(def, { [def.slots[0].key]: field.name });
         const baked = toColumnFormatter(bound, field.name);
         baked._elmName = `${fieldLabel(field)} — ${def.name}`;
         state.applyColumnSubtype(field.name, baked, def.id, {}, col.path);

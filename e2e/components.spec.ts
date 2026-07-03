@@ -1,11 +1,12 @@
 /**
- * E2E: the ⬡ Components library — packaged formatting without a column to
- * call home. The COMPONENTS tab browses built-ins + saved components with
- * live best-guess previews; "Add to view…" opens the typed mapping dialog
- * (one type-filtered column picker per slot) and inserts the bound component
- * as one undoable step; "Save as component…" (element context menu) derives
- * typed slots and persists to the library across reloads; CFR-carrying
- * subtrees are refused (components are self-contained).
+ * E2E: the ⬡ Components tab — first an INVENTORY of the components in use in
+ * the current project ("In this project": usage counts, jump-to-usage rows),
+ * then the add-a-component browser (Built-in / Yours / Whole rows / Bring
+ * your own). The typed mapping dialog inserts wherever the canvas points —
+ * the view, or the OPEN column formatter — always as one undoable step.
+ * "Save as component…" (element context menu) derives typed slots and
+ * persists to the library across reloads; CFR-carrying subtrees are refused
+ * (components are self-contained).
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -20,7 +21,11 @@ function treeRow(page: Page, name: string) {
   return page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: name }) });
 }
 
-test('the COMPONENTS tab opens the library: built-ins with slot chips and live previews', async ({ page }) => {
+function header(page: Page, label: string) {
+  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
+}
+
+test('the COMPONENTS tab opens the inventory + browser: empty "In this project", built-ins below', async ({ page }) => {
   await page.locator('.wb-fmt-tab-comp').click();
   await expect(page.locator('.wb-fmt-tab-comp')).toHaveClass(/active/);
   // library mode replaces the tree browser; the other tabs read inactive
@@ -28,6 +33,9 @@ test('the COMPONENTS tab opens the library: built-ins with slot chips and live p
   await expect(page.locator('#wb-tree-body')).toBeHidden();
   const lib = page.locator('#wb-lp-library');
   await expect(lib).toBeVisible();
+  // the inventory comes first — empty until something is actually in use
+  await expect(lib.locator('.wb-complib-h1').first()).toHaveText('In this project');
+  await expect(lib.locator('.wb-complib-empty').first()).toContainText('Nothing in use yet');
   await expect(lib.locator('.wb-comp-card')).toHaveCount(3); // the built-ins
   const deadline = lib.locator('.wb-comp-card', { hasText: 'Deadline chip' });
   await expect(deadline.locator('.wb-comp-slot')).toContainText(['The deadline to track · date']);
@@ -37,6 +45,53 @@ test('the COMPONENTS tab opens the library: built-ins with slot chips and live p
   await page.locator('.wb-fmt-tab-view').click();
   await expect(page.locator('#wb-lp-library')).toBeHidden();
   await expect(page.locator('#wb-tree-body')).toBeVisible();
+});
+
+test('an inserted component appears under "In this project"; its usage row jumps to the instance', async ({ page }) => {
+  // insert Deadline chip into the view (grid → a new root column)
+  await page.locator('.wb-fmt-tab-comp').click();
+  await page.locator('.wb-comp-card', { hasText: 'Deadline chip' }).locator('.wb-comp-add').click();
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  // the library re-renders in place: the chip is now inventory, count 1
+  const used = page.locator('.wb-comp-used', { hasText: 'Deadline chip' });
+  await expect(used).toBeVisible();
+  await expect(used.locator('.wb-comp-count')).toHaveText('used in 1 place');
+  // Show usages lists the view instance…
+  await used.locator('.wb-comp-showuses').click();
+  const row = used.locator('.wb-comp-usage');
+  await expect(row).toHaveText('View — Deadline chip');
+  // …and clicking it JUMPS there: the instance is selected on the grid canvas
+  // (every mock row renders the instance, so each rendered copy highlights)
+  await row.click();
+  await expect(page.locator('#wb-canvas .wb-selected').first()).toBeVisible();
+});
+
+test('with a column formatter open, insertion targets IT — and the inventory shows the column usage', async ({ page }) => {
+  // drill into the shared Status column style
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
+  // the library over an open column formatter: the dialog is honest about the destination
+  await page.locator('.wb-fmt-tab-comp').click();
+  await page.locator('.wb-comp-card', { hasText: 'Deadline chip' }).locator('.wb-comp-add').click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg.locator('.wb-compmap-insert')).toHaveText('Add to the Status column formatter');
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Added Deadline chip to the Status column formatter');
+  // the insert went INTO the open formatter: the canvas still shows the
+  // COLUMN preview (per-row cells, not the grid) and now renders the chip
+  // (row 2's due date is 3 days past → Overdue)
+  await expect(page.locator('#wb-canvas .wb-mock-cell-fmt').first()).toBeVisible();
+  await expect(page.locator('.wb-grid-headrow')).toHaveCount(0);
+  await expect(page.locator('#wb-canvas')).toContainText('Overdue');
+  // the inventory tracks it as ONE column usage
+  const used = page.locator('.wb-comp-used', { hasText: 'Deadline chip' });
+  await expect(used.locator('.wb-comp-count')).toHaveText('used in 1 place');
+  await used.locator('.wb-comp-showuses').click();
+  await expect(used.locator('.wb-comp-usage')).toHaveText('Status — column formatter');
+  // one Ctrl+Z removes it from the column formatter
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('#wb-canvas')).not.toContainText('Overdue');
 });
 
 test('Add to view: the mapping dialog filters columns by slot type and inserts one undoable grid column', async ({ page }) => {

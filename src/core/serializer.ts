@@ -16,8 +16,8 @@ export interface ExportOptions {
   sanitizeWhitespace?: boolean;
   /** Escape & and < as & / < in the JSON text (safe for CSOM deploys). */
   csomSafe?: boolean;
-  /** Keep _elmName/_factory provenance metadata. Default TRUE (SharePoint
-   *  ignores them) — pass false for schema-pristine output. */
+  /** Keep _elmName/_factory/_component provenance metadata. Default TRUE
+   *  (SharePoint ignores them) — pass false for schema-pristine output. */
   keepMeta?: boolean;
   indent?: number;
 }
@@ -79,7 +79,7 @@ export function importJson(text: string): FormatterDocument {
 function cloneTree(el: SPElement, opts: ExportOptions): SPElement {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(el)) {
-    if (opts.keepMeta === false && (key === '_elmName' || key === '_factory' || key === '_debug')) continue;
+    if (opts.keepMeta === false && (key === '_elmName' || key === '_factory' || key === '_debug' || key === '_component')) continue;
     if (key === 'children' && Array.isArray(value)) {
       out.children = value.map((c) => cloneTree(c as SPElement, opts));
     } else if (key === 'customCardProps' && value && typeof value === 'object') {

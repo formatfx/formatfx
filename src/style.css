@@ -255,7 +255,8 @@ body {
   color: var(--wb-lp-text-2); margin-top: 2px;
 }
 .wb-complib-empty { font-size: 11px; font-style: italic; color: var(--wb-lp-text-2); }
-.wb-comp-card {
+.wb-comp-card,
+.wb-comp-used {
   display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
   border: 1px solid var(--wb-component-border); border-radius: 8px;
   background: color-mix(in srgb, var(--wb-component) 5%, transparent);
@@ -295,6 +296,40 @@ body {
 .wb-comp-rowlink:hover { border-color: var(--wb-component); }
 .wb-comp-rowlink-name { font-size: 12px; font-weight: 600; }
 .wb-comp-rowlink-desc { font-size: 10.5px; color: var(--wb-lp-text-2); line-height: 1.4; }
+/* the project inventory ("In this project"): top-level headers, the usage
+   count chip, and the show-usages jump rows */
+.wb-complib-h1 {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-lp-text); margin-top: 4px;
+  padding-bottom: 3px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-comp-count {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; white-space: nowrap;
+  padding: 2px 7px; border-radius: 9px;
+  color: var(--wb-component); background: var(--wb-component-bg);
+  border: 1px solid var(--wb-component-border);
+}
+.wb-comp-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wb-comp-addmore {
+  padding: 4px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--wb-component); border-radius: 5px;
+  background: transparent; color: var(--wb-component);
+}
+.wb-comp-addmore:hover { background: var(--wb-component-bg); }
+.wb-comp-showuses {
+  padding: 4px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--wb-lp-border); border-radius: 5px;
+  background: transparent; color: var(--wb-lp-text);
+}
+.wb-comp-showuses:hover { border-color: var(--wb-component); color: var(--wb-component); }
+.wb-comp-usages { display: flex; flex-direction: column; gap: 3px; }
+.wb-comp-usages[hidden] { display: none; }
+.wb-comp-usage {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer;
+  border: 1px solid transparent; border-radius: 5px; text-align: left; font: inherit;
+  font-size: 11px; background: var(--wb-canvas-bg); color: var(--wb-lp-text);
+}
+.wb-comp-usage:hover { border-color: var(--wb-component); color: var(--wb-component); }
 
 /* ── the mapping / save-as dialog (shared shell) ───────────────────────────── */
 .wb-compmap-overlay {

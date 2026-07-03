@@ -23,7 +23,7 @@
  * stay frozen). Built-ins ship in code and are never persisted.
  */
 
-import type { SPElement, MockField, FieldType, FormatterDocument } from '../core/types';
+import type { SPElement, MockField, FieldType, FormatterDocument, DocumentKind } from '../core/types';
 import { inlineColumnFormatter } from './cfr';
 
 export interface ComponentSlot {
@@ -241,6 +241,48 @@ export function bindComponent(def: ComponentDef, mapping: Record<string, string>
   const bound = remapFieldRefs(def.root, replacements);
   bound._elmName = bound._elmName ?? def.name;
   return bound;
+}
+
+/** The provenance stamp a bound INSTANCE carries on its root (`_component`):
+ *  which def it came from and the slot→column mapping it was bound with. The
+ *  usage scan (componentUsage.ts) and the component editor both read it. */
+export interface ComponentInstanceTag {
+  id: string;
+  map: Record<string, string>;
+}
+
+/** Bind AND stamp: bindComponent plus the `_component: { id, map }` instance
+ *  tag the ⬡ inventory scans for. INSERTIONS go through this; previews stay
+ *  on plain bindComponent so a rendered preview never reads as a usage. */
+export function bindComponentInstance(def: ComponentDef, mapping: Record<string, string>): SPElement {
+  const bound = bindComponent(def, mapping);
+  bound._component = { id: def.id, map: { ...mapping } };
+  return bound;
+}
+
+// ─── context-aware insertion (where does "Add" land?) ────────────────────────
+
+/** Where an element component lands when inserted. */
+export type ComponentInsertTarget =
+  | { kind: 'view'; grid: boolean }
+  | { kind: 'column'; field: string };
+
+/**
+ * The destination for an element-component insert: the OPEN column formatter
+ * when one is on the canvas (owner decision — components in column formatters
+ * and CFRs are allowed; the bound tree references explicit `[$Field]`s, valid
+ * there), otherwise the view (on the grid it arrives as a new root column).
+ * Pure so the dialog copy and the insert itself share one truth.
+ */
+export function componentInsertTarget(
+  activeDocKey: string,
+  docKind: DocumentKind,
+  currentFieldName: string,
+): ComponentInsertTarget {
+  if (activeDocKey !== 'main') return { kind: 'column', field: activeDocKey };
+  // the MAIN doc itself can be a column formatter (a JSON-tab import)
+  if (docKind === 'column') return { kind: 'column', field: currentFieldName };
+  return { kind: 'view', grid: docKind === 'grid' };
 }
 
 // ─── persistence (caller owns localStorage, same split as snapshots) ─────────

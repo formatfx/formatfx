@@ -186,7 +186,7 @@ export const DIRECTIONAL_HINTS = [
 ] as const;
 
 /** Editor-only metadata keys stripped on export. */
-export const META_KEYS = ['_elmName', '_factory', '_debug'] as const;
+export const META_KEYS = ['_elmName', '_factory', '_debug', '_component'] as const;
 
 // ─── Value suggestions for the inspector (low-code friendly pickers) ─────────
 
