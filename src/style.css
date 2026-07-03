@@ -216,12 +216,14 @@ body {
   background: var(--wb-bg); color: var(--wb-accent);
 }
 .wb-snap-take:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
-.wb-snap-take-all { color: var(--wb-text-2); font-weight: 400; }
-.wb-snap-take-all:hover { color: var(--wb-accent); }
 .wb-snapmenu-group {
   margin-top: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--wb-text-2);
 }
+/* legacy scoped snapshots (pre-full-workspace captures) stay restorable under
+   a collapsed group — taking new scoped ones is gone */
+.wb-snap-legacy > summary.wb-snapmenu-group { cursor: pointer; }
+.wb-snap-legacy > .wb-snap-row { margin-top: 5px; }
 .wb-snapmenu-empty { font-size: 11px; font-style: italic; color: var(--wb-text-2); }
 .wb-snap-row { display: flex; align-items: center; gap: 4px; }
 .wb-snap-restore {
@@ -2236,20 +2238,35 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
   padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
 
-/* ── formatter tabs (VIEW FORMATTERS · COLUMN FORMATTERS) ──────────────────
+/* ── the Formatters bar (header · VIEW / COLUMNS / COMPONENTS · ← · 🕘) ────
    Blue = the view formatter; violet = the shared column formatters — the same
    two color channels the canvas and tree teach, so the tabs read as "those
-   things I keep seeing with the § mark live here". */
+   things I keep seeing with the § mark live here". One row in a ~300px pane:
+   the "Formatters" header leads, the back + snapshot buttons right-align, and
+   paddings/font sizes stay tight so the common case never scrolls. */
 .wb-fmt-tabs {
   flex: 0 0 auto; display: flex; gap: 2px; padding: 0 6px;
   border-bottom: 1px solid var(--wb-lp-border);
   overflow-x: auto; scrollbar-width: none;
 }
 .wb-fmt-tabs::-webkit-scrollbar { display: none; }
+/* the header is the one non-interactive item, so it alone may shrink: below
+   ~320px it ellipsizes before the controls ever have to scroll */
+.wb-fmt-head {
+  flex: 0 1 auto; min-width: 0; align-self: center; margin-right: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--wb-lp-text-2); opacity: .75;
+}
+/* a REAL flex box, deliberately not display:contents — contents can drop the
+   wrapper (and its role="tablist" semantics) from the accessibility tree in
+   some browser/AT combos (Safari/VoiceOver). overflow stays visible so the
+   tabs' -1px margin still lands their underline on the bar's border-bottom. */
+.wb-fmt-tablist { display: flex; gap: 2px; flex: 0 0 auto; min-width: 0; }
 .wb-fmt-tab {
   display: inline-flex; align-items: center; gap: 3px;
-  border: none; background: none; cursor: pointer; padding: 9px 4px 8px;
-  font-size: 9.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+  border: none; background: none; cursor: pointer; padding: 9px 2px 8px;
+  font-size: 9px; font-weight: 600; letter-spacing: .01em; text-transform: uppercase;
   color: var(--wb-lp-text-2);
   border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
 }
@@ -2261,20 +2278,24 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-fmt-tab-cols.active { color: var(--wb-shared); border-bottom-color: var(--wb-shared); }
 .wb-fmt-tab-comp.active { color: var(--wb-component); border-bottom-color: var(--wb-component); }
 
-/* ── the document dropdown row (back · dropdown · snapshots) ──────────────── */
-.wb-doc-pill-row {
-  display: flex; align-items: stretch; gap: 5px; margin: 8px 8px 6px;
-}
+/* …the ← back + 🕘 snapshot buttons live on the Formatters bar, right-aligned */
 .wb-nav-back, .wb-snap-btn {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; border: 1px solid var(--wb-lp-border); border-radius: 8px;
+  flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center;
+  justify-content: center; width: 22px; height: 22px;
+  border: 1px solid var(--wb-lp-border); border-radius: 6px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
-  font-size: 13px; line-height: 1;
+  font-size: 12px; line-height: 1;
 }
+.wb-nav-back { margin-left: auto; }
 .wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover {
   border-color: var(--wb-accent); color: var(--wb-accent);
 }
 .wb-nav-back:disabled { opacity: .35; cursor: default; }
+
+/* ── the document dropdown row (the pill spans it alone) ───────────────────── */
+.wb-doc-pill-row {
+  display: flex; align-items: stretch; gap: 5px; margin: 8px 8px 6px;
+}
 
 /* ── the document dropdown (what's on the canvas: a view, or a column) ────── */
 .wb-doc-pill {
