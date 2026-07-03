@@ -324,6 +324,33 @@ Key structural invariants:
   comment). The pnp/List-Formatting live sample browser is a parked note:
   issue #155.
 
+- **The row view builder (2026-07-03, owner brief — supersedes the 06-24
+  template modal's interaction layer)**: "+ New rowview" / the row-view
+  toolbar's Templates button open a WIREFRAME-first builder. The pure brain
+  (`rowTemplates.ts`) now models ZONES, not one-field areas: a wireframe
+  (Lead + details / Avatar card / Title + chips / Dashboard / Equal / Blank,
+  `WIREFRAMES`) seeds zones by field TYPE; each zone holds ITEMS — field
+  cells and ⬡ COMPONENTS (bound via `bindComponentInstance`, so applied rows
+  show up in the ⬡ inventory) — and owns its space behavior in maker
+  language: size `hug|normal|wide|widest` (hug = flex 0 0 auto; fills reuse
+  the areas.ts weights + min-width:0), flow `side|wrap|stack` (wrap =
+  flex-wrap, allow-listed: items sit side by side until the zone tightens,
+  then the right item moves BENEATH the left — fill items there ride
+  `flex: 1 1 auto` with NO min-width:0 so they wrap instead of crushing;
+  that rule is pinned in rowTemplates.test.ts), and item width
+  natural|fill. The modal opens on a CSS-drawn wireframe GALLERY
+  (`data-wireframe` cards), then the zone canvas: chips for fields AND
+  element components (best-guess mapping prefilled on drop; an unmapped
+  slot BLOCKS Apply via `applyBlocker`, refuse-and-teach), zone/item
+  selection with a contextual inspector, dividers cycling zone size, and
+  the WIDTH SCRUBBER — Full/Medium/Narrow presets + a draggable stage edge
+  that squeezes the preview so shrink/wrap behavior is watched, not
+  imagined. Empty zones render as drop targets but are PRUNED on Apply.
+  Apply is still exactly `state.applyRowTemplate` — one undoable mutation;
+  everything before it is modal-local config (click-safety by
+  construction). `composeRowStyle`, the kebab engine, and the dock pref
+  (`wb-template-inspector-dock`) carried over unchanged.
+
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
 These were validated against a **real SharePoint tenant** via the
@@ -617,7 +644,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 671 vitest unit tests across 42 files (engine semantics incl.
+- `npm test` — 701 vitest unit tests across 42 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -629,7 +656,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 122 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 124 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
