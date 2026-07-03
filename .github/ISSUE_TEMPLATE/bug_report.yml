@@ -1,0 +1,20 @@
+name: Bug report
+description: Something renders, generates, or lints wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Share link or formatter JSON
+      description: Topbar **Share** in the app makes a link that carries your whole workspace — best possible repro. Strip anything confidential first.
+  - type: input
+    id: environment
+    attributes:
+      label: Browser
+      placeholder: e.g. Edge 138 on Windows 11

@@ -1,5 +1,7 @@
 # FormatFX — visual special effects for SharePoint lists
 
+[![CI](https://github.com/formatfx/formatfx/actions/workflows/ci.yml/badge.svg)](https://github.com/formatfx/formatfx/actions/workflows/ci.yml)
+
 > The visual sandbox and layout editor for SharePoint list formatting.
 
 An interactive, fully client-side sandbox and **visual layout editor for SharePoint

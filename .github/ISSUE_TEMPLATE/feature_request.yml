@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What are you trying to do, and what should FormatFX do about it?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Sample JSON, screenshots, workarounds you've tried.

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Try it live
+    url: https://formatfx.dev
+    about: The editor runs fully client-side — often the quickest way to check whether something is already fixed.
+  - name: SharePoint list-formatting schema reference
+    url: https://learn.microsoft.com/en-us/sharepoint/dev/declarative-customization/column-formatting
+    about: For questions about what SharePoint itself supports, start with Microsoft's docs.
