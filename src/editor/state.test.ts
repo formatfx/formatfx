@@ -365,11 +365,36 @@ describe('batchProjectUpdate: the component editor\'s one-step apply', () => {
     expect(s.doc.root.children![0]._elmName).not.toBe('Renamed by the apply');
   });
 
-  it('a no-op fn pushes no phantom undo step', () => {
+  // restoreSnap consults columnRefVersions for its registry restore/merge
+  // decisions, so these tests read the private counters directly
+  const versions = (s: EditorState): Record<string, number> =>
+    (s as unknown as { columnRefVersions: Record<string, number> }).columnRefVersions;
+
+  it('a no-op fn leaves ZERO trace — no undo step AND no leaked version bumps', () => {
     const s = new EditorState();
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
     expect(s.canUndo).toBe(false);
     s.batchProjectUpdate(['DueDate'], () => { /* nothing */ });
     expect(s.canUndo).toBe(false);
+    // the bump rolled back: a leaked version would silently change how a
+    // LATER undo of an older snapshot merges this column's registry entry
+    expect(versions(s)['DueDate']).toBeUndefined();
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+  });
+
+  it('a REAL apply keeps its bump INSIDE the undo snapshot, so undo restores the re-bake', () => {
+    const s = new EditorState();
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
+    s.batchProjectUpdate(['DueDate'], () => {
+      s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'NEW' };
+    });
+    expect(versions(s)['DueDate']).toBe(1); // the bump stays on a real apply
+    s.undo();
+    // currVer (1) <= snapVer (1): the snapshot's registry wins the merge —
+    // bumping AFTER the snapshot would make undo skip this restore
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
+    s.redo();
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
   });
 });
 

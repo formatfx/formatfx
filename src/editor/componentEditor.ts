@@ -67,6 +67,28 @@ const CE_MANAGED = [
   'background-color', 'border', 'border-radius', 'text-align',
 ];
 
+// SPExpr classification for the style panel (exported as the pure seam the
+// unit tests pin). A FORMULA is an '='-prefixed string or the AST object form
+// ({operator, operands}); plain strings, NUMBERS and BOOLEANS are static
+// literals (e.g. `opacity: 0.6`, `font-weight: 600`) — the same split the
+// engine and the inspector make.
+
+/** A style prop's committed literal value, stringified ('' = unset/formula). */
+export function stylePlainValue(style: Record<string, SPExpr | undefined> | undefined, prop: string): string {
+  const v = style?.[prop];
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return typeof v === 'string' && !v.startsWith('=') ? v : '';
+}
+
+/** Whether a style prop is formula-driven ('=' string or the AST object form). */
+export function styleIsFormula(style: Record<string, SPExpr | undefined> | undefined, prop: string): boolean {
+  const v = style?.[prop];
+  if (v === undefined || v === null) return false;
+  if (typeof v === 'string') return v.startsWith('=');
+  return typeof v === 'object'; // the legacy {operator, operands} form
+}
+
 export function openComponentEditor(
   def: ComponentDef,
   onToast: (m: string) => void,
@@ -288,14 +310,8 @@ export function openComponentEditor(
   styleHost.className = 'wb-ce-style';
   styleSec.appendChild(styleHost);
 
-  const plainOf = (style: Record<string, SPExpr | undefined> | undefined, prop: string): string => {
-    const v = style?.[prop];
-    return typeof v === 'string' && !v.startsWith('=') ? v : '';
-  };
-  const isFormula = (style: Record<string, SPExpr | undefined> | undefined, prop: string): boolean => {
-    const v = style?.[prop];
-    return v !== undefined && (typeof v !== 'string' || v.startsWith('='));
-  };
+  const plainOf = stylePlainValue;
+  const isFormula = styleIsFormula;
   const setStyle = (prop: string, value: string | null): void => {
     const node = nodeAtStaged(sel);
     if (!node) return;

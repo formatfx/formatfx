@@ -1193,15 +1193,34 @@ export class EditorState {
    * subtree replacements, registry re-bakes and field-tag restamps together as
    * ONE undoable step. Leaves a drilled column first (navigation, not a
    * mutation — the applySnapshot precedent) so the MAIN doc is live and inside
-   * snapState, and bumps `touchedColumns`' versions so the registry rewrites
-   * survive restoreSnap's merge. `fn` runs inside one mutateDocument: a single
-   * Ctrl+Z reverts everything it touched (doc + columnRefs + subtype tags),
-   * and a no-op `fn` pushes nothing.
+   * snapState. A single Ctrl+Z reverts everything `fn` touched (doc +
+   * columnRefs + subtype tags); a no-op `fn` leaves ZERO trace.
+   *
+   * Version-bump ordering is load-bearing: `touchedColumns`' versions bump
+   * BEFORE the undo snapshot so the snapshot carries them — restoreSnap only
+   * restores a registry entry when currVer <= snapVer, so a post-snapshot
+   * bump would make undo skip the very re-bakes this step performed. The
+   * trade-off is that a no-op run would leak the bumps (silently changing
+   * how later undos merge the registry), so when `fn` changes nothing the
+   * saved versions are rolled back wholesale.
    */
   batchProjectUpdate(touchedColumns: string[], fn: () => void): void {
     if (this.activeDocKey !== 'main') this.openMain();
+    const savedVersions = { ...this.columnRefVersions };
     for (const name of touchedColumns) this.incrementColumnVersion(name);
-    this.mutateDocument(fn);
+    const before = this.snapState(); // bumped versions ride the snapshot
+    this.inMutateDocument = true;
+    try {
+      fn();
+    } finally {
+      this.inMutateDocument = false;
+    }
+    if (this.snapState() === before) {
+      this.columnRefVersions = savedVersions; // no-op: zero trace
+      return;
+    }
+    this.pushUndo(before);
+    this.emit('document');
     this.emit('data'); // registry/tag changes show up in pickers/tree/gallery
   }
 

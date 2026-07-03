@@ -18,11 +18,12 @@ import {
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel } from './componentUsage';
+import { stylePlainValue, styleIsFormula } from './componentEditor';
 import { importJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
 import { defaultFields, defaultRows, state } from './state';
-import type { SPElement, MockField } from '../core/types';
+import type { SPElement, SPExpr, MockField } from '../core/types';
 import type { EvalContext } from '../core/expressions';
 
 const DEF: ComponentDef = {
@@ -340,6 +341,44 @@ describe('the component editor brain: variants, re-binding, restamping', () => {
     expect(out._component).toEqual({ id: 'c-variant', map: { Due: 'DueDate' } }); // map kept
     expect(out.children?.[0]._component?.id).toBe('c-other'); // foreign stamps untouched
     expect(tree._component?.id).toBe('c-test'); // input untouched
+  });
+});
+
+describe('the editor style panel: SPExpr literal vs formula classification', () => {
+  // number/boolean style values are STATIC LITERALS in this codebase
+  // (opacity: 0.6, font-weight: 600) — only '='-strings and the AST object
+  // form ({operator, operands}) are formula-driven
+  const style: Record<string, SPExpr | undefined> = {
+    'color': '#0078d4',
+    'background-color': "=if([$Due]<@now,'#d13438','#107c10')",
+    'opacity': 0.6,
+    'font-weight': 600,
+    'border': { operator: '+', operands: ['1px solid ', '#e1dfdd'] },
+  };
+
+  it('numbers and booleans read as their stringified literal, never as formulas', () => {
+    expect(stylePlainValue(style, 'opacity')).toBe('0.6');
+    expect(stylePlainValue(style, 'font-weight')).toBe('600');
+    expect(styleIsFormula(style, 'opacity')).toBe(false);
+    expect(styleIsFormula(style, 'font-weight')).toBe(false);
+    expect(stylePlainValue({ 'x': true }, 'x')).toBe('true');
+    expect(styleIsFormula({ 'x': true }, 'x')).toBe(false);
+  });
+
+  it("plain strings are literals; '='-strings and AST objects are formulas", () => {
+    expect(stylePlainValue(style, 'color')).toBe('#0078d4');
+    expect(styleIsFormula(style, 'color')).toBe(false);
+    expect(stylePlainValue(style, 'background-color')).toBe('');
+    expect(styleIsFormula(style, 'background-color')).toBe(true);
+    expect(stylePlainValue(style, 'border')).toBe('');
+    expect(styleIsFormula(style, 'border')).toBe(true);
+  });
+
+  it('unset props are neither a literal nor a formula', () => {
+    expect(stylePlainValue(style, 'padding')).toBe('');
+    expect(styleIsFormula(style, 'padding')).toBe(false);
+    expect(stylePlainValue(undefined, 'color')).toBe('');
+    expect(styleIsFormula(undefined, 'color')).toBe(false);
   });
 });
 
