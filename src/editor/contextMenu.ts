@@ -18,15 +18,20 @@ import { openSaveAsComponent } from './componentLibrary';
 import { elementRefChip } from './elmRef';
 import { cfrFieldName } from '../core/refs';
 
-const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
-
 /** A CFR host borrows the referenced column's display name in the Structure
- *  tree; mirror that here so the menu header reads like the row it names. */
+ *  tree; mirror that here so the menu header and toasts read like the row. */
 function cfrDisplayName(el: SPElement): string | null {
   const cfrName = el.columnFormatterReference ? cfrFieldName(el.columnFormatterReference) : null;
   if (cfrName === null) return null;
   return state.fields.find((f) => f.name === cfrName)?.displayName ?? cfrName;
 }
+
+/** The element's user-facing name — its _elmName, else a CFR host's borrowed
+ *  column name, else `<elmType>`. The single naming rule the menu header, the
+ *  parent-crumb tooltip and the action toasts all share, so "Status" in the
+ *  header never disagrees with "<div> removed" in a toast. */
+const displayNameOf = (el: SPElement): string =>
+  el._elmName ?? cfrDisplayName(el) ?? `<${el.elmType}>`;
 
 /** The element's tree-style reference token — the same icon + name + dim type
  *  the Structure tree shows for this row (editor/elmRef.ts is the shared
@@ -43,7 +48,7 @@ export function elementMenuItems(
 ): MenuItem[] {
   const node = state.nodeAt(path);
   if (!node) return [];
-  const label = nameOf(node);
+  const label = displayNameOf(node);
   // card roots live inside customCardProps — no sibling list to mutate
   const inSiblingList = path.length > 0 && path[path.length - 1] !== CARD_SEGMENT;
   const items: MenuItem[] = [];
@@ -206,8 +211,7 @@ function elementMenuTitle(
     crumb.type = 'button'; // never a submit button, wherever the menu mounts
     crumb.className = 'wb-elmmenu-parent';
     crumb.appendChild(treeStyleRef(parent));
-    const parentName = parent._elmName ?? cfrDisplayName(parent) ?? `<${parent.elmType}>`;
-    crumb.title = `Select the parent element (${parentName})`;
+    crumb.title = `Select the parent element (${displayNameOf(parent)})`;
     crumb.setAttribute('aria-label', crumb.title);
     crumb.addEventListener('click', (e) => {
       e.stopPropagation();

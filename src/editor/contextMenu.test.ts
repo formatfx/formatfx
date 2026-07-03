@@ -7,7 +7,7 @@
  * drop back to the old bare-text title.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { openElementMenu } from './contextMenu';
+import { openElementMenu, elementMenuItems } from './contextMenu';
 import { closeMenu } from './menu';
 import { state } from './state';
 
@@ -119,5 +119,28 @@ describe('element menu header — clickable parent crumb', () => {
     expect([...title.querySelectorAll('.wb-elmref')].pop()!.querySelector('.wb-elmref-name')?.textContent)
       .toBe('Group');
     expect(title.querySelector('.wb-elmmenu-parent .wb-elmref-name')?.textContent).toBe('Row');
+  });
+});
+
+describe('element menu — action toasts share the header\'s display name', () => {
+  it('a nameless CFR host toasts its borrowed column name, not <div>', () => {
+    // header shows "Status" (borrowed); the toast must not disagree with "<div>"
+    state.doc = {
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        _elmName: 'Row',
+        children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
+      },
+    };
+    state.fields = [];
+    state.select([0]);
+
+    const toasts: string[] = [];
+    const items = elementMenuItems([0], (m) => toasts.push(m), { x: 0, y: 0 });
+    items.find((i) => i.label === 'Remove')!.fn();
+
+    expect(toasts.join('\n')).toContain('Status removed');
+    expect(toasts.join('\n')).not.toContain('<div>');
   });
 });
