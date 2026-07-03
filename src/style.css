@@ -2369,6 +2369,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   box-sizing: border-box; overflow: auto; padding: 12px 14px;
   display: flex; flex-direction: column; border-top: 1px solid var(--wb-border);
 }
+/* the gallery owns the whole canvas — no empty inspector rail beside/below it */
+.wb-template-modal[data-stage="pick"] .wb-template-inspector { display: none; }
 .wb-template-modal[data-dock="bottom"] .wb-template-inspector { max-height: 44%; }
 .wb-template-modal[data-dock="left"] .wb-template-inspector {
   width: 300px; flex: 0 0 300px; border-top: none; border-right: 1px solid var(--wb-border);

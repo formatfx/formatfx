@@ -168,22 +168,26 @@ function widthHandle(stage: HTMLElement, api: ModalApi): HTMLElement {
     e.preventDefault();
     handle.setPointerCapture(e.pointerId);
     handle.classList.add('wb-dragging');
-    const move = (ev: PointerEvent): void => {
+    const widthAt = (clientX: number): number => {
       const rect = stage.getBoundingClientRect();
-      const w = Math.round(Math.min(Math.max(ev.clientX - rect.left, 240), stage.parentElement!.clientWidth));
-      stage.style.width = `${w}px`;
+      return Math.round(Math.min(Math.max(clientX - rect.left, 240), stage.parentElement!.clientWidth));
     };
-    const up = (ev: PointerEvent): void => {
+    const move = (ev: PointerEvent): void => { stage.style.width = `${widthAt(ev.clientX)}px`; };
+    const end = (ev: PointerEvent): void => {
       handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
       handle.classList.remove('wb-dragging');
-      const rect = stage.getBoundingClientRect();
+      // pointercancel carries no useful coordinates — commit what's on screen
+      const w = ev.type === 'pointercancel'
+        ? Math.round(stage.getBoundingClientRect().width)
+        : widthAt(ev.clientX);
       const full = stage.parentElement!.clientWidth;
-      const w = Math.round(Math.min(Math.max(ev.clientX - rect.left, 240), full));
       api.setStageWidth(w >= full - 8 ? null : w);
     };
     handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
   });
   return handle;
 }
