@@ -370,6 +370,23 @@ Key structural invariants:
   end-gap is gone); zone tags lead with the zone NAME, and hovering an
   inspector section (Width/Items/Align) stamps `data-peek` on the modal so
   every tag peeks that setting's value — pure CSS switch, no rerender.
+  **Second same-date pass (owner brief)**: the builder now has the
+  Left-Edit-Pane SHAPE — a fixed left side column with the zone tree ON TOP
+  of the always-left inspector (`wb-template-side`/`wb-template-treehost`;
+  the dock toggle and `wb-template-inspector-dock` pref are retired — the
+  orphaned key is harmless). **Positional drag-drop everywhere**, one rule
+  (`dropPos`, pure + unit-pinned): near an edge = BETWEEN (an accent
+  insertion bar via box-shadow — never position:relative on rendered
+  formatter content), on the body = INTO (highlight). Tree rows and canvas
+  blocks are both drag sources AND targets; chips/items drop between items
+  (flow-aware axis), onto a zone body (append), onto a zone edge or the
+  divider (SPAWN a new zone between — `insertZone`/`newZoneAt`, item moves
+  ride along); zone rows reorder by edge. **Modal-local undo/redo**: every
+  gesture funnels through `commit()` onto an immutable-config stack —
+  Ctrl/Cmd+Z / Shift+Z / Ctrl+Y (capture-phase; text inputs keep native
+  editing undo) plus ↶/↷ buttons; a fresh wireframe pick is the BASELINE
+  (not a step), a dirty re-pick is undoable; Apply remains the only
+  document write.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -664,7 +681,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 732 vitest unit tests across 43 files (engine semantics incl.
+- `npm test` — 739 vitest unit tests across 43 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -676,7 +693,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 126 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 128 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

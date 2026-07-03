@@ -2371,10 +2371,20 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   background: rgba(192, 138, 0, .08);
 }
 
-/* MAIN — preview + inspector; column by default, row-reverse when docked left */
+/* MAIN — the Left-Edit-Pane shape: a fixed SIDE column (zone tree over the
+   inspector, always on the left) beside the preview canvas */
 .wb-template-main { flex: 1; display: flex; min-height: 0; }
-.wb-template-modal[data-dock="bottom"] .wb-template-main { flex-direction: column; }
-.wb-template-modal[data-dock="left"] .wb-template-main { flex-direction: row-reverse; }
+.wb-template-side {
+  flex: 0 0 250px; min-height: 0; display: flex; flex-direction: column;
+  border-right: 1px solid var(--wb-border);
+}
+/* the gallery owns the whole canvas — no empty side column beside it */
+.wb-template-modal[data-stage="pick"] .wb-template-side { display: none; }
+.wb-template-treehost {
+  flex: 0 1 auto; max-height: 44%; min-height: 90px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px 8px; border-bottom: 1px solid var(--wb-border);
+}
 
 .wb-template-preview {
   flex: 1; min-height: 0; padding: 14px; overflow: auto; background: var(--wb-bg);
@@ -2403,22 +2413,12 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-template-widthhandle:hover::before, .wb-template-widthhandle.wb-dragging::before { background: var(--wb-accent); }
 
 .wb-template-inspector {
-  box-sizing: border-box; overflow: auto; padding: 12px 14px;
-  display: flex; flex-direction: column; border-top: 1px solid var(--wb-border);
-}
-/* the gallery owns the whole canvas — no empty inspector rail beside/below it */
-.wb-template-modal[data-stage="pick"] .wb-template-inspector { display: none; }
-.wb-template-modal[data-dock="bottom"] .wb-template-inspector { max-height: 44%; }
-.wb-template-modal[data-dock="left"] .wb-template-inspector {
-  width: 300px; flex: 0 0 300px; border-top: none; border-right: 1px solid var(--wb-border);
+  flex: 1; min-height: 0; box-sizing: border-box; overflow: auto; padding: 12px 14px;
+  display: flex; flex-direction: column;
 }
 .wb-template-insp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .wb-template-insp-title { font-size: 13px; font-weight: 600; }
 .wb-template-insp-body { flex: 1; }
-.wb-template-dock {
-  background: transparent; border: 1px solid var(--wb-border); border-radius: 4px;
-  padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--wb-text-2);
-}
 
 /* preview rows */
 .wb-template-prow { padding: 2px 0; }
@@ -2450,9 +2450,16 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-edit-item { cursor: pointer; border-radius: 4px; outline: 1px solid transparent; }
 .wb-edit-item:hover { outline-color: var(--wb-accent); }
 .wb-edit-selected { outline: 2px solid var(--wb-accent) !important; outline-offset: 1px; }
-.wb-edit-zone.wb-drop-hover, .wb-edit-item.wb-drop-hover {
+.wb-edit-zone.wb-drop-hover, .wb-edit-item.wb-drop-hover, .wb-ztree-row.wb-drop-hover {
   outline: 2px solid var(--wb-accent); background: rgba(0, 120, 212, .08);
 }
+/* positional insertion bars: BETWEEN-drops paint an accent bar on the edge the
+   payload will land at (h = row axis, v = stacked zones + the tree). Box-shadow,
+   not pseudo-elements — rendered formatter content must not need position:relative */
+.wb-ins-before-h { box-shadow: -4px 0 0 0 var(--wb-accent); }
+.wb-ins-after-h { box-shadow: 4px 0 0 0 var(--wb-accent); }
+.wb-ins-before-v { box-shadow: 0 -3px 0 0 var(--wb-accent); }
+.wb-ins-after-v { box-shadow: 0 3px 0 0 var(--wb-accent); }
 .wb-edit-kebab { cursor: pointer; }
 .wb-edit-divider {
   flex: 0 0 auto; width: 6px; align-self: stretch; min-height: 20px; margin: 0 1px;
@@ -2460,11 +2467,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-edit-divider:hover { opacity: 1; background: var(--wb-accent); }
 
-/* the zone TREE rail — the builder's structure pane */
-.wb-template-tree {
-  flex: 0 0 150px; display: flex; flex-direction: column; gap: 4px; min-height: 0;
-  padding: 4px 10px 4px 0; margin-right: 10px; border-right: 1px solid var(--wb-border);
-}
+/* the zone TREE (lives in .wb-template-treehost, above the inspector) */
 .wb-template-tree-head { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--wb-text-2); }
 .wb-template-tree-rows { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 /* wb-ztree-*: the zone tree's own namespace — wb-tree-* belongs to the studio

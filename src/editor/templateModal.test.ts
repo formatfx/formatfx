@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { state } from './state';
 import { openTemplateModal } from './templateModal';
+import { dropPos } from './templateUi';
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -28,6 +29,24 @@ function enterEditor(id = 'lead-detail'): void {
 }
 
 const zone = (zi: number): HTMLElement => document.querySelector(`[data-edit-zone="${zi}"]`) as HTMLElement;
+
+describe('dropPos — the one positional-drop rule (edges = between, body = into)', () => {
+  it('containers: edges insert before/after, the middle drops into', () => {
+    expect(dropPos(10, 100, true)).toBe('before');   // < 30%
+    expect(dropPos(50, 100, true)).toBe('into');
+    expect(dropPos(90, 100, true)).toBe('after');    // > 70%
+  });
+
+  it('non-containers split at the midpoint (no into)', () => {
+    expect(dropPos(49, 100, false)).toBe('before');
+    expect(dropPos(51, 100, false)).toBe('after');
+  });
+
+  it('degenerate rects (jsdom, collapsed nodes) fall back to a containing drop', () => {
+    expect(dropPos(0, 0, true)).toBe('into');
+    expect(dropPos(0, 0, false)).toBe('after');
+  });
+});
 
 describe('row view builder — gallery + shell', () => {
   it('opens on the wireframe gallery (visual cards, no dropdowns)', () => {
@@ -161,7 +180,7 @@ describe('row view builder — the zone tree + name-first tags', () => {
   it('the tree persists in Preview mode (no layout flip-shift) and a click returns to Edit', () => {
     enterEditor();
     (document.querySelector('[data-mode="preview"]') as HTMLElement).click();
-    expect(document.querySelector('.wb-template-tree')).toBeTruthy();
+    expect(document.querySelector('.wb-template-treehost .wb-ztree-row')).toBeTruthy();
     expect((document.querySelector('.wb-template-addzone') as HTMLButtonElement).disabled).toBe(true);
     (document.querySelector('[data-tree-zone="0"]') as HTMLElement).click();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-mode')).toBe('edit');
@@ -304,19 +323,48 @@ describe('row view builder — reopen as zones (the round trip)', () => {
   });
 });
 
-describe('row view builder — dock persistence & kebab refusal hints', () => {
-  it('remembers the inspector dock across close + reopen', () => {
-    enterEditor();
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('bottom');
-    (document.querySelector('.wb-template-dock') as HTMLButtonElement).click();
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('left');
-    expect(localStorage.getItem('wb-template-inspector-dock')).toBe('left');
+describe('row view builder — modal-local undo/redo', () => {
+  const ctrlZ = (shift = false): void => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: shift }));
+  };
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    openTemplateModal(() => {});
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('left'); // restored
+  it('Ctrl+Z undoes the last gesture inside the builder; Ctrl+Shift+Z redoes', () => {
+    enterEditor();
+    const items = (): number => document.querySelectorAll('[data-edit-item^="0:"]').length;
+    const before = items();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    expect(items()).toBe(before + 1);
+    ctrlZ();
+    expect(items()).toBe(before);
+    ctrlZ(true);
+    expect(items()).toBe(before + 1);
   });
 
+  it('the ↶/↷ buttons mirror the stack and disable at the ends', () => {
+    enterEditor();
+    const un = (): HTMLButtonElement => document.querySelector('.wb-template-undo') as HTMLButtonElement;
+    const re = (): HTMLButtonElement => document.querySelector('.wb-template-redo') as HTMLButtonElement;
+    expect(un().disabled).toBe(true);   // nothing to undo after a fresh pick
+    expect(re().disabled).toBe(true);
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    expect(un().disabled).toBe(false);
+    un().click();
+    expect(re().disabled).toBe(false);
+    re().click();
+    expect((document.querySelectorAll('[data-edit-item^="0:"]').length)).toBe(2);
+  });
+
+  it('an in-builder undo never touches the document (Apply is still the only write)', () => {
+    enterEditor();
+    const snap = JSON.stringify(state.doc.root);
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    ctrlZ();
+    ctrlZ(); // stack empty — extra presses are harmless
+    expect(JSON.stringify(state.doc.root)).toBe(snap);
+  });
+});
+
+describe('row view builder — kebab refusal hints', () => {
   it('a custom kebab action with a blank param shows an inline refusal hint (mirrors buildKebab)', () => {
     enterEditor();
     const check = (sel: string): void => {

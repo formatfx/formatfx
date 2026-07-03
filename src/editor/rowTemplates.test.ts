@@ -4,6 +4,7 @@ import {
   addZone, removeZone, moveZone, patchZone, newZone,
   addItem, removeItem, moveItem, patchItem, newFieldItem, newComponentItem,
   nextZoneSize, childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
+  insertZone,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig,
 } from './rowTemplates';
 import type { ComponentDef } from './components';
@@ -332,6 +333,23 @@ describe('zone + item ops (pure, immutable)', () => {
     const b = addItem(a, 0, newFieldItem('Due', a.zones[0]));
     expect(b.zones[0].items.length).toBe(a.zones[0].items.length + 1);
     expect(removeItem(b, 0, 0).zones[0].items.length).toBe(a.zones[0].items.length);
+  });
+
+  it('addItem inserts at an index (between-items drop), clamped', () => {
+    const a = cfg(); // avatar-card: Main zone = [Title, Status]
+    const names = (c: RowTemplateConfig): string[] =>
+      c.zones[1].items.map((it) => (it.kind === 'field' ? it.fieldName : ''));
+    expect(names(addItem(a, 1, newFieldItem('Due', a.zones[1]), 0))).toEqual(['Due', 'Title', 'Status']);
+    expect(names(addItem(a, 1, newFieldItem('Due', a.zones[1]), 1))).toEqual(['Title', 'Due', 'Status']);
+    expect(names(addItem(a, 1, newFieldItem('Due', a.zones[1]), 99))).toEqual(['Title', 'Status', 'Due']);
+  });
+
+  it('insertZone spawns a zone between zones (a between-zones drop), clamped', () => {
+    const a = cfg();
+    const b = insertZone(a, 1, newZone('Spawned'));
+    expect(b.zones.map((z) => z.label)).toEqual(['Who', 'Spawned', 'Main', 'When']);
+    expect(insertZone(a, 99, newZone('End')).zones.at(-1)?.label).toBe('End');
+    expect(insertZone(a, Number.NaN)).toBe(a);
   });
 
   it('moveItem moves across zones (and clamps the target index)', () => {

@@ -103,6 +103,35 @@ test('reopening the builder edits the applied layout in place (no gallery restar
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3); // prior layout, still a row view
 });
 
+test('positional drops: before-an-item on the canvas, into-a-zone via the tree, all undoable', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page);
+  // drop DueDate at the LEFT edge of the Lead zone's Title item → it lands BEFORE it
+  await page.locator('.wb-template-field-chip', { hasText: 'DueDate' }).first()
+    .dragTo(page.locator('[data-edit-item="0:0"]'), { targetPosition: { x: 4, y: 8 } });
+  await expect(page.locator('[data-edit-item="0:0"]')).toHaveAttribute('data-field-name', 'DueDate');
+  // move it via the TREE: its item row dropped on the Details zone row's body → INTO
+  // (Details already seeds its own DueDate — duplicates are legal, so expect 2)
+  await page.locator('[data-tree-item="0:0"]').dragTo(page.locator('[data-tree-zone="1"]'));
+  await expect(page.locator('[data-edit-zone="1"] [data-field-name="DueDate"]')).toHaveCount(2);
+  // two Ctrl+Z unwind both gestures inside the builder (the document is untouched)
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('[data-edit-item="0:0"]')).toHaveAttribute('data-field-name', 'Title');
+  await expect(page.locator('[data-edit-zone="1"] [data-field-name="DueDate"]')).toHaveCount(1);
+});
+
+test('a chip dropped on a tree zone row EDGE spawns a new zone there', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page);
+  await expect(page.locator('.wb-edit-zone')).toHaveCount(2);
+  // top edge of the first zone row = BEFORE → a new zone appears at position 0
+  await page.locator('.wb-template-field-chip', { hasText: 'DueDate' }).first()
+    .dragTo(page.locator('[data-tree-zone="0"]'), { targetPosition: { x: 30, y: 2 } });
+  await expect(page.locator('.wb-edit-zone')).toHaveCount(3);
+  await expect(page.locator('[data-edit-zone="0"] [data-field-name="DueDate"]')).toHaveCount(1);
+});
+
 test('New rowview is reachable from the document dropdown on the landing screen', async ({ page }) => {
   await page.goto('/');
   // straight from the grid landing — no need to enter Row View first

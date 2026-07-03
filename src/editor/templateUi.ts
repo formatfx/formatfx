@@ -18,9 +18,31 @@ export const ZONE_MIME = 'application/x-wb-zone-order';
 export const ITEM_MIME = 'application/x-wb-zone-item';
 
 export type Mode = 'edit' | 'preview';
-export type Dock = 'bottom' | 'left';
 /** 'pick' = the wireframe gallery; 'edit' = the zone canvas. */
 export type Stage = 'pick' | 'edit';
+
+/** Where a drag lands relative to the element under the pointer. */
+export type DropPos = 'before' | 'after' | 'into';
+
+/**
+ * The one positional-drop rule, shared by the preview canvas and the zone
+ * tree: near an edge = BETWEEN (insert before/after, drawn as an insertion
+ * bar), on the body = INTO (when the target can contain the payload).
+ * `offset` is the pointer's distance from the leading edge along the target's
+ * axis; `size` the target's extent on that axis. Degenerate rects (jsdom,
+ * collapsed elements) fall back to the containing drop so a blind drop still
+ * lands somewhere sensible. Pure — unit-tested directly.
+ */
+export function dropPos(offset: number, size: number, canInto: boolean): DropPos {
+  if (size <= 0) return canInto ? 'into' : 'after';
+  const frac = offset / size;
+  if (canInto) {
+    if (frac < 0.3) return 'before';
+    if (frac > 0.7) return 'after';
+    return 'into';
+  }
+  return frac < 0.5 ? 'before' : 'after';
+}
 /** Which zone setting the preview tags currently PEEK (hovering an inspector
  *  section swaps every zone tag from its name to that setting's value). */
 export type Peek = 'size' | 'flow' | 'align';
@@ -40,7 +62,6 @@ export interface ModalUI {
   stage: Stage;
   mode: Mode;
   selected: Selection;
-  dock: Dock;
   /** Simulated row width in px (the squeeze scrubber); null = full width. */
   stageWidth: number | null;
   /** The canvas holds a row view the round-trip parser REFUSED (hand-built or
@@ -55,12 +76,15 @@ export interface ModalApi {
   selectItem(zi: number, ii: number): void;
   selectKebab(): void;
   deselect(): void;
-  /** Drop a field chip into a zone (appends an item). */
-  dropField(zi: number, field: string): void;
-  /** Drop a component chip into a zone (appends a best-guess-mapped item). */
-  dropComponent(zi: number, componentId: string): void;
+  /** Drop a field chip into a zone (`at` = insertion index; omit to append). */
+  dropField(zi: number, field: string, at?: number): void;
+  /** Drop a component chip into a zone, best-guess-mapped (`at` optional). */
+  dropComponent(zi: number, componentId: string, at?: number): void;
   /** Add an empty zone (the "+ Zone" button — no drop required) and select it. */
   addEmptyZone(): void;
+  /** A drop BETWEEN zones: spawn a new zone at `at`, seeded with the payload
+   *  (a chip, or an existing item moved out of its zone). */
+  newZoneAt(at: number, payload: { field?: string; componentId?: string; move?: { zone: number; item: number } }): void;
   removeZone(zi: number): void;
   reorderZone(from: number, to: number): void;
   cycleZoneSize(zi: number): void;
@@ -74,8 +98,12 @@ export interface ModalApi {
   /** Back to the gallery (the current config is kept until a pick). */
   openGallery(): void;
   setMode(m: Mode): void;
-  toggleDock(): void;
   setStageWidth(w: number | null): void;
+  /** Modal-local undo/redo over the config (Ctrl/Cmd+Z, Shift for redo). */
+  undo(): void;
+  redo(): void;
+  canUndo(): boolean;
+  canRedo(): boolean;
   /** Transient hover state — stamps data-peek on the modal, NO rerender. */
   setPeek(p: Peek | null): void;
   apply(): void;

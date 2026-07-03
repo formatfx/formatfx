@@ -26,10 +26,6 @@ export function renderInspector(host: HTMLElement, ui: ModalUI, api: ModalApi): 
 
   const head = el('div', 'wb-template-insp-head');
   head.appendChild(el('span', 'wb-template-insp-title', inspectorTitle(ui)));
-  const dock = el('button', 'wb-template-dock', ui.dock === 'bottom' ? '⇤ dock left' : '⇥ dock bottom') as HTMLButtonElement;
-  dock.type = 'button';
-  dock.addEventListener('click', () => api.toggleDock());
-  head.appendChild(dock);
   host.appendChild(head);
 
   const body = el('div', 'wb-template-insp-body');
