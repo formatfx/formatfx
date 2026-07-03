@@ -387,6 +387,31 @@ Key structural invariants:
   editing undo) plus ↶/↷ buttons; a fresh wireframe pick is the BASELINE
   (not a step), a dirty re-pick is undoable; Apply remains the only
   document write.
+  **Third same-date pass (owner brief — "zones inside zones")**: the model
+  is RECURSIVE — a zone is a valid item of another zone (`NestedZoneItem`),
+  and every address is a `ZonePath` (`[root, item, item…]` — one address
+  space for selection and drag; DOM keys join with ':'). The pure ops are
+  path-based (`zoneAt`/`nodeAt`/`addItemAt`/`removeNode`/`patchZoneAt`/
+  `patchItemAt`) with ONE generalized `moveNode(from, toZone, toIndex)`:
+  into a zone NESTS (a leaf stays a leaf, a zone becomes a nested item),
+  onto the root row UN-NESTS (a leaf gets a zone of its own — same rule
+  that spawns zones from chips at seams), own-subtree drops refuse,
+  `toZone: []` is the root. Drag payloads collapsed to one `NODE_MIME`
+  JSON path. prune/applyBlocker/the round-trip parser all RECURSE (nested
+  zones are recognized by the builder's own "<label> zone" naming, gated
+  as ever by rebuild-verify). The Edit/Preview toggle is GONE — always-
+  live rows (the PRUNED layout, exactly what Apply writes) render under a
+  "Live" caption right below the edit row; the width scrubber squeezes
+  both. Clicking a zone selects the ZONE first; a second click drills
+  into the item (progressive selection — canvas clicks are no longer
+  ambiguous). Polish per the brief: the 2×2 action grid (↶ ↷ / Cancel
+  Save) sits top-left beside the chips (the inspector footer is gone; the
+  Save button keeps the `wb-template-apply` class), the tree sits on the
+  lighter `--wb-lp-tree-bg` step with ▤ Layouts beside its ZONES header,
+  the empty-zone hint is a zero-footprint absolute overlay (never drives
+  hug sizing; pruned live rows never show it), nested-zone tags paint
+  inside on hover/selection only, and the zone inspector gained
+  "＋ Nested zone".
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -681,7 +706,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 739 vitest unit tests across 43 files (engine semantics incl.
+- `npm test` — 756 vitest unit tests across 43 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -693,7 +718,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 128 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 129 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

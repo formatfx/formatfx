@@ -2319,13 +2319,27 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-radius: 8px; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, .3);
 }
 
-/* CHIPS bar — pinned drag sources (fields + components), top in every layout;
+/* TOP bar — the 2×2 action grid (↶ ↷ / Cancel Save) beside the chips;
    hidden while the wireframe gallery owns the canvas */
-.wb-template-fields {
-  flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
+.wb-template-top {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
   padding: 8px 14px; border-bottom: 1px solid var(--wb-border);
 }
-.wb-template-modal[data-stage="pick"] .wb-template-fields { display: none; }
+.wb-template-modal[data-stage="pick"] .wb-template-top { display: none; }
+.wb-template-actions {
+  flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+  padding-right: 16px; border-right: 1px solid var(--wb-border);
+}
+.wb-template-action {
+  min-width: 64px; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  background: var(--wb-bg); border: 1px solid var(--wb-border); color: var(--wb-text);
+}
+.wb-template-action:disabled { opacity: .45; cursor: default; }
+.wb-template-undo, .wb-template-redo { font-size: 17px; line-height: 1; padding: 4px 12px; }
+.wb-template-action.wb-template-apply { background: var(--wb-accent); color: var(--wb-accent-text); border-color: var(--wb-accent); }
+
+/* CHIPS — pinned drag sources (fields + components) */
+.wb-template-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .wb-template-chiprow { display: flex; align-items: center; gap: 10px; }
 .wb-template-fields-label {
   flex: 0 0 84px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--wb-text-2);
@@ -2337,7 +2351,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-template-comp-chip { color: var(--wb-component, #038387); border-color: var(--wb-component, #038387); }
 .wb-chip-placed { opacity: .5; }
-.wb-chip-inert { cursor: default; }
 
 /* wireframe gallery (stage 'pick') */
 .wb-template-gallery-title { font-size: 15px; font-weight: 600; margin: 4px 0 2px; }
@@ -2384,7 +2397,10 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   flex: 0 1 auto; max-height: 44%; min-height: 90px; overflow: hidden;
   display: flex; flex-direction: column; gap: 4px;
   padding: 10px 12px 8px; border-bottom: 1px solid var(--wb-border);
+  /* one subtle step lighter than the pane — the Left Edit Pane tree treatment */
+  background: var(--wb-lp-tree-bg, var(--wb-bg));
 }
+.wb-template-tree-headrow { display: flex; align-items: center; justify-content: space-between; }
 
 .wb-template-preview {
   flex: 1; min-height: 0; padding: 14px; overflow: auto; background: var(--wb-bg);
@@ -2424,6 +2440,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-template-prow { padding: 2px 0; }
 .wb-template-prow--edit { outline: 1px dashed var(--wb-border); border-radius: 6px; padding: 4px; }
 .wb-prow-hoverable:hover { background: var(--wb-surface); }
+/* the always-live rows sit right below the edit row, behind a quiet caption */
+.wb-template-livehead {
+  margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--wb-border);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
+}
 
 /* edit affordances on the rendered row: ZONES hold ITEMS */
 .wb-template-prow--edit { padding-top: 18px; overflow: visible; }
@@ -2443,10 +2464,24 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-template-modal[data-peek="size"] .wb-zt-size,
 .wb-template-modal[data-peek="flow"] .wb-zt-flow,
 .wb-template-modal[data-peek="align"] .wb-zt-align { display: inline; color: var(--wb-accent); font-weight: 600; }
+/* the empty-zone hint is a ZERO-FOOTPRINT overlay: it never drives the zone's
+   size (a hug zone hugs real content, not helper text), and the pruned live
+   rows below never see it at all */
+.wb-edit-zone--empty { min-width: 88px; min-height: 26px; }
 .wb-edit-zone-hint {
-  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
-  min-height: 24px; font-size: 11px; color: var(--wb-text-2);
+  position: absolute; inset: 0; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--wb-text-2); white-space: nowrap; overflow: hidden;
 }
+/* nested zones: a quieter dashed box; their tag paints INSIDE, and only when
+   hovered or selected, so deep structures don't drown the row in labels */
+.wb-edit-zone--nested { outline-offset: 0; min-height: 22px; }
+.wb-edit-zone--nested > .wb-edit-zone-tag {
+  display: none; top: -6px; left: 4px; padding: 0 4px; border-radius: 3px;
+  background: var(--wb-surface); z-index: 1;
+}
+.wb-edit-zone--nested:hover > .wb-edit-zone-tag,
+.wb-edit-zone--nested.wb-edit-selected > .wb-edit-zone-tag { display: block; }
 .wb-edit-item { cursor: pointer; border-radius: 4px; outline: 1px solid transparent; }
 .wb-edit-item:hover { outline-color: var(--wb-accent); }
 .wb-edit-selected { outline: 2px solid var(--wb-accent) !important; outline-offset: 1px; }
@@ -2505,11 +2540,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-template-remove { margin-top: 12px; background: transparent; border: 1px solid var(--wb-border); border-radius: 4px; padding: 6px 10px; font-size: 12px; cursor: pointer; color: var(--wb-text); }
 .wb-template-note { font-size: 11px; color: var(--wb-text-2); font-style: italic; }
 
-/* footer */
-.wb-template-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.wb-template-cancel { background: transparent; border: 1px solid var(--wb-border); border-radius: 4px; padding: 8px 16px; cursor: pointer; color: var(--wb-text); }
-.wb-template-apply { background: var(--wb-accent); color: var(--wb-accent-text); border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; }
-.wb-template-apply:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Left Edit Pane — the Claude-style consolidated editing surface

@@ -132,6 +132,21 @@ test('a chip dropped on a tree zone row EDGE spawns a new zone there', async ({ 
   await expect(page.locator('[data-edit-zone="0"] [data-field-name="DueDate"]')).toHaveCount(1);
 });
 
+test('zones nest: drop a zone onto a zone, and the nest survives Apply → reopen', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page);
+  // nest Details into Lead: its tree row dropped on the Lead tree row's BODY
+  await page.locator('[data-tree-zone="1"]').dragTo(page.locator('[data-tree-zone="0"]'));
+  await expect(page.locator('[data-edit-zone="0:1"]')).toBeVisible();   // nested box on the canvas
+  await expect(page.locator('[data-tree-zone="0:1"]')).toBeVisible();   // indented row in the tree
+  // apply, reopen — the recursive round trip brings the nest back
+  await page.locator('.wb-template-apply').click();
+  await expect(page.locator('.wb-template-modal')).toHaveCount(0);
+  await page.locator('.wb-rowview-templates').click();
+  await expect(page.locator('[data-tree-zone="0:1"]')).toBeVisible();
+  await expect(page.locator('[data-edit-item="0:1:0"]')).toBeVisible(); // its item came along
+});
+
 test('New rowview is reachable from the document dropdown on the landing screen', async ({ page }) => {
   await page.goto('/');
   // straight from the grid landing — no need to enter Row View first
