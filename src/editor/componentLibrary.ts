@@ -420,6 +420,7 @@ function openImportComponentDialog(onSaved: () => void, onToast: (m: string) => 
   const jsonBox = document.createElement('textarea');
   jsonBox.className = 'wb-compmap-json';
   jsonBox.placeholder = 'Paste the formatter JSON here…';
+  jsonBox.setAttribute('aria-label', 'Formatter JSON to import');
   jsonBox.rows = 10;
   panel.appendChild(jsonBox);
 
@@ -570,7 +571,9 @@ function openSaveDialog(
   save.className = 'wb-compmap-insert';
   save.textContent = 'Save to the library';
   save.addEventListener('click', () => {
-    const name = nameInput.value.trim() || 'My component';
+    // a cleared Name falls back to the dialog's own default ("My row layout"
+    // for a row save), never a generic that mislabels the kind
+    const name = nameInput.value.trim() || defaultName;
     // saving over an existing name replaces it (keeps its identity, so
     // columns wearing it can be re-baked below)
     const existing = readCustom().find((c) => c.name.toLowerCase() === name.toLowerCase());

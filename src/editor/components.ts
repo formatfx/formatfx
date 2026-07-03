@@ -263,13 +263,23 @@ function isValidDef(c: unknown): c is ComponentDef {
     && typeof ((c as ComponentDef).root as SPElement).elmType === 'string');
 }
 
-/** Parse the persisted custom components; corrupt/foreign entries are dropped. */
+/** Parse the persisted custom components; corrupt/foreign entries are dropped,
+ *  and a corrupt OPTIONAL field (a non-string additionalRowClass, or one on a
+ *  non-row component) is stripped rather than sinking the whole entry — it
+ *  would otherwise flow into viewExtras on apply. */
 export function loadComponents(raw: string | null): ComponentDef[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.version !== 1 || !Array.isArray(parsed.components)) return [];
-    return (parsed.components as unknown[]).filter(isValidDef).map((c) => ({ ...c, builtin: false }));
+    return (parsed.components as unknown[]).filter(isValidDef).map((c) => {
+      const def: ComponentDef = { ...c, builtin: false };
+      if (def.additionalRowClass !== undefined
+        && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
+        delete def.additionalRowClass;
+      }
+      return def;
+    });
   } catch {
     return [];
   }

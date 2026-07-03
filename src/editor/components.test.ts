@@ -217,6 +217,27 @@ describe('row components + the formatter-JSON import bridge', () => {
     const bad = JSON.stringify({ version: 1, components: [{ ...def, kind: 'galaxy' }] });
     expect(loadComponents(bad)).toHaveLength(0);
   });
+
+  it('strips a corrupt or misplaced additionalRowClass instead of applying it', () => {
+    const doc = importJson(JSON.stringify({ rowFormatter: { elmType: 'div' } }));
+    const row = componentFromFormatterDoc(doc, 'R', defaultFields(), 'c-r2');
+    // corrupt value on a row component → stripped, entry kept
+    const corrupt = loadComponents(JSON.stringify({
+      version: 1, components: [{ ...row, additionalRowClass: { evil: true } }],
+    }));
+    expect(corrupt).toHaveLength(1);
+    expect(corrupt[0].additionalRowClass).toBeUndefined();
+    // a string value on a NON-row component makes no sense → stripped too
+    const misplaced = loadComponents(JSON.stringify({
+      version: 1, components: [{ ...DEF, id: 'c-e', additionalRowClass: 'zebra' }],
+    }));
+    expect(misplaced[0].additionalRowClass).toBeUndefined();
+    // a legitimate string on a row component survives
+    const good = loadComponents(JSON.stringify({
+      version: 1, components: [{ ...row, additionalRowClass: 'zebra' }],
+    }));
+    expect(good[0].additionalRowClass).toBe('zebra');
+  });
 });
 
 describe('built-ins definitely render (the generated-formatter bar)', () => {
