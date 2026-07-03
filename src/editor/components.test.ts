@@ -49,6 +49,19 @@ describe('field-ref remap + scan', () => {
     expect(tree.txtContent).toContain('[$Due]');
   });
 
+  it('never cascades: chains ({Start→End, End→Finish}) and swaps ({A→B, B→A}) rewrite each ref once', () => {
+    const chain = remapFieldRefs(
+      { elmType: 'div', txtContent: '=[$Start]+[$End]' },
+      new Map([['Start', 'End'], ['End', 'Finish']]),
+    );
+    expect(chain.txtContent).toBe('=[$End]+[$Finish]'); // Start→End stops there
+    const swap = remapFieldRefs(
+      { elmType: 'div', txtContent: '=[$A]+[$B]' },
+      new Map([['A', 'B'], ['B', 'A']]),
+    );
+    expect(swap.txtContent).toBe('=[$B]+[$A]');
+  });
+
   it('collects unique referenced fields, dotted and bang forms included', () => {
     expect(fieldRefsIn(DEF.root).sort()).toEqual(['Due', 'Person']);
   });

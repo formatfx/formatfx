@@ -176,7 +176,10 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       del.title = `Delete the ${def.name} component`;
       del.setAttribute('aria-label', del.title);
       del.addEventListener('click', () => {
-        writeCustom(removeComponent(readCustom(), def.id));
+        if (!writeCustom(removeComponent(readCustom(), def.id))) {
+          onToast('Could not delete the component — browser storage is blocked, so it would just come back');
+          return; // don't rerender a deletion that didn't persist
+        }
         renderComponentLibrary(host, onToast);
       });
       title.appendChild(del);
@@ -270,6 +273,10 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void): voi
 
   const mapping = bestGuessMapping(def, state.fields);
   const preview = document.createElement('div');
+  // slots with NO acceptable column at all — "pick one" would be impossible
+  const unfillable = def.slots.filter(
+    (slot) => !state.fields.some((f) => !f.protected && slot.types.includes(f.type)),
+  );
 
   const refreshPreview = (): void => {
     preview.replaceChildren();
@@ -278,7 +285,9 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void): voi
     } else {
       const miss = document.createElement('div');
       miss.className = 'wb-complib-empty';
-      miss.textContent = 'Pick a column for every slot to preview.';
+      miss.textContent = unfillable.length
+        ? `Your schema has no ${unfillable.map((s) => slotTypesLabel(s.types)).join(' or ')} column yet — add one in the Data tab to use this component.`
+        : 'Pick a column for every slot to preview.';
       preview.appendChild(miss);
     }
   };

@@ -64,13 +64,13 @@ const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  */
 export function remapFieldRefs(fragment: SPElement, replacements: Map<string, string>): SPElement {
   if (replacements.size === 0) return JSON.parse(JSON.stringify(fragment)) as SPElement;
-  const remapString = (s: string): string => {
-    let out = s;
-    for (const [from, to] of replacements) {
-      out = out.replace(new RegExp(`\\[(\\$|!)${escapeRe(from)}(?=[\\].])`, 'g'), `[$1${to}`);
-    }
-    return out;
-  };
+  // ONE pass with a name-alternation lookup — sequential per-entry replaces
+  // would cascade when a target equals another key ({Start→End, End→Finish}
+  // must not turn [$Start] into [$Finish]; swaps {A→B, B→A} must work too)
+  const names = [...replacements.keys()].map(escapeRe).join('|');
+  const re = new RegExp(`\\[(\\$|!)(${names})(?=[\\].])`, 'g');
+  const remapString = (s: string): string =>
+    s.replace(re, (_m, sigil: string, name: string) => `[${sigil}${replacements.get(name)}`);
   const walk = (node: unknown): unknown => {
     if (typeof node === 'string') return remapString(node);
     if (Array.isArray(node)) return node.map(walk);
