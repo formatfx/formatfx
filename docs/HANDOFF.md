@@ -221,6 +221,40 @@ Key structural invariants:
   `.wb-fxbar` reserves its populated min-height so selection changes never
   shift the grid mid-double-click (that jump used to swallow drill-in
   dblclicks after a deselect).
+- **Components — formatting without a column to call home (2026-07-03, owner
+  brief)**: the third color channel — **teal ⬡** (`--wb-component`, beside
+  blue=view and violet=column; same exclusivity rule). A component
+  (`components.ts`, pure) declares typed SLOTS ("needs a person column, a
+  date column") over a tree written against slot keys as field names;
+  binding rewrites `[$Key]`→`[$YourColumn]` via `remapFieldRefs` (the SAME
+  boundary-aware remap presets.ts now imports for schema-aware drop). The
+  **COMPONENTS tab** in the Left Edit Pane is a library browser (a local UI
+  mode, not a canvas doc — any doc navigation exits it): built-ins ("Yours"
+  below), live best-guess previews, slot chips, and **Add to view…** → the
+  typed mapping dialog (type-filtered pickers, best-guess prefilled, live
+  preview; insert = one undoable step, a new grid column on the grid).
+  **Save as component…** lives on the element context menu AND the column
+  header menu (packaging the registered format via `inlineColumnFormatter`);
+  it derives slots from the referenced fields and REFUSES subtrees carrying
+  a columnFormatterReference (components are self-contained). Storage:
+  `wb-components.v1` (additive), 50 cap. Built-ins must pass the
+  definitely-renders unit contract (bound + rendered over every mock row,
+  zero runtime issues, no standalone `!`).
+  **Surface consolidation (owner request, same date)**: the custom-subtype
+  authoring surface was SWALLOWED — "Save as reusable subtype…", the refine
+  ⋯ modal and its push-update button are gone from the UI; the "Format this
+  column" catalog = built-in seeds (subtype engine, knobs intact) + YOUR
+  single-slot type-compatible components badged "Yours" (snapshot-apply
+  semantics, recipe-tagged with the component id — `resolveSubtype`
+  optional-chains unknown ids so the fx vocab degrades to broad
+  suggestions; US-8 restriction stays unit-pinned in fxSuggest.test.ts).
+  Legacy `wb-subtypes` customs migrate one-way into components on first
+  library read (flag `wb-components.subtypes-migrated.v1`; the old key is
+  left untouched as the rollback path). The pure subtype machinery
+  (`subtypeFromColumn`/`forkSubtype`/knob promotion, `pushSubtypeUpdate`)
+  remains in code + unit tests but is currently unreachable from the UI.
+  The library's "Whole rows" group points into **New rowview** (the
+  templateModal) — the row-scoped sibling, one implementation.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -505,7 +539,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 612 vitest unit tests across 39 files (engine semantics incl.
+- `npm test` — 629 vitest unit tests across 40 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -517,7 +551,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 112 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 114 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
@@ -529,6 +563,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   row-view builder, CFR linked instances, Studio/Advanced toggle),
   `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
   document dropdown), `snapshots.spec.ts` (snapshots + navigation back),
+  `components.spec.ts` (the ⬡ library: typed mapping, save-as, CFR refusal),
   `share.spec.ts` (the collaborative hub: real-browser
   share round trips with fresh-context recipients, the never-clobber/backup/
   restore flows, Explain, Stress Test), `styleLegibility.spec.ts`

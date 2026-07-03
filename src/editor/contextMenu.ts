@@ -14,6 +14,7 @@ import { openCondFormat } from './condFormat';
 import { openFormatCells } from './formatCells';
 import { copyNodes, pasteNodes } from './clipboard';
 import { areaWeightOf, WEIGHT_FLEX, WEIGHT_LABEL, type AreaWeight } from './areas';
+import { openSaveAsComponent } from './componentLibrary';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -120,6 +121,12 @@ export function elementMenuItems(
       },
     });
   }
+  items.push({
+    icon: 'Package',
+    label: 'Save as component…',
+    title: 'Package this element as a reusable component — anyone adding it maps their own columns into its typed slots (the ⬡ Components tab)',
+    fn: () => openSaveAsComponent(path, onToast),
+  });
   items.push({
     icon: 'Copy',
     label: sel.length > 1 && state.isSelected(path) ? `Copy ${sel.length} elements` : 'Copy element',

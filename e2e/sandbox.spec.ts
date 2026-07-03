@@ -130,7 +130,7 @@ test('one unified surface — left pane (lens + formatter tabs + tree + draw bar
   // document dropdown, the structure tree and the draw toolbar are all visible
   await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-lens-tab')).toHaveCount(3);
-  await expect(page.locator('.wb-fmt-tab')).toHaveCount(2);
+  await expect(page.locator('.wb-fmt-tab')).toHaveCount(3); // view · columns · components
   await expect(page.locator('#wb-doc-pill')).toBeVisible();
   await expect(page.locator('#wb-tree-body')).toBeVisible();
   await expect(page.locator('.wb-drawbar')).toBeVisible();
