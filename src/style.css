@@ -325,6 +325,19 @@ body {
   background: var(--wb-bg); color: var(--wb-text);
 }
 .wb-compmap-select:focus, .wb-compmap-name:focus { outline: none; border-color: var(--wb-component); }
+.wb-compmap-json {
+  width: 100%; resize: vertical; font-size: 11.5px; line-height: 1.5; padding: 8px 10px;
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  border: 1px solid var(--wb-border); border-radius: 6px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-compmap-json:focus { outline: none; border-color: var(--wb-component); }
+.wb-compmap-error {
+  font-size: 11.5px; line-height: 1.5; padding: 6px 10px; border-radius: 5px;
+  color: var(--wb-text); background: rgba(209, 52, 56, .08);
+  border: 1px solid rgba(209, 52, 56, .3);
+}
+.wb-compmap-error[hidden] { display: none; }
 .wb-compmap-foot { display: flex; justify-content: flex-end; }
 .wb-compmap-insert {
   padding: 7px 16px; font-size: 12.5px; font-weight: 600; cursor: pointer;

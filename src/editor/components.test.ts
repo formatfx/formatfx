@@ -11,9 +11,11 @@ import {
   remapFieldRefs, fieldRefsIn, containsCfr, deriveSlots, widenType,
   bestGuessMapping, mappingComplete, bindComponent, isSingleColumnComponent,
   loadComponents, serializeComponents, addComponent, removeComponent, componentId,
+  componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   type ComponentDef,
 } from './components';
+import { importJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
 import { defaultFields, defaultRows, state } from './state';
@@ -164,6 +166,56 @@ describe('catalog fit + legacy subtype migration', () => {
     expect(localStorage.getItem('wb-subtypes')).toContain('legacy-1');
     expect(customComponents()).toHaveLength(1);
     localStorage.clear();
+  });
+});
+
+describe('row components + the formatter-JSON import bridge', () => {
+  it('a column formatter JSON becomes an element component: @currentField → an any-type Column slot', () => {
+    const doc = importJson(JSON.stringify({
+      elmType: 'div',
+      txtContent: "=if(@currentField>50,'hi','lo')",
+      style: { color: '=[$Owner.title]' },
+    }));
+    const def = componentFromFormatterDoc(doc, 'Imported look', defaultFields(), 'c-x');
+    expect(componentKind(def)).toBe('element');
+    expect(def.root.txtContent).toBe("=if([$Column]>50,'hi','lo')");
+    const col = def.slots.find((s) => s.key === 'Column')!;
+    expect(col.types).toEqual(ALL_FIELD_TYPES); // author's intent unknowable from JSON
+    // a secondary ref the CURRENT schema knows gets typed from it
+    expect(def.slots.find((s) => s.key === 'Owner')!.types).toEqual(['person', 'personMulti']);
+  });
+
+  it('a rowFormatter JSON becomes a row component, keeping additionalRowClass', () => {
+    const doc = importJson(JSON.stringify({
+      rowFormatter: { elmType: 'div', children: [{ elmType: 'span', txtContent: '[$Mystery]' }] },
+      additionalRowClass: "=if(@rowIndex%2==0,'ms-bgColor-neutralLighter','')",
+    }));
+    const def = componentFromFormatterDoc(doc, 'Row shape', defaultFields(), 'c-y');
+    expect(componentKind(def)).toBe('row');
+    expect(def.additionalRowClass).toContain('@rowIndex');
+    // a ref no schema knows gets the every-type slot (map anything in)
+    expect(def.slots[0]).toMatchObject({ key: 'Mystery', types: ALL_FIELD_TYPES });
+    // row components never qualify for the one-click column catalog
+    expect(isSingleColumnComponent(def, 'text')).toBe(false);
+  });
+
+  it('refuses tiles and CFR-carrying trees with teaching errors', () => {
+    const tile = importJson(JSON.stringify({ formatter: { elmType: 'div' }, width: 254 }));
+    expect(() => componentFromFormatterDoc(tile, 'T', defaultFields(), 'c-t')).toThrow(/Tile formatters/);
+    const cfr = importJson(JSON.stringify({
+      rowFormatter: { elmType: 'div', children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }] },
+    }));
+    expect(() => componentFromFormatterDoc(cfr, 'C', defaultFields(), 'c-c')).toThrow(/self-contained/);
+  });
+
+  it('row kind round-trips the store; invalid kinds are dropped', () => {
+    const doc = importJson(JSON.stringify({ rowFormatter: { elmType: 'div' } }));
+    const def = componentFromFormatterDoc(doc, 'R', defaultFields(), 'c-r');
+    const back = loadComponents(serializeComponents([def]));
+    expect(back).toHaveLength(1);
+    expect(componentKind(back[0])).toBe('row');
+    const bad = JSON.stringify({ version: 1, components: [{ ...def, kind: 'galaxy' }] });
+    expect(loadComponents(bad)).toHaveLength(0);
   });
 });
 

@@ -100,6 +100,85 @@ test('Save as component: derives typed slots, lands in "Yours", persists across 
   await expect(page.locator('.wb-comp-card', { hasText: 'My date look' })).toHaveCount(0);
 });
 
+test('a whole row saves as a row component and later REPLACES a view\'s layout, one undo', async ({ page }) => {
+  // build a CFR-free row view: Ctrl-click plain columns, "make a row view"
+  // (a template-built row carries CFR cells, which save correctly refuses —
+  // components are self-contained)
+  const header = (l: string) => page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: l }) });
+  await header('Title').click({ modifiers: ['Control'] });
+  await header('DueDate').click({ modifiers: ['Control'] });
+  await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+
+  // save the ROOT row as a component — right-click the tree's root row
+  await page.locator('#wb-tree-body .wb-tree-row').first().click({ button: 'right' });
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg.locator('.wb-compmap-note')).toContainText('WHOLE row layout');
+  await dlg.locator('.wb-compmap-name').fill('My row shape');
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Saved “My row shape”');
+
+  // back to the grid, then use the saved row component as the layout again
+  await page.locator('.wb-rowview-bar-btn', { hasText: 'Back to grid' }).click();
+  await expect(page.locator('.wb-grid-headrow')).toBeVisible();
+  await page.locator('.wb-fmt-tab-comp').click();
+  const card = page.locator('.wb-comp-card', { hasText: 'My row shape' });
+  await expect(card).toBeVisible(); // under Whole rows
+  await card.locator('.wb-comp-add').click(); // "Use as the row layout…"
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+  // one Ctrl+Z restores the grid
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-grid-headrow')).toBeVisible();
+});
+
+test('Import from formatter JSON: a pasted rowFormatter becomes a mappable row component; bad JSON teaches', async ({ page }) => {
+  await page.locator('.wb-fmt-tab-comp').click();
+  await page.locator('.wb-comp-rowlink', { hasText: 'Import from formatter JSON' }).click();
+  const dlg = page.locator('.wb-compmap');
+  // refuse-and-teach on junk
+  await dlg.locator('.wb-compmap-json').fill('{not json');
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(dlg.locator('.wb-compmap-error')).toContainText('Invalid JSON');
+  // a real pnp-style rowFormatter imports with derived slots
+  await dlg.locator('.wb-compmap-name').fill('Community row');
+  await dlg.locator('.wb-compmap-json').fill(JSON.stringify({
+    rowFormatter: {
+      elmType: 'div',
+      style: { display: 'flex' },
+      children: [{ elmType: 'span', txtContent: '=[$Headline]' }],
+    },
+  }));
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Imported “Community row” — a whole-row layout');
+  const card = page.locator('.wb-comp-card', { hasText: 'Community row' });
+  await expect(card).toBeVisible();
+  // the unknown [$Headline] ref became an any-type slot; using the layout maps it
+  await card.locator('.wb-comp-add').click();
+  const map = page.locator('.wb-compmap');
+  const sel = map.locator('.wb-compmap-select[data-slot="Headline"]');
+  await expect(sel.locator('option', { hasText: 'Title' })).toHaveCount(1); // any type ⇒ all columns offered
+  await sel.selectOption('Title');
+  await map.locator('.wb-compmap-insert').click();
+  await expect(page.locator('.wb-mock-viewrow').first()).toContainText('Launch new intranet');
+});
+
+test('saving over an existing name replaces the component instead of duplicating it', async ({ page }) => {
+  const save = async (name: string) => {
+    await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'DueDate' }) })
+      .click({ button: 'right' });
+    await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+    await page.locator('.wb-compmap .wb-compmap-name').fill(name);
+    await page.locator('.wb-compmap .wb-compmap-insert').click();
+  };
+  await save('Same look');
+  await save('Same look');
+  await expect(page.locator('#wb-toast')).toContainText('Replaced “Same look”');
+  await page.locator('.wb-fmt-tab-comp').click();
+  await expect(page.locator('.wb-comp-card', { hasText: 'Same look' })).toHaveCount(1);
+});
+
 test('a CFR-carrying subtree is refused with teaching, not silently broken', async ({ page }) => {
   // the Status cell hosts a columnFormatterReference — not self-contained
   await treeRow(page, 'Status').click({ button: 'right' });
