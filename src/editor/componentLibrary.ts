@@ -44,6 +44,7 @@ import {
   type ComponentDef, type ComponentInsertTarget,
 } from './components';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
+import { openComponentEditor } from './componentEditor';
 
 function readCustom(): ComponentDef[] {
   try {
@@ -199,6 +200,13 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     nm.className = 'wb-comp-name';
     nm.textContent = def.name;
     title.append(mark, nm);
+    if (def.variantOf) {
+      const vt = document.createElement('span');
+      vt.className = 'wb-comp-vtag';
+      vt.textContent = 'as-found one-off';
+      vt.title = 'A one-off frozen from an older recipe when its usages were pinned "keep as-found"';
+      title.appendChild(vt);
+    }
     if (opts.count !== undefined) {
       const chip = document.createElement('span');
       chip.className = 'wb-comp-count';
@@ -222,6 +230,33 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       title.appendChild(del);
     }
     el.appendChild(title);
+  };
+
+  /** The variant lineage line — "a variant card shows its lineage" (guarding
+   *  a dangling variantOf: the parent may have been deleted). */
+  const lineage = (def: ComponentDef, el: HTMLElement): void => {
+    if (!def.variantOf) return;
+    const parent = allDefs.find((d) => d.id === def.variantOf);
+    const line = document.createElement('div');
+    line.className = 'wb-comp-lineage';
+    line.textContent = parent
+      ? `Kept as-found from “${parent.name}”`
+      : 'Kept as-found from a component since deleted';
+    el.appendChild(line);
+  };
+
+  /** The Edit… action every card gets — opens the component editor over the
+   *  canvas pane. Editing a built-in can only ever save as a NEW component. */
+  const editButton = (def: ComponentDef): HTMLElement => {
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'wb-comp-edit';
+    edit.textContent = 'Edit…';
+    edit.title = def.builtin
+      ? `Open ${def.name} in the component editor — built-ins can't be overwritten, saving creates your own copy`
+      : `Edit ${def.name} — name, slot labels and elements; nothing changes until you save`;
+    edit.addEventListener('click', () => openComponentEditor(def, onToast, rerender));
+    return edit;
   };
 
   /** Live preview with the best-guess binding against the current schema. */
@@ -253,6 +288,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     const el = document.createElement('div');
     el.className = 'wb-comp-card';
     cardTitle(def, el, { del: true });
+    lineage(def, el);
 
     const desc = document.createElement('div');
     desc.className = 'wb-comp-desc';
@@ -272,13 +308,16 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     el.appendChild(slots);
     cardPreview(def, el);
 
+    const actions = document.createElement('div');
+    actions.className = 'wb-comp-actions';
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'wb-comp-add';
     add.textContent = addLabel(def);
     add.title = addTitle(def);
     add.addEventListener('click', () => openMappingDialog(def, onToast, rerender));
-    el.appendChild(add);
+    actions.append(add, editButton(def));
+    el.appendChild(actions);
 
     return el;
   };
@@ -290,6 +329,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     const el = document.createElement('div');
     el.className = 'wb-comp-used';
     cardTitle(def, el, { del: false, count: inUse.length });
+    lineage(def, el);
     cardPreview(def, el);
 
     // the usage list: one jump row per place, toggled by "Show usages"
@@ -343,18 +383,30 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     add.textContent = 'Add another…';
     add.title = addTitle(def);
     add.addEventListener('click', () => openMappingDialog(def, onToast, rerender));
-    actions.append(show, add);
+    actions.append(show, add, editButton(def));
     el.append(actions, list);
     return el;
   };
 
   // ── the inventory: what this project already uses ─────────────────────────
+  // As-found variants nest (indented) under their parent's card when it's
+  // shown; a variant whose parent is unused/deleted renders top-level.
   heading('In this project', 'wb-complib-h1');
   const used = allDefs.filter((d) => (usages.get(d.id)?.length ?? 0) > 0);
   if (!used.length) {
     emptyNote('Nothing in use yet — add a component from the sections below and it shows up here.');
   } else {
-    for (const def of used) host.appendChild(inventoryCard(def, usages.get(def.id)!));
+    const parentOf = (d: ComponentDef): ComponentDef | undefined =>
+      d.variantOf ? used.find((x) => x.id === d.variantOf && !x.variantOf) : undefined;
+    for (const def of used) {
+      if (parentOf(def)) continue; // rendered nested under its parent below
+      host.appendChild(inventoryCard(def, usages.get(def.id)!));
+      for (const v of used.filter((x) => parentOf(x)?.id === def.id)) {
+        const nested = inventoryCard(v, usages.get(v.id)!);
+        nested.classList.add('wb-comp-variantcard');
+        host.appendChild(nested);
+      }
+    }
   }
 
   // ── the browser: everything addable (used ones simply also appear above) ──
