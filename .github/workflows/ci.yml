@@ -40,7 +40,7 @@ jobs:
         continue-on-error: true
         uses: actions/deploy-pages@v5
       - name: Fail if Pages deploy did not succeed
-        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome != 'success'
+        if: steps.deployment.outcome == 'failure' && steps.deployment_retry.outcome == 'failure'
         run: exit 1
   e2e:
     runs-on: ubuntu-latest
