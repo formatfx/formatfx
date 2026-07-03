@@ -355,8 +355,18 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 - `filepreview` renders as a plain `img`.
 - Footer/group formatters and form (body/header/footer sections) JSON are
   detected and **rejected with explanatory errors** — not editable.
-- Icon glyphs come from the Fabric Core 11 CDN font; a tenant's newer
-  Fluent font may draw slightly different glyphs (cosmetic only).
+- Icon glyphs split two ways. The app's OWN chrome icons (tree, menus,
+  palette, toolbar, theme toggle, the element-reference badge) are
+  **self-hosted** as inline-SVG masks in `src/chromeIcons.css` — generated
+  by `tools/gen-chrome-icons.mjs` from `@fluentui/svg-icons` (MIT, pulled
+  `--no-save` at authoring time; no runtime/committed dependency) — so they
+  render with **no network**. ARBITRARY SharePoint `iconName` previews (the
+  icon picker, the fx bar's suggestions, and the canvas renderer) still ride
+  the Fabric Core 11 CDN font: those names have no local rule and fall
+  through to it. So in an offline container the chrome paints but those
+  arbitrary previews are blank — that's expected, not a bug. A tenant's
+  newer Fluent font may also draw slightly different glyphs for the CDN
+  path (cosmetic only).
 - Stock palettes ≠ tenant theme; the Data tab's **Tenant theme import**
   (paste `JSON.stringify(window.__themeState__.theme)`) closes that gap
   per-project.

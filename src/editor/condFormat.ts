@@ -27,6 +27,7 @@ import {
   conditionOptionsFor, escapeCondValue, rulesToStyle,
   type CondOption, type CondRule, type EffectId,
 } from './condRules';
+import { elementRefChip } from './elmRef';
 
 export type CondTarget =
   | { kind: 'element'; path: NodePath }
@@ -173,9 +174,14 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     const targetRow = document.createElement('div');
     targetRow.className = 'wb-cf-target';
     const tlabel = document.createElement('span');
-    tlabel.textContent = target.kind === 'element'
-      ? `Painting ${nameOf(targetNode!)} — every row — when`
-      : `Painting the ${fieldLabel(paintField!)} column — every row — when`;
+    tlabel.className = 'wb-cf-targetlab';
+    if (target.kind === 'element') {
+      // Show the painted element as a reference badge (tree icon + name) so the
+      // user can tie this dialog back to the element they clicked (issue #143).
+      tlabel.append('Painting ', elementRefChip(targetNode!), ' — every row — when');
+    } else {
+      tlabel.textContent = `Painting the ${fieldLabel(paintField!)} column — every row — when`;
+    }
     targetRow.appendChild(tlabel);
     const fieldSel = document.createElement('select');
     for (const f of state.fields) {

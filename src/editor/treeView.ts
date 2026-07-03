@@ -15,12 +15,7 @@ import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { openMenu } from './menu';
 import { elementMenuItems } from './contextMenu';
-
-const ELM_ICONS: Record<string, string> = {
-  div: 'CubeShape', span: 'PlainText', a: 'Link', img: 'Photo2',
-  button: 'ButtonControl', p: 'AlignLeft', svg: 'Puzzle', path: 'Puzzle',
-  filepreview: 'PreviewLink',
-};
+import { elmIconName } from './elmRef';
 
 function nodeHint(el: SPElement): string {
   let hint = '';
@@ -97,7 +92,7 @@ export function mountTree(
     label.className = 'wb-tree-label';
     label.style.paddingLeft = `${path.length * 12}px`;
     const typeIcon = document.createElement('i');
-    typeIcon.className = `ms-Icon ms-Icon--${ELM_ICONS[el.elmType] ?? 'CubeShape'} wb-tree-elmicon`;
+    typeIcon.className = `ms-Icon ms-Icon--${elmIconName(el.elmType)} wb-tree-elmicon`;
     label.appendChild(typeIcon);
     // _elmName (the throwaway-name convention SP ignores) is the primary
     // label when present; the elmType steps back to a dim suffix

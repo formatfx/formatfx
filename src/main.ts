@@ -7,6 +7,10 @@
  */
 
 import './style.css';
+// Self-hosted SVG masks for our own chrome icons — loaded AFTER style.css so the
+// app's icons render with no network (the CDN Fluent font stays only for
+// arbitrary SharePoint iconName previews). See tools/gen-chrome-icons.mjs.
+import './chromeIcons.css';
 import { state, type EditorLens } from './editor/state';
 import { PRODUCT_NAME, PRODUCT_TAGLINE, PROJECT_FILE_NAME } from './branding';
 import { applyTheme, setCustomPalette } from './core/theme';
