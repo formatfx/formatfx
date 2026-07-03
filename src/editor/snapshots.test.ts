@@ -46,6 +46,17 @@ describe('snapshot store (pure)', () => {
     expect(loadStore(mixed).snapshots).toHaveLength(1);
   });
 
+  it('drops entries whose scope is not one we write (unknown kind, fieldless column)', () => {
+    const good = snap('view', 1);
+    const bad = (scope: unknown): unknown => ({ ...snap('view', 2), scope });
+    const raw = JSON.stringify({
+      version: 1,
+      snapshots: [good, bad({ kind: 'universe' }), bad({ kind: 'column' }), bad({ kind: 'column', field: '' }), bad('view')],
+    });
+    // an unknown kind must never survive to applySnapshot (it would read as 'all')
+    expect(loadStore(raw).snapshots).toHaveLength(1);
+  });
+
   it('partitions by scope key and lists newest-first', () => {
     let store = loadStore(null);
     store = addSnapshot(store, snap('view', 1));
@@ -106,6 +117,23 @@ describe('state snapshot capture/apply (one undoable step)', () => {
     state.mutateDocument(() => { state.doc.root.txtContent = 'LIVE'; });
     const taken = state.captureSnapshot({ kind: 'column', field: 'Status' })!;
     expect(taken.payload.root?.txtContent).toBe('LIVE');
+  });
+
+  it('capture is read-only — "everything" while drilled mutates nothing, yet holds the live tree', () => {
+    state.openColumnRef('Status');
+    const before = JSON.stringify({ doc: state.doc, refs: state.columnRefs });
+    const taken = state.captureSnapshot({ kind: 'all' })!;
+    expect(JSON.stringify({ doc: state.doc, refs: state.columnRefs })).toBe(before);
+    expect(state.canUndo).toBe(false);
+    // …and the payload still carries the open column's live tree
+    expect(taken.payload.all?.columnRefs['Status']._elmName).toBe('Status pill');
+  });
+
+  it('prototype members never read as registered columns (own-key checks)', () => {
+    // 'toString' is inherited on every object — `in` would say it exists
+    state.openColumnRef('toString');
+    expect(state.activeDocKey).toBe('main');
+    expect(state.captureSnapshot({ kind: 'column', field: 'toString' })).toBeNull();
   });
 
   it('captures the view while drilled into a column (stash-aware)', () => {

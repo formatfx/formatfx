@@ -61,6 +61,17 @@ export function scopeKeyOf(scope: SnapshotScope): string {
   return scope.kind === 'column' ? `col:${scope.field}` : scope.kind;
 }
 
+/** A persisted scope is only trusted if it's one we actually wrote — an
+ *  unknown kind (foreign/corrupt data) must never reach applySnapshot. */
+function isValidScope(s: unknown): s is SnapshotScope {
+  if (!s || typeof s !== 'object') return false;
+  const kind = (s as { kind?: unknown }).kind;
+  if (kind === 'view' || kind === 'all') return true;
+  return kind === 'column'
+    && typeof (s as { field?: unknown }).field === 'string'
+    && (s as { field: string }).field.length > 0;
+}
+
 /** Parse a persisted store; tolerate corrupt/missing/foreign data (fresh store). */
 export function loadStore(raw: string | null): SnapshotStore {
   if (!raw) return { version: 1, snapshots: [] };
@@ -71,7 +82,7 @@ export function loadStore(raw: string | null): SnapshotStore {
     }
     const snapshots = (parsed.snapshots as Snapshot[]).filter((s) =>
       s && typeof s.id === 'string' && typeof s.takenAt === 'string'
-      && s.scope && typeof s.scope.kind === 'string' && s.payload,
+      && isValidScope(s.scope) && s.payload,
     );
     return { version: 1, snapshots };
   } catch {

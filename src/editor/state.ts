@@ -290,7 +290,7 @@ export class EditorState {
     for (let i = this.navStack.length - 1; i >= 0; i--) {
       const key = this.navStack[i];
       if (key === this.activeDocKey) continue;
-      if (key === 'main' || key in this.columnRefs) return key;
+      if (key === 'main' || Object.hasOwn(this.columnRefs, key)) return key;
     }
     return null;
   }
@@ -318,7 +318,9 @@ export class EditorState {
 
   /** Open a registered column formatter for editing. */
   openColumnRef(name: string): void {
-    if (!(name in this.columnRefs) || this.activeDocKey === name) return;
+    // own-key check: `in` would also match prototype members ('toString', …),
+    // and a registry read on such a name must never open a "formatter"
+    if (!Object.hasOwn(this.columnRefs, name) || this.activeDocKey === name) return;
     if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
     if (this.activeDocKey === 'main') {
@@ -1034,19 +1036,23 @@ export class EditorState {
     if (scope.kind === 'view') {
       payload = { doc: clone(this.mainDocForScope()) };
     } else if (scope.kind === 'column') {
-      // the open column's live tree wins; then the registry; then the
+      // the open column's live tree wins; then the registry (own keys only —
+      // 'toString' etc. must not read as a formatter); then the
       // main-document-is-a-column edge (e.g. a loaded column example)
       const root = this.activeDocKey === scope.field
         ? this.doc.root
-        : this.columnRefs[scope.field]
+        : (Object.hasOwn(this.columnRefs, scope.field) ? this.columnRefs[scope.field] : undefined)
           ?? (this.activeDocKey === 'main' && this.doc.kind === 'column' && this.currentFieldName === scope.field
             ? this.doc.root : undefined);
       if (!root) return null;
       payload = { root: clone(root) };
     } else {
-      this.flushActiveDoc();
+      // read-only capture: overlay the open column's live tree on a CLONE of
+      // the registry instead of flushing it back into editor state
+      const refs = clone(this.columnRefs);
+      if (this.activeDocKey !== 'main') refs[this.activeDocKey] = clone(this.doc.root);
       payload = {
-        all: { doc: clone(this.mainDocForScope()), columnRefs: clone(this.columnRefs), viewName: this.viewName },
+        all: { doc: clone(this.mainDocForScope()), columnRefs: refs, viewName: this.viewName },
       };
     }
     return {
@@ -1070,7 +1076,7 @@ export class EditorState {
       if (this.activeDocKey === field) {
         // open on the canvas — emit('document') live-syncs the registry
         this.mutateDocument(() => { this.doc.root = restored; });
-      } else if (field in this.columnRefs) {
+      } else if (Object.hasOwn(this.columnRefs, field)) {
         this.incrementColumnVersion(field);
         this.mutateDocument(() => { this.columnRefs[field] = restored; });
       } else if (this.activeDocKey === 'main' && this.doc.kind === 'column' && this.currentFieldName === field) {
