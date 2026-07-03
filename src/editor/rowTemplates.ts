@@ -498,7 +498,16 @@ export function buildTemplateView(
 // ─── free-form zone/item ops (immutable; consumed by the builder modal) ──────
 
 export function addZone(config: RowTemplateConfig, zone: ZoneConfig = newZone()): RowTemplateConfig {
-  return { ...config, zones: [...config.zones, zone] };
+  return insertZone(config, config.zones.length, zone);
+}
+
+/** Insert a zone at `at` (clamped) — dropping a payload BETWEEN zones spawns
+ *  a new zone right there. */
+export function insertZone(config: RowTemplateConfig, at: number, zone: ZoneConfig = newZone()): RowTemplateConfig {
+  if (!Number.isInteger(at)) return config;
+  const zones = config.zones.slice();
+  zones.splice(Math.max(0, Math.min(at, zones.length)), 0, zone);
+  return { ...config, zones };
 }
 
 export function removeZone(config: RowTemplateConfig, i: number): RowTemplateConfig {
@@ -523,9 +532,17 @@ export function patchZone(config: RowTemplateConfig, i: number, patch: Partial<O
   return { ...config, zones };
 }
 
-export function addItem(config: RowTemplateConfig, zi: number, item: ZoneItem): RowTemplateConfig {
+export function addItem(config: RowTemplateConfig, zi: number, item: ZoneItem, at?: number): RowTemplateConfig {
   if (zi < 0 || zi >= config.zones.length) return config;
-  const zones = config.zones.map((z, idx) => (idx === zi ? { ...z, items: [...z.items, item] } : z));
+  const zones = config.zones.map((z, idx) => {
+    if (idx !== zi) return z;
+    const items = z.items.slice();
+    const ins = at === undefined || !Number.isInteger(at)
+      ? items.length
+      : Math.max(0, Math.min(at, items.length));
+    items.splice(ins, 0, item);
+    return { ...z, items };
+  });
   return { ...config, zones };
 }
 

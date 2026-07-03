@@ -24,10 +24,48 @@ import {
 import { WEIGHT_FLEX } from './areas';
 import type { SPElement } from '../core/types';
 import {
-  el, segmented, STAGE_WIDTHS,
+  el, segmented, dropPos, STAGE_WIDTHS,
   FIELD_MIME, COMPONENT_MIME, ZONE_MIME, ITEM_MIME,
-  type Mode, type ModalUI, type ModalApi,
+  type Mode, type ModalUI, type ModalApi, type DropPos,
 } from './templateUi';
+
+// ─── positional drag-drop plumbing (shared by canvas + tree) ────────────────
+// Near an edge = BETWEEN (an insertion bar paints there); on the body = INTO
+// (highlight) when the target can contain the payload. One vocabulary
+// everywhere so drops feel predictable.
+
+const ITEMISH = [ITEM_MIME, FIELD_MIME, COMPONENT_MIME];
+
+function hasAny(dt: DataTransfer | null, mimes: string[]): boolean {
+  return Boolean(dt && mimes.some((m) => dt.types.includes(m)));
+}
+
+const DROP_CLASSES = ['wb-drop-hover', 'wb-ins-before-h', 'wb-ins-after-h', 'wb-ins-before-v', 'wb-ins-after-v'];
+
+function clearDrop(node: HTMLElement): void {
+  node.classList.remove(...DROP_CLASSES);
+}
+
+function markDrop(node: HTMLElement, pos: DropPos, horizontal: boolean): void {
+  clearDrop(node);
+  if (pos === 'into') node.classList.add('wb-drop-hover');
+  else node.classList.add(`wb-ins-${pos}-${horizontal ? 'h' : 'v'}`);
+}
+
+/** Pointer → before/after/into for `node` along its axis. */
+function posFor(e: DragEvent, node: HTMLElement, horizontal: boolean, canInto: boolean): DropPos {
+  const rect = node.getBoundingClientRect();
+  const offset = horizontal ? e.clientX - rect.left : e.clientY - rect.top;
+  return dropPos(offset, horizontal ? rect.width : rect.height, canInto);
+}
+
+/** The `{zone, item}` an ITEM_MIME payload names, or null. */
+function itemPayload(dt: DataTransfer): { zone: number; item: number } | null {
+  const raw = dt.getData(ITEM_MIME);
+  if (!raw) return null;
+  const [zone, item] = raw.split(':').map(Number);
+  return Number.isInteger(zone) && Number.isInteger(item) ? { zone, item } : null;
+}
 
 // ─── CHIPS bar (pinned drag sources: fields + components) ────────────────────
 
@@ -127,6 +165,18 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   back.title = 'Start from a different pre-built layout';
   back.addEventListener('click', () => api.openGallery());
   left.append(el('span', 'wb-template-prev-title', 'Preview'), back);
+  // modal-local undo/redo — the keyboard twins live on Ctrl/Cmd+Z
+  const un = el('button', 'wb-template-mini wb-template-undo', '↶') as HTMLButtonElement;
+  un.type = 'button';
+  un.title = 'Undo (Ctrl+Z) — inside the builder only';
+  un.disabled = !api.canUndo();
+  un.addEventListener('click', () => api.undo());
+  const re = el('button', 'wb-template-mini wb-template-redo', '↷') as HTMLButtonElement;
+  re.type = 'button';
+  re.title = 'Redo (Ctrl+Shift+Z)';
+  re.disabled = !api.canRedo();
+  re.addEventListener('click', () => api.redo());
+  left.append(un, re);
   head.appendChild(left);
 
   const right = el('div', 'wb-template-prev-headgroup');
@@ -136,7 +186,6 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   host.appendChild(head);
 
   const body = el('div', 'wb-template-prev-body');
-  body.appendChild(zoneTree(ui, api));
   const stage = el('div', 'wb-template-stage');
   if (ui.stageWidth) stage.style.width = `${ui.stageWidth}px`;
   body.appendChild(stage);
@@ -151,16 +200,21 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   host.appendChild(statusStrip(ui));
 }
 
-/** The zone TREE rail — the builder's structure pane: one row per zone, its
+/** The zone TREE — the builder's structure pane, sitting ABOVE the inspector
+ *  in the left side column (the Left-Edit-Pane shape): one row per zone, its
  *  items nested beneath, "+ Zone" at the foot. The deterministic selection
  *  surface (canvas clicks can land on whichever item fills a zone's center;
- *  a tree row can't miss). Visible in BOTH modes so nothing shifts on the
- *  Edit/Preview flip; clicking a row in Preview switches back to Edit. */
-function zoneTree(ui: ModalUI, api: ModalApi): HTMLElement {
-  const rail = el('div', 'wb-template-tree');
-  rail.appendChild(el('div', 'wb-template-tree-head', 'Zones'));
+ *  a tree row can't miss) AND a full drag-drop surface: rows drag, edges
+ *  insert BETWEEN (bar), a zone row's body drops INTO it (highlight). Visible
+ *  in BOTH modes so nothing shifts on the Edit/Preview flip; interacting in
+ *  Preview switches back to Edit. */
+export function renderZoneTree(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
+  host.innerHTML = '';
+  if (ui.stage === 'pick') return; // the side column is CSS-hidden in the gallery
+  host.appendChild(el('div', 'wb-template-tree-head', 'Zones'));
   const rows = el('div', 'wb-template-tree-rows');
   const comps = api.components();
+  const editable = ui.mode === 'edit';
 
   ui.config.zones.forEach((zone, zi) => {
     // NAMESPACED classes (wb-ztree-*): the studio structure tree owns wb-tree-*
@@ -168,11 +222,40 @@ function zoneTree(ui: ModalUI, api: ModalApi): HTMLElement {
     zrow.type = 'button';
     zrow.dataset.treeZone = String(zi);
     zrow.append(el('span', 'wb-ztree-icon', '▤'), el('span', 'wb-ztree-label', zone.label));
-    if (ui.selected?.zone === zi && ui.selected.item === null && ui.mode === 'edit') zrow.classList.add('wb-ztree-on');
+    if (ui.selected?.zone === zi && ui.selected.item === null && editable) zrow.classList.add('wb-ztree-on');
     zrow.addEventListener('click', () => {
       if (ui.mode === 'preview') api.setMode('edit');
       api.selectZone(zi);
     });
+    if (editable) {
+      zrow.draggable = true;
+      zrow.addEventListener('dragstart', (e) => { (e as DragEvent).dataTransfer?.setData(ZONE_MIME, String(zi)); });
+      zrow.addEventListener('dragover', (e) => {
+        const dt = (e as DragEvent).dataTransfer;
+        if (!hasAny(dt, [ZONE_MIME, ...ITEMISH])) return;
+        e.preventDefault();
+        // zones reorder between rows; item-ish payloads may also land INTO the body
+        const canInto = !dt!.types.includes(ZONE_MIME);
+        markDrop(zrow, posFor(e as DragEvent, zrow, false, canInto), false);
+      });
+      zrow.addEventListener('dragleave', () => clearDrop(zrow));
+      zrow.addEventListener('drop', (e) => {
+        e.preventDefault();
+        clearDrop(zrow);
+        const dt = (e as DragEvent).dataTransfer;
+        if (!dt) return;
+        const zonePayload = dt.getData(ZONE_MIME);
+        if (zonePayload) {
+          const from = Number(zonePayload);
+          const pos = posFor(e as DragEvent, zrow, false, false);
+          const ins = zi + (pos === 'after' ? 1 : 0);
+          const to = ins > from ? ins - 1 : ins;
+          if (Number.isInteger(from) && to !== from) api.reorderZone(from, to);
+          return;
+        }
+        dropItemishOnZone(e as DragEvent, dt, zrow, zi, false, api);
+      });
+    }
     rows.appendChild(zrow);
 
     zone.items.forEach((item, ii) => {
@@ -184,23 +267,82 @@ function zoneTree(ui: ModalUI, api: ModalApi): HTMLElement {
         : `⬡ ${comps.find((c) => c.id === item.componentId)?.name ?? '(missing)'}`;
       irow.appendChild(el('span', 'wb-ztree-label', label));
       if (item.kind === 'component') irow.classList.add('wb-ztree-comp');
-      if (ui.selected?.zone === zi && ui.selected.item === ii && ui.mode === 'edit') irow.classList.add('wb-ztree-on');
+      if (ui.selected?.zone === zi && ui.selected.item === ii && editable) irow.classList.add('wb-ztree-on');
       irow.addEventListener('click', () => {
         if (ui.mode === 'preview') api.setMode('edit');
         api.selectItem(zi, ii);
       });
+      if (editable) {
+        irow.draggable = true;
+        irow.addEventListener('dragstart', (e) => {
+          e.stopPropagation();
+          (e as DragEvent).dataTransfer?.setData(ITEM_MIME, `${zi}:${ii}`);
+        });
+        wireItemTarget(irow, zi, ii, false, api);
+      }
       rows.appendChild(irow);
     });
   });
-  rail.appendChild(rows);
+  host.appendChild(rows);
 
   const add = el('button', 'wb-template-mini wb-template-addzone', '＋ Zone') as HTMLButtonElement;
   add.type = 'button';
   add.title = 'Add an empty zone (drop fields or components into it whenever)';
   add.disabled = ui.mode === 'preview';
   add.addEventListener('click', () => api.addEmptyZone());
-  rail.appendChild(add);
-  return rail;
+  host.appendChild(add);
+}
+
+/** An item-ish payload (chip or item) dropped on a ZONE surface: edges spawn a
+ *  NEW zone between rows/columns, the body drops INTO the zone (append). */
+function dropItemishOnZone(
+  e: DragEvent, dt: DataTransfer, node: HTMLElement, zi: number, horizontal: boolean, api: ModalApi,
+): void {
+  const pos = posFor(e, node, horizontal, true);
+  const field = dt.getData(FIELD_MIME);
+  const componentId = dt.getData(COMPONENT_MIME);
+  const moved = itemPayload(dt);
+  if (pos === 'into') {
+    if (field) api.dropField(zi, field);
+    else if (componentId) api.dropComponent(zi, componentId);
+    else if (moved) api.moveItem(moved.zone, moved.item, zi, Number.MAX_SAFE_INTEGER);
+    return;
+  }
+  const at = zi + (pos === 'after' ? 1 : 0);
+  if (field) api.newZoneAt(at, { field });
+  else if (componentId) api.newZoneAt(at, { componentId });
+  else if (moved) api.newZoneAt(at, { move: moved });
+}
+
+/** An ITEM row/block as a positional target: item-ish payloads insert
+ *  before/after it inside its zone (no 'into' — items don't nest). */
+function wireItemTarget(node: HTMLElement, zi: number, ii: number, horizontal: boolean, api: ModalApi): void {
+  node.addEventListener('dragover', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, ITEMISH)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    markDrop(node, posFor(e as DragEvent, node, horizontal, false), horizontal);
+  });
+  node.addEventListener('dragleave', () => clearDrop(node));
+  node.addEventListener('drop', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, ITEMISH)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearDrop(node);
+    const pos = posFor(e as DragEvent, node, horizontal, false);
+    const ins = ii + (pos === 'after' ? 1 : 0);
+    const field = dt!.getData(FIELD_MIME);
+    if (field) { api.dropField(zi, field, ins); return; }
+    const componentId = dt!.getData(COMPONENT_MIME);
+    if (componentId) { api.dropComponent(zi, componentId, ins); return; }
+    const moved = itemPayload(dt!);
+    if (!moved) return;
+    // moving forward within the same zone: the removal shifts the slot left
+    const to = moved.zone === zi && moved.item < ins ? ins - 1 : ins;
+    api.moveItem(moved.zone, moved.item, zi, to);
+  });
 }
 
 /** The Full / Medium / Narrow squeeze presets. */
@@ -298,10 +440,6 @@ function decorateEditRow(editRoot: HTMLElement, ui: ModalUI, api: ModalApi): voi
   });
 }
 
-function acceptedPayload(dt: DataTransfer | null): boolean {
-  return Boolean(dt && [FIELD_MIME, COMPONENT_MIME, ZONE_MIME, ITEM_MIME].some((m) => dt.types.includes(m)));
-}
-
 function decorateZone(node: HTMLElement, zi: number, ui: ModalUI, api: ModalApi): void {
   const zone = ui.config.zones[zi];
   // decorate the ITEM children FIRST — the 1:1 children↔items mapping must be
@@ -334,30 +472,30 @@ function decorateZone(node: HTMLElement, zi: number, ui: ModalUI, api: ModalApi)
   }, true);
   node.addEventListener('dragstart', (e) => { (e as DragEvent).dataTransfer?.setData(ZONE_MIME, String(zi)); });
   node.addEventListener('dragover', (e) => {
-    if (acceptedPayload((e as DragEvent).dataTransfer)) {
-      e.preventDefault();
-      node.classList.add('wb-drop-hover');
-    }
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, [ZONE_MIME, ...ITEMISH])) return;
+    e.preventDefault();
+    // zone-on-zone = reorder BETWEEN (bar); item-ish payloads may also land INTO
+    const canInto = !dt!.types.includes(ZONE_MIME);
+    markDrop(node, posFor(e as DragEvent, node, true, canInto), true);
   });
-  node.addEventListener('dragleave', () => node.classList.remove('wb-drop-hover'));
+  node.addEventListener('dragleave', () => clearDrop(node));
   node.addEventListener('drop', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    node.classList.remove('wb-drop-hover');
+    clearDrop(node);
     const dt = (e as DragEvent).dataTransfer;
     if (!dt) return;
-    const fld = dt.getData(FIELD_MIME);
-    if (fld) { api.dropField(zi, fld); return; }
-    const comp = dt.getData(COMPONENT_MIME);
-    if (comp) { api.dropComponent(zi, comp); return; }
-    const item = dt.getData(ITEM_MIME);
-    if (item) {
-      const [fz, fi] = item.split(':').map(Number);
-      if (Number.isInteger(fz) && Number.isInteger(fi)) api.moveItem(fz, fi, zi, ui.config.zones[zi].items.length);
+    const zonePayload = dt.getData(ZONE_MIME);
+    if (zonePayload) {
+      const from = Number(zonePayload);
+      const pos = posFor(e as DragEvent, node, true, false);
+      const ins = zi + (pos === 'after' ? 1 : 0);
+      const to = ins > from ? ins - 1 : ins;
+      if (Number.isInteger(from) && to !== from) api.reorderZone(from, to);
       return;
     }
-    const from = Number(dt.getData(ZONE_MIME));
-    if (Number.isInteger(from)) api.reorderZone(from, zi); // ignore empty/garbage payloads
+    dropItemishOnZone(e as DragEvent, dt, node, zi, true, api);
   });
 }
 
@@ -376,37 +514,39 @@ function decorateItem(node: HTMLElement, zi: number, ii: number, ui: ModalUI, ap
     e.stopPropagation(); // don't also start the zone drag
     (e as DragEvent).dataTransfer?.setData(ITEM_MIME, `${zi}:${ii}`);
   });
-  // an item is a positional drop target for OTHER items (insert before it);
-  // field/component chips fall through to the zone (append)
-  node.addEventListener('dragover', (e) => {
-    const dt = (e as DragEvent).dataTransfer;
-    if (dt?.types.includes(ITEM_MIME)) {
-      e.preventDefault();
-      e.stopPropagation();
-      node.classList.add('wb-drop-hover');
-    }
-  });
-  node.addEventListener('dragleave', () => node.classList.remove('wb-drop-hover'));
-  node.addEventListener('drop', (e) => {
-    const dt = (e as DragEvent).dataTransfer;
-    const payload = dt?.getData(ITEM_MIME);
-    if (!payload) return; // chip drops bubble to the zone handler
-    e.preventDefault();
-    e.stopPropagation();
-    node.classList.remove('wb-drop-hover');
-    const [fz, fi] = payload.split(':').map(Number);
-    if (!Number.isInteger(fz) || !Number.isInteger(fi)) return;
-    // moving forward within the same zone: the removal shifts our slot left
-    const to = fz === zi && fi < ii ? ii - 1 : ii;
-    api.moveItem(fz, fi, zi, to);
-  });
+  // an item is a positional target for chips AND items: near an edge inserts
+  // before/after it (insertion bar); the item axis follows the zone's flow
+  wireItemTarget(node, zi, ii, ui.config.zones[zi].flow !== 'stack', api);
 }
 
 function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLElement {
   const d = el('div', 'wb-edit-divider');
   const next = ZONE_SIZE_LABEL[ui.config.zones[leftZoneIdx].size];
-  d.title = `Resize: click to cycle the left zone (now ${next}: Hug → Fill → Fill 2× → Fill 3×)`;
+  d.title = `Resize: click to cycle the left zone (now ${next}: Hug → Fill → Fill 2× → Fill 3×). Drop here for a new zone between.`;
   d.addEventListener('click', (e) => { e.stopPropagation(); api.cycleZoneSize(leftZoneIdx); });
+  // the divider IS the between-zones gap — dropping a chip or item here spawns
+  // a new zone right at this seam
+  d.addEventListener('dragover', (e) => {
+    if (!hasAny((e as DragEvent).dataTransfer, ITEMISH)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    d.classList.add('wb-drop-hover');
+  });
+  d.addEventListener('dragleave', () => d.classList.remove('wb-drop-hover'));
+  d.addEventListener('drop', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, ITEMISH)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    d.classList.remove('wb-drop-hover');
+    const at = leftZoneIdx + 1;
+    const field = dt!.getData(FIELD_MIME);
+    if (field) { api.newZoneAt(at, { field }); return; }
+    const componentId = dt!.getData(COMPONENT_MIME);
+    if (componentId) { api.newZoneAt(at, { componentId }); return; }
+    const moved = itemPayload(dt!);
+    if (moved) api.newZoneAt(at, { move: moved });
+  });
   return d;
 }
 
