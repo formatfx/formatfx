@@ -2384,7 +2384,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Left Edit Pane — the Claude-style consolidated editing surface
-   (action header · lens tabs · structure tree · draw toolbar · property lenses)
+   (Formatters bar · structure tree · lens tabs · draw toolbar · property lenses)
    ══════════════════════════════════════════════════════════════════════════ */
 .wb-leftpane {
   background: var(--wb-lp-bg); color: var(--wb-lp-text);
@@ -2392,32 +2392,36 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 
-/* ── action header (the lens tabs line) ────────────────────────────────────── */
+/* ── the lens tabs line (Simple · Pro · Code) — sits between the structure
+   tree and the draw toolbar, heading the editing workspace below it ───────── */
 .wb-lp-header {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
 
-/* ── the Formatters bar (header · VIEW / COLUMNS / COMPONENTS · ← · 🕘) ────
+/* ── the Formatters bar (header line · ← · 🕘 · VIEW / COLUMNS / COMPONENTS) ─
    Blue = the view formatter; violet = the shared column formatters — the same
    two color channels the canvas and tree teach, so the tabs read as "those
-   things I keep seeing with the § mark live here". One row in a ~300px pane:
-   the "Formatters" header leads, the back + snapshot buttons right-align, and
-   paddings/font sizes stay tight so the common case never scrolls. */
+   things I keep seeing with the § mark live here". Two lines: the uppercase
+   "Formatters" header sits alone on top; below it the ← back + 🕘 snapshot
+   buttons (one grouped chip) lead the tabs. Paddings/font sizes stay tight so
+   the tab row fits a ~300px pane without scrolling; its overflow-x: auto is
+   the fallback for panes narrower than that. */
 .wb-fmt-tabs {
-  flex: 0 0 auto; display: flex; gap: 2px; padding: 0 6px;
+  flex: 0 0 auto; padding: 5px 6px 0 8px;
   border-bottom: 1px solid var(--wb-lp-border);
-  overflow-x: auto; scrollbar-width: none;
 }
-.wb-fmt-tabs::-webkit-scrollbar { display: none; }
-/* the header is the one non-interactive item, so it alone may shrink: below
-   ~320px it ellipsizes before the controls ever have to scroll */
 .wb-fmt-head {
-  flex: 0 1 auto; min-width: 0; align-self: center; margin-right: 2px;
+  display: block; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-size: 8.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   color: var(--wb-lp-text-2); opacity: .75;
 }
+.wb-fmt-row {
+  display: flex; gap: 2px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.wb-fmt-row::-webkit-scrollbar { display: none; }
 /* a REAL flex box, deliberately not display:contents — contents can drop the
    wrapper (and its role="tablist" semantics) from the accessibility tree in
    some browser/AT combos (Safari/VoiceOver). overflow stays visible so the
@@ -2438,17 +2442,21 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-fmt-tab-cols.active { color: var(--wb-shared); border-bottom-color: var(--wb-shared); }
 .wb-fmt-tab-comp.active { color: var(--wb-component); border-bottom-color: var(--wb-component); }
 
-/* …the ← back + 🕘 snapshot buttons live on the Formatters bar, right-aligned */
-.wb-nav-back, .wb-snap-btn {
+/* …the ← back + 🕘 snapshot buttons lead the tab row as one grouped chip */
+.wb-nav-group {
   flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center;
-  justify-content: center; width: 22px; height: 22px;
   border: 1px solid var(--wb-lp-border); border-radius: 6px;
+  margin-right: 6px; padding: 1px;
+}
+.wb-nav-back, .wb-snap-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center;
+  justify-content: center; width: 22px; height: 20px;
+  border: none; border-radius: 4px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
   font-size: 12px; line-height: 1;
 }
-.wb-nav-back { margin-left: auto; }
 .wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover {
-  border-color: var(--wb-accent); color: var(--wb-accent);
+  background: var(--wb-lp-seg-track); color: var(--wb-accent);
 }
 .wb-nav-back:disabled { opacity: .35; cursor: default; }
 
