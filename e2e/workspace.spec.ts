@@ -295,21 +295,18 @@ test('Structure pane: formatter tabs + document dropdown frame the active tree',
   await expect(page.locator('#wb-tree-body .wb-tree-row').first()).toBeVisible();
 });
 
-test('Structure pane: the reference row opens & selects that column formatter', async ({ page }) => {
-  // the grid's Status column renders another column's formatter — an opaque reference row
+test('Structure pane: the host row\'s reference tag opens & selects that column formatter', async ({ page }) => {
+  // the grid's Status column renders another column's formatter — ONE host
+  // row wearing the § ink; its "reference" tag-button is the explicit door
   const statusRow = page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Status' }) });
-  // the reference row is a sibling of the row (not inside it), so climb to the
-  // row's wrap node and find it there; clicking it (not the row) switches the
-  // workspace to that column formatter
-  const statusStub = statusRow.locator('xpath=following-sibling::*[1]');
-  await expect(statusStub).toHaveClass(/wb-tree-stylestub/);
-  await statusStub.click();
+  await expect(statusRow.locator('.wb-style-mark')).toHaveText('§');
+  await statusRow.locator('.wb-tree-cfr-open').click();
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   await expect(page.locator('.wb-current-chip')).toContainText('@currentField → Status');
 });
 
-test('Structure pane: an unregistered reference row is inert', async ({ page }) => {
+test('Structure pane: an unregistered reference tag is inert', async ({ page }) => {
   // a view referencing a column with no registered formatter
   await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({
@@ -319,11 +316,13 @@ test('Structure pane: an unregistered reference row is inert', async ({ page }) 
     },
   }));
   await page.click('#wb-json-apply');
-  // the host node's reference row is marked missing and has no click handler
-  const ghostStub = page.locator('.wb-tree-stylestub-missing').first();
-  await expect(ghostStub.locator('.wb-stub-name')).toHaveText('Ghost');
-  await expect(ghostStub).toHaveAttribute('title', /isn't registered/);
-  await ghostStub.click();
-  // still on the view — the click went nowhere
+  // the nameless host row borrows the referenced column's name; its tag is
+  // marked missing, carries the teaching tooltip, and opens nothing
+  const ghostTag = page.locator('.wb-tree-cfr-missing').first();
+  await expect(ghostTag).toHaveAttribute('title', /isn't registered/);
+  const ghostRow = page.locator('.wb-tree-row', { has: ghostTag });
+  await expect(ghostRow.locator('.wb-tree-name')).toHaveText('Ghost');
+  await ghostTag.click();
+  // still on the view — the click only selected the host row
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
 });

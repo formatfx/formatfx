@@ -44,6 +44,9 @@
   --wb-lp-text-2: var(--wb-text-2);
   --wb-lp-selected: #cfe4f7;     /* tree selected row (light blue) */
   --wb-lp-seg-track: #f3f2f1;    /* segmented-control track */
+  /* the tree region sits one subtle step lighter than the pane (a quiet
+     elevation, not a new color) — owner request, 2026-07-03 */
+  --wb-lp-tree-bg: color-mix(in srgb, #fff 55%, var(--wb-lp-bg));
   /* CTA + active draw-tool = the Microsoft-blue primary (flat, app-consistent). */
   --wb-cta: var(--wb-accent);
   --wb-cta-hover: #106ebe;
@@ -87,6 +90,8 @@ body.wb-dark {
   --wb-lp-text-2: var(--wb-text-2);
   --wb-lp-selected: #123a5c;     /* tree selected row (dark blue) */
   --wb-lp-seg-track: #322f2e;
+  /* dark elevation = a whisper of white over the pane surface */
+  --wb-lp-tree-bg: color-mix(in srgb, #fff 5%, var(--wb-lp-bg));
   --wb-cta-hover: #2b88d8;
 
   /* …and dark in dark mode (covers Firefox + native widgets) */
@@ -2321,6 +2326,7 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-lp-tree {
   flex: 0 0 auto; height: 260px; display: flex; flex-direction: column;
   border-bottom: 1px solid var(--wb-lp-border);
+  background: var(--wb-lp-tree-bg);
 }
 /* Simple hides the tree itself, but keeps the formatter tabs + document
    dropdown — they're navigation, not structure editing. */
@@ -2741,32 +2747,21 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 /* the Title context column steps back while a style is edited */
 .wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }
 
-/* ── tree: the reference is a door, not a folder ───────────────────────────
-   One opaque row per columnFormatterReference: § + the column name, with a
-   right-aligned "COLUMN FORMATTER REFERENCE" tag — the same violet + § the
-   COLUMN FORMATTERS tab wears, so the two connect at a glance. */
-.wb-tree-stylestub {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 1px 4px 3px 16px;
-  padding: 3px 8px;
-  font-size: 11px;
-  border-radius: 4px;
-  background: var(--wb-shared-bg);
-  color: var(--wb-shared);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.wb-tree-stylestub:hover { filter: brightness(0.97); }
-.wb-tree-stylestub .wb-stub-name {
-  flex: 0 1 auto; min-width: 0; font-weight: 600;
-  overflow: hidden; text-overflow: ellipsis;
-}
-.wb-tree-stylestub .wb-stub-tag {
-  flex: 0 0 auto; margin-left: auto;
+/* ── tree: a CFR host is ONE normal row ────────────────────────────────────
+   Every columnFormatterReference has an inherent wrapper div, so a nested
+   "reference" row was noise: the host row carries the whole story itself.
+   "Violet = shared" survives as INK only (no fill): the § mark beside the
+   name, and a right-aligned "reference" tag-button — the explicit door into
+   the shared column formatter. Row click/Enter selects the HOST element. */
+.wb-tree-label .wb-style-mark { flex: 0 0 auto; font-size: 11px; }
+.wb-tree-cfr-open {
+  flex: 0 0 auto;
+  border: none; background: none; padding: 2px 4px;
   font-size: 8.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
-  opacity: .8;
+  color: var(--wb-shared); opacity: .75;
+  cursor: pointer; white-space: nowrap;
 }
-.wb-tree-stylestub-missing { cursor: default; opacity: 0.75; }
+.wb-tree-cfr-open:hover { opacity: 1; text-decoration: underline; }
+/* unregistered reference: teaching tooltip only — nothing to open */
+.wb-tree-cfr-missing { cursor: help; opacity: .55; }
+.wb-tree-cfr-missing:hover { opacity: .55; text-decoration: none; }
