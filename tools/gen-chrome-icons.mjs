@@ -59,6 +59,8 @@ const MAP = {
   Relationship: ['link_multiple', 'arrow_swap'], Emoji2: ['emoji'],
   FavoriteStarFill: ['star'], CircleFill: ['circle'], StatusCircleInner: ['circle', 'record'],
   Name: ['text_field', 'tag'], TouchPointer: ['cursor_click', 'cursor'],
+  // components (⬡) — "package this as a reusable component"
+  Package: ['box_multiple', 'box', 'cube_multiple'],
   // template / layout / chart icons
   GridViewMedium: ['grid'], GroupedList: ['group_list', 'apps_list', 'list'],
   BarChartHorizontal: ['data_bar_horizontal', 'data_histogram'], DonutChart: ['data_pie'],
