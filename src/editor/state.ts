@@ -755,6 +755,9 @@ export class EditorState {
         return newPath;
       }
     }
+    // inserting into a solo-CFR host: split the reference into its own child
+    // so the fragment sits beside it, not swallowed by the CFR (see reparentNode).
+    this.materializeCfrHost(container);
     container.children = container.children ?? [];
     container.children.push(fragment);
     const newPath = [...target, container.children.length - 1];
@@ -873,6 +876,32 @@ export class EditorState {
     this.emit('document');
   }
 
+  /**
+   * A CFR host cell carries the columnFormatterReference DIRECTLY on a div, so
+   * the tree collapses it to a single "solo CFR" row — the wrapper div is noise
+   * when the reference is all it holds. The moment something else joins that
+   * div, that collapsed row would read as "the CFR absorbed the newcomer". Push
+   * the reference (and the column's throwaway name) down into its own child div
+   * so the container becomes a plain parent that HOSTS the CFR and the newcomer
+   * as siblings — the div earns its own tree row exactly when it stops being
+   * solo. Slot styles (flex/min-width) stay on the container: they position the
+   * cell within its row, not the reference within the cell. Mutates in place;
+   * callers snapshot first. No-op unless `container` carries a reference.
+   */
+  private materializeCfrHost(container: SPElement): void {
+    if (!container.columnFormatterReference) return;
+    const cfrCell: SPElement = {
+      elmType: container.elmType ?? 'div',
+      columnFormatterReference: container.columnFormatterReference,
+    };
+    if (container._elmName !== undefined) {
+      cfrCell._elmName = container._elmName;
+      delete container._elmName;
+    }
+    delete container.columnFormatterReference;
+    container.children = [cfrCell, ...(container.children ?? [])];
+  }
+
   /** Move a node to become a child of another container (drag & drop). */
   reparentNode(from: NodePath, toContainer: NodePath, index?: number): void {
     if (pathStartsWith(toContainer, from)) return; // can't drop into own subtree
@@ -881,6 +910,10 @@ export class EditorState {
     const container = this.nodeAt(toContainer);
     if (!node || !p || !container) return;
     this.snapshot();
+    // dropping onto a solo-CFR host: split the div out from the reference so
+    // both the reference and the dropped node become its children (siblings),
+    // instead of the newcomer vanishing "inside" the CFR.
+    this.materializeCfrHost(container);
     p.parent.children?.splice(p.index, 1);
     // adjust target path if removal shifted it
     const adjusted = [...toContainer];
