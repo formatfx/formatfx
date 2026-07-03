@@ -189,6 +189,48 @@ body {
 }
 .wb-viewmenu-newrow:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
 
+/* ── Snapshots menu (anchored under the 🕘 button by the document dropdown) ── */
+.wb-snapmenu {
+  position: fixed; z-index: 60; width: 290px; max-width: calc(100vw - 16px);
+  max-height: min(430px, calc(100vh - 60px)); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 5px; padding: 10px;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+}
+.wb-snapmenu-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
+.wb-snap-take {
+  padding: 6px 8px; font-size: 12px; font-weight: 600; text-align: left;
+  cursor: pointer; border: 1px solid var(--wb-border); border-radius: 4px;
+  background: var(--wb-bg); color: var(--wb-accent);
+}
+.wb-snap-take:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
+.wb-snap-take-all { color: var(--wb-text-2); font-weight: 400; }
+.wb-snap-take-all:hover { color: var(--wb-accent); }
+.wb-snapmenu-group {
+  margin-top: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2);
+}
+.wb-snapmenu-empty { font-size: 11px; font-style: italic; color: var(--wb-text-2); }
+.wb-snap-row { display: flex; align-items: center; gap: 4px; }
+.wb-snap-restore {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 8px; cursor: pointer; text-align: left;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: transparent; color: var(--wb-text); font: inherit;
+}
+.wb-snap-restore:hover { border-color: var(--wb-accent); }
+.wb-snap-label {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-snap-when { flex: 0 0 auto; font-size: 10.5px; color: var(--wb-text-2); white-space: nowrap; }
+.wb-snap-del {
+  flex: 0 0 auto; width: 22px; height: 22px; border: none; border-radius: 4px;
+  background: transparent; color: var(--wb-text-2); cursor: pointer; font-size: 11px; line-height: 1;
+}
+.wb-snap-del:hover { color: #d13438; background: rgba(209, 52, 56, .08); }
+
 /* ── topbar ☰ menu ───────────────────────────────────────── */
 .wb-menu { position: relative; }
 .wb-menu-panel[hidden] { display: none; } /* display:flex below would defeat [hidden] */
@@ -1653,7 +1695,10 @@ body {
 /* Hidden in Advanced: there the inspector edits raw SP. The bar formats how
    every row looks via the Excel dialect; it never sets stored values. */
 #wb-fxbar { display: block; }
-.wb-fxbar { padding: 6px 2px 4px; border-bottom: 1px solid var(--wb-border); margin-bottom: 8px; }
+/* min-height = the populated bar (chip row + editor row), so selecting or
+   deselecting never shifts the canvas below — a mid-double-click layout jump
+   used to move the grid under the cursor and swallow the second click. */
+.wb-fxbar { min-height: 75px; padding: 6px 2px 4px; border-bottom: 1px solid var(--wb-border); margin-bottom: 8px; }
 .wb-fx-row { display: flex; align-items: flex-start; gap: 6px; }
 .wb-fx-badge {
   flex: none; font-style: italic; font-weight: 700; font-size: 14px;
@@ -2076,10 +2121,25 @@ body {
 .wb-fmt-tab-view.active { color: var(--wb-accent); border-bottom-color: var(--wb-accent); }
 .wb-fmt-tab-cols.active { color: var(--wb-shared); border-bottom-color: var(--wb-shared); }
 
+/* ── the document dropdown row (back · dropdown · snapshots) ──────────────── */
+.wb-doc-pill-row {
+  display: flex; align-items: stretch; gap: 5px; margin: 8px 8px 6px;
+}
+.wb-nav-back, .wb-snap-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; border: 1px solid var(--wb-lp-border); border-radius: 8px;
+  background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
+  font-size: 13px; line-height: 1;
+}
+.wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover {
+  border-color: var(--wb-accent); color: var(--wb-accent);
+}
+.wb-nav-back:disabled { opacity: .35; cursor: default; }
+
 /* ── the document dropdown (what's on the canvas: a view, or a column) ────── */
 .wb-doc-pill {
-  display: flex; align-items: center; gap: 8px; width: calc(100% - 16px);
-  margin: 8px 8px 6px; padding: 6px 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0;
+  padding: 6px 10px; cursor: pointer;
   border: 1px solid var(--wb-accent); border-radius: 8px;
   background: color-mix(in srgb, var(--wb-accent) 8%, transparent);
   color: var(--wb-lp-text); font: inherit; text-align: left;

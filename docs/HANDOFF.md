@@ -203,6 +203,24 @@ Key structural invariants:
   name-tag remain). The Save/Discard checkpoint buttons were removed
   (issue #140 tracks their snapshot-based replacement; the state API —
   `markSavepoint`/`discardToSavepoint` — is kept for it).
+- **Snapshots + navigation back (2026-07-03, issue #140)**: the 🕘 button in
+  the document-dropdown row opens the snapshot menu (`snapMenu.ts` over the
+  pure `snapshots.ts` store brain). Placement decides the primary (owner
+  decision): the button is grouped with the SELECTED formatter, so the
+  primary snapshots/restores that selection; "Snapshot everything" (view +
+  every column formatter + view name) is the alternative beside it. Every
+  restore is ONE undoable step — `applySnapshot` rides `snapState` (doc +
+  registry together), so even restore-everything is a single Ctrl+Z; the
+  view name restores off the undo stack (same rule as `setViewName`).
+  Storage: `wb-snapshots.v1` (ADDITIVE key — frozen keys stay frozen),
+  capped at 25 per scope, oldest evicted per scope. The ← button beside the
+  pill is **navigation back** — a nav-history stack in state
+  (`backTarget`/`goBack`, pushed by `openMain`/`openColumnRef`) that
+  retraces doc switches; it is NOT undo, skips unregistered columns, and
+  never ping-pongs (going back pops the trail). Related canvas fix:
+  `.wb-fxbar` reserves its populated min-height so selection changes never
+  shift the grid mid-double-click (that jump used to swallow drill-in
+  dblclicks after a deselect).
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -487,7 +505,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 594 vitest unit tests across 38 files (engine semantics incl.
+- `npm test` — 612 vitest unit tests across 39 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -499,7 +517,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 107 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 112 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
@@ -510,7 +528,8 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
   row-view builder, CFR linked instances, Studio/Advanced toggle),
   `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
-  document dropdown), `share.spec.ts` (the collaborative hub: real-browser
+  document dropdown), `snapshots.spec.ts` (snapshots + navigation back),
+  `share.spec.ts` (the collaborative hub: real-browser
   share round trips with fresh-context recipients, the never-clobber/backup/
   restore flows, Explain, Stress Test), `styleLegibility.spec.ts`
   ("violet = shared"), `icons.spec.ts`, `subtypes.spec.ts` and
