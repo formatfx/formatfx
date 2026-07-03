@@ -2931,7 +2931,11 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
    the shared column formatter. Row click/Enter selects the HOST element. */
 .wb-tree-label .wb-style-mark { flex: 0 0 auto; font-size: 11px; }
 .wb-tree-cfr-open {
-  flex: 0 0 auto;
+  /* auto left margin pins the tag (and the controls after it) to the right
+     even where the base .wb-tree-row's space-between would otherwise float
+     it mid-row (the Left Edit Pane's flex:1 label masks this; other mounts
+     don't) */
+  flex: 0 0 auto; margin-left: auto;
   border: none; background: none; padding: 2px 4px;
   font-size: 8.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
   color: var(--wb-shared); opacity: .75;

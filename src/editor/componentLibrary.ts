@@ -396,8 +396,25 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   if (!used.length) {
     emptyNote('Nothing in use yet — add a component from the sections below and it shows up here.');
   } else {
-    const parentOf = (d: ComponentDef): ComponentDef | undefined =>
-      d.variantOf ? used.find((x) => x.id === d.variantOf && !x.variantOf) : undefined;
+    // the display parent is the ROOT (non-variant) ancestor: editing an
+    // as-found one-off and pinning again yields a variant-of-a-variant, which
+    // still belongs under the original card. The chain is walked through ALL
+    // defs (an intermediate needn't be in use), cycle-guarded because lineage
+    // comes from localStorage; a broken/dangling chain renders top-level.
+    const rootAncestor = (d: ComponentDef): ComponentDef | undefined => {
+      let cur: ComponentDef | undefined = d;
+      const seen = new Set<string>([d.id]);
+      while (cur?.variantOf) {
+        cur = allDefs.find((x) => x.id === cur!.variantOf);
+        if (!cur || seen.has(cur.id)) return undefined;
+        seen.add(cur.id);
+      }
+      return cur === d ? undefined : cur;
+    };
+    const parentOf = (d: ComponentDef): ComponentDef | undefined => {
+      const root = rootAncestor(d);
+      return root && used.some((x) => x.id === root.id) ? root : undefined;
+    };
     for (const def of used) {
       if (parentOf(def)) continue; // rendered nested under its parent below
       host.appendChild(inventoryCard(def, usages.get(def.id)!));
