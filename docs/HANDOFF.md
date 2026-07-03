@@ -189,32 +189,46 @@ Key structural invariants:
   semantics unchanged).
 - **Left Edit Pane formatter navigation (2026-07-02, owner mockup)**: the
   ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE. The Left
-  Edit Pane owns navigation: two **formatter tabs** under the lens tabs —
-  VIEW FORMATTERS (accent blue, grid icon) and COLUMN FORMATTERS (violet, §)
-  — and a **document dropdown** (`#wb-doc-pill`) naming what's on the canvas
+  Edit Pane owns navigation: the formatter tabs under the lens tabs —
+  VIEW (accent blue, grid icon), COLUMNS (violet, §) and COMPONENTS (teal ⬡),
+  relabeled 2026-07-03: the word "formatters" moved into a small left-aligned
+  **"Formatters" header** on the same bar (`wb-fmt-head`), and the ← back +
+  🕘 snapshot buttons right-align on that bar (moved up from the pill row) —
+  and a **document dropdown** (`#wb-doc-pill`) naming what's on the canvas
   with a subtle type tag ("list row schema"/"tile schema" for views, "<type>
   column" for columns). The pill opens the View Formatters menu (rename,
   "+ New rowview") or the Column Formatters gallery (previews + "Not yet
   formatted"). The tree renders the ACTIVE document only (no doc headers, no
   per-row checkboxes — the row highlight is the selection UI; Ctrl/Cmd-click
-  multi-selects). A CFR in the tree renders as `§ <ColumnName>` + a
-  right-aligned "COLUMN FORMATTER REFERENCE" tag (violet, no left rail —
-  the canvas `wb-cell-linked` rail is retired too, § + hover outline +
-  name-tag remain). The Save/Discard checkpoint buttons were removed
+  multi-selects). A CFR host in the tree is ONE normal row (2026-07-03 —
+  the old indented violet stub row is gone; every reference has an inherent
+  wrapper div, so the child presentation was noise): § ink + a right-aligned
+  "reference" tag-button, violet as INK only, no fill. Row click selects the
+  HOST element (the inspector shows the wrapper div); the tag-button is the
+  explicit door that drills into the shared column formatter (blast radius
+  in its tooltip; inert span + teaching tooltip when unregistered). The tree
+  region sits on `--wb-lp-tree-bg`, one subtle step lighter than the pane.
+  Host-cell defaults were AUDITED, not changed: the scaffold's
+  `flex:1/min-width:0` block host passes full width through and imposes
+  nothing — the referenced formatter's alignment/size wins exactly as far as
+  real SP allows (probe evidence in PR #158; `align-self` stays unverified,
+  so nothing new is emitted). The Save/Discard checkpoint buttons were removed
   (issue #140 tracks their snapshot-based replacement; the state API —
   `markSavepoint`/`discardToSavepoint` — is kept for it).
-- **Snapshots + navigation back (2026-07-03, issue #140)**: the 🕘 button in
-  the document-dropdown row opens the snapshot menu (`snapMenu.ts` over the
-  pure `snapshots.ts` store brain). Placement decides the primary (owner
-  decision): the button is grouped with the SELECTED formatter, so the
-  primary snapshots/restores that selection; "Snapshot everything" (view +
-  every column formatter + view name) is the alternative beside it. Every
+- **Snapshots + navigation back (2026-07-03, issue #140)**: the 🕘 button on
+  the Formatters bar opens the snapshot menu (`snapMenu.ts` over the
+  pure `snapshots.ts` store brain). Snapshots are **full-workspace-only**
+  (owner decision, later same day — superseding the scoped-primary design):
+  the ONE take action always captures `{ kind: 'all' }` (view + every column
+  formatter + view name); legacy scoped captures stay restorable under a
+  collapsed "Older, scoped snapshots" group (never orphan user data), and
+  `snapshots.ts` still knows the old scopes for storage compat. Every
   restore is ONE undoable step — `applySnapshot` rides `snapState` (doc +
   registry together), so even restore-everything is a single Ctrl+Z; the
   view name restores off the undo stack (same rule as `setViewName`).
   Storage: `wb-snapshots.v1` (ADDITIVE key — frozen keys stay frozen),
-  capped at 25 per scope, oldest evicted per scope. The ← button beside the
-  pill is **navigation back** — a nav-history stack in state
+  capped at 25 per scope, oldest evicted per scope. The ← button on the
+  Formatters bar is **navigation back** — a nav-history stack in state
   (`backTarget`/`goBack`, pushed by `openMain`/`openColumnRef`) that
   retraces doc switches; it is NOT undo, skips unregistered columns, and
   never ping-pongs (going back pops the trail). Related canvas fix:
@@ -275,6 +289,40 @@ Key structural invariants:
   separately). Items 1 & 4 of #148 were assessed and deliberately deferred:
   palette drops stay prompt-free (unifying catalogs would tax simple drops)
   and the two Save labels never co-appear post-#149.
+- **Components pane redesign (2026-07-03 owner brief, PRs #156–#159 via the
+  integration branch)**: the ⬡ tab is first an **inventory of the project**.
+  (a) **Instance provenance**: insertions go through `bindComponentInstance`,
+  stamping the bound root `_component: { id, map }` (typed on SPElement beside
+  `_elmName`; ships in exports by default, stripped by `keepMeta:false`,
+  `META_KEYS` updated). Previews stay on plain `bindComponent` so a preview
+  never reads as a usage. (b) **The usage scan** (`componentUsage.ts`, pure):
+  stamped subtrees in the main doc (card content included) + column usages
+  via the `field.subtype` tag OR stamped subtrees in registered trees, ONE
+  usage per (component, column); deleted ids leave no ghosts. The tab renders
+  "In this project" first — usage-count chips, "Show usages" jump rows
+  (openMain+select / openColumnRef; `mainUsageLabel` speaks the
+  column-formatter noun when the MAIN doc is a JSON-tab-imported column) —
+  then the add-a-component browser. (c) **Context-aware insertion**
+  (`componentInsertTarget`, pure): with a column formatter open, element
+  components insert INTO it (components in CFRs are allowed — bound trees
+  reference explicit `[$Field]`s); the view path is unchanged; row components
+  still replace the view body with honest copy. (d) **The component EDITOR**
+  (`componentEditor.ts`, modal over the canvas pane): staged editing of
+  name/description/slot labels (keys immutable) and elements visually
+  (preview click-select via `data-sp-path`, compact Format-cells-vocabulary
+  style panel; number/boolean style values are LITERALS — only `=`-strings
+  and AST objects read as formulas). "Save as new" (only option for
+  built-ins) vs "Save and apply to N places": re-bakes every usage via its
+  own stored `_component.map` (`rebindInstance` preserves renames +
+  flex/min-width), with per-usage **"keep as-found" pinning** — pinned
+  instances restamp onto a one-off variant frozen from the OLD recipe
+  (`variantOf` lineage, additive in `wb-components.v1`; variants nest under
+  their parent card, dangling lineage renders top-level). The whole apply is
+  ONE undoable step via `state.batchProjectUpdate` — its version-bump
+  ordering is load-bearing (bumps must ride INSIDE the undo snapshot or undo
+  skips the re-bakes; a no-op rolls them back wholesale — see the doc
+  comment). The pnp/List-Formatting live sample browser is a parked note:
+  issue #155.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -569,7 +617,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 634 vitest unit tests across 40 files (engine semantics incl.
+- `npm test` — 671 vitest unit tests across 42 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -581,7 +629,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 117 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 122 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
@@ -593,7 +641,9 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   row-view builder, CFR linked instances, Studio/Advanced toggle),
   `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
   document dropdown), `snapshots.spec.ts` (snapshots + navigation back),
-  `components.spec.ts` (the ⬡ library: typed mapping, save-as, CFR refusal),
+  `components.spec.ts` (the ⬡ tab: inventory + usage jumps, typed mapping
+  into the view OR an open column formatter, the component editor incl.
+  save-and-apply with as-found pinning, save-as, CFR refusal),
   `share.spec.ts` (the collaborative hub: real-browser
   share round trips with fresh-context recipients, the never-clobber/backup/
   restore flows, Explain, Stress Test), `styleLegibility.spec.ts`
