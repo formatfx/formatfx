@@ -15,6 +15,10 @@ import {
   setAreaWeight as applyAreaWeight, setRowDensity as applyRowDensity,
   type AreaWeight, type RowDensity,
 } from './areas';
+import {
+  snapshotId, defaultLabel,
+  type Snapshot, type SnapshotScope,
+} from './snapshots';
 
 export type ChangeReason =
   | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load' | 'lens';
@@ -267,9 +271,55 @@ export class EditorState {
     }
   }
 
+  /**
+   * Navigation history — the "oops, how did I get here" stack. Every doc
+   * switch (openMain/openColumnRef) pushes where you WERE; goBack() retraces.
+   * Pure navigation state: not undo, not persisted, capped small.
+   */
+  private navStack: string[] = [];
+
+  private pushNav(): void {
+    if (this.navStack[this.navStack.length - 1] === this.activeDocKey) return;
+    this.navStack.push(this.activeDocKey);
+    if (this.navStack.length > 50) this.navStack.shift();
+  }
+
+  /** Where goBack() would land ('main' or a column name), or null if nowhere.
+   *  Skips column keys that have since been unregistered. */
+  get backTarget(): string | null {
+    for (let i = this.navStack.length - 1; i >= 0; i--) {
+      const key = this.navStack[i];
+      if (key === this.activeDocKey) continue;
+      if (key === 'main' || key in this.columnRefs) return key;
+    }
+    return null;
+  }
+
+  /** Retrace the last doc switch. Returns where it landed, or null. */
+  goBack(): string | null {
+    const target = this.backTarget;
+    if (target === null) return null;
+    // drop everything above (and including) the entry we're landing on, so
+    // repeated Back keeps walking down the trail instead of ping-ponging
+    for (let i = this.navStack.length - 1; i >= 0; i--) {
+      if (this.navStack[i] === target) { this.navStack.length = i; break; }
+    }
+    this.inGoBack = true;
+    try {
+      if (target === 'main') this.openMain();
+      else this.openColumnRef(target);
+    } finally {
+      this.inGoBack = false;
+    }
+    return target;
+  }
+
+  private inGoBack = false;
+
   /** Open a registered column formatter for editing. */
   openColumnRef(name: string): void {
     if (!(name in this.columnRefs) || this.activeDocKey === name) return;
+    if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
     if (this.activeDocKey === 'main') {
       this.mainDocStash = this.doc;
@@ -302,6 +352,7 @@ export class EditorState {
   /** Return to the main (row/view/column) formatter. */
   openMain(): void {
     if (this.activeDocKey === 'main') return;
+    if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
 
     // Stash current activeDocKey's stacks, savepoint, and selections
@@ -419,6 +470,7 @@ export class EditorState {
     this.docSavepointStash = {};
     this.columnRefVersions = {};
     this.docSelectionStash = {};
+    this.navStack = [];
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
@@ -457,6 +509,7 @@ export class EditorState {
     this.docSavepointStash = {};
     this.columnRefVersions = {};
     this.docSelectionStash = {};
+    this.navStack = [];
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
@@ -960,6 +1013,107 @@ export class EditorState {
     });
     this.emit('data'); // the new registered formatter shows up in pickers/tree
     return field;
+  }
+
+  // ─── Snapshots (issue #140): capture & restore a formatter's state ─────────
+  // The store itself (localStorage, caps, scope keys) lives in snapshots.ts +
+  // the snapshot menu; state only knows how to CAPTURE the live payload and
+  // APPLY one back. Every apply is ONE undoable step (snapState carries the
+  // doc AND the registry, so even "restore everything" is a single Ctrl+Z).
+
+  /** The main (view) document, stash-aware — whole doc, not just the root. */
+  private mainDocForScope(): FormatterDocument {
+    return this.activeDocKey === 'main' ? this.doc : this.mainDocStash ?? this.doc;
+  }
+
+  /** Capture what `scope` describes right now, or null if there's nothing to
+   *  capture (e.g. a column scope naming an unregistered, un-open column). */
+  captureSnapshot(scope: SnapshotScope, now: Date = new Date()): Snapshot | null {
+    const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+    let payload: Snapshot['payload'] | null = null;
+    if (scope.kind === 'view') {
+      payload = { doc: clone(this.mainDocForScope()) };
+    } else if (scope.kind === 'column') {
+      // the open column's live tree wins; then the registry; then the
+      // main-document-is-a-column edge (e.g. a loaded column example)
+      const root = this.activeDocKey === scope.field
+        ? this.doc.root
+        : this.columnRefs[scope.field]
+          ?? (this.activeDocKey === 'main' && this.doc.kind === 'column' && this.currentFieldName === scope.field
+            ? this.doc.root : undefined);
+      if (!root) return null;
+      payload = { root: clone(root) };
+    } else {
+      this.flushActiveDoc();
+      payload = {
+        all: { doc: clone(this.mainDocForScope()), columnRefs: clone(this.columnRefs), viewName: this.viewName },
+      };
+    }
+    return {
+      id: snapshotId(now),
+      takenAt: now.toISOString(),
+      label: defaultLabel(scope, this.viewName, this.mainDocForScope().kind),
+      scope,
+      payload,
+    };
+  }
+
+  /** Restore a snapshot as ONE undoable step. Returns false if the payload
+   *  doesn't match its scope (corrupt store) — nothing is touched then. */
+  applySnapshot(snap: Snapshot): boolean {
+    const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+    if (snap.scope.kind === 'column') {
+      const root = snap.payload.root;
+      if (!root) return false;
+      const field = snap.scope.field;
+      const restored = clone(root);
+      if (this.activeDocKey === field) {
+        // open on the canvas — emit('document') live-syncs the registry
+        this.mutateDocument(() => { this.doc.root = restored; });
+      } else if (field in this.columnRefs) {
+        this.incrementColumnVersion(field);
+        this.mutateDocument(() => { this.columnRefs[field] = restored; });
+      } else if (this.activeDocKey === 'main' && this.doc.kind === 'column' && this.currentFieldName === field) {
+        this.mutateDocument(() => { this.doc.root = restored; });
+      } else {
+        // unregistered and not open: register it (the snapshot is the format)
+        this.incrementColumnVersion(field);
+        this.mutateDocument(() => { this.columnRefs[field] = restored; });
+      }
+      this.selection = [];
+      this.emit('data'); // tree/gallery/grid pick up the registry change
+      return true;
+    }
+    // view / all replace the MAIN document — leave a drilled column first
+    // (navigation, not a mutation; it also feeds the Back trail)
+    if (snap.scope.kind === 'view') {
+      if (!snap.payload.doc) return false;
+      if (this.activeDocKey !== 'main') this.openMain();
+      const restored = clone(snap.payload.doc);
+      const before = this.snapState();
+      this.doc = restored;
+      if (this.snapState() !== before) this.pushUndo(before);
+      this.selection = [];
+      this.emit('kind'); // kind may have changed; canvas + kind select follow
+      return true;
+    }
+    const all = snap.payload.all;
+    if (!all) return false;
+    if (this.activeDocKey !== 'main') this.openMain();
+    for (const name of new Set([...Object.keys(this.columnRefs), ...Object.keys(all.columnRefs)])) {
+      this.incrementColumnVersion(name);
+    }
+    const before = this.snapState();
+    this.doc = clone(all.doc);
+    this.columnRefs = clone(all.columnRefs);
+    if (this.snapState() !== before) this.pushUndo(before);
+    // the view name is project metadata — restored, but off the undo stack
+    // (same rule as setViewName)
+    this.viewName = all.viewName;
+    this.selection = [];
+    this.emit('kind');
+    this.emit('data');
+    return true;
   }
 
   // ─── Column subtypes: snapshot apply ───────────────────────────────────────
