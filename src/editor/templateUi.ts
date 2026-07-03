@@ -1,28 +1,40 @@
 /**
  * editor/templateUi.ts — small shared primitives for the row-view builder's
- * regions (chips bar, gallery + preview canvas, inspector). Keeps el()/
- * segmented()/the drag MIMEs and the UI<->Api contract in one place so the
- * region modules stay focused. No state import — everything flows through
- * ModalApi.
+ * regions (action grid + chips bar, gallery, canvas, zone tree, inspector).
+ * Keeps el()/segmented()/the drag MIMEs, the positional-drop rule and the
+ * UI<->Api contract in one place so the region modules stay focused. No state
+ * import — everything flows through ModalApi.
  */
-import type { RowTemplateConfig, WireframeId, ZoneConfig, ZoneItemPatch } from './rowTemplates';
+import type { RowTemplateConfig, WireframeId, ZoneConfig, ZoneItemPatch, ZonePath } from './rowTemplates';
 import type { ComponentDef } from './components';
 
 /** Drag MIME for a field chip → zone. Mirrors the palette/tree/grid channels. */
 export const FIELD_MIME = 'application/x-wb-field';
 /** Drag MIME for a component chip → zone (payload: the component id). */
 export const COMPONENT_MIME = 'application/x-wb-component';
-/** Drag MIME for a zone → zone reorder (payload: the zone index). */
-export const ZONE_MIME = 'application/x-wb-zone-order';
-/** Drag MIME for an item move (payload: "zoneIdx:itemIdx"). */
-export const ITEM_MIME = 'application/x-wb-zone-item';
+/** Drag MIME for ANY existing node — a zone or an item, root or nested — as a
+ *  JSON ZonePath. One payload because zones nest: everything moves the same way. */
+export const NODE_MIME = 'application/x-wb-node';
 
-export type Mode = 'edit' | 'preview';
 /** 'pick' = the wireframe gallery; 'edit' = the zone canvas. */
 export type Stage = 'pick' | 'edit';
 
+/** Which zone setting the preview tags currently PEEK (hovering an inspector
+ *  section swaps every zone tag from its name to that setting's value). */
+export type Peek = 'size' | 'flow' | 'align';
+
+/** What's selected: a path into the nested zone structure (a zone or an item —
+ *  nodeAt decides), or nothing. */
+export type Selection = ZonePath | null;
+
 /** Where a drag lands relative to the element under the pointer. */
 export type DropPos = 'before' | 'after' | 'into';
+
+/** The preview width presets — how makers *watch* zones shrink and items wrap.
+ *  null = full width; numbers are stage widths in px. */
+export const STAGE_WIDTHS: readonly (readonly [string, number | null])[] = [
+  ['Full', null], ['Medium', 560], ['Narrow', 360],
+];
 
 /**
  * The one positional-drop rule, shared by the preview canvas and the zone
@@ -43,24 +55,11 @@ export function dropPos(offset: number, size: number, canInto: boolean): DropPos
   }
   return frac < 0.5 ? 'before' : 'after';
 }
-/** Which zone setting the preview tags currently PEEK (hovering an inspector
- *  section swaps every zone tag from its name to that setting's value). */
-export type Peek = 'size' | 'flow' | 'align';
-
-/** What's selected on the canvas: a zone, or one item inside a zone. */
-export type Selection = { zone: number; item: number | null } | null;
-
-/** The preview width presets — how makers *watch* zones shrink and items wrap.
- *  null = full width; numbers are stage widths in px. */
-export const STAGE_WIDTHS: readonly (readonly [string, number | null])[] = [
-  ['Full', null], ['Medium', 560], ['Narrow', 360],
-];
 
 /** Modal-local UI state — the single source of truth while the builder is open. */
 export interface ModalUI {
   config: RowTemplateConfig;
   stage: Stage;
-  mode: Mode;
   selected: Selection;
   /** Simulated row width in px (the squeeze scrubber); null = full width. */
   stageWidth: number | null;
@@ -69,43 +68,43 @@ export interface ModalUI {
   foreignRow: boolean;
 }
 
-/** Everything the region renderers may do — all mutations funnel through here so
- *  each gesture is one immutable config update followed by one rerender. */
+/** Everything the region renderers may do — all mutations funnel through the
+ *  modal's commit() so each gesture is one undoable, immutable config step. */
 export interface ModalApi {
-  selectZone(zi: number): void;
-  selectItem(zi: number, ii: number): void;
+  /** Select the zone/item a path names (null = the row itself). */
+  select(path: Selection): void;
   selectKebab(): void;
   deselect(): void;
-  /** Drop a field chip into a zone (`at` = insertion index; omit to append). */
-  dropField(zi: number, field: string, at?: number): void;
+  /** Drop a field chip into the zone at `zonePath` (`at` = index; omit = append). */
+  dropField(zonePath: ZonePath, field: string, at?: number): void;
   /** Drop a component chip into a zone, best-guess-mapped (`at` optional). */
-  dropComponent(zi: number, componentId: string, at?: number): void;
-  /** Add an empty zone (the "+ Zone" button — no drop required) and select it. */
+  dropComponent(zonePath: ZonePath, componentId: string, at?: number): void;
+  /** Add an empty ROOT zone (the "+ Zone" button) and select it. */
   addEmptyZone(): void;
-  /** A drop BETWEEN zones: spawn a new zone at `at`, seeded with the payload
-   *  (a chip, or an existing item moved out of its zone). */
-  newZoneAt(at: number, payload: { field?: string; componentId?: string; move?: { zone: number; item: number } }): void;
-  removeZone(zi: number): void;
-  reorderZone(from: number, to: number): void;
-  cycleZoneSize(zi: number): void;
-  patchZone(zi: number, patch: Partial<Omit<ZoneConfig, 'items'>>): void;
-  removeItem(zi: number, ii: number): void;
-  moveItem(fromZone: number, fromItem: number, toZone: number, toItem: number): void;
-  patchItem(zi: number, ii: number, patch: ZoneItemPatch): void;
+  /** Add an empty NESTED zone inside the zone at `zonePath` and select it. */
+  addNestedZone(zonePath: ZonePath): void;
+  /** A chip dropped BETWEEN root zones: spawn a new root zone at `at` with it. */
+  newRootZoneAt(at: number, payload: { field?: string; componentId?: string }): void;
+  /** Move any existing node (zone or item) — see rowTemplates.moveNode. */
+  moveNode(from: ZonePath, toZone: ZonePath, toIndex: number): void;
+  /** Remove whatever a path names (zone or item). */
+  removeNode(path: ZonePath): void;
+  cycleZoneSize(zonePath: ZonePath): void;
+  patchZone(zonePath: ZonePath, patch: Partial<Omit<ZoneConfig, 'items'>>): void;
+  patchItem(itemPath: ZonePath, patch: ZoneItemPatch): void;
   setConfig(next: RowTemplateConfig): void;
   /** Seed from a wireframe and enter the editor (confirms over placed work). */
   pickWireframe(id: WireframeId): void;
   /** Back to the gallery (the current config is kept until a pick). */
   openGallery(): void;
-  setMode(m: Mode): void;
   setStageWidth(w: number | null): void;
+  /** Transient hover state — stamps data-peek on the modal, NO rerender. */
+  setPeek(p: Peek | null): void;
   /** Modal-local undo/redo over the config (Ctrl/Cmd+Z, Shift for redo). */
   undo(): void;
   redo(): void;
   canUndo(): boolean;
   canRedo(): boolean;
-  /** Transient hover state — stamps data-peek on the modal, NO rerender. */
-  setPeek(p: Peek | null): void;
   apply(): void;
   cancel(): void;
   notify(msg: string): void;

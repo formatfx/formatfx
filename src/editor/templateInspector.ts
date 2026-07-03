@@ -1,59 +1,57 @@
 /**
- * editor/templateInspector.ts — the contextual inspector. Three views:
+ * editor/templateInspector.ts — the contextual inspector (below the zone tree
+ * in the left side column). Three views, addressed by ZonePath since zones
+ * nest:
  *   · a ZONE selected — its space behavior in plain language: Width
  *     (Hug content / Fill / Fill 2× / Fill 3×), Items flow (Side by side /
- *     Wrap when tight / Stacked), Align, rename, remove;
+ *     Wrap when tight / Stacked), Align, rename, ＋ Nested zone, remove;
  *   · an ITEM selected — a field item's width/text controls, or a component
  *     item's slot mapping (type-filtered column pickers, best-guess prefilled;
- *     an unmapped slot blocks Apply with a teaching hint);
+ *     an unmapped slot blocks Save with a teaching hint);
  *   · nothing selected — the ROW: style, density, toggles, and the kebab.
  * Blank kebab params are refused with an inline hint, mirroring the engine.
+ * Save/Cancel live in the top action grid, not here.
  */
 import { state } from './state';
 import {
-  composeRowStyle, ZONE_SIZE_LABEL,
+  composeRowStyle, nodeAt, ZONE_SIZE_LABEL,
   type RowStyle, type KebabBehavior, type KebabPosition, type KebabActionFlags,
-  type ZoneSize, type ZoneFlow, type ZoneAlign, type ItemWidth,
-  type FieldZoneItem, type ComponentZoneItem,
+  type ZoneSize, type ZoneFlow, type ZoneAlign, type ItemWidth, type ZonePath, type ZoneConfig,
+  type FieldZoneItem, type ComponentZoneItem, type ZoneItem,
 } from './rowTemplates';
 import type { RowDensity } from './areas';
 import type { ComponentDef } from './components';
 import { el, segmented, toggleCtl, type ModalUI, type ModalApi } from './templateUi';
 
+const isZone = (node: ZoneConfig | ZoneItem): node is ZoneConfig => 'items' in node;
+
 export function renderInspector(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.innerHTML = '';
   if (ui.stage === 'pick') return; // the gallery owns the whole canvas
 
+  const sel = ui.selected;
+  const node = sel ? nodeAt(ui.config, sel) : null;
+
   const head = el('div', 'wb-template-insp-head');
-  head.appendChild(el('span', 'wb-template-insp-title', inspectorTitle(ui)));
+  head.appendChild(el('span', 'wb-template-insp-title', inspectorTitle(node)));
   host.appendChild(head);
 
   const body = el('div', 'wb-template-insp-body');
   host.appendChild(body);
 
-  const sel = ui.selected;
-  if (ui.mode === 'preview') {
-    body.appendChild(el('div', 'wb-template-note', 'Switch to Edit to change the layout.'));
-  } else if (sel && sel.item !== null && ui.config.zones[sel.zone]?.items[sel.item]) {
-    renderItemView(body, ui, api, sel.zone, sel.item);
-  } else if (sel && ui.config.zones[sel.zone]) {
-    renderZoneView(body, ui, api, sel.zone);
+  if (sel && node) {
+    if (isZone(node)) renderZoneView(body, api, sel, node);
+    else renderItemView(body, api, sel, node);
   } else {
     renderRowView(body, ui, api);
   }
-
-  host.appendChild(renderFooter(api));
 }
 
-function inspectorTitle(ui: ModalUI): string {
-  const sel = ui.selected;
-  if (ui.mode === 'preview' || !sel) return 'Row';
-  const zone = ui.config.zones[sel.zone];
-  if (!zone) return 'Row';
-  if (sel.item === null) return `${zone.label} zone`;
-  const item = zone.items[sel.item];
-  if (!item) return `${zone.label} zone`;
-  return item.kind === 'field' ? `Item — ${item.fieldName || '(empty)'}` : 'Item — component';
+function inspectorTitle(node: ZoneConfig | ZoneItem | null): string {
+  if (!node) return 'Row';
+  if (isZone(node)) return `${node.label} zone`;
+  if (node.kind === 'field') return `Item — ${node.fieldName || '(empty)'}`;
+  return 'Item — component';
 }
 
 // ─── zone view ───────────────────────────────────────────────────────────────
@@ -69,24 +67,22 @@ function peekSection(api: ModalApi, peek: 'size' | 'flow' | 'align', ...children
   return wrap;
 }
 
-function renderZoneView(host: HTMLElement, ui: ModalUI, api: ModalApi, zi: number): void {
-  const zone = ui.config.zones[zi];
-
+function renderZoneView(host: HTMLElement, api: ModalApi, path: ZonePath, zone: ZoneConfig): void {
   host.appendChild(section('Zone name'));
-  host.appendChild(textField('', zone.label, (v) => api.patchZone(zi, { label: v.trim() || zone.label })));
+  host.appendChild(textField('', zone.label, (v) => api.patchZone(path, { label: v.trim() || zone.label })));
 
   host.appendChild(peekSection(api, 'size',
     section('Width'),
     segmented<ZoneSize>('zonesize',
       (['hug', 'normal', 'wide', 'widest'] as ZoneSize[]).map((s) => [s, ZONE_SIZE_LABEL[s]] as const),
-      zone.size, (s) => api.patchZone(zi, { size: s })),
+      zone.size, (s) => api.patchZone(path, { size: s })),
     hintNote('Hug takes only what the content needs; Fill zones share the leftover space by their weights.')));
 
   host.appendChild(peekSection(api, 'flow',
     section('Items'),
     segmented<ZoneFlow>('zoneflow',
       [['side', 'Side by side'], ['wrap', 'Wrap when tight'], ['stack', 'Stacked']], zone.flow,
-      (f) => api.patchZone(zi, { flow: f })),
+      (f) => api.patchZone(path, { flow: f })),
     hintNote(zone.flow === 'wrap'
       ? 'Items sit side by side; when the zone runs out of room, the right item moves beneath the left one. Squeeze the preview to watch it.'
       : zone.flow === 'stack' ? 'Items always stack vertically.'
@@ -96,36 +92,42 @@ function renderZoneView(host: HTMLElement, ui: ModalUI, api: ModalApi, zi: numbe
     section('Align'),
     segmented<ZoneAlign>('align',
       [['left', 'Left'], ['center', 'Center'], ['right', 'Right']], zone.align,
-      (al) => api.patchZone(zi, { align: al }))));
+      (al) => api.patchZone(path, { align: al }))));
+
+  const nest = el('button', 'wb-template-mini wb-template-addnested', '＋ Nested zone') as HTMLButtonElement;
+  nest.type = 'button';
+  nest.title = 'Add a zone inside this zone — group items so they share space and wrap together';
+  nest.addEventListener('click', () => api.addNestedZone(path));
+  host.appendChild(nest);
 
   const rm = el('button', 'wb-template-remove', '✕ Remove zone') as HTMLButtonElement;
   rm.type = 'button';
   rm.setAttribute('aria-label', 'Remove zone');
-  rm.addEventListener('click', () => api.removeZone(zi));
+  rm.addEventListener('click', () => api.removeNode(path));
   host.appendChild(rm);
 }
 
 // ─── item view ───────────────────────────────────────────────────────────────
 
-function renderItemView(host: HTMLElement, ui: ModalUI, api: ModalApi, zi: number, ii: number): void {
-  const item = ui.config.zones[zi].items[ii];
-  if (item.kind === 'field') renderFieldItem(host, api, zi, ii, item);
-  else renderComponentItem(host, api, zi, ii, item);
+function renderItemView(host: HTMLElement, api: ModalApi, path: ZonePath, item: ZoneItem): void {
+  if (item.kind === 'zone') return; // zone items render as zones (nodeAt is zone-first)
+  if (item.kind === 'field') renderFieldItem(host, api, path, item);
+  else renderComponentItem(host, api, path, item);
 
   host.appendChild(section('Width'));
   host.appendChild(segmented<ItemWidth>('itemwidth',
     [['natural', 'Natural'], ['fill', 'Fill']], item.width,
-    (w) => api.patchItem(zi, ii, { width: w })));
+    (w) => api.patchItem(path, { width: w })));
   host.appendChild(hintNote('Natural hugs the content; Fill grows into the zone (and, in a wrapping zone, takes the whole line once wrapped).'));
 
   const rm = el('button', 'wb-template-remove', '✕ Remove item') as HTMLButtonElement;
   rm.type = 'button';
   rm.setAttribute('aria-label', 'Remove item');
-  rm.addEventListener('click', () => api.removeItem(zi, ii));
+  rm.addEventListener('click', () => api.removeNode(path));
   host.appendChild(rm);
 }
 
-function renderFieldItem(host: HTMLElement, api: ModalApi, zi: number, ii: number, item: FieldZoneItem): void {
+function renderFieldItem(host: HTMLElement, api: ModalApi, path: ZonePath, item: FieldZoneItem): void {
   const field = state.fields.find((f) => f.name === item.fieldName);
   host.appendChild(section('Field'));
   host.appendChild(el('span', 'wb-template-fieldname',
@@ -134,10 +136,10 @@ function renderFieldItem(host: HTMLElement, api: ModalApi, zi: number, ii: numbe
   host.appendChild(section('Text'));
   host.appendChild(segmented<'truncate' | 'wrap'>('wrap',
     [['truncate', 'Truncate'], ['wrap', 'Wrap']], item.text,
-    (w) => api.patchItem(zi, ii, { text: w })));
+    (w) => api.patchItem(path, { text: w })));
 }
 
-function renderComponentItem(host: HTMLElement, api: ModalApi, zi: number, ii: number, item: ComponentZoneItem): void {
+function renderComponentItem(host: HTMLElement, api: ModalApi, path: ZonePath, item: ComponentZoneItem): void {
   const def = api.components().find((c) => c.id === item.componentId);
   host.appendChild(section('Component'));
   if (!def) {
@@ -150,10 +152,10 @@ function renderComponentItem(host: HTMLElement, api: ModalApi, zi: number, ii: n
   if (def.slots.length) host.appendChild(section('Columns it uses'));
   for (const slot of def.slots) {
     host.appendChild(slotPicker(def, slot.key, item, (col) =>
-      api.patchItem(zi, ii, { map: { ...item.map, [slot.key]: col } })));
+      api.patchItem(path, { map: { ...item.map, [slot.key]: col } })));
   }
   if (def.slots.some((s) => !item.map[s.key])) {
-    host.appendChild(hint('Map every slot to a column to enable Apply.'));
+    host.appendChild(hint('Map every slot to a column to enable Save.'));
   }
 }
 
@@ -279,19 +281,4 @@ function textField(label: string, value: string, onCommit: (v: string) => void):
   inp.addEventListener('change', () => onCommit(inp.value));
   wrap.appendChild(inp);
   return wrap;
-}
-
-function renderFooter(api: ModalApi): HTMLElement {
-  const footer = el('div', 'wb-template-buttons');
-  const cancel = el('button', 'wb-template-cancel', 'Cancel') as HTMLButtonElement;
-  cancel.type = 'button';
-  cancel.addEventListener('click', () => api.cancel());
-  const apply = el('button', 'wb-template-apply', 'Apply') as HTMLButtonElement;
-  apply.type = 'button';
-  const blocker = api.applyBlocker();
-  apply.disabled = Boolean(blocker);
-  apply.title = blocker ?? '';
-  apply.addEventListener('click', () => api.apply());
-  footer.append(cancel, apply);
-  return footer;
 }

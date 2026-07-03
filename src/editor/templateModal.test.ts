@@ -21,6 +21,7 @@ function drop(mime: string, payload: string): Event {
 }
 const fieldDrop = (name: string): Event => drop('application/x-wb-field', name);
 const componentDrop = (id: string): Event => drop('application/x-wb-component', id);
+const nodeDrop = (path: number[]): Event => drop('application/x-wb-node', JSON.stringify(path));
 
 /** Open the builder and pick a wireframe (default: Lead + details → 2 zones). */
 function enterEditor(id = 'lead-detail'): void {
@@ -124,8 +125,11 @@ describe('row view builder — direct manipulation on the preview', () => {
     expect(document.querySelector('.wb-template-remove')).toBeTruthy();
   });
 
-  it('selecting an item shows its width + text controls', () => {
+  it('click selects the ZONE first; the second click drills into the item', () => {
     enterEditor();
+    (document.querySelector('[data-edit-item="0:0"]') as HTMLElement).click();
+    // zone-first: even a click ON the item selects its zone while unselected
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Lead zone');
     (document.querySelector('[data-edit-item="0:0"]') as HTMLElement).click();
     expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Title');
     expect(document.querySelector('[data-itemwidth="natural"]')).toBeTruthy();
@@ -177,14 +181,53 @@ describe('row view builder — the zone tree + name-first tags', () => {
     expect(modal.dataset.peek).toBe('');
   });
 
-  it('the tree persists in Preview mode (no layout flip-shift) and a click returns to Edit', () => {
+  it('the Layouts button sits beside the ZONES header in the tree', () => {
     enterEditor();
-    (document.querySelector('[data-mode="preview"]') as HTMLElement).click();
-    expect(document.querySelector('.wb-template-treehost .wb-ztree-row')).toBeTruthy();
-    expect((document.querySelector('.wb-template-addzone') as HTMLButtonElement).disabled).toBe(true);
-    (document.querySelector('[data-tree-zone="0"]') as HTMLElement).click();
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-mode')).toBe('edit');
-    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Lead zone');
+    const headrow = document.querySelector('.wb-template-tree-headrow') as HTMLElement;
+    expect(headrow.querySelector('.wb-template-tree-head')?.textContent).toBe('Zones');
+    expect(headrow.querySelector('.wb-template-layouts')).toBeTruthy();
+  });
+});
+
+describe('row view builder — zones inside zones', () => {
+  it('a zone dropped ONTO another zone nests inside it (canvas + tree agree)', () => {
+    enterEditor();
+    zone(0).dispatchEvent(nodeDrop([1])); // Details → into Lead
+    const nested = document.querySelector('[data-edit-zone="0:1"]') as HTMLElement;
+    expect(nested).toBeTruthy();
+    expect(nested.classList.contains('wb-edit-zone--nested')).toBe(true);
+    expect(document.querySelector('[data-tree-zone="0:1"]')).toBeTruthy();
+    // its items came along
+    expect(document.querySelector('[data-edit-item="0:1:0"]')).toBeTruthy();
+  });
+
+  it('＋ Nested zone (zone inspector) adds a zone inside the selected zone', () => {
+    enterEditor();
+    zone(0).click();
+    (document.querySelector('.wb-template-addnested') as HTMLButtonElement).click();
+    expect(document.querySelector('[data-edit-zone="0:1"]')).toBeTruthy();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Lead inner zone');
+  });
+
+  it('a nested zone dropped on a root seam (divider) un-nests back to a root zone', () => {
+    enterEditor();
+    zone(0).click();
+    (document.querySelector('.wb-template-addnested') as HTMLButtonElement).click(); // Lead inner at 0:1
+    expect(document.querySelector('[data-edit-zone="0:1"]')).toBeTruthy();
+    // the divider between the two root zones is an explicit root seam
+    (document.querySelector('.wb-edit-divider') as HTMLElement).dispatchEvent(nodeDrop([0, 1]));
+    expect(document.querySelector('[data-edit-zone="0:1"]')).toBeNull();
+    expect(document.querySelectorAll('.wb-edit-divider').length).toBe(2); // three root zones now
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Lead inner zone');
+  });
+
+  it('a nested layout survives Apply → reopen (recursive round trip through the doc)', () => {
+    enterEditor();
+    zone(0).dispatchEvent(nodeDrop([1]));
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {});
+    expect(document.querySelector('[data-tree-zone="0:1"]')).toBeTruthy();
+    expect(document.querySelector('[data-edit-item="0:1:0"]')).toBeTruthy();
   });
 });
 
@@ -213,13 +256,34 @@ describe('row view builder — components in zones', () => {
   });
 });
 
-describe('row view builder — modes, squeeze & apply', () => {
-  it('the Preview toggle removes edit affordances and makes chips inert', () => {
+describe('row view builder — always-live preview, squeeze & save', () => {
+  it('the Edit/Preview toggle is gone — the live rows render below the edit row', () => {
     enterEditor();
-    (document.querySelector('[data-mode="preview"]') as HTMLElement).click();
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-mode')).toBe('preview');
-    expect(document.querySelector('.wb-edit-zone')).toBeNull();
-    expect(document.querySelector('.wb-template-field-chip')?.classList.contains('wb-chip-inert')).toBe(true);
+    expect(document.querySelector('[data-mode]')).toBeNull();
+    expect(document.querySelector('.wb-template-prow--edit')).toBeTruthy();
+    expect(document.querySelector('.wb-template-livehead')).toBeTruthy();
+    // at least one live row follows the caption
+    expect(document.querySelectorAll('.wb-template-prow:not(.wb-template-prow--edit)').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the 2×2 action grid sits top-left: undo, redo, cancel, Save', () => {
+    enterEditor();
+    const actions = document.querySelector('.wb-template-top .wb-template-actions') as HTMLElement;
+    expect(actions.querySelector('.wb-template-undo')).toBeTruthy();
+    expect(actions.querySelector('.wb-template-redo')).toBeTruthy();
+    expect(actions.querySelector('.wb-template-cancel')).toBeTruthy();
+    expect(actions.querySelector('.wb-template-apply')?.textContent).toBe('Save');
+  });
+
+  it('an empty zone\'s hint is a zero-footprint overlay, and the live rows never show it', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-addzone') as HTMLButtonElement).click();
+    const empty = document.querySelector('.wb-edit-zone--empty') as HTMLElement;
+    expect(empty).toBeTruthy();
+    expect(empty.querySelector('.wb-edit-zone-hint')).toBeTruthy();
+    // the live rows render the PRUNED layout — no empty zone, no hint
+    const live = document.querySelectorAll('.wb-template-prow:not(.wb-template-prow--edit) .wb-edit-zone-hint');
+    expect(live.length).toBe(0);
   });
 
   it('the width presets squeeze the stage so wrap behavior can be WATCHED', () => {

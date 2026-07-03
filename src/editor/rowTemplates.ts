@@ -58,7 +58,23 @@ export interface ComponentZoneItem {
   map: Record<string, string>;
   width: ItemWidth;
 }
-export type ZoneItem = FieldZoneItem | ComponentZoneItem;
+/** ZONES NEST: a zone is itself a valid item of another zone. The nested
+ *  zone's own `size` governs how it takes space in its parent; its `flow`
+ *  governs its own items — the same two knobs at every depth. */
+export interface NestedZoneItem {
+  kind: 'zone';
+  zone: ZoneConfig;
+}
+export type ZoneItem = FieldZoneItem | ComponentZoneItem | NestedZoneItem;
+
+/**
+ * The address of a zone OR an item anywhere in the nested structure:
+ * `[rootZoneIndex, itemIndex, itemIndex, …]`. `[i]` is a root zone; each
+ * further index steps into the current zone's `items`; a step that lands on a
+ * `kind: 'zone'` item may keep descending. One address space for everything
+ * the builder can select or drag.
+ */
+export type ZonePath = number[];
 
 export interface ZoneConfig {
   label: string;
@@ -403,6 +419,10 @@ function itemEl(
   item: ZoneItem, zone: ZoneConfig,
   fields: MockField[], columnRefs: Record<string, SPElement>, components: ComponentDef[],
 ): SPElement {
+  if (item.kind === 'zone') {
+    // a nested zone builds like any zone — its own size IS its item sizing
+    return buildZone(item.zone, fields, columnRefs, components);
+  }
   if (item.kind === 'component') {
     const def = components.find((c) => c.id === item.componentId);
     if (!def) {
@@ -467,6 +487,17 @@ function joinClass(existing: unknown, add: string): string {
   return `${typeof existing === 'string' ? existing + ' ' : ''}${add}`.trim();
 }
 
+/** Drop content-free zones at every depth (Apply never ships empty divs). */
+export function pruneZones(zones: ZoneConfig[]): ZoneConfig[] {
+  const pruneOne = (z: ZoneConfig): ZoneConfig => ({
+    ...z,
+    items: z.items
+      .map((it) => (it.kind === 'zone' ? { kind: 'zone' as const, zone: pruneOne(it.zone) } : it))
+      .filter((it) => it.kind !== 'zone' || it.zone.items.length > 0),
+  });
+  return zones.map(pruneOne).filter((z) => z.items.length > 0);
+}
+
 export function buildTemplateView(
   config: RowTemplateConfig, fields: MockField[],
   columnRefs: Record<string, SPElement>, palette: Record<string, string>,
@@ -474,7 +505,7 @@ export function buildTemplateView(
   opts: { prune?: boolean } = {},
 ): { root: SPElement; additionalRowClass?: string } {
   const composed = composeRowStyle(config, palette);
-  const zones = opts.prune ? config.zones.filter((z) => z.items.length > 0) : config.zones;
+  const zones = opts.prune ? pruneZones(config.zones) : config.zones;
   const zoneEls = zones.map((z) => buildZone(z, fields, columnRefs, components));
 
   const kebab = config.kebab.enabled ? buildKebab(config.kebab) : null;
@@ -510,32 +541,81 @@ export function insertZone(config: RowTemplateConfig, at: number, zone: ZoneConf
   return { ...config, zones };
 }
 
-export function removeZone(config: RowTemplateConfig, i: number): RowTemplateConfig {
-  return { ...config, zones: config.zones.filter((_, idx) => idx !== i) };
+// ─── path resolvers + immutable descent (zones nest — flat indices retired) ──
+
+/** The zone a path names: a root zone, or a nested `kind:'zone'` item's zone.
+ *  Null when the path doesn't land on a zone. */
+export function zoneAt(config: RowTemplateConfig, path: ZonePath): ZoneConfig | null {
+  if (!path.length || !path.every(Number.isInteger)) return null;
+  let zone: ZoneConfig | undefined = config.zones[path[0]];
+  for (let d = 1; zone && d < path.length; d++) {
+    const item: ZoneItem | undefined = zone.items[path[d]];
+    zone = item && item.kind === 'zone' ? item.zone : undefined;
+  }
+  return zone ?? null;
 }
 
-export function moveZone(config: RowTemplateConfig, from: number, to: number): RowTemplateConfig {
-  const n = config.zones.length;
-  // guard NaN/float indices (e.g. a malformed drag payload): without this, NaN
-  // slips past the range checks below and splice(NaN, …) silently acts as index 0.
-  if (!Number.isInteger(from) || !Number.isInteger(to)) return config;
-  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return config;
-  const zones = config.zones.slice();
-  const [moved] = zones.splice(from, 1);
-  zones.splice(to, 0, moved);
-  return { ...config, zones };
+/** What a path selects: the ZONE when it names one (zone-first semantics),
+ *  else the leaf item, else null. */
+export function nodeAt(config: RowTemplateConfig, path: ZonePath): ZoneConfig | ZoneItem | null {
+  const zone = zoneAt(config, path);
+  if (zone) return zone;
+  if (path.length < 2) return null;
+  const parent = zoneAt(config, path.slice(0, -1));
+  return parent?.items[path[path.length - 1]] ?? null;
 }
 
-export function patchZone(config: RowTemplateConfig, i: number, patch: Partial<Omit<ZoneConfig, 'items'>>): RowTemplateConfig {
-  if (i < 0 || i >= config.zones.length) return config;
-  const zones = config.zones.map((z, idx) => (idx === i ? { ...z, ...patch } : z));
-  return { ...config, zones };
+/** Rebuild the zone a path names through `fn`, immutably. Null = bad path. */
+function mapZoneAt(zones: ZoneConfig[], path: ZonePath, fn: (z: ZoneConfig) => ZoneConfig): ZoneConfig[] | null {
+  if (!path.length || !path.every(Number.isInteger)) return null;
+  const walkItems = (items: ZoneItem[], rest: ZonePath): ZoneItem[] | null => {
+    const item = items[rest[0]];
+    if (!item || item.kind !== 'zone') return null;
+    const zone = rest.length === 1 ? fn(item.zone)
+      : ((): ZoneConfig | null => {
+        const inner = walkItems(item.zone.items, rest.slice(1));
+        return inner ? { ...item.zone, items: inner } : null;
+      })();
+    if (!zone) return null;
+    return items.map((it, i) => (i === rest[0] ? { kind: 'zone', zone } : it));
+  };
+  const root = zones[path[0]];
+  if (!root) return null;
+  const next = path.length === 1 ? fn(root)
+    : ((): ZoneConfig | null => {
+      const inner = walkItems(root.items, path.slice(1));
+      return inner ? { ...root, items: inner } : null;
+    })();
+  if (!next) return null;
+  return zones.map((z, i) => (i === path[0] ? next : z));
 }
 
-export function addItem(config: RowTemplateConfig, zi: number, item: ZoneItem, at?: number): RowTemplateConfig {
-  if (zi < 0 || zi >= config.zones.length) return config;
-  const zones = config.zones.map((z, idx) => {
-    if (idx !== zi) return z;
+export function patchZoneAt(config: RowTemplateConfig, path: ZonePath, patch: Partial<Omit<ZoneConfig, 'items'>>): RowTemplateConfig {
+  if (!zoneAt(config, path)) return config;
+  const zones = mapZoneAt(config.zones, path, (z) => ({ ...z, ...patch }));
+  return zones ? { ...config, zones } : config;
+}
+
+/** A cross-kind item patch: any per-item knob except the discriminant. */
+export type ZoneItemPatch = Partial<Omit<FieldZoneItem, 'kind'>> & Partial<Omit<ComponentZoneItem, 'kind'>>;
+
+export function patchItemAt(config: RowTemplateConfig, itemPath: ZonePath, patch: ZoneItemPatch): RowTemplateConfig {
+  if (itemPath.length < 2) return config;
+  const idx = itemPath[itemPath.length - 1];
+  const parent = zoneAt(config, itemPath.slice(0, -1));
+  const item = parent?.items[idx];
+  if (!item || item.kind === 'zone') return config; // zones are patched via patchZoneAt
+  const zones = mapZoneAt(config.zones, itemPath.slice(0, -1), (z) => ({
+    ...z,
+    items: z.items.map((it, i) => (i === idx ? { ...it, ...patch } as ZoneItem : it)),
+  }));
+  return zones ? { ...config, zones } : config;
+}
+
+/** Insert an item into the zone at `zonePath` (`at` clamped; omit = append). */
+export function addItemAt(config: RowTemplateConfig, zonePath: ZonePath, item: ZoneItem, at?: number): RowTemplateConfig {
+  if (!zoneAt(config, zonePath)) return config;
+  const zones = mapZoneAt(config.zones, zonePath, (z) => {
     const items = z.items.slice();
     const ins = at === undefined || !Number.isInteger(at)
       ? items.length
@@ -543,45 +623,62 @@ export function addItem(config: RowTemplateConfig, zi: number, item: ZoneItem, a
     items.splice(ins, 0, item);
     return { ...z, items };
   });
-  return { ...config, zones };
+  return zones ? { ...config, zones } : config;
 }
 
-export function removeItem(config: RowTemplateConfig, zi: number, ii: number): RowTemplateConfig {
-  const zone = config.zones[zi];
-  if (!zone || ii < 0 || ii >= zone.items.length) return config;
-  const zones = config.zones.map((z, idx) =>
-    (idx === zi ? { ...z, items: z.items.filter((_, j) => j !== ii) } : z));
-  return { ...config, zones };
+/** Remove whatever a path names — a root zone, a nested zone, or a leaf item. */
+export function removeNode(config: RowTemplateConfig, path: ZonePath): RowTemplateConfig {
+  if (!path.length || !path.every(Number.isInteger)) return config;
+  if (path.length === 1) {
+    if (!config.zones[path[0]]) return config;
+    return { ...config, zones: config.zones.filter((_, i) => i !== path[0]) };
+  }
+  const idx = path[path.length - 1];
+  const parent = zoneAt(config, path.slice(0, -1));
+  if (!parent || !parent.items[idx]) return config;
+  const zones = mapZoneAt(config.zones, path.slice(0, -1), (z) => ({
+    ...z,
+    items: z.items.filter((_, i) => i !== idx),
+  }));
+  return zones ? { ...config, zones } : config;
 }
 
-/** Move an item within or across zones. `toItem` is the insertion index in the
- *  TARGET zone's post-removal item list; out-of-range clamps to the end. */
-export function moveItem(
-  config: RowTemplateConfig, fromZone: number, fromItem: number, toZone: number, toItem: number,
-): RowTemplateConfig {
-  if (![fromZone, fromItem, toZone, toItem].every(Number.isInteger)) return config;
-  const src = config.zones[fromZone];
-  const dst = config.zones[toZone];
-  if (!src || !dst || fromItem < 0 || fromItem >= src.items.length) return config;
-  if (fromZone === toZone && fromItem === toItem) return config;
-  const zones = config.zones.map((z) => ({ ...z, items: z.items.slice() }));
-  const [moved] = zones[fromZone].items.splice(fromItem, 1);
-  const target = zones[toZone].items;
-  target.splice(Math.max(0, Math.min(toItem, target.length)), 0, moved);
-  return { ...config, zones };
-}
+/**
+ * THE move: relocate whatever `from` names to `toZone` at `toIndex`.
+ * `toZone: []` = the root row — zones land as root zones, leaf items get
+ * wrapped in a fresh zone (dropping a field between root zones spawns one).
+ * Into a zone, zones land as NESTED zone items and leaves as themselves.
+ * `toIndex` is the index in the target's POST-REMOVAL list (the caller
+ * adjusts for same-parent forward moves, as before). Refuses a drop into the
+ * moved zone's own subtree. Guarded no-ops return the same config reference.
+ */
+export function moveNode(config: RowTemplateConfig, from: ZonePath, toZone: ZonePath, toIndex: number): RowTemplateConfig {
+  if (!from.length || !from.every(Number.isInteger) || !toZone.every(Number.isInteger) || !Number.isInteger(toIndex)) return config;
+  // never into your own subtree (equal prefix includes "into itself")
+  if (toZone.length >= from.length && from.every((v, i) => toZone[i] === v)) return config;
 
-/** A cross-kind item patch: any per-item knob except the discriminant. */
-export type ZoneItemPatch = Partial<Omit<FieldZoneItem, 'kind'>> & Partial<Omit<ComponentZoneItem, 'kind'>>;
+  const node = nodeAt(config, from);
+  if (!node) return config;
+  const asZone = 'items' in node ? node as ZoneConfig : null; // ZoneConfig has items; leaf items don't
+  const asItem = asZone ? null : node as ZoneItem;
 
-export function patchItem(
-  config: RowTemplateConfig, zi: number, ii: number, patch: ZoneItemPatch,
-): RowTemplateConfig {
-  const zone = config.zones[zi];
-  if (!zone || ii < 0 || ii >= zone.items.length) return config;
-  const zones = config.zones.map((z, idx) =>
-    (idx === zi ? { ...z, items: z.items.map((it, j) => (j === ii ? { ...it, ...patch } as ZoneItem : it)) } : z));
-  return { ...config, zones };
+  const removed = removeNode(config, from);
+  if (removed === config) return config;
+
+  // the removal shifted any sibling that sat after `from` in the same parent —
+  // re-aim the target path at the same zone it named before the removal
+  const adj = toZone.slice();
+  const d = from.length - 1;
+  if (adj.length > d && from.slice(0, d).every((v, i) => adj[i] === v) && adj[d] > from[d]) adj[d] -= 1;
+
+  if (adj.length === 0) {
+    // landing on the root row: a zone stays a zone; a leaf gets a zone of its own
+    const zone = asZone ?? { ...newZone(`Zone ${config.zones.length + 1}`), items: [asItem as ZoneItem] };
+    return insertZone(removed, Math.max(0, Math.min(toIndex, removed.zones.length)), zone);
+  }
+  const item: ZoneItem = asZone ? { kind: 'zone', zone: asZone } : (asItem as ZoneItem);
+  const next = addItemAt(removed, adj, item, toIndex);
+  return next === removed ? config : next; // bad target after removal → whole move refuses
 }
 
 const SIZE_CYCLE: ZoneSize[] = ['hug', 'normal', 'wide', 'widest'];
@@ -601,11 +698,18 @@ export const ZONE_FLOW_LABEL: Record<ZoneFlow, string> = {
 /** Why Apply is blocked, or null when it may proceed (refuse-and-teach: an
  *  unmapped component slot would silently render blank on real SP). */
 export function applyBlocker(config: RowTemplateConfig, components: ComponentDef[]): string | null {
-  if (!config.zones.some((z) => z.items.length > 0)) {
+  const hasContent = (z: ZoneConfig): boolean =>
+    z.items.some((it) => (it.kind === 'zone' ? hasContent(it.zone) : true));
+  if (!config.zones.some(hasContent)) {
     return 'Drop at least one field or component into a zone first';
   }
-  for (const z of config.zones) {
+  const check = (z: ZoneConfig): string | null => {
     for (const it of z.items) {
+      if (it.kind === 'zone') {
+        const nested = check(it.zone);
+        if (nested) return nested;
+        continue;
+      }
       if (it.kind !== 'component') continue;
       const def = components.find((c) => c.id === it.componentId);
       if (!def) return `A zone holds a component that no longer exists — remove it (${z.label})`;
@@ -613,6 +717,11 @@ export function applyBlocker(config: RowTemplateConfig, components: ComponentDef
         return `Map every slot of “${def.name}” to a column (select it to finish the mapping)`;
       }
     }
+    return null;
+  };
+  for (const z of config.zones) {
+    const blocked = check(z);
+    if (blocked) return blocked;
   }
   return null;
 }
@@ -700,6 +809,13 @@ function parseItemWidth(el: SPElement, flow: ZoneFlow): ItemWidth {
 function parseItem(el: SPElement, flow: ZoneFlow, fields: MockField[]): ZoneItem | null {
   if (el._component) {
     return { kind: 'component', componentId: el._component.id, map: { ...el._component.map }, width: parseItemWidth(el, flow) };
+  }
+  // a NESTED zone: the builder names every zone "<label> zone" — recurse.
+  // (A hand-made lookalike that isn't equivalent fails the rebuild-verify gate.)
+  if (el.elmType === 'div' && el.style?.['display'] === 'flex'
+    && typeof el._elmName === 'string' && el._elmName.endsWith(' zone')) {
+    const zone = parseZone(el, 0, fields);
+    return zone ? { kind: 'zone', zone } : null;
   }
   // a field cell: the single field it renders is DERIVED, exactly like the
   // grid's column↔field mapping (CFR target, else the one [$Field] referenced)

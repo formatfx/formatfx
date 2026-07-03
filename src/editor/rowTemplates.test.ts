@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView, buildZone,
-  addZone, removeZone, moveZone, patchZone, newZone,
-  addItem, removeItem, moveItem, patchItem, newFieldItem, newComponentItem,
+  addZone, insertZone, newZone, zoneAt, nodeAt, pruneZones,
+  addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
+  newFieldItem, newComponentItem,
   nextZoneSize, childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
-  insertZone,
-  type RowTemplateConfig, type KebabConfig, type ZoneConfig,
+  type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem,
 } from './rowTemplates';
 import type { ComponentDef } from './components';
 import { themePalette } from '../core/theme';
@@ -309,39 +309,41 @@ describe('zone + item ops (pure, immutable)', () => {
     expect(b.zones.at(-1)?.flow).toBe('wrap');       // graceful-shrink default
   });
 
-  it('removeZone splices the given index', () => {
+  it('removeNode splices a root zone by path', () => {
     const a = cfg();
-    expect(removeZone(a, 1).zones.length).toBe(a.zones.length - 1);
+    expect(removeNode(a, [1]).zones.length).toBe(a.zones.length - 1);
+    expect(removeNode(a, [9])).toBe(a);
   });
 
-  it('moveZone reorders; out-of-range/NaN is a no-op (same ref)', () => {
+  it('moveNode reorders root zones; out-of-range/NaN is a no-op (same ref)', () => {
     const a = cfg();
     const first = a.zones[0].label;
-    expect(moveZone(a, 0, 2).zones[2].label).toBe(first);
-    expect(moveZone(a, 0, 9)).toBe(a);
-    expect(moveZone(a, Number.NaN, 1)).toBe(a);
+    expect(moveNode(a, [0], [], 2).zones[2].label).toBe(first);
+    expect(moveNode(a, [9], [], 1)).toBe(a);
+    expect(moveNode(a, [Number.NaN], [], 1)).toBe(a);
   });
 
-  it('patchZone updates one zone immutably', () => {
+  it('patchZoneAt updates one zone immutably', () => {
     const a = cfg();
-    expect(patchZone(a, 0, { size: 'widest', flow: 'wrap' }).zones[0]).toMatchObject({ size: 'widest', flow: 'wrap' });
+    expect(patchZoneAt(a, [0], { size: 'widest', flow: 'wrap' }).zones[0]).toMatchObject({ size: 'widest', flow: 'wrap' });
     expect(a.zones[0].size).toBe('hug');             // source untouched
+    expect(patchZoneAt(a, [9], { size: 'hug' })).toBe(a);
   });
 
-  it('addItem/removeItem work on one zone', () => {
+  it('addItemAt/removeNode work on one zone by path', () => {
     const a = cfg();
-    const b = addItem(a, 0, newFieldItem('Due', a.zones[0]));
+    const b = addItemAt(a, [0], newFieldItem('Due', a.zones[0]));
     expect(b.zones[0].items.length).toBe(a.zones[0].items.length + 1);
-    expect(removeItem(b, 0, 0).zones[0].items.length).toBe(a.zones[0].items.length);
+    expect(removeNode(b, [0, 0]).zones[0].items.length).toBe(a.zones[0].items.length);
   });
 
-  it('addItem inserts at an index (between-items drop), clamped', () => {
+  it('addItemAt inserts at an index (between-items drop), clamped', () => {
     const a = cfg(); // avatar-card: Main zone = [Title, Status]
     const names = (c: RowTemplateConfig): string[] =>
       c.zones[1].items.map((it) => (it.kind === 'field' ? it.fieldName : ''));
-    expect(names(addItem(a, 1, newFieldItem('Due', a.zones[1]), 0))).toEqual(['Due', 'Title', 'Status']);
-    expect(names(addItem(a, 1, newFieldItem('Due', a.zones[1]), 1))).toEqual(['Title', 'Due', 'Status']);
-    expect(names(addItem(a, 1, newFieldItem('Due', a.zones[1]), 99))).toEqual(['Title', 'Status', 'Due']);
+    expect(names(addItemAt(a, [1], newFieldItem('Due', a.zones[1]), 0))).toEqual(['Due', 'Title', 'Status']);
+    expect(names(addItemAt(a, [1], newFieldItem('Due', a.zones[1]), 1))).toEqual(['Title', 'Due', 'Status']);
+    expect(names(addItemAt(a, [1], newFieldItem('Due', a.zones[1]), 99))).toEqual(['Title', 'Status', 'Due']);
   });
 
   it('insertZone spawns a zone between zones (a between-zones drop), clamped', () => {
@@ -352,24 +354,24 @@ describe('zone + item ops (pure, immutable)', () => {
     expect(insertZone(a, Number.NaN)).toBe(a);
   });
 
-  it('moveItem moves across zones (and clamps the target index)', () => {
+  it('moveNode moves an item across zones (and clamps the target index)', () => {
     const a = cfg();
-    const moved = moveItem(a, 1, 0, 2, 99); // Main's title → end of When
+    const moved = moveNode(a, [1, 0], [2], 99); // Main's title → end of When
     expect(moved.zones[1].items.length).toBe(a.zones[1].items.length - 1);
     expect(moved.zones[2].items.length).toBe(a.zones[2].items.length + 1);
     expect(moved.zones[2].items.at(-1)).toMatchObject({ fieldName: 'Title' });
     expect(a.zones[1].items.length).toBe(2);         // source untouched
   });
 
-  it('moveItem reorders within a zone', () => {
+  it('moveNode reorders within a zone', () => {
     const a = cfg();
-    const b = moveItem(a, 1, 0, 1, 1);
-    expect(b.zones[1].items.map((it) => it.kind === 'field' ? it.fieldName : '')).toEqual(['Status', 'Title']);
+    const b = moveNode(a, [1, 0], [1], 1);
+    expect(b.zones[1].items.map((it) => (it.kind === 'field' ? it.fieldName : ''))).toEqual(['Status', 'Title']);
   });
 
-  it('patchItem updates one item immutably', () => {
+  it('patchItemAt updates one item immutably', () => {
     const a = cfg();
-    const b = patchItem(a, 1, 0, { width: 'natural', text: 'wrap' });
+    const b = patchItemAt(a, [1, 0], { width: 'natural', text: 'wrap' });
     expect(b.zones[1].items[0]).toMatchObject({ width: 'natural', text: 'wrap' });
     expect(a.zones[1].items[0]).toMatchObject({ width: 'fill' });
   });
@@ -382,6 +384,99 @@ describe('zone + item ops (pure, immutable)', () => {
   });
 });
 
+describe('nested zones — the recursive model', () => {
+  /** avatar-card + a nested wrap zone inside Main holding Status + Due. */
+  const nested = (): RowTemplateConfig => {
+    let c = defaultConfigFor('avatar-card', FIELDS); // Who[Owner] Main[Title,Status] When[Due]
+    c = addItemAt(c, [1], { kind: 'zone', zone: { ...newZone('Badges'), size: 'hug' } });
+    c = moveNode(c, [1, 1], [1, 2], 0);  // Status → into Badges (which is now Main.items[2])
+    return c;
+  };
+
+  it('a zone nests inside a zone and resolves by path', () => {
+    const c = nested();
+    expect(zoneAt(c, [1, 1])?.label).toBe('Badges');
+    expect(zoneAt(c, [1, 1])?.items.length).toBe(1);
+    expect(nodeAt(c, [1, 1, 0])).toMatchObject({ kind: 'field', fieldName: 'Status' });
+  });
+
+  it('zoneAt is zone-first: a path naming a nested zone returns the ZONE', () => {
+    const c = nested();
+    const node = nodeAt(c, [1, 1]);
+    expect(node && 'items' in node).toBe(true);
+  });
+
+  it('buildZone renders nested zones as real flex containers inside their parent', () => {
+    const c = nested();
+    const el = buildZone(c.zones[1], FIELDS, {}, []);
+    const inner = el.children![1];
+    expect(inner._elmName).toBe('Badges zone');
+    expect(inner.style!['display']).toBe('flex');
+    expect(inner.style!['flex']).toBe('0 0 auto'); // hug governs its sizing in the parent
+    expect(inner.children!.length).toBe(1);
+  });
+
+  it('moveNode refuses a drop into the moved zone\'s own subtree', () => {
+    const c = nested();
+    expect(moveNode(c, [1], [1, 1], 0)).toBe(c);   // Main into Badges (its child) — refused
+    expect(moveNode(c, [1, 1], [1, 1], 0)).toBe(c); // into itself — refused
+  });
+
+  it('moveNode un-nests: a nested zone dropped on the root row becomes a root zone', () => {
+    const c = nested();
+    const out = moveNode(c, [1, 1], [], 1);
+    expect(out.zones.length).toBe(4);
+    expect(out.zones[1].label).toBe('Badges');
+    expect(zoneAt(out, [2, 1])).toBeNull();          // gone from Main
+  });
+
+  it('moveNode nests: a root zone dropped into a zone becomes a nested item', () => {
+    const c = defaultConfigFor('avatar-card', FIELDS);
+    const out = moveNode(c, [2], [1], 99);           // When → into Main
+    expect(out.zones.length).toBe(2);
+    const last = out.zones[1].items.at(-1);
+    expect(last?.kind).toBe('zone');
+    expect(last?.kind === 'zone' && last.zone.label).toBe('When');
+  });
+
+  it('moveNode wraps a leaf dropped on the root row in a zone of its own', () => {
+    const c = defaultConfigFor('avatar-card', FIELDS);
+    const out = moveNode(c, [1, 0], [], 3);          // Title item → root end
+    expect(out.zones.length).toBe(4);
+    expect(out.zones[3].items[0]).toMatchObject({ kind: 'field', fieldName: 'Title' });
+  });
+
+  it('deep patches work through nested paths', () => {
+    const c = nested();
+    const out = patchItemAt(patchZoneAt(c, [1, 1], { flow: 'stack' }), [1, 1, 0], { text: 'wrap' });
+    expect(zoneAt(out, [1, 1])?.flow).toBe('stack');
+    expect(out.zones[1].items[1]).toMatchObject({ kind: 'zone' });
+    expect(nodeAt(out, [1, 1, 0])).toMatchObject({ text: 'wrap' });
+  });
+
+  it('pruneZones drops empty zones at every depth', () => {
+    let c = nested();
+    c = removeNode(c, [1, 1, 0]);                    // empty out Badges
+    const pruned = pruneZones(c.zones);
+    expect(pruned[1].items.every((it: ZoneItem) => it.kind !== 'zone')).toBe(true);
+  });
+
+  it('applyBlocker sees unmapped components inside nested zones', () => {
+    let c = nested();
+    c = addItemAt(c, [1, 1], newComponentItem(CHIP.id, { Due: '' }));
+    expect(applyBlocker(c, [CHIP])).toContain('Test chip');
+  });
+
+  it('nested zones round-trip through apply → reopen (parser recursion)', () => {
+    const c = nested();
+    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, PAL, [CHIP], { prune: true });
+    const parsed = configFromView(root, additionalRowClass, FIELDS, {}, [CHIP]);
+    expect(parsed).not.toBeNull();
+    expect(zoneAt(parsed!, [1, 1])?.label).toBe('Badges');
+    expect(nodeAt(parsed!, [1, 1, 0])).toMatchObject({ kind: 'field', fieldName: 'Status' });
+  });
+});
+
 describe('applyBlocker — refuse-and-teach before Apply', () => {
   it('blocks an all-empty layout', () => {
     const c = base({ zones: [newZone()] });
@@ -390,13 +485,13 @@ describe('applyBlocker — refuse-and-teach before Apply', () => {
 
   it('blocks an unmapped component slot, naming the component', () => {
     let c = base({ zones: [newZone()] });
-    c = addItem(c, 0, newComponentItem(CHIP.id, { Due: '' }));
+    c = addItemAt(c, [0], newComponentItem(CHIP.id, { Due: '' }));
     expect(applyBlocker(c, [CHIP])).toContain('Test chip');
   });
 
   it('passes a mapped layout', () => {
     let c = base({ zones: [newZone()] });
-    c = addItem(c, 0, newComponentItem(CHIP.id, { Due: 'Due' }));
+    c = addItemAt(c, [0], newComponentItem(CHIP.id, { Due: 'Due' }));
     expect(applyBlocker(c, [CHIP])).toBeNull();
   });
 });
@@ -454,8 +549,8 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
   });
 
   it('zone behavior + item knobs round-trip (stack fill, wrap natural, text wrap)', () => {
-    let c = patchZone(defaultConfigFor('avatar-card', FIELDS), 1, { align: 'center' });
-    c = patchItem(c, 1, 0, { width: 'fill', text: 'wrap' });
+    let c = patchZoneAt(defaultConfigFor('avatar-card', FIELDS), [1], { align: 'center' });
+    c = patchItemAt(c, [1, 0], { width: 'fill', text: 'wrap' });
     const parsed = reopen(c)!;
     expect(parsed.zones[1]).toMatchObject({ flow: 'stack', align: 'center' });
     expect(parsed.zones[1].items[0]).toMatchObject({ width: 'fill', text: 'wrap' });
@@ -463,7 +558,7 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
 
   it('component items round-trip with their slot map and width', () => {
     let c = defaultConfigFor('blank', FIELDS);
-    c = addItem(c, 0, { ...newComponentItem(CHIP.id, { Due: 'Due' }), width: 'fill' });
+    c = addItemAt(c, [0], { ...newComponentItem(CHIP.id, { Due: 'Due' }), width: 'fill' });
     const parsed = reopen(c)!;
     expect(parsed.zones[0].items.at(-1)).toEqual({ kind: 'component', componentId: CHIP.id, map: { Due: 'Due' }, width: 'fill' });
   });
