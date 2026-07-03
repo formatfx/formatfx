@@ -2461,7 +2461,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
 
-/* ── the Formatters bar (header line · ← · 🕘 · VIEW / COLUMNS / COMPONENTS) ─
+/* ── the Formatters bar (header line · ← · 🕘 · VIEWS / COLUMNS / COMPONENTS) ─
    Blue = the view formatter; violet = the shared column formatters — the same
    two color channels the canvas and tree teach, so the tabs read as "those
    things I keep seeing with the § mark live here". Two lines: the uppercase
@@ -2490,13 +2490,13 @@ body.wb-dark .wb-ce-save { color: #10393b; }
    tabs' -1px margin still lands their underline on the bar's border-bottom. */
 .wb-fmt-tablist { display: flex; gap: 2px; flex: 0 0 auto; min-width: 0; }
 .wb-fmt-tab {
-  display: inline-flex; align-items: center; gap: 3px;
-  border: none; background: none; cursor: pointer; padding: 9px 2px 8px;
-  font-size: 9px; font-weight: 600; letter-spacing: .01em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: none; cursor: pointer; padding: 9px 4px 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: .01em; text-transform: uppercase;
   color: var(--wb-lp-text-2);
   border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
 }
-.wb-fmt-tab .wb-fmt-mark { font-size: 12px; font-weight: 700; line-height: 1; }
+.wb-fmt-tab .wb-fmt-mark { font-size: 14px; font-weight: 700; line-height: 1; }
 .wb-fmt-tab-view:hover { color: var(--wb-accent); }
 .wb-fmt-tab-cols:hover { color: var(--wb-shared); }
 .wb-fmt-tab-comp:hover { color: var(--wb-component); }
