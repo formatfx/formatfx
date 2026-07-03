@@ -1,14 +1,14 @@
 /**
  * editor/leftPane.ts — the Claude-style Left Edit Pane container.
  *
- * Builds and wires the whole left column: the Simple/Pro/Code lens tabs, the
- * FORMATTERS bar (its uppercase header, the VIEW / COLUMNS / COMPONENTS tabs,
- * and the right-aligned ← back + 🕘 snapshot buttons), the document dropdown
- * (the pill naming what's on the canvas — its menu browses/renames views or
- * the formatted-columns gallery), the structure tree, a drag splitter, the draw
- * toolbar (Select / Text / Frame / Icon / Undo / Redo + a palette overflow
- * popover), and the lower workspace that swaps between the inspector
- * (Simple/Pro) and the Code declarations box.
+ * Builds and wires the whole left column, top to bottom: the FORMATTERS bar
+ * (its uppercase header line, then the ← back + 🕘 snapshot buttons leading
+ * the VIEW / COLUMNS / COMPONENTS tabs), the document dropdown (the pill
+ * naming what's on the canvas — its menu browses/renames views or the
+ * formatted-columns gallery), the structure tree, a drag splitter, the
+ * Simple/Pro/Code lens tabs, the draw toolbar (Select / Text / Frame / Icon /
+ * Undo / Redo + a palette overflow popover), and the lower workspace that
+ * swaps between the inspector (Simple/Pro) and the Code declarations box.
  */
 
 import { state, type EditorLens } from './state';
@@ -66,20 +66,19 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const { toast } = opts;
   host.classList.add('wb-leftpane');
   host.innerHTML = `
-    <div class="wb-lp-header">
-      <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
-        ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
-      </div>
-    </div>
     <div class="wb-fmt-tabs">
       <span class="wb-fmt-head" id="wb-fmt-head">Formatters</span>
-      <div class="wb-fmt-tablist" role="tablist" aria-labelledby="wb-fmt-head">
-        <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View</span></button>
-        <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
-        <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
+      <div class="wb-fmt-row">
+        <div class="wb-nav-group">
+          <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
+          <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
+        </div>
+        <div class="wb-fmt-tablist" role="tablist" aria-labelledby="wb-fmt-head">
+          <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View</span></button>
+          <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
+          <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
+        </div>
       </div>
-      <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
-      <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
     </div>
     <div class="wb-lp-tree" id="wb-lp-tree">
       <div class="wb-doc-pill-row">
@@ -93,6 +92,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       <div class="wb-tree-sec-body wb-complib" id="wb-lp-library" hidden></div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
+    <div class="wb-lp-header">
+      <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
+        ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
+      </div>
+    </div>
     <div class="wb-drawbar" role="toolbar" aria-label="Draw tools">
       <button class="wb-tool wb-tool-select active" data-tool="select" title="Select elements on the canvas" aria-label="Select">${ICONS.select}</button>
       <span class="wb-tool-sep" aria-hidden="true"></span>
