@@ -122,4 +122,24 @@ describe('single-row CFR presentation', () => {
     expect(openSpy).not.toHaveBeenCalled();
     host.remove();
   });
+
+  it('a reference named after a prototype key (toString) is still unregistered', () => {
+    // Object.hasOwn, not `in`: 'toString' lives on Object.prototype, so an
+    // `in` lookup would render a live open button for a missing formatter
+    state.doc = {
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [{ elmType: 'div', columnFormatterReference: '[$toString]' }],
+      },
+    };
+    state.columnRefs = {};
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const tag = host.querySelector<HTMLElement>('.wb-tree-cfr-open')!;
+    expect(tag.tagName).not.toBe('BUTTON');
+    expect(tag.classList.contains('wb-tree-cfr-missing')).toBe(true);
+  });
 });

@@ -207,11 +207,13 @@ export function mountTree(
     // opens the shared column formatter (row click stays host-select). An
     // unregistered reference keeps the teaching tooltip but opens nothing.
     if (cfrName !== null) {
-      const registered = cfrName in state.columnRefs;
+      // own keys only — a column named 'toString' etc. must not read as registered
+      const registered = Object.hasOwn(state.columnRefs, cfrName);
       if (registered) {
         const blast = cfrBlastRadius(cfrName, state.mainRootForScope, state.columnRefs);
         const places = Math.max(blast.count, 1);
         const open = document.createElement('button');
+        open.type = 'button'; // never a submit button, wherever the tree mounts
         open.className = 'wb-tree-cfr-open';
         open.textContent = 'reference';
         open.title = `This element renders the shared ${cfrDisplay} column formatter (used in ${places} place${places === 1 ? '' : 's'}). Open it to edit — changes apply everywhere it's used.`;
