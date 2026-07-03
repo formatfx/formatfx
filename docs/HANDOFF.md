@@ -190,9 +190,9 @@ Key structural invariants:
 - **Left Edit Pane formatter navigation (2026-07-02, owner mockup)**: the
   ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE. The Left
   Edit Pane owns navigation: the formatter tabs under the lens tabs —
-  VIEW (accent blue, grid icon), COLUMNS (violet, §) and COMPONENTS (teal ⬡),
-  relabeled 2026-07-03: the word "formatters" moved into a small left-aligned
-  **"Formatters" header** on the same bar (`wb-fmt-head`), and the ← back +
+  VIEWS (accent blue, grid icon), COLUMNS (violet, §) and COMPONENTS (teal ⬡),
+  relabeled 2026-07-03: no visible "Formatters" text on the bar (it lives on
+  as an `aria-label` on the tablist for AT users only), and the ← back +
   🕘 snapshot buttons right-align on that bar (moved up from the pill row) —
   and a **document dropdown** (`#wb-doc-pill`) naming what's on the canvas
   with a subtle type tag ("list row schema"/"tile schema" for views, "<type>
