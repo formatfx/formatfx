@@ -2,9 +2,10 @@
  * editor/leftPane.ts — the Claude-style Left Edit Pane container.
  *
  * Builds and wires the whole left column: the Simple/Pro/Code lens tabs, the
- * VIEW FORMATTERS / COLUMN FORMATTERS tabs, the document dropdown (the pill
- * naming what's on the canvas — its menu browses/renames views or the
- * formatted-columns gallery), the structure tree, a drag splitter, the draw
+ * FORMATTERS bar (its uppercase header, the VIEW / COLUMNS / COMPONENTS tabs,
+ * and the right-aligned ← back + 🕘 snapshot buttons), the document dropdown
+ * (the pill naming what's on the canvas — its menu browses/renames views or
+ * the formatted-columns gallery), the structure tree, a drag splitter, the draw
  * toolbar (Select / Text / Frame / Icon / Undo / Redo + a palette overflow
  * popover), and the lower workspace that swaps between the inspector
  * (Simple/Pro) and the Code declarations box.
@@ -70,20 +71,23 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
       </div>
     </div>
-    <div class="wb-fmt-tabs" role="tablist" aria-label="Formatter kind">
-      <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View formatters</span></button>
-      <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Column formatters</span></button>
-      <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
+    <div class="wb-fmt-tabs">
+      <span class="wb-fmt-head" id="wb-fmt-head">Formatters</span>
+      <div class="wb-fmt-tablist" role="tablist" aria-labelledby="wb-fmt-head">
+        <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View</span></button>
+        <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
+        <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
+      </div>
+      <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
+      <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
     </div>
     <div class="wb-lp-tree" id="wb-lp-tree">
       <div class="wb-doc-pill-row">
-        <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
         <button class="wb-doc-pill" id="wb-doc-pill" aria-haspopup="menu">
           <span class="wb-doc-pill-name"></span>
           <span class="wb-doc-pill-type"></span>
           <span class="wb-doc-pill-caret" aria-hidden="true">▾</span>
         </button>
-        <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture what you're editing (or everything) and restore any capture later">${ICONS.history}</button>
       </div>
       <div class="wb-tree-sec-body" id="wb-tree-body"></div>
       <div class="wb-tree-sec-body wb-complib" id="wb-lp-library" hidden></div>
