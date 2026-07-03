@@ -2405,7 +2405,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
    things I keep seeing with the § mark live here". Two lines: the uppercase
    "Formatters" header sits alone on top; below it the ← back + 🕘 snapshot
    buttons (one grouped chip) lead the tabs. Paddings/font sizes stay tight so
-   the tab row never scrolls in a ~300px pane. */
+   the tab row fits a ~300px pane without scrolling; its overflow-x: auto is
+   the fallback for panes narrower than that. */
 .wb-fmt-tabs {
   flex: 0 0 auto; padding: 5px 6px 0 8px;
   border-bottom: 1px solid var(--wb-lp-border);
