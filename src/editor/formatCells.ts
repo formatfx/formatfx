@@ -16,6 +16,7 @@ import type { NodePath, SPElement, SPExpr } from '../core/types';
 import { state } from './state';
 import { COND_COLORS } from './condRules';
 import { createOverlay, type OverlayHandle } from './overlay';
+import { elementRefChip } from './elmRef';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -187,10 +188,11 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
 
-    // 🛡️ Sentinel: Prevent XSS by using textContent for user-defined element names
+    // 🛡️ Sentinel: element names go in via textContent (elementRefChip), never
+    // innerHTML — _elmName can be imported JSON.
     const title = document.createElement('span');
     title.className = 'wb-fc-title';
-    title.textContent = `Format cells — ${nameOf(node)}`;
+    title.append('Format cells — ', elementRefChip(node));
 
     const sub = document.createElement('span');
     sub.className = 'wb-fc-sub';

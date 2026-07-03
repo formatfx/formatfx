@@ -28,6 +28,7 @@ import { cfrFieldName } from '../core/refs';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
 import { state, CARD_SEGMENT } from './state';
 import { createOverlay, type OverlayHandle } from './overlay';
+import { elementRefChip } from './elmRef';
 
 const FAMILY_ORDER: StyleFamily[] = [
   'box', 'flex-container', 'flex-child', 'paint', 'type', 'place', 'fit', 'svg', 'table', 'misc',
@@ -419,13 +420,9 @@ function mount(opts: Opts): void {
     const headSub = document.createElement('span');
     headSub.className = 'wb-pg-sub';
     if (opts.mode === 'element' && targetNode) {
-      // nameOf() is _elmName — it arrives in pasted/imported JSON, so it must
-      // never pass through innerHTML (XSS; and the unnamed "<div>" placeholder
-      // would parse as a real tag and vanish)
-      headSub.append('restyling ');
-      const strong = document.createElement('b');
-      strong.textContent = nameOf(targetNode);
-      headSub.append(strong, ' — nothing is saved until you apply');
+      // Reference badge (tree icon + name) — textContent only, since _elmName
+      // arrives in pasted/imported JSON and must never pass through innerHTML.
+      headSub.append('restyling ', elementRefChip(targetNode), ' — nothing is saved until you apply');
     } else {
       headSub.textContent = 'consequence-free — nothing touches your formatter unless you apply it';
     }

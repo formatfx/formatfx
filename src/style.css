@@ -489,6 +489,25 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-tree-name { font-weight: 600; }
 .wb-tree-elmtype-dim { font-weight: 400; color: var(--wb-text-2); font-size: 10px; }
 .wb-tree-row.selected .wb-tree-elmtype-dim { color: inherit; opacity: .85; }
+
+/* Element reference badge (editor/elmRef.ts): one token that ties a modal's
+   "this is about X" sentence back to the element in the Structure tree — same
+   type-icon the tree uses, so a glance connects the two (issue #143). Sits
+   inline within dialog headings. */
+.wb-elmref {
+  display: inline-flex; align-items: center; gap: 4px;
+  vertical-align: middle; max-width: 100%;
+  padding: 1px 8px 1px 6px;
+  border: 1px solid var(--wb-border); border-radius: 999px;
+  background: var(--wb-surface);
+  line-height: 1.5;
+}
+.wb-elmref-icon { font-size: 12px; color: var(--wb-accent); flex: none; }
+.wb-elmref-name {
+  font-weight: 600; color: var(--wb-text);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-elmref-type { font-weight: 400; font-size: .85em; color: var(--wb-text-2); }
 .wb-tree-rename {
   font-family: inherit; font-size: 11px; padding: 1px 4px; width: 130px;
   border: 1px solid var(--wb-accent); border-radius: 2px;

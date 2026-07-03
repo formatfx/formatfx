@@ -1,9 +1,10 @@
 /**
- * editor/playground.ts — the header's "restyling <name>" line must render the
- * element's _elmName as TEXT, never as HTML. _elmName is user-controlled: it is
- * set by rename and arrives verbatim in pasted/imported formatter JSON, so an
- * innerHTML sink here is a stored-XSS vector. This pins the fix so a future
- * refactor can't quietly reintroduce it.
+ * editor/playground.ts — the header's "restyling <name>" line shows the element
+ * as a reference badge (editor/elmRef.ts). Its _elmName must render as TEXT,
+ * never as HTML: _elmName is user-controlled — set by rename and arriving
+ * verbatim in pasted/imported formatter JSON — so an innerHTML sink here is a
+ * stored-XSS vector. This pins the fix so a future refactor can't quietly
+ * reintroduce it.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { openElementPlayground, closePlayground } from './playground';
@@ -32,14 +33,18 @@ describe('style playground — element name rendering (XSS)', () => {
     expect((window as unknown as { __xss__?: number }).__xss__).toBeUndefined();
   });
 
-  it('still shows the friendly name in the intended <b> emphasis', () => {
+  it('shows the friendly name in a reference badge wearing the tree icon', () => {
     state.doc = {
       kind: 'column',
       root: { elmType: 'div', _elmName: 'Status pill', txtContent: 'hi' },
     };
     openElementPlayground([]);
 
-    const strong = document.body.querySelector('.wb-pg-sub b');
-    expect(strong?.textContent).toBe('Status pill');
+    const badge = document.body.querySelector('.wb-pg-sub .wb-elmref');
+    expect(badge).toBeTruthy();
+    // the name is emphasized inside the badge…
+    expect(badge!.querySelector('.wb-elmref-name')?.textContent).toBe('Status pill');
+    // …beside the same glyph the Structure tree shows for a <div>
+    expect(badge!.querySelector('i')?.className).toContain('ms-Icon--CubeShape');
   });
 });
