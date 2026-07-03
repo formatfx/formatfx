@@ -121,18 +121,21 @@ export function openTemplateModal(onToast: (m: string) => void): void {
   function renderActions(): void {
     actions.innerHTML = '';
     if (ui.stage === 'pick') return; // the gallery has no edit actions
-    const mk = (cls: string, label: string, title: string, disabled: boolean, onClick: () => void): HTMLButtonElement => {
+    const mk = (cls: string, label: string, title: string, disabled: boolean, onClick: () => void, ariaLabel?: string): HTMLButtonElement => {
       const b = el('button', `wb-template-action ${cls}`, label) as HTMLButtonElement;
       b.type = 'button';
       b.title = title;
+      // icon-only buttons need an explicit accessible name — title alone is
+      // not reliably announced (same convention as the leftPane toolbar)
+      if (ariaLabel) b.setAttribute('aria-label', ariaLabel);
       b.disabled = disabled;
       b.addEventListener('click', onClick);
       return b;
     };
     const blocker = applyBlocker(ui.config, comps);
     actions.append(
-      mk('wb-template-undo', '↶', 'Undo (Ctrl+Z) — inside the builder only', past.length === 0, undo),
-      mk('wb-template-redo', '↷', 'Redo (Ctrl+Shift+Z)', future.length === 0, redo),
+      mk('wb-template-undo', '↶', 'Undo (Ctrl+Z) — inside the builder only', past.length === 0, undo, 'Undo'),
+      mk('wb-template-redo', '↷', 'Redo (Ctrl+Shift+Z)', future.length === 0, redo, 'Redo'),
       mk('wb-template-cancel', 'Cancel', 'Close without touching the view', false, () => close()),
       mk('wb-template-apply', 'Save', blocker ?? 'Save this layout to the view (one Ctrl+Z on the canvas reverts it)', Boolean(blocker), doApply),
     );
