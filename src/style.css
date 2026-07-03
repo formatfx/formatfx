@@ -835,6 +835,38 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-bottom: 1px solid var(--wb-border); margin-bottom: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Element action menu header (editor/contextMenu.ts): the right-clicked element
+   drawn like its Structure-tree row (the elmRef chip), preceded by a clickable
+   parent crumb. It carries richer content than a field name, so it wraps rather
+   than clipping. */
+.wb-grid-menu-title.wb-grid-menu-title-el {
+  overflow: visible; text-overflow: clip; white-space: normal; padding-bottom: 8px;
+}
+/* wraps to a second line rather than stretching the menu; long names ellipsize
+   inside their chip */
+.wb-elmmenu-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; max-width: 280px;
+}
+.wb-elmmenu-crumb {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+}
+.wb-elmmenu-parent {
+  display: inline-flex; align-items: center; min-width: 0; max-width: 100%;
+  border: none; background: none; padding: 0; margin: 0; font: inherit; cursor: pointer;
+}
+/* the parent is the quieter, secondary step — a borderless, dim token so the
+   current element (the solid chip) stays the subject; it warms to the accent
+   and grows a border on hover/focus, the clear "door up a level" affordance */
+.wb-elmmenu-parent .wb-elmref { background: transparent; border-color: transparent; }
+.wb-elmmenu-parent .wb-elmref-name { color: var(--wb-text-2); font-weight: 500; }
+.wb-elmmenu-parent .wb-elmref-icon { color: var(--wb-text-2); }
+.wb-elmmenu-parent:hover .wb-elmref,
+.wb-elmmenu-parent:focus-visible .wb-elmref { border-color: var(--wb-accent); outline: none; }
+.wb-elmmenu-parent:hover .wb-elmref-name,
+.wb-elmmenu-parent:focus-visible .wb-elmref-name,
+.wb-elmmenu-parent:hover .wb-elmref-icon,
+.wb-elmmenu-parent:focus-visible .wb-elmref-icon { color: var(--wb-accent); }
+.wb-elmmenu-sep { color: var(--wb-text-2); font-size: 12px; line-height: 1; flex: none; }
 .wb-menu-row { display: flex; align-items: center; gap: 2px; }
 .wb-grid-menu button {
   display: flex; align-items: center; gap: 8px; width: 100%;

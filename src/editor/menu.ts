@@ -107,7 +107,7 @@ export function openRenamePopover(
   }, 0);
 }
 
-export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): void {
+export function openMenu(anchor: MenuAnchor, title: string | HTMLElement, items: MenuItem[]): void {
   closeMenu();
   const menu = document.createElement('div');
   // wb-esc-owner: this menu closes itself on Escape (menuCloser below) —
@@ -115,7 +115,15 @@ export function openMenu(anchor: MenuAnchor, title: string, items: MenuItem[]): 
   menu.className = 'wb-grid-menu wb-esc-owner';
   const head = document.createElement('div');
   head.className = 'wb-grid-menu-title';
-  head.textContent = title;
+  // A plain field/column title is single-line text; an element menu passes a
+  // rich node (its tree-style reference + a clickable parent crumb) — that
+  // wants room to wrap, so it opts out of the ellipsis rule.
+  if (typeof title === 'string') {
+    head.textContent = title;
+  } else {
+    head.classList.add('wb-grid-menu-title-el');
+    head.appendChild(title);
+  }
   menu.appendChild(head);
   for (const item of items) {
     const row = document.createElement('div');

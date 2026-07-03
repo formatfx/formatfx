@@ -15,8 +15,25 @@ import { openFormatCells } from './formatCells';
 import { copyNodes, pasteNodes } from './clipboard';
 import { areaWeightOf, WEIGHT_FLEX, WEIGHT_LABEL, type AreaWeight } from './areas';
 import { openSaveAsComponent } from './componentLibrary';
+import { elementRefChip } from './elmRef';
+import { cfrFieldName } from '../core/refs';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
+
+/** A CFR host borrows the referenced column's display name in the Structure
+ *  tree; mirror that here so the menu header reads like the row it names. */
+function cfrDisplayName(el: SPElement): string | null {
+  const cfrName = el.columnFormatterReference ? cfrFieldName(el.columnFormatterReference) : null;
+  if (cfrName === null) return null;
+  return state.fields.find((f) => f.name === cfrName)?.displayName ?? cfrName;
+}
+
+/** The element's tree-style reference token — the same icon + name + dim type
+ *  the Structure tree shows for this row (editor/elmRef.ts is the shared
+ *  source of truth), including the CFR borrowed-name behaviour. */
+function treeStyleRef(el: SPElement): HTMLElement {
+  return elementRefChip({ _elmName: el._elmName ?? cfrDisplayName(el) ?? undefined, elmType: el.elmType });
+}
 
 /** The shared "works on most things" action set for one element. */
 export function elementMenuItems(
@@ -167,6 +184,69 @@ function pathFromAttr(raw: string | undefined): NodePath | undefined {
   return raw === '' ? [] : raw.split('.').map(Number);
 }
 
+/**
+ * The menu header: the right-clicked element rendered like its Structure-tree
+ * row, preceded (when it isn't the root) by a clickable parent crumb. Clicking
+ * the crumb selects the parent and re-opens the menu on it — a breadcrumb that
+ * walks the selection up a level at a time.
+ */
+function elementMenuTitle(
+  path: NodePath,
+  pos: { x: number; y: number },
+  onToast: (m: string) => void,
+): HTMLElement {
+  const node = state.nodeAt(path)!;
+  const head = document.createElement('div');
+  head.className = 'wb-elmmenu-head';
+
+  const parentPath = path.slice(0, -1);
+  const parent = path.length > 0 ? state.nodeAt(parentPath) : null;
+  if (parent) {
+    const crumb = document.createElement('button');
+    crumb.type = 'button'; // never a submit button, wherever the menu mounts
+    crumb.className = 'wb-elmmenu-parent';
+    crumb.appendChild(treeStyleRef(parent));
+    const parentName = parent._elmName ?? cfrDisplayName(parent) ?? `<${parent.elmType}>`;
+    crumb.title = `Select the parent element (${parentName})`;
+    crumb.setAttribute('aria-label', crumb.title);
+    crumb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.select(parentPath);
+      openElementMenu(parentPath, pos, onToast);
+    });
+    // a double-click on the crumb must not bubble to canvas/tree handlers
+    crumb.addEventListener('dblclick', (e) => e.stopPropagation());
+    const sep = document.createElement('span');
+    sep.className = 'wb-elmmenu-sep';
+    sep.textContent = '›';
+    sep.setAttribute('aria-hidden', 'true');
+    // keep "parent ›" together so a wrap breaks before the current element,
+    // never orphaning the separator at the head of the next line
+    const crumbWrap = document.createElement('span');
+    crumbWrap.className = 'wb-elmmenu-crumb';
+    crumbWrap.append(crumb, sep);
+    head.append(crumbWrap);
+  }
+  head.appendChild(treeStyleRef(node));
+  return head;
+}
+
+/**
+ * Open the shared element action menu for `path`, headed by the element's
+ * tree-style reference and a clickable parent crumb. Callers own the initial
+ * selection: the tree preserves a live multi-selection (so "Group"/"Copy N"
+ * stay available), the canvas selects the clicked element first.
+ */
+export function openElementMenu(
+  path: NodePath,
+  pos: { x: number; y: number },
+  onToast: (m: string) => void,
+): void {
+  const node = state.nodeAt(path);
+  if (!node) return;
+  openMenu(pos, elementMenuTitle(path, pos, onToast), elementMenuItems(path, onToast, pos));
+}
+
 function openFor(e: MouseEvent, pathTarget: HTMLElement, onToast: (m: string) => void): void {
   const path = pathFromAttr(pathTarget.dataset.spPath);
   if (path === undefined) return;
@@ -174,7 +254,7 @@ function openFor(e: MouseEvent, pathTarget: HTMLElement, onToast: (m: string) =>
   if (!node) return;
   e.preventDefault();
   state.select(path);
-  openMenu({ x: e.clientX, y: e.clientY }, nameOf(node), elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }));
+  openElementMenu(path, { x: e.clientX, y: e.clientY }, onToast);
 }
 
 /** Wire right-click on the canvas (and card flyouts, which live on <body>). */
@@ -191,7 +271,7 @@ export function installPreviewContextMenu(host: HTMLElement, onToast: (m: string
       if (!node) return;
       e.preventDefault();
       state.select(path);
-      openMenu({ x: e.clientX, y: e.clientY }, nameOf(node), elementMenuItems(path, onToast, { x: e.clientX, y: e.clientY }));
+      openElementMenu(path, { x: e.clientX, y: e.clientY }, onToast);
     }
   });
   document.addEventListener('contextmenu', (e) => {
