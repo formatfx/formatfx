@@ -16,7 +16,7 @@ import {
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   type ComponentDef,
 } from './components';
-import { scanComponentUsages } from './componentUsage';
+import { scanComponentUsages, mainUsageLabel } from './componentUsage';
 import { importJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
@@ -307,6 +307,14 @@ describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
     const out = scanComponentUsages([DEF], main, {}, []);
     expect(out.get('c-gone')).toBeUndefined(); // no def carries that id
     expect(out.get('c-test')).toBeUndefined(); // in the doc: nothing stamped for it
+  });
+
+  it('mainUsageLabel: "View — X" normally, the column-formatter noun when the MAIN doc is one', () => {
+    const u = { kind: 'view' as const, path: [1], label: 'Deadline chip' };
+    expect(mainUsageLabel(u, false, 'Status')).toBe('View — Deadline chip');
+    // a JSON-tab-imported column formatter IS the main doc — the jump row
+    // must agree with the insert copy ("Add to the X column formatter")
+    expect(mainUsageLabel(u, true, 'Due date')).toBe('Due date column formatter — Deadline chip');
   });
 
   it('componentInsertTarget: an open column formatter wins; otherwise the view (grid flagged)', () => {

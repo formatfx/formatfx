@@ -43,7 +43,7 @@ import {
   componentFromFormatterDoc, componentInsertTarget,
   type ComponentDef, type ComponentInsertTarget,
 } from './components';
-import { scanComponentUsages, type ComponentUsage } from './componentUsage';
+import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
 
 function readCustom(): ComponentDef[] {
   try {
@@ -295,16 +295,24 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     // the usage list: one jump row per place, toggled by "Show usages"
     const list = document.createElement('div');
     list.className = 'wb-comp-usages';
+    list.id = `wb-comp-uses-${def.id}`; // aria-controls target for the toggle
     list.hidden = true;
+    // main-doc usages normally read "View — X", but the MAIN doc can itself
+    // be a column formatter (a JSON-tab import) — then the rows must speak
+    // the same column-formatter noun the insert copy does
+    const mainIsColumn = state.activeDocKey === 'main' && state.doc.kind === 'column';
+    const mainField = fieldLabel(state.currentFieldName);
     for (const u of inUse) {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'wb-comp-usage';
       if (u.kind === 'view') {
-        row.textContent = `View — ${u.label}`;
-        row.title = 'Jump to this instance in the view formatter';
+        row.textContent = mainUsageLabel(u, mainIsColumn, mainField);
+        row.title = mainIsColumn
+          ? `Jump to this instance in the ${mainField} column formatter`
+          : 'Jump to this instance in the view formatter';
         row.addEventListener('click', () => {
-          state.openMain(); // no-op when the view is already on the canvas
+          state.openMain(); // no-op when the main doc is already on the canvas
           state.select(u.path);
         });
       } else {
@@ -322,9 +330,12 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     show.className = 'wb-comp-showuses';
     show.textContent = 'Show usages';
     show.title = 'List every place this component is used — click one to jump there';
+    show.setAttribute('aria-expanded', 'false');
+    show.setAttribute('aria-controls', list.id);
     show.addEventListener('click', () => {
       list.hidden = !list.hidden;
       show.textContent = list.hidden ? 'Show usages' : 'Hide usages';
+      show.setAttribute('aria-expanded', String(!list.hidden));
     });
     const add = document.createElement('button');
     add.type = 'button';

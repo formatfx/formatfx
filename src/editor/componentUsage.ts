@@ -76,12 +76,23 @@ export function scanComponentUsages(
     el.children?.forEach((c) => stampedIn(c, ids));
     if (el.customCardProps?.formatter) stampedIn(el.customCardProps.formatter, ids);
   };
+  const subtypeByField = new Map(fields.map((f) => [f.name, f.subtype]));
   for (const [name, tree] of Object.entries(columnRefs)) {
     const ids = new Set<string>();
-    const tag = fields.find((f) => f.name === name)?.subtype;
+    const tag = subtypeByField.get(name);
     if (tag && byId.has(tag)) ids.add(tag);
     stampedIn(tree, ids);
     for (const id of ids) add(id, { kind: 'column', field: name });
   }
   return out;
+}
+
+/**
+ * The jump-row label for a MAIN-doc usage. The main doc is normally the view
+ * ("View — <label>"), but it can itself be a column formatter (a JSON-tab
+ * import) — then the row must speak the column-formatter noun or it would
+ * contradict the context-aware insert copy ("Add to the X column formatter").
+ */
+export function mainUsageLabel(u: ComponentViewUsage, mainIsColumn: boolean, fieldLabel: string): string {
+  return mainIsColumn ? `${fieldLabel} column formatter — ${u.label}` : `View — ${u.label}`;
 }
