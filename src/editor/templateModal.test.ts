@@ -9,21 +9,47 @@ beforeEach(() => {
   state.loadDocument({ kind: 'grid', root: { elmType: 'div', children: [] } });
 });
 
-/** Build a synthetic field-chip drop carrying the wb-field MIME. */
-function fieldDrop(name: string): Event {
+/** Build a synthetic chip/item drop carrying one of the builder MIMEs. */
+function drop(mime: string, payload: string): Event {
   const ev = new Event('drop', { bubbles: true, cancelable: true });
   (ev as unknown as { dataTransfer: unknown }).dataTransfer = {
-    getData: (t: string) => (t === 'application/x-wb-field' ? name : ''),
-    types: ['application/x-wb-field'],
+    getData: (t: string) => (t === mime ? payload : ''),
+    types: [mime],
   };
   return ev;
 }
+const fieldDrop = (name: string): Event => drop('application/x-wb-field', name);
+const componentDrop = (id: string): Event => drop('application/x-wb-component', id);
 
-describe('template modal — shell', () => {
-  it('opens with the modal + a preview region', () => {
+/** Open the builder and pick a wireframe (default: Lead + details → 2 zones). */
+function enterEditor(id = 'lead-detail'): void {
+  openTemplateModal(() => {});
+  (document.querySelector(`[data-wireframe="${id}"]`) as HTMLElement).click();
+}
+
+const zone = (zi: number): HTMLElement => document.querySelector(`[data-edit-zone="${zi}"]`) as HTMLElement;
+
+describe('row view builder — gallery + shell', () => {
+  it('opens on the wireframe gallery (visual cards, no dropdowns)', () => {
     openTemplateModal(() => {});
-    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
-    expect(document.querySelector('.wb-template-preview')).toBeTruthy();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    expect(document.querySelectorAll('.wb-wf-card').length).toBeGreaterThanOrEqual(5);
+    expect(document.querySelector('.wb-wf-thumb')).toBeTruthy(); // drawn thumbnails, not names alone
+    expect(document.querySelector('select')).toBeNull();
+  });
+
+  it('picking a wireframe enters the editor with its zones seeded', () => {
+    enterEditor();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(2); // Lead + Details
+    // the seeded Lead zone holds the text field
+    expect((document.querySelector('[data-edit-item="0:0"]') as HTMLElement).dataset.fieldName).toBe('Title');
+  });
+
+  it('the Layouts button returns to the gallery', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
   });
 
   it('Escape closes the modal (shared overlay teardown)', () => {
@@ -31,18 +57,11 @@ describe('template modal — shell', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.querySelector('.wb-template-modal')).toBeNull();
   });
-
-  it('opens in Edit mode with the rendered row as editable blocks (no dropdowns)', () => {
-    openTemplateModal(() => {});
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-mode')).toBe('edit');
-    expect(document.querySelectorAll('.wb-edit-block').length).toBe(3); // split → 3 areas
-    expect(document.querySelector('select')).toBeNull();                // dropdowns are gone
-  });
 });
 
-describe('template modal — row style inspector', () => {
+describe('row view builder — row style inspector', () => {
   it('greys a control when composeRowStyle disables it, showing the reason', () => {
-    openTemplateModal(() => {});
+    enterEditor();
     (document.querySelector('[data-rowstyle="card"]') as HTMLElement).click();
     const border = document.querySelector('[data-toggle="border"]') as HTMLElement;
     expect(border.classList.contains('wb-disabled')).toBe(true);
@@ -50,70 +69,133 @@ describe('template modal — row style inspector', () => {
   });
 });
 
-describe('template modal — direct manipulation on the preview', () => {
-  it('dropping a field chip on a block sets that block fieldName', () => {
-    openTemplateModal(() => {});
-    (document.querySelector('[data-edit-area="0"]') as HTMLElement).dispatchEvent(fieldDrop('Status'));
-    expect((document.querySelector('[data-edit-area="0"]') as HTMLElement).dataset.fieldName).toBe('Status');
+describe('row view builder — direct manipulation on the preview', () => {
+  it('dropping a field chip on a zone appends an item there', () => {
+    enterEditor();
+    const before = document.querySelectorAll('[data-edit-item^="0:"]').length;
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    const items = document.querySelectorAll('[data-edit-item^="0:"]');
+    expect(items.length).toBe(before + 1);
+    expect((items[items.length - 1] as HTMLElement).dataset.fieldName).toBe('Status');
   });
 
-  it('dropping a chip on the end-gap appends a new block', () => {
-    openTemplateModal(() => {});
-    const before = document.querySelectorAll('.wb-edit-block').length;
+  it('dropping a chip on the end-gap starts a NEW zone', () => {
+    enterEditor();
+    const before = document.querySelectorAll('.wb-edit-zone').length;
     (document.querySelector('.wb-edit-endgap') as HTMLElement).dispatchEvent(fieldDrop('Due'));
-    expect(document.querySelectorAll('.wb-edit-block').length).toBe(before + 1);
-    expect((document.querySelector(`[data-edit-area="${before}"]`) as HTMLElement).dataset.fieldName).toBe('Due');
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(before + 1);
+    expect((document.querySelector(`[data-edit-item="${before}:0"]`) as HTMLElement).dataset.fieldName).toBe('Due');
   });
 
-  it('selecting a block shows its block inspector (width + remove)', () => {
-    openTemplateModal(() => {});
-    (document.querySelector('[data-edit-area="1"]') as HTMLElement).click();
-    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Block 2');
-    expect(document.querySelector('[data-weight="wide"]')).toBeTruthy();
+  it('selecting a zone shows its behavior controls (width, wrap-when-tight, stacked)', () => {
+    enterEditor();
+    zone(1).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Details zone');
+    expect(document.querySelector('[data-zonesize="hug"]')).toBeTruthy();
+    expect(document.querySelector('[data-zoneflow="wrap"]')).toBeTruthy();
+    expect(document.querySelector('[data-zoneflow="stack"]')).toBeTruthy();
     expect(document.querySelector('.wb-template-remove')).toBeTruthy();
   });
 
-  it('Remove block drops the area from the config', () => {
-    openTemplateModal(() => {});
-    const before = document.querySelectorAll('.wb-edit-block').length;
-    (document.querySelector('[data-edit-area="0"]') as HTMLElement).click();
+  it('selecting an item shows its width + text controls', () => {
+    enterEditor();
+    (document.querySelector('[data-edit-item="0:0"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Title');
+    expect(document.querySelector('[data-itemwidth="natural"]')).toBeTruthy();
+    expect(document.querySelector('[data-wrap="truncate"]')).toBeTruthy();
+  });
+
+  it('Remove zone drops the zone from the config', () => {
+    enterEditor();
+    const before = document.querySelectorAll('.wb-edit-zone').length;
+    zone(0).click();
     (document.querySelector('.wb-template-remove') as HTMLButtonElement).click();
-    expect(document.querySelectorAll('.wb-edit-block').length).toBe(before - 1);
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(before - 1);
+  });
+
+  it('a divider click cycles the left zone size (visible in its tag)', () => {
+    enterEditor();
+    const tag = (): string => (zone(0).querySelector('.wb-edit-zone-tag') as HTMLElement).textContent ?? '';
+    expect(tag()).toContain('Fill 2×');   // Lead seeds wide
+    (document.querySelector('.wb-edit-divider') as HTMLElement).click();
+    expect(tag()).toContain('Fill 3×');   // wide → widest
+    (document.querySelector('.wb-edit-divider') as HTMLElement).click();
+    expect(tag()).toContain('Hug');       // widest → hug
   });
 });
 
-describe('template modal — modes & apply', () => {
+describe('row view builder — components in zones', () => {
+  it('dropping a component chip binds it best-guess and opens its slot mapping', () => {
+    enterEditor();
+    zone(1).dispatchEvent(componentDrop('builtin-deadline-chip'));
+    const item = document.querySelector('[data-component-id="builtin-deadline-chip"]') as HTMLElement;
+    expect(item).toBeTruthy();
+    // the new item is selected and its slot picker is prefilled with the date column
+    const slot = document.querySelector('select[data-slot="Due"]') as HTMLSelectElement;
+    expect(slot).toBeTruthy();
+    expect(slot.value).toBe('Due');
+    expect((document.querySelector('.wb-template-apply') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('an unmapped component slot blocks Apply with a teaching reason', () => {
+    enterEditor();
+    zone(1).dispatchEvent(componentDrop('builtin-deadline-chip'));
+    const slot = document.querySelector('select[data-slot="Due"]') as HTMLSelectElement;
+    slot.value = '';
+    slot.dispatchEvent(new Event('change'));
+    const apply = document.querySelector('.wb-template-apply') as HTMLButtonElement;
+    expect(apply.disabled).toBe(true);
+    expect(apply.title).toContain('Map every slot');
+  });
+});
+
+describe('row view builder — modes, squeeze & apply', () => {
   it('the Preview toggle removes edit affordances and makes chips inert', () => {
-    openTemplateModal(() => {});
+    enterEditor();
     (document.querySelector('[data-mode="preview"]') as HTMLElement).click();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-mode')).toBe('preview');
-    expect(document.querySelector('.wb-edit-block')).toBeNull();
+    expect(document.querySelector('.wb-edit-zone')).toBeNull();
     expect(document.querySelector('.wb-template-field-chip')?.classList.contains('wb-chip-inert')).toBe(true);
+  });
+
+  it('the width presets squeeze the stage so wrap behavior can be WATCHED', () => {
+    enterEditor();
+    (document.querySelector('[data-stagewidth="narrow"]') as HTMLElement).click();
+    expect((document.querySelector('.wb-template-stage') as HTMLElement).style.width).toBe('360px');
+    (document.querySelector('[data-stagewidth="full"]') as HTMLElement).click();
+    expect((document.querySelector('.wb-template-stage') as HTMLElement).style.width).toBe('');
   });
 
   it('Apply calls state.applyRowTemplate once and switches to a row view', () => {
     const spy = vi.spyOn(state, 'applyRowTemplate');
-    openTemplateModal(() => {});
+    enterEditor();
     (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
     expect(spy).toHaveBeenCalledTimes(1);
     expect(state.doc.kind).toBe('row');
     spy.mockRestore();
   });
 
-  it('Apply is disabled when no block has a field', () => {
-    openTemplateModal(() => {});
-    // clear all three seeded areas → nothing to apply
-    for (let i = 2; i >= 0; i--) {
-      (document.querySelector(`[data-edit-area="${i}"]`) as HTMLElement).click();
+  it('empty zones are pruned from the applied layout', () => {
+    enterEditor('dashboard'); // no number/person columns → Progress + People zones stay empty
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(state.doc.root.children!.length).toBe(2); // Title + Status only
+  });
+
+  it('Apply is disabled when no zone has an item', () => {
+    enterEditor();
+    for (const zi of [1, 0]) {
+      zone(zi).click();
       (document.querySelector('.wb-template-remove') as HTMLButtonElement).click();
     }
-    expect((document.querySelector('.wb-template-apply') as HTMLButtonElement).disabled).toBe(true);
+    const apply = document.querySelector('.wb-template-apply') as HTMLButtonElement;
+    expect(apply.disabled).toBe(true);
+    expect(apply.title).toContain('at least one');
   });
 });
 
-describe('template modal — dock persistence & kebab refusal hints', () => {
+describe('row view builder — dock persistence & kebab refusal hints', () => {
   it('remembers the inspector dock across close + reopen', () => {
-    openTemplateModal(() => {});
+    enterEditor();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('bottom');
     (document.querySelector('.wb-template-dock') as HTMLButtonElement).click();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-dock')).toBe('left');
@@ -125,7 +207,7 @@ describe('template modal — dock persistence & kebab refusal hints', () => {
   });
 
   it('a custom kebab action with a blank param shows an inline refusal hint (mirrors buildKebab)', () => {
-    openTemplateModal(() => {});
+    enterEditor();
     const check = (sel: string): void => {
       const cb = document.querySelector(`${sel} input`) as HTMLInputElement;
       cb.checked = true;

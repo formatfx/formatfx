@@ -1,18 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import {
-  composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView,
-  addArea, removeArea, moveArea, setAreaField, patchArea, nextWeight, childSlotOrder,
-  type RowTemplateConfig, type KebabConfig,
+  composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView, buildZone,
+  addZone, removeZone, moveZone, patchZone, newZone,
+  addItem, removeItem, moveItem, patchItem, newFieldItem, newComponentItem,
+  nextZoneSize, childSlotOrder, applyBlocker, WIREFRAMES,
+  type RowTemplateConfig, type KebabConfig, type ZoneConfig,
 } from './rowTemplates';
+import type { ComponentDef } from './components';
 import { themePalette } from '../core/theme';
 import type { MockField } from '../core/types';
 
 const PAL = themePalette('light');
 const base = (over: Partial<RowTemplateConfig> = {}): RowTemplateConfig => ({
-  templateId: 'equal', rowStyle: 'flat', density: 'roomy',
+  wireframeId: 'equal', rowStyle: 'flat', density: 'roomy',
   zebraStriping: false, hoverHighlight: false, hoverToken: 'themeLighter',
   borderStyle: 'none', borderColor: 'neutralQuaternaryAlt', leftStripe: 'none',
-  areas: [], kebab: { enabled: false, behavior: 'custom', position: 'right',
+  zones: [], kebab: { enabled: false, behavior: 'custom', position: 'right',
     actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } },
   ...over,
 });
@@ -105,28 +108,165 @@ describe('buildKebab — trigger shape + refuse-and-teach', () => {
 });
 
 const FIELDS: MockField[] = [
-  { name: 'Title', type: 'text' }, { name: 'Status', type: 'choice' }, { name: 'Due', type: 'date' },
+  { name: 'Title', type: 'text' }, { name: 'Status', type: 'choice' },
+  { name: 'Due', type: 'date' }, { name: 'Owner', type: 'person' },
 ];
 
-describe('defaultConfigFor + buildTemplateView', () => {
-  it('split skeleton seeds a Title area + 2 content areas', () => {
-    const c = defaultConfigFor('split', FIELDS);
-    expect(c.areas.length).toBe(3);
-    expect(c.areas[0].fieldName).toBe('Title');
-    expect(c.areas[0].weight).toBe('wide'); // Title gets the heavier area
+const CHIP: ComponentDef = {
+  id: 'test-chip', name: 'Test chip', description: 'test', builtin: true,
+  slots: [{ key: 'Due', label: 'The date', types: ['date'] }],
+  root: { elmType: 'div', txtContent: '=[$Due]', style: { 'display': 'inline-flex' } },
+};
+
+describe('wireframe seeding (defaultConfigFor)', () => {
+  it('every wireframe id seeds without throwing and keeps its zone shape', () => {
+    for (const wf of WIREFRAMES) {
+      const c = defaultConfigFor(wf.id, FIELDS);
+      expect(c.zones.length).toBe(wf.zones.length);
+      expect(c.zones.map((z) => z.size)).toEqual(wf.zones.map((z) => z.size));
+      expect(c.zones.map((z) => z.flow)).toEqual(wf.zones.map((z) => z.flow));
+    }
   });
 
-  it('areas become CFR/value cells with conflict-free weights (areas.ts reuse)', () => {
-    const c = defaultConfigFor('equal', FIELDS);
-    const { root } = buildTemplateView(c, FIELDS, {}, themePalette('light'));
-    expect(root.children!.length).toBe(c.areas.length);
-    for (const area of root.children!) expect(area.style!['min-width']).toBe('0'); // setAreaWeight invariant
+  it('avatar-card puts the person in the hug zone and the text in the stack zone', () => {
+    const c = defaultConfigFor('avatar-card', FIELDS);
+    expect(c.zones[0].items[0]).toMatchObject({ kind: 'field', fieldName: 'Owner', width: 'natural' });
+    expect(c.zones[1].items[0]).toMatchObject({ kind: 'field', fieldName: 'Title', width: 'fill' });
+  });
+
+  it('a field is never seeded twice across zones', () => {
+    const c = defaultConfigFor('dashboard', FIELDS);
+    const names = c.zones.flatMap((z) => z.items).map((it) => it.kind === 'field' ? it.fieldName : '');
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('a want-slot with no matching column seeds nothing (never guesses)', () => {
+    const c = defaultConfigFor('dashboard', FIELDS); // schema has no number column
+    const progress = c.zones.find((z) => z.label === 'Progress')!;
+    expect(progress.items.length).toBe(0);
+  });
+
+  it('blank seeds one empty wrap zone… unless the schema would leave the whole row empty elsewhere', () => {
+    const c = defaultConfigFor('blank', FIELDS);
+    // blank has a single zone, so the never-fully-empty rule seeds the first field
+    expect(c.zones.length).toBe(1);
+    expect(c.zones[0].flow).toBe('wrap');
+    expect(c.zones[0].items[0]).toMatchObject({ kind: 'field', fieldName: 'Title' });
+  });
+});
+
+describe('buildZone — the flex behavior contract', () => {
+  const zone = (over: Partial<ZoneConfig>): ZoneConfig =>
+    ({ label: 'Z', size: 'normal', flow: 'side', align: 'left', items: [], ...over });
+
+  it('hug zones take only their content (no grow, no min-width:0)', () => {
+    const el = buildZone(zone({ size: 'hug' }), FIELDS, {}, []);
+    expect(el.style!['flex']).toBe('0 0 auto');
+    expect(el.style!['min-width']).toBeUndefined();
+  });
+
+  it('fill zones reuse the conflict-free area weights and may shrink', () => {
+    expect(buildZone(zone({ size: 'wide' }), FIELDS, {}, []).style!['flex']).toBe('2');
+    expect(buildZone(zone({ size: 'widest' }), FIELDS, {}, []).style!['min-width']).toBe('0');
+  });
+
+  it('wrap flow sets flex-wrap so squeezed items move beneath their neighbor', () => {
+    const el = buildZone(zone({ flow: 'wrap' }), FIELDS, {}, []);
+    expect(el.style!['flex-wrap']).toBe('wrap');
+    expect(el.style!['flex-direction']).toBeUndefined();
+  });
+
+  it('stack flow is a column and never wraps', () => {
+    const el = buildZone(zone({ flow: 'stack' }), FIELDS, {}, []);
+    expect(el.style!['flex-direction']).toBe('column');
+    expect(el.style!['flex-wrap']).toBeUndefined();
+  });
+
+  it('wrap-flow fill items keep their natural minimum (no min-width:0) so they wrap instead of crushing', () => {
+    const z = zone({ flow: 'wrap' });
+    z.items = [newFieldItem('Title', z), newFieldItem('Status', z)];
+    const el = buildZone(z, FIELDS, {}, []);
+    for (const item of el.children!) {
+      expect(item.style!['flex']).toBe('1 1 auto');
+      expect(item.style!['min-width']).toBeUndefined();
+    }
+  });
+
+  it('side-flow fill items share the line and may truncate (flex 1 1 0% + min-width:0)', () => {
+    const z = zone({ flow: 'side' });
+    z.items = [newFieldItem('Title', z)];
+    const el = buildZone(z, FIELDS, {}, []);
+    expect(el.children![0].style!['flex']).toBe('1 1 0%');
+    expect(el.children![0].style!['min-width']).toBe('0');
+    expect(el.children![0].style!['text-overflow']).toBe('ellipsis');
+  });
+
+  it('natural items hug their content in every flow', () => {
+    const z = zone({ flow: 'wrap' });
+    z.items = [{ ...newFieldItem('Status', z), width: 'natural' }];
+    const el = buildZone(z, FIELDS, {}, []);
+    expect(el.children![0].style!['flex']).toBe('0 0 auto');
+    expect(el.children![0].style!['max-width']).toBe('100%');
+  });
+
+  it('a component item is bound via its map AND stamped as an instance', () => {
+    const z = zone({});
+    z.items = [newComponentItem(CHIP.id, { Due: 'Due' })];
+    const el = buildZone(z, FIELDS, {}, [CHIP]);
+    expect(el.children![0].txtContent).toBe('=[$Due]');
+    expect(el.children![0]._component).toEqual({ id: 'test-chip', map: { Due: 'Due' } });
+  });
+
+  it('a component item remaps slot keys to the mapped column', () => {
+    const z = zone({});
+    z.items = [newComponentItem(CHIP.id, { Due: 'Status' })];
+    const el = buildZone(z, FIELDS, {}, [CHIP]);
+    expect(el.children![0].txtContent).toBe('=[$Status]');
+  });
+
+  it('a deleted component renders an honest placeholder, never a guess', () => {
+    const z = zone({});
+    z.items = [newComponentItem('gone', {})];
+    const el = buildZone(z, FIELDS, {}, [CHIP]);
+    expect(el.children![0].txtContent).toContain('missing component');
+  });
+
+  it('every zone + item style key is on the SP allow-list', async () => {
+    const { ALLOWED_STYLES } = await import('../core/schema');
+    for (const flow of ['side', 'wrap', 'stack'] as const) {
+      for (const align of ['left', 'center', 'right'] as const) {
+        const z = zone({ flow, align, size: flow === 'stack' ? 'hug' : 'wide' });
+        z.items = [newFieldItem('Title', z), { ...newFieldItem('Status', z), width: 'natural' }];
+        const el = buildZone(z, FIELDS, {}, []);
+        for (const k of Object.keys(el.style!)) expect(ALLOWED_STYLES.has(k), `zone ${k}`).toBe(true);
+        for (const item of el.children!) {
+          for (const k of Object.keys(item.style!)) expect(ALLOWED_STYLES.has(k), `item ${k}`).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe('buildTemplateView over zones', () => {
+  it('renders one child per zone (plus nothing else) with zone names', () => {
+    const c = defaultConfigFor('avatar-card', FIELDS);
+    const { root } = buildTemplateView(c, FIELDS, {}, PAL);
+    expect(root.children!.length).toBe(3);
+    expect(root.children![0]._elmName).toBe('Who zone');
+  });
+
+  it('prune drops empty zones on Apply builds only', () => {
+    const c = defaultConfigFor('dashboard', FIELDS); // Progress zone is empty (no number col)
+    const kept = buildTemplateView(c, FIELDS, {}, PAL).root.children!.length;
+    const pruned = buildTemplateView(c, FIELDS, {}, PAL, [], { prune: true }).root.children!.length;
+    expect(kept).toBe(4);
+    expect(pruned).toBe(3);
   });
 
   it('zebra lands on the returned additionalRowClass, never on root style', () => {
     const c = defaultConfigFor('equal', FIELDS);
     c.zebraStriping = true;
-    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, themePalette('light'));
+    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, PAL);
     expect(additionalRowClass).toBe("=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
     expect(root.style!['background-color']).toBeUndefined();
   });
@@ -135,84 +275,138 @@ describe('defaultConfigFor + buildTemplateView', () => {
     const c = defaultConfigFor('equal', FIELDS);
     c.kebab = { enabled: true, behavior: 'custom', position: 'hover',
       actions: { defaultClick: true, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } };
-    const { root } = buildTemplateView(c, FIELDS, {}, themePalette('light'));
+    const { root } = buildTemplateView(c, FIELDS, {}, PAL);
     expect((root.attributes!.class as string)).toContain('sp-card-showOnHoverParent');
-    const kebab = root.children![root.children!.length - 1];
-    expect((kebab.attributes!.class as string)).toContain('sp-card-showOnHoverChild');
+    const keb = root.children![root.children!.length - 1];
+    expect((keb.attributes!.class as string)).toContain('sp-card-showOnHoverChild');
+  });
+
+  it('a CFR-registered field still lands as a reference cell inside its zone', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    const refs: Record<string, import('../core/types').SPElement> = { Title: { elmType: 'div' } };
+    const { root } = buildTemplateView(c, FIELDS, refs, PAL);
+    const items = root.children!.flatMap((z) => z.children ?? []);
+    expect(items.some((it) => it.columnFormatterReference)).toBe(true);
   });
 });
 
-// ─── free-form area ops + the editor's children→area mapping (overhaul) ──────
+// ─── free-form zone/item ops + the editor's children→zone mapping ────────────
 
 const NATIVE_ACTIONS = { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false };
 
-describe('area ops (pure, immutable)', () => {
-  const cfg = (): RowTemplateConfig => defaultConfigFor('split', FIELDS);
+describe('zone + item ops (pure, immutable)', () => {
+  const cfg = (): RowTemplateConfig => defaultConfigFor('avatar-card', FIELDS);
 
-  it('addArea appends an empty area without mutating the source', () => {
+  it('addZone appends an empty wrap zone without mutating the source', () => {
     const a = cfg();
-    const n0 = a.areas.length;
-    const b = addArea(a);
+    const n0 = a.zones.length;
+    const b = addZone(a);
     expect(b).not.toBe(a);
-    expect(a.areas.length).toBe(n0);                 // source untouched
-    expect(b.areas.length).toBe(n0 + 1);
-    expect(b.areas.at(-1)?.fieldName).toBe('');
+    expect(a.zones.length).toBe(n0);                 // source untouched
+    expect(b.zones.length).toBe(n0 + 1);
+    expect(b.zones.at(-1)?.items).toEqual([]);
+    expect(b.zones.at(-1)?.flow).toBe('wrap');       // graceful-shrink default
   });
 
-  it('addArea can seed the new area with a field', () => {
-    expect(addArea(cfg(), 'Due').areas.at(-1)?.fieldName).toBe('Due');
-  });
-
-  it('removeArea splices the given index', () => {
+  it('removeZone splices the given index', () => {
     const a = cfg();
-    expect(removeArea(a, 1).areas.length).toBe(a.areas.length - 1);
+    expect(removeZone(a, 1).zones.length).toBe(a.zones.length - 1);
   });
 
-  it('moveArea reorders; out-of-range is a no-op (same ref)', () => {
+  it('moveZone reorders; out-of-range/NaN is a no-op (same ref)', () => {
     const a = cfg();
-    const first = a.areas[0].fieldName;
-    expect(moveArea(a, 0, 2).areas[2].fieldName).toBe(first);
-    expect(moveArea(a, 0, 9)).toBe(a);
+    const first = a.zones[0].label;
+    expect(moveZone(a, 0, 2).zones[2].label).toBe(first);
+    expect(moveZone(a, 0, 9)).toBe(a);
+    expect(moveZone(a, Number.NaN, 1)).toBe(a);
   });
 
-  it('setAreaField / patchArea update one area immutably', () => {
+  it('patchZone updates one zone immutably', () => {
     const a = cfg();
-    expect(setAreaField(a, 0, 'Status').areas[0].fieldName).toBe('Status');
-    expect(patchArea(a, 0, { align: 'center', weight: 'widest' }).areas[0]).toMatchObject({ align: 'center', weight: 'widest' });
-    expect(a.areas[0].align).toBe('left');           // source untouched
+    expect(patchZone(a, 0, { size: 'widest', flow: 'wrap' }).zones[0]).toMatchObject({ size: 'widest', flow: 'wrap' });
+    expect(a.zones[0].size).toBe('hug');             // source untouched
   });
 
-  it('nextWeight cycles normal → wide → widest → normal', () => {
-    expect(nextWeight('normal')).toBe('wide');
-    expect(nextWeight('wide')).toBe('widest');
-    expect(nextWeight('widest')).toBe('normal');
+  it('addItem/removeItem work on one zone', () => {
+    const a = cfg();
+    const b = addItem(a, 0, newFieldItem('Due', a.zones[0]));
+    expect(b.zones[0].items.length).toBe(a.zones[0].items.length + 1);
+    expect(removeItem(b, 0, 0).zones[0].items.length).toBe(a.zones[0].items.length);
+  });
+
+  it('moveItem moves across zones (and clamps the target index)', () => {
+    const a = cfg();
+    const moved = moveItem(a, 1, 0, 2, 99); // Main's title → end of When
+    expect(moved.zones[1].items.length).toBe(a.zones[1].items.length - 1);
+    expect(moved.zones[2].items.length).toBe(a.zones[2].items.length + 1);
+    expect(moved.zones[2].items.at(-1)).toMatchObject({ fieldName: 'Title' });
+    expect(a.zones[1].items.length).toBe(2);         // source untouched
+  });
+
+  it('moveItem reorders within a zone', () => {
+    const a = cfg();
+    const b = moveItem(a, 1, 0, 1, 1);
+    expect(b.zones[1].items.map((it) => it.kind === 'field' ? it.fieldName : '')).toEqual(['Status', 'Title']);
+  });
+
+  it('patchItem updates one item immutably', () => {
+    const a = cfg();
+    const b = patchItem(a, 1, 0, { width: 'natural', text: 'wrap' });
+    expect(b.zones[1].items[0]).toMatchObject({ width: 'natural', text: 'wrap' });
+    expect(a.zones[1].items[0]).toMatchObject({ width: 'fill' });
+  });
+
+  it('nextZoneSize cycles hug → normal → wide → widest → hug', () => {
+    expect(nextZoneSize('hug')).toBe('normal');
+    expect(nextZoneSize('normal')).toBe('wide');
+    expect(nextZoneSize('wide')).toBe('widest');
+    expect(nextZoneSize('widest')).toBe('hug');
+  });
+});
+
+describe('applyBlocker — refuse-and-teach before Apply', () => {
+  it('blocks an all-empty layout', () => {
+    const c = base({ zones: [newZone()] });
+    expect(applyBlocker(c, [])).toContain('at least one');
+  });
+
+  it('blocks an unmapped component slot, naming the component', () => {
+    let c = base({ zones: [newZone()] });
+    c = addItem(c, 0, newComponentItem(CHIP.id, { Due: '' }));
+    expect(applyBlocker(c, [CHIP])).toContain('Test chip');
+  });
+
+  it('passes a mapped layout', () => {
+    let c = base({ zones: [newZone()] });
+    c = addItem(c, 0, newComponentItem(CHIP.id, { Due: 'Due' }));
+    expect(applyBlocker(c, [CHIP])).toBeNull();
   });
 });
 
 describe('childSlotOrder mirrors buildTemplateView child order (incl. spliced kebab)', () => {
   const len = (c: RowTemplateConfig): number =>
-    buildTemplateView(c, FIELDS, {}, themePalette('light')).root.children?.length ?? 0;
+    buildTemplateView(c, FIELDS, {}, PAL).root.children?.length ?? 0;
 
-  it('no kebab → one slot per area, in order', () => {
-    const c = defaultConfigFor('split', FIELDS);
+  it('no kebab → one slot per zone, in order', () => {
+    const c = defaultConfigFor('avatar-card', FIELDS);
     expect(childSlotOrder(c)).toEqual([0, 1, 2]);
     expect(childSlotOrder(c).length).toBe(len(c));
   });
 
   it('kebab right → appended last', () => {
-    const c: RowTemplateConfig = { ...defaultConfigFor('split', FIELDS), kebab: { enabled: true, behavior: 'native', position: 'right', actions: { ...NATIVE_ACTIONS } } };
+    const c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), kebab: { enabled: true, behavior: 'native', position: 'right', actions: { ...NATIVE_ACTIONS } } };
     expect(childSlotOrder(c)).toEqual([0, 1, 2, 'kebab']);
     expect(childSlotOrder(c).length).toBe(len(c));
   });
 
-  it('kebab title → spliced after the first area', () => {
-    const c: RowTemplateConfig = { ...defaultConfigFor('split', FIELDS), kebab: { enabled: true, behavior: 'native', position: 'title', actions: { ...NATIVE_ACTIONS } } };
+  it('kebab title → spliced after the first zone', () => {
+    const c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), kebab: { enabled: true, behavior: 'native', position: 'title', actions: { ...NATIVE_ACTIONS } } };
     expect(childSlotOrder(c)).toEqual([0, 'kebab', 1, 2]);
     expect(childSlotOrder(c).length).toBe(len(c));
   });
 
   it('a refused (all-blank custom) kebab leaves no slot', () => {
-    const c: RowTemplateConfig = { ...defaultConfigFor('split', FIELDS), kebab: { enabled: true, behavior: 'custom', position: 'right', actions: { ...NATIVE_ACTIONS } } };
+    const c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), kebab: { enabled: true, behavior: 'custom', position: 'right', actions: { ...NATIVE_ACTIONS } } };
     expect(childSlotOrder(c)).toEqual([0, 1, 2]);     // buildKebab → null, not placed
     expect(childSlotOrder(c).length).toBe(len(c));
   });

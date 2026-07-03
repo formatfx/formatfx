@@ -1,48 +1,83 @@
 /**
- * editor/templateUi.ts — small shared primitives for the row-template modal's
- * three regions (fields bar, preview canvas, inspector). Keeps el()/segmented()/
- * the drag MIMEs and the UI<->Api contract in one place so the region modules
- * stay focused. No state import — everything flows through ModalApi.
+ * editor/templateUi.ts — small shared primitives for the row-view builder's
+ * regions (chips bar, gallery + preview canvas, inspector). Keeps el()/
+ * segmented()/the drag MIMEs and the UI<->Api contract in one place so the
+ * region modules stay focused. No state import — everything flows through
+ * ModalApi.
  */
-import type { RowTemplateConfig, RowAreaConfig, RowTemplateId } from './rowTemplates';
+import type { RowTemplateConfig, WireframeId, ZoneConfig, ZoneItemPatch } from './rowTemplates';
+import type { ComponentDef } from './components';
 
-/** Drag MIME for a field chip → block. Mirrors the palette/tree/grid channels. */
+/** Drag MIME for a field chip → zone. Mirrors the palette/tree/grid channels. */
 export const FIELD_MIME = 'application/x-wb-field';
-/** Drag MIME for a block → block reorder (distinct, so a drop can tell them apart). */
-export const ORDER_MIME = 'application/x-wb-area-order';
+/** Drag MIME for a component chip → zone (payload: the component id). */
+export const COMPONENT_MIME = 'application/x-wb-component';
+/** Drag MIME for a zone → zone reorder (payload: the zone index). */
+export const ZONE_MIME = 'application/x-wb-zone-order';
+/** Drag MIME for an item move (payload: "zoneIdx:itemIdx"). */
+export const ITEM_MIME = 'application/x-wb-zone-item';
 
 export type Mode = 'edit' | 'preview';
 export type Dock = 'bottom' | 'left';
+/** 'pick' = the wireframe gallery; 'edit' = the zone canvas. */
+export type Stage = 'pick' | 'edit';
 
-/** Modal-local UI state — the single source of truth while the modal is open. */
+/** What's selected on the canvas: a zone, or one item inside a zone. */
+export type Selection = { zone: number; item: number | null } | null;
+
+/** The preview width presets — how makers *watch* zones shrink and items wrap.
+ *  null = full width; numbers are stage widths in px. */
+export const STAGE_WIDTHS: readonly (readonly [string, number | null])[] = [
+  ['Full', null], ['Medium', 560], ['Narrow', 360],
+];
+
+/** Modal-local UI state — the single source of truth while the builder is open. */
 export interface ModalUI {
   config: RowTemplateConfig;
+  stage: Stage;
   mode: Mode;
-  selected: number | null; // selected area index, or null = row-level view
+  selected: Selection;
   dock: Dock;
+  /** Simulated row width in px (the squeeze scrubber); null = full width. */
+  stageWidth: number | null;
 }
 
 /** Everything the region renderers may do — all mutations funnel through here so
  *  each gesture is one immutable config update followed by one rerender. */
 export interface ModalApi {
-  select(i: number): void;
+  selectZone(zi: number): void;
+  selectItem(zi: number, ii: number): void;
   selectKebab(): void;
   deselect(): void;
-  assign(i: number, field: string): void;
-  add(field: string): void;
-  remove(i: number): void;
-  reorder(from: number, to: number): void;
-  cycleWeight(i: number): void;
-  patchArea(i: number, patch: Partial<RowAreaConfig>): void;
+  /** Drop a field chip into a zone (appends an item). */
+  dropField(zi: number, field: string): void;
+  /** Drop a component chip into a zone (appends a best-guess-mapped item). */
+  dropComponent(zi: number, componentId: string): void;
+  /** Drop on the end gap: a NEW zone seeded with the payload. */
+  dropNewZone(payload: { field?: string; componentId?: string }): void;
+  removeZone(zi: number): void;
+  reorderZone(from: number, to: number): void;
+  cycleZoneSize(zi: number): void;
+  patchZone(zi: number, patch: Partial<Omit<ZoneConfig, 'items'>>): void;
+  removeItem(zi: number, ii: number): void;
+  moveItem(fromZone: number, fromItem: number, toZone: number, toItem: number): void;
+  patchItem(zi: number, ii: number, patch: ZoneItemPatch): void;
   setConfig(next: RowTemplateConfig): void;
-  reseed(id: RowTemplateId): void;
+  /** Seed from a wireframe and enter the editor (confirms over placed work). */
+  pickWireframe(id: WireframeId): void;
+  /** Back to the gallery (the current config is kept until a pick). */
+  openGallery(): void;
   setMode(m: Mode): void;
   toggleDock(): void;
+  setStageWidth(w: number | null): void;
   apply(): void;
   cancel(): void;
   notify(msg: string): void;
   palette(): Record<string, string>;
-  canApply(): boolean;
+  /** Built-ins + the maker's saved components (element-kind), cached per open. */
+  components(): ComponentDef[];
+  /** Why Apply is blocked, or null when it may proceed. */
+  applyBlocker(): string | null;
 }
 
 export function el(tag: string, cls?: string, text?: string): HTMLElement {
