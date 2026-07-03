@@ -207,6 +207,59 @@ describe('reparentNode', () => {
     s.reparentNode([0], [0, 0]); // try to move A into its own child B
     expect(JSON.stringify(s.doc)).toBe(before);
   });
+
+  it('dropping onto a solo-CFR host splits the reference into its own child (no absorption)', () => {
+    const s = new EditorState();
+    s.doc = {
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'span', _elmName: 'Extra', txtContent: '[$Title]' },
+          {
+            elmType: 'div',
+            _elmName: 'Status',
+            columnFormatterReference: '[$Status]',
+            style: { 'flex': '1', 'min-width': '0' },
+          },
+        ],
+      },
+    };
+    // drop Extra (index 0) onto the Status CFR host (index 1)
+    s.reparentNode([0], [1]);
+    // removing Extra shifts the host to index 0; it is now a plain container
+    const host = s.doc.root.children![0];
+    expect(host.columnFormatterReference).toBeUndefined(); // no longer absorbs
+    expect(host._elmName).toBeUndefined(); // the column name went down with the ref
+    expect(host.style).toEqual({ 'flex': '1', 'min-width': '0' }); // slot styles stay put
+    // the div now HOSTS the reference and the dropped node as siblings
+    expect(host.children!.map((c) => c.columnFormatterReference)).toEqual(['[$Status]', undefined]);
+    expect(host.children![0]._elmName).toBe('Status'); // ref cell keeps the column name
+    expect(host.children![1]._elmName).toBe('Extra');
+    // one undo reverts the whole restructure
+    s.undo();
+    expect(s.doc.root.children![1].columnFormatterReference).toBe('[$Status]');
+    expect(s.doc.root.children![1].children).toBeUndefined();
+  });
+
+  it('inserting into a solo-CFR host splits the reference out too', () => {
+    const s = new EditorState();
+    s.doc = {
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'div', _elmName: 'Status', columnFormatterReference: '[$Status]' },
+        ],
+      },
+    };
+    const path = s.insertNode({ elmType: 'span', txtContent: 'new' }, [0]);
+    expect(path).toEqual([0, 1]); // beside the extracted ref, not swallowed
+    const host = s.doc.root.children![0];
+    expect(host.columnFormatterReference).toBeUndefined();
+    expect(host.children!.map((c) => c.columnFormatterReference)).toEqual(['[$Status]', undefined]);
+    expect(s.nodeAt(path)?.txtContent).toBe('new');
+  });
 });
 
 describe('applyColumnSubtype: snapshot apply as ONE undoable mutation (US-3)', () => {
