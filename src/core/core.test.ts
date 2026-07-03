@@ -544,6 +544,18 @@ describe('serializer', () => {
     expect(kept.children[0]._elmName).toBe('Label');
     expect(exportJson(doc, { keepMeta: false })).not.toContain('_elmName');
   });
+
+  it('_component instance provenance ships by default and strips with keepMeta:false (like _elmName)', () => {
+    const doc = importJson(JSON.stringify({
+      elmType: 'div', _component: { id: 'c-1', map: { Due: 'DueDate' } },
+      children: [{ elmType: 'span', txtContent: '[$DueDate]' }],
+    }));
+    // round-trips through the JSON tab: import keeps it, default export ships it
+    expect(doc.root._component).toEqual({ id: 'c-1', map: { Due: 'DueDate' } });
+    const kept = JSON.parse(exportJson(doc));
+    expect(kept._component).toEqual({ id: 'c-1', map: { Due: 'DueDate' } });
+    expect(exportJson(doc, { keepMeta: false })).not.toContain('_component');
+  });
 });
 
 describe('schema docs', () => {

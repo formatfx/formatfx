@@ -9,17 +9,19 @@
 import { describe, it, expect } from 'vitest';
 import {
   remapFieldRefs, fieldRefsIn, containsCfr, deriveSlots, widenType,
-  bestGuessMapping, mappingComplete, bindComponent, isSingleColumnComponent,
+  bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
+  componentInsertTarget, isSingleColumnComponent,
   loadComponents, serializeComponents, addComponent, removeComponent, componentId,
   componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   type ComponentDef,
 } from './components';
+import { scanComponentUsages } from './componentUsage';
 import { importJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
 import { defaultFields, defaultRows, state } from './state';
-import type { SPElement } from '../core/types';
+import type { SPElement, MockField } from '../core/types';
 import type { EvalContext } from '../core/expressions';
 
 const DEF: ComponentDef = {
@@ -237,6 +239,83 @@ describe('row components + the formatter-JSON import bridge', () => {
       version: 1, components: [{ ...row, additionalRowClass: 'zebra' }],
     }));
     expect(good[0].additionalRowClass).toBe('zebra');
+  });
+});
+
+describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
+  it('bindComponentInstance stamps { id, map }; plain bindComponent stays clean for previews', () => {
+    const inst = bindComponentInstance(DEF, { Due: 'DueDate', Person: 'Owner' });
+    expect(inst._component).toEqual({ id: 'c-test', map: { Due: 'DueDate', Person: 'Owner' } });
+    expect(inst.txtContent).toBe("=if([$DueDate]<@now,'late','ok')"); // still binds
+    expect(inst._elmName).toBe('Test comp'); // still names
+    expect(bindComponent(DEF, { Due: 'DueDate', Person: 'Owner' })._component).toBeUndefined();
+  });
+
+  const stamp = (label?: string): SPElement => ({
+    elmType: 'div',
+    _component: { id: 'c-test', map: { Due: 'DueDate' } },
+    ...(label ? { _elmName: label } : {}),
+  });
+
+  it('finds stamped view usages by NodePath — a stamped root, children, and card content', () => {
+    const main: SPElement = {
+      elmType: 'div',
+      children: [
+        { elmType: 'span' },
+        stamp('Deadline chip'),
+        {
+          elmType: 'div',
+          customCardProps: { formatter: stamp(), openOnEvent: 'hover' },
+        },
+      ],
+    };
+    const out = scanComponentUsages([DEF], main, {}, []);
+    expect(out.get('c-test')).toEqual([
+      { kind: 'view', path: [1], label: 'Deadline chip' },
+      // card content rides the CARD_SEGMENT (-1) path convention; the
+      // label falls back to the def's name when the subtree is unnamed
+      { kind: 'view', path: [2, -1], label: 'Test comp' },
+    ]);
+    // a row component IS the root — path [] is a usage too
+    const asRoot = scanComponentUsages([DEF], stamp('My row'), {}, []);
+    expect(asRoot.get('c-test')).toEqual([{ kind: 'view', path: [], label: 'My row' }]);
+  });
+
+  it('column usages: the subtype tag and a stamped subtree both count, ONCE per column, only when registered', () => {
+    const fields: MockField[] = [
+      { name: 'Status', type: 'choice', subtype: 'c-test' },
+      { name: 'Ghost', type: 'text', subtype: 'c-test' }, // tagged but never registered
+    ];
+    const refs: Record<string, SPElement> = {
+      // tag AND stamp agree → still one usage
+      Status: stamp(),
+      // no tag, but a stamped subtree deep in the registered tree
+      DueDate: { elmType: 'div', children: [{ elmType: 'span' }, stamp()] },
+    };
+    const out = scanComponentUsages([DEF], undefined, refs, fields);
+    expect(out.get('c-test')).toEqual([
+      { kind: 'column', field: 'Status' },
+      { kind: 'column', field: 'DueDate' },
+    ]);
+  });
+
+  it('a deleted component leaves no ghost rows; unused defs simply have no entry', () => {
+    const main: SPElement = {
+      elmType: 'div',
+      children: [{ elmType: 'div', _component: { id: 'c-gone', map: {} } }],
+    };
+    const out = scanComponentUsages([DEF], main, {}, []);
+    expect(out.get('c-gone')).toBeUndefined(); // no def carries that id
+    expect(out.get('c-test')).toBeUndefined(); // in the doc: nothing stamped for it
+  });
+
+  it('componentInsertTarget: an open column formatter wins; otherwise the view (grid flagged)', () => {
+    expect(componentInsertTarget('main', 'grid', 'Status')).toEqual({ kind: 'view', grid: true });
+    expect(componentInsertTarget('main', 'row', 'Status')).toEqual({ kind: 'view', grid: false });
+    expect(componentInsertTarget('main', 'tile', 'Status')).toEqual({ kind: 'view', grid: false });
+    expect(componentInsertTarget('DueDate', 'column', 'Status')).toEqual({ kind: 'column', field: 'DueDate' });
+    // the MAIN doc itself can be a column formatter (a JSON-tab import)
+    expect(componentInsertTarget('main', 'column', 'Status')).toEqual({ kind: 'column', field: 'Status' });
   });
 });
 
