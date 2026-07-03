@@ -659,7 +659,7 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
           // registered style. formatColumn silently registers a default
           // formatter when the name isn't in state.columnRefs yet — the
           // header menu stays the one explicit creation path, mirroring the
-          // tree's inert unregistered stub.
+          // tree's inert unregistered "reference" tag.
           if (!field || !(field.name in state.columnRefs)) return;
           formatColumn(col, field, onToast);
         });

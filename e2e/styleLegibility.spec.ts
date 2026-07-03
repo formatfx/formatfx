@@ -79,13 +79,23 @@ test('drilling in shows the § banner; Done and Esc both return to the view', as
   await expect(page.locator('.wb-style-banner')).toHaveCount(0);
 });
 
-test('the tree shows an opaque reference row under the host cell; opening it drills in', async ({ page }) => {
-  const stub = page.locator('.wb-tree-stylestub').first();
-  // just the column name in violet, tagged as a reference — no rail, no counts
-  await expect(stub.locator('.wb-stub-name')).toHaveText('Status');
-  await expect(stub.locator('.wb-stub-tag')).toHaveText('column formatter reference');
-  await expect(stub.locator('.wb-style-mark')).toHaveText('§');
-  await stub.click();
+test('a CFR host is ONE tree row: click selects the host, the reference tag drills in', async ({ page }) => {
+  // the old opaque stub row is gone — a CFR host is a single normal row
+  await expect(page.locator('#wb-tree-body .wb-tree-row').first()).toBeVisible();
+  await expect(page.locator('.wb-tree-stylestub')).toHaveCount(0);
+  const row = page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'Status' }) });
+  // violet survives as INK only: the § mark and the "reference" tag — no fill
+  await expect(row.locator('.wb-style-mark')).toHaveText('§');
+  const tag = row.locator('.wb-tree-cfr-open');
+  await expect(tag).toHaveText('reference');
+  const bg = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).toBe('rgba(0, 0, 0, 0)');
+  // clicking the row selects the HOST element (no drill-in hijack)
+  await row.click();
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-scope-chip')).toHaveText('Host cell · this view only');
+  // the explicit affordance is the door into the shared column formatter
+  await tag.click();
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
 });
