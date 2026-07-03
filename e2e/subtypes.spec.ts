@@ -1,11 +1,12 @@
 /**
- * E2E: custom column subtypes — the "Format this column" catalog (US-3),
- * the apply-time knob form (US-4), and Save-as birth (US-5).
+ * E2E: the "Format this column" catalog — built-in subtype seeds (knob forms
+ * included) + the maker's COMPONENTS as the one "Yours" concept, plus "format
+ * manually". Picking one snapshot-applies it (the grid renders it, one Ctrl+Z
+ * reverts); entries whose types exclude the column never appear.
  *
- * The menu becomes the type-filtered subtype catalog: built-in seeds and the
- * maker's saved customs, each badged Built-in / Yours, plus "format manually".
- * Picking one snapshot-applies it (the grid renders it, one Ctrl+Z reverts);
- * subtypes whose baseTypes exclude the column never appear.
+ * The old custom-subtype authoring surface ("Save as reusable subtype…", the
+ * refine ⋯ modal, push-update) was swallowed by Save as component… — legacy
+ * wb-subtypes customs migrate into the component library on first read.
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -81,8 +82,9 @@ async function importChoiceColumns(page: Page): Promise<void> {
   await page.click('button:has-text("Import pasted text")');
 }
 
-/** Seed a maker-authored (custom) date subtype into the wb-subtypes store. */
-async function seedCustomDateSubtype(page: Page): Promise<void> {
+/** Seed a LEGACY maker-authored subtype into the retired wb-subtypes store —
+ *  the migration must surface it as a component ("Yours"). */
+async function seedLegacyCustomSubtype(page: Page): Promise<void> {
   await page.evaluate(() => {
     localStorage.setItem('wb-subtypes', JSON.stringify({
       version: 1,
@@ -95,8 +97,8 @@ async function seedCustomDateSubtype(page: Page): Promise<void> {
   });
 }
 
-test('catalog lists fitting seeds + customs with Built-in/Yours badges; non-fitting excluded', async ({ page }) => {
-  await seedCustomDateSubtype(page);
+test('catalog lists fitting seeds + your components; legacy customs migrate in; non-fitting excluded', async ({ page }) => {
+  await seedLegacyCustomSubtype(page);
   await header(page, 'DueDate').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
   await expect(page.locator('.wb-grid-menu-title')).toHaveText('Format DueDate');
@@ -104,14 +106,23 @@ test('catalog lists fitting seeds + customs with Built-in/Yours badges; non-fitt
   // built-in date seeds, badged
   const dateBadge = page.locator('.wb-grid-menu button', { hasText: 'Due-date badge' });
   await expect(dateBadge.locator('.wb-menu-badge')).toHaveText('Built-in');
-  // the maker's custom, badged "Yours"
+  // the LEGACY custom migrated into the component library and reads "Yours"
   const mine = page.locator('.wb-grid-menu button', { hasText: 'My Due Look' });
   await expect(mine.locator('.wb-menu-badge')).toHaveText('Yours');
+  // …and no entry carries the retired ⋯ refine affordance anymore
+  await expect(page.locator('.wb-grid-menu .wb-menu-action')).toHaveCount(0);
   // the manual escape hatch is always present
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this column manually' })).toBeVisible();
-  // a people / choice subtype must never appear on a date column
+  // a people / choice entry must never appear on a date column
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Facepile' })).toHaveCount(0);
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Status pill' })).toHaveCount(0);
+
+  // applying the migrated component renders it on the column
+  await mine.click();
+  await expect(page.locator('.wb-grid-cell[data-col="2"]').first()).not.toHaveText('');
+  // and it shows in the ⬡ library under Yours
+  await page.locator('.wb-fmt-tab-comp').click();
+  await expect(page.locator('.wb-comp-card', { hasText: 'My Due Look' })).toBeVisible();
 });
 
 test('picking a seed snapshot-applies it: the cell renders it and Ctrl+Z restores prior state', async ({ page }) => {
@@ -163,181 +174,63 @@ test('Money: a knob-bearing subtype opens the apply-time form, refuses invalid, 
   await expect(page.locator('.wb-grid-cell').filter({ hasText: '€' }).first()).toContainText(/€\d+$/);
 });
 
-test('Save-as birth: a column format becomes a reusable custom subtype (Yours), forkedFrom the seed', async ({ page }) => {
+test('Save as component: a column format becomes a reusable component (Yours), applies to a sibling column', async ({ page }) => {
   await importTwoDateColumns(page);
 
-  // format "Start" with a built-in seed, then save that format as a subtype
+  // format "Start" with a single-ref built-in seed, then save it as a component
+  // (Due-date badge would derive TWO slots — its recipe also watches [$Status];
+  // multi-slot components live in the ⬡ library, not the one-click catalog)
   await header(page, 'Start').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Due-date badge' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Days-until counter' }).click();
 
-  // "Save as reusable subtype…" now opens an inline popover — type the name and commit
+  // "Save as component…" opens the save dialog with a derived, typed slot
   await header(page, 'Start').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Save as reusable subtype' }).click();
-  await page.locator('.wb-rename-input').fill('My Due Look');
-  await page.keyboard.press('Enter');
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg.locator('.wb-comp-slot')).toContainText(['Start · date']);
+  await expect(dlg.locator('.wb-comp-slot')).toHaveCount(1);
+  await dlg.locator('.wb-compmap-name').fill('My Due Look');
+  await dlg.locator('.wb-compmap-insert').click();
 
-  // persisted to wb-subtypes: a custom, forked from the seed, baseTypes [date]
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-subtypes') || '{}'));
-  expect(stored.version).toBe(1);
-  const mine = stored.subtypes.find((s: { name: string }) => s.name === 'My Due Look');
+  // persisted to wb-components.v1 with a single date slot
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-components.v1') || '{}'));
+  const mine = stored.components.find((c: { name: string }) => c.name === 'My Due Look');
   expect(mine).toBeTruthy();
-  expect(mine.origin).toBe('custom');
-  expect(mine.forkedFrom).toBe('date-badge');
-  expect(mine.baseTypes).toEqual(['date']);
-  expect(mine.formatter).toBeTruthy();
+  expect(mine.slots).toHaveLength(1);
+  expect(mine.slots[0].types).toContain('date');
 
-  // it now shows as "Yours" in the catalog of another date column ("End")
+  // it now shows as "Yours" in the catalog of another date column ("End"),
+  // and applying it formats that column
   await header(page, 'End').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
   const yours = page.locator('.wb-grid-menu button', { hasText: 'My Due Look' });
   await expect(yours.locator('.wb-menu-badge')).toHaveText('Yours');
-});
-
-test('Save-as normalizes a hand-authored [$Field] column to @currentField (reusable, not frozen)', async ({ page }) => {
-  // the showcase Status column ships a hand-authored [$Status] formatter; saving
-  // it as a subtype must fold to @currentField so it works on other columns.
-  // "Save as reusable subtype…" opens an inline popover — fill and commit.
-  await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Save as reusable subtype' }).click();
-  await page.locator('.wb-rename-input').fill('My Status');
-  await page.keyboard.press('Enter');
-
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-subtypes') || '{}'));
-  const mine = stored.subtypes.find((s: { name: string }) => s.name === 'My Status');
-  expect(mine).toBeTruthy();
-  expect(mine.baseTypes).toEqual(['choice']);
-  const json = JSON.stringify(mine.formatter);
-  expect(json).toContain('@currentField');
-  expect(json).not.toContain('[$Status]'); // not frozen to the source column
-});
-
-test('Refine: ⋯ on a custom opens the modal; rename + promote a literal to a knob, persisted', async ({ page }) => {
-  // seed a custom date subtype with promotable literals (a color, a size)
-  await page.evaluate(() => {
-    localStorage.setItem('wb-subtypes', JSON.stringify({
-      version: 1,
-      subtypes: [{
-        id: 'custom-date-1', name: 'My Date Look', origin: 'custom', baseTypes: ['date'],
-        formatter: { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)', style: { 'background-color': '#107c10', 'padding': '2px 8px' } },
-        knobs: [], vocab: { refs: ['@currentField'], values: [] },
-      }],
-    }));
-  });
-
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-  // the custom entry exposes a ⋯ refine affordance; built-ins do not
-  const row = page.locator('.wb-menu-row', { has: page.locator('.wb-menu-main', { hasText: 'My Date Look' }) });
-  await expect(row.locator('.wb-menu-action')).toHaveCount(1);
-  await expect(page.locator('.wb-menu-row', { has: page.locator('.wb-menu-main', { hasText: 'Due-date badge' }) }).locator('.wb-menu-action')).toHaveCount(0);
-  await row.locator('.wb-menu-action').click();
-
-  // the refine modal opens, pre-filled
-  const modal = page.locator('.wb-refine');
-  await expect(modal).toBeVisible();
-  await expect(modal.locator('.wb-refine-name')).toHaveValue('My Date Look');
-
-  // rename
-  await modal.locator('.wb-refine-name').fill('Refined Date');
-  // promote the color literal to a knob (by value)
-  const lit = modal.locator('.wb-refine-lit', { hasText: '#107c10' });
-  await lit.locator('.wb-refine-lit-cb').check();
-  await expect(lit.locator('.wb-refine-knob-label')).toBeVisible();
-  await lit.locator('.wb-refine-knob-label').fill('Pill color');
-  await modal.locator('.wb-refine-save').click();
-  await expect(modal).toHaveCount(0);
-
-  // persisted: renamed + a color knob keyed by the literal value
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-subtypes') || '{}'));
-  const mine = stored.subtypes.find((s: { id: string }) => s.id === 'custom-date-1');
-  expect(mine.name).toBe('Refined Date');
-  const knob = mine.knobs.find((k: { path: string }) => k.path === '#107c10');
-  expect(knob).toBeTruthy();
-  expect(knob.type).toBe('color');
-  expect(knob.label).toBe('Pill color');
-  expect(knob.default).toBe('#107c10');
-});
-
-test('Push-update: refine + "update N columns" re-bakes every tagged column; one Ctrl+Z reverts all', async ({ page }) => {
-  // a custom choice subtype whose output is a constant literal (easy to observe)
-  await page.evaluate(() => {
-    localStorage.setItem('wb-subtypes', JSON.stringify({
-      version: 1,
-      subtypes: [{
-        id: 'custom-tag', name: 'Tag', origin: 'custom', baseTypes: ['choice'],
-        formatter: { elmType: 'div', txtContent: "='OLD'" }, knobs: [], vocab: { refs: [], values: [] },
-      }],
-    }));
-  });
-  await importChoiceColumns(page); // Title(0) Phase1(1) Phase2(2) Phase3(3)
-
-  // apply the custom to Phase1 and Phase2 (one-click, zero-knob)
-  for (const col of ['Phase1', 'Phase2']) {
-    await header(page, col).click();
-    await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-    await page.locator('.wb-grid-menu .wb-menu-main', { hasText: 'Tag' }).click();
-  }
-  const p1 = page.locator('.wb-grid-cell[data-col="1"]').first();
-  const p2 = page.locator('.wb-grid-cell[data-col="2"]').first();
-  await expect(p1).toContainText('OLD');
-  await expect(p2).toContainText('OLD');
-
-  // refine via Phase3's catalog (unformatted): promote 'OLD' → change its default to 'NEW'
-  await header(page, 'Phase3').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-  const row = page.locator('.wb-menu-row', { has: page.locator('.wb-menu-main', { hasText: 'Tag' }) });
-  await row.locator('.wb-menu-action').click();
-  const modal = page.locator('.wb-refine');
-  await expect(modal).toBeVisible();
-  const lit = modal.locator('.wb-refine-lit', { hasText: 'OLD' });
-  await lit.locator('.wb-refine-lit-cb').check();
-  await lit.locator('.wb-refine-knob-default').fill('NEW');
-
-  // push to the 2 columns already using it
-  const push = modal.locator('.wb-refine-push');
-  await expect(push).toHaveText(/2 columns/);
-  await push.click();
-  await expect(modal).toHaveCount(0);
-
-  // both columns re-baked from their stored args to the new default
-  await expect(p1).toContainText('NEW');
-  await expect(p2).toContainText('NEW');
-
-  // ONE Ctrl+Z reverts the whole batch
+  await yours.click();
+  // the day counter renders "N days left/overdue" text in End's cells
+  await expect(page.locator('.wb-grid-cell[data-col="2"]').first()).toContainText(/days/);
+  // snapshot-apply semantics: stayed on the grid, one Ctrl+Z reverts
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
   await page.keyboard.press('Control+z');
-  await expect(p1).toContainText('OLD');
-  await expect(p2).toContainText('OLD');
+  await expect(page.locator('.wb-grid-cell[data-col="2"]').first()).not.toContainText(/days/);
 });
 
-test('fx bar reads subtype vocab: a tagged column offers ONLY its vocab, hiding unrelated refs', async ({ page }) => {
-  // a custom date subtype whose vocab is just the column's own value
-  await page.evaluate(() => {
-    localStorage.setItem('wb-subtypes', JSON.stringify({
-      version: 1,
-      subtypes: [{
-        id: 'custom-due-fx', name: 'Due fx', origin: 'custom', baseTypes: ['date'],
-        formatter: { elmType: 'div', txtContent: 'Due' }, // a plain literal — the text slot is editable
-        knobs: [], vocab: { refs: ['@currentField'], values: [] },
-      }],
-    }));
-  });
-
-  // apply it to DueDate, then open that column's formatter (@currentField = DueDate)
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-  await page.locator('.wb-grid-menu .wb-menu-main', { hasText: 'Due fx' }).click();
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Edit the DueDate style' }).click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate'); // drilled into the DueDate column formatter
-
-  // the fx bar's text slot offers ONLY the vocab (the column's own value) and
-  // suppresses the broad all-columns ref padding
-  const slot = page.locator('.wb-fx-slot');
-  await expect(slot).toBeVisible();
-  await slot.selectOption('text');
-  await page.locator('.wb-fx-editor').focus(); // the value menu opens on focus
-  await expect(page.locator('.wb-fx-menu')).toBeVisible();
-  await expect(page.locator('.wb-fx-menu-opt', { hasText: '=[DueDate]' })).toHaveCount(1);
-  await expect(page.locator('.wb-fx-menu-opt', { hasText: '=[Title]' })).toHaveCount(0);
+test('the retired subtype-authoring surface is gone: no "Save as reusable subtype", no refine ⋯', async ({ page }) => {
+  // the formatted Status column's header menu offers Save as component… instead
+  await header(page, 'Status').click();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Save as reusable subtype' })).toHaveCount(0);
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Save as component…' })).toBeVisible();
+  // saving it derives the slot from the hand-authored [$Status] refs — typed choice
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg.locator('.wb-comp-slot')).toContainText(['Status · choice / multi-choice']);
+  await dlg.locator('.wb-compmap-insert').click();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-components.v1') || '{}'));
+  expect(stored.components).toHaveLength(1);
 });
+
+// NOTE: the US-8 vocab-restriction e2e retired with the custom-subtype
+// authoring surface — the restriction itself stays unit-pinned in
+// fxSuggest.test.ts ("fxSuggestions — subtype vocab (US-8)"); built-in-applied
+// columns keep their vocab tags, and component-applied columns degrade to the
+// broad suggestions (resolveSubtype optional-chains unknown recipe ids).

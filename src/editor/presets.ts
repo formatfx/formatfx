@@ -13,6 +13,7 @@
  */
 
 import type { SPElement, MockField, FieldType } from '../core/types';
+import { remapFieldRefs } from './components';
 
 export interface PaletteItem {
   id: string;
@@ -553,27 +554,8 @@ export function bindFragmentToSchema(fragment: SPElement, fields: MockField[]): 
     }
   }
   if (replacements.size === 0) return fragment;
-
-  const remapString = (s: string): string => {
-    let out = s;
-    for (const [from, to] of replacements) {
-      // [$Field] / [$Field.prop] / [!Field.DisplayName] boundaries
-      out = out.replace(new RegExp(`\\[(\\$|!)${from}(?=[\\].])`, 'g'), `[$1${to}`);
-    }
-    return out;
-  };
-
-  const walk = (node: unknown): unknown => {
-    if (typeof node === 'string') return remapString(node);
-    if (Array.isArray(node)) return node.map(walk);
-    if (node && typeof node === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(node)) out[k] = walk(v);
-      return out;
-    }
-    return node;
-  };
-  return walk(JSON.parse(JSON.stringify(fragment))) as SPElement;
+  // the boundary-aware [$Field]/[!Field] rewrite is shared with components.ts
+  return remapFieldRefs(fragment, replacements);
 }
 
 /** Create a palette fragment bound to the given schema. */

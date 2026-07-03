@@ -19,6 +19,7 @@ import { openIconPicker } from './iconPicker';
 import { openViewMenu } from './viewMenu';
 import { openColumnGallery } from './columnGallery';
 import { openSnapMenu } from './snapMenu';
+import { renderComponentLibrary } from './componentLibrary';
 import type { FieldType, SPElement } from '../core/types';
 
 export interface LeftPaneOptions {
@@ -72,6 +73,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     <div class="wb-fmt-tabs" role="tablist" aria-label="Formatter kind">
       <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View formatters</span></button>
       <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Column formatters</span></button>
+      <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
     </div>
     <div class="wb-lp-tree" id="wb-lp-tree">
       <div class="wb-doc-pill-row">
@@ -84,6 +86,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture what you're editing (or everything) and restore any capture later">${ICONS.history}</button>
       </div>
       <div class="wb-tree-sec-body" id="wb-tree-body"></div>
+      <div class="wb-tree-sec-body wb-complib" id="wb-lp-library" hidden></div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-drawbar" role="toolbar" aria-label="Draw tools">
@@ -118,17 +121,27 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
 
   const viewTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-view')!;
   const colsTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-cols')!;
+  const compTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-comp')!;
+  const libHost = host.querySelector<HTMLElement>('#wb-lp-library')!;
   const pill = host.querySelector<HTMLButtonElement>('#wb-doc-pill')!;
   const pillName = pill.querySelector<HTMLElement>('.wb-doc-pill-name')!;
   const pillType = pill.querySelector<HTMLElement>('.wb-doc-pill-type')!;
 
   // the column formatter last on the canvas — where the COLUMN tab returns to
   let lastColumnKey: string | null = null;
+  // COMPONENTS is a library browser, not a document on the canvas — a local
+  // UI mode that any doc navigation (tab click or canvas drill-in) exits
+  let libraryOpen = false;
 
   const refreshFmtNav = (): void => {
-    const cols = isColumnMode();
-    viewTab.classList.toggle('active', !cols);
-    viewTab.setAttribute('aria-selected', String(!cols));
+    const cols = !libraryOpen && isColumnMode();
+    const view = !libraryOpen && !isColumnMode();
+    host.classList.toggle('wb-lp-library-open', libraryOpen);
+    libHost.hidden = !libraryOpen;
+    compTab.classList.toggle('active', libraryOpen);
+    compTab.setAttribute('aria-selected', String(libraryOpen));
+    viewTab.classList.toggle('active', view);
+    viewTab.setAttribute('aria-selected', String(view));
     colsTab.classList.toggle('active', cols);
     colsTab.setAttribute('aria-selected', String(cols));
     pill.classList.toggle('wb-doc-pill-col', cols);
@@ -145,24 +158,35 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   };
 
   viewTab.addEventListener('click', () => {
+    libraryOpen = false;
     if (state.activeDocKey !== 'main') {
       state.openMain();
       toast(`Back to the ${state.viewName} view formatter`);
     } else if (state.doc.kind === 'column') {
       toast('The document on the canvas is a column formatter — switch its type under Advanced to build a view.');
     }
+    refreshFmtNav();
   });
   colsTab.addEventListener('click', () => {
-    if (isColumnMode()) return;
+    const wasLibrary = libraryOpen;
+    libraryOpen = false;
+    if (isColumnMode()) { if (wasLibrary) refreshFmtNav(); return; }
     const names = Object.keys(state.columnRefs);
-    const target = lastColumnKey && lastColumnKey in state.columnRefs ? lastColumnKey : names[0];
+    const target = lastColumnKey && Object.hasOwn(state.columnRefs, lastColumnKey) ? lastColumnKey : names[0];
     if (target) {
       state.openColumnRef(target);
       toast(`Editing the ${target} column formatter`);
     } else {
       // nothing registered yet — the gallery's "Not yet formatted" list is the on-ramp
+      refreshFmtNav();
       openColumnGallery(pill, toast);
     }
+  });
+  compTab.addEventListener('click', () => {
+    if (libraryOpen) return;
+    libraryOpen = true;
+    renderComponentLibrary(libHost, toast);
+    refreshFmtNav();
   });
   pill.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -297,6 +321,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     if (reason === 'lens') applyLens();
     if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo();
     if (reason === 'load' && state.activeDocKey !== 'main') lastColumnKey = state.activeDocKey;
+    // a doc switch (canvas drill-in, back button, …) exits the library browser
+    if (reason === 'load') libraryOpen = false;
     if (reason === 'load' || reason === 'data' || reason === 'kind') { refreshFmtNav(); refreshBack(); }
   });
   hostAny._unsub = () => {

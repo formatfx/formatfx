@@ -1,0 +1,191 @@
+/**
+ * components.ts is the contract for "formatting without a column to call
+ * home": boundary-aware slot binding, slot derivation from a subtree, the
+ * best-guess mapping, store round-trips, and — most load-bearing — that every
+ * BUILT-IN component binds to the default schema and renders through the real
+ * engine without a single runtime issue (built-ins must definitely-work, the
+ * same bar as generated formatters).
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  remapFieldRefs, fieldRefsIn, containsCfr, deriveSlots, widenType,
+  bestGuessMapping, mappingComplete, bindComponent, isSingleColumnComponent,
+  loadComponents, serializeComponents, addComponent, removeComponent, componentId,
+  BUILTIN_COMPONENTS, COMPONENT_CAP,
+  type ComponentDef,
+} from './components';
+import { bindFragmentToSchema } from './presets';
+import { renderElement, type RenderIssue } from '../core/renderer';
+import { defaultFields, defaultRows, state } from './state';
+import type { SPElement } from '../core/types';
+import type { EvalContext } from '../core/expressions';
+
+const DEF: ComponentDef = {
+  id: 'c-test', name: 'Test comp', description: 't', slots: [
+    { key: 'Due', label: 'Due', types: ['date'] },
+    { key: 'Person', label: 'Person', types: ['person', 'personMulti'] },
+  ],
+  root: {
+    elmType: 'div',
+    txtContent: "=if([$Due]<@now,'late','ok')",
+    style: { color: '=[$Person.title]' },
+    children: [{ elmType: 'span', txtContent: '[$Due]' }],
+  },
+};
+
+describe('field-ref remap + scan', () => {
+  it('remaps [$X]/[!X] with honest boundaries ([$Due] never matches [$DueDate])', () => {
+    const tree: SPElement = {
+      elmType: 'div',
+      txtContent: "=[$Due]+' '+[$DueDate]+' '+[!Due.DisplayName]",
+      attributes: { title: '=[$Due.prop]' },
+      forEach: '_x in [$Due]',
+    };
+    const out = remapFieldRefs(tree, new Map([['Due', 'Deadline']]));
+    expect(out.txtContent).toBe("=[$Deadline]+' '+[$DueDate]+' '+[!Deadline.DisplayName]");
+    expect(out.attributes?.title).toBe('=[$Deadline.prop]');
+    expect(out.forEach).toBe('_x in [$Deadline]');
+    // the input tree is untouched (deep-clone contract)
+    expect(tree.txtContent).toContain('[$Due]');
+  });
+
+  it('collects unique referenced fields, dotted and bang forms included', () => {
+    expect(fieldRefsIn(DEF.root).sort()).toEqual(['Due', 'Person']);
+  });
+
+  it('spots a columnFormatterReference anywhere in a subtree', () => {
+    expect(containsCfr(DEF.root)).toBe(false);
+    expect(containsCfr({
+      elmType: 'div',
+      children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
+    })).toBe(true);
+  });
+});
+
+describe('slots: derive, best-guess, bind', () => {
+  it('derives typed slots from a tree against a schema, widened to single/multi siblings', () => {
+    const slots = deriveSlots(
+      { elmType: 'div', txtContent: '=[$Owner.title]+[$Mystery]' },
+      defaultFields(),
+    );
+    const owner = slots.find((s) => s.key === 'Owner')!;
+    expect(owner.types).toEqual(['person', 'personMulti']);
+    // a name the schema doesn't know falls back to text
+    expect(slots.find((s) => s.key === 'Mystery')!.types).toEqual(['text', 'note']);
+    expect(widenType('date')).toEqual(['date']);
+  });
+
+  it('best-guess prefers an exact name match, then unclaimed fields of the right type', () => {
+    const mapping = bestGuessMapping(DEF, defaultFields());
+    expect(mapping['Due']).toBe('DueDate');    // only date column
+    expect(mapping['Person']).toBe('AssignedTo'); // first person-typed, Owner left for later slots
+    expect(mappingComplete(DEF, mapping)).toBe(true);
+    // no acceptable column → '' and incomplete
+    const noDates = defaultFields().filter((f) => f.type !== 'date');
+    const m2 = bestGuessMapping(DEF, noDates);
+    expect(m2['Due']).toBe('');
+    expect(mappingComplete(DEF, m2)).toBe(false);
+  });
+
+  it('bind rewrites every slot to its mapped column and stamps the name', () => {
+    const bound = bindComponent(DEF, { Due: 'DueDate', Person: 'Owner' });
+    expect(bound.txtContent).toBe("=if([$DueDate]<@now,'late','ok')");
+    expect(bound.style?.color).toBe('=[$Owner.title]');
+    expect(bound.children?.[0].txtContent).toBe('[$DueDate]');
+    expect(bound._elmName).toBe('Test comp');
+  });
+
+  it('presets schema-aware drop still rides the same remap (shared implementation)', () => {
+    const fields = defaultFields().filter((f) => f.name !== 'Status')
+      .concat([{ name: 'Phase', type: 'choice', choices: ['A'] }]);
+    const bound = bindFragmentToSchema({ elmType: 'div', txtContent: '=[$Status]' }, fields);
+    expect(bound.txtContent).toBe('=[$Phase]');
+  });
+});
+
+describe('store round trip', () => {
+  it('serializes custom components only, tolerates corrupt raw, evicts past the cap', () => {
+    let list = loadComponents(null);
+    list = addComponent(list, { ...DEF, id: componentId(new Date()) });
+    const raw = serializeComponents([...list, { ...BUILTIN_COMPONENTS[0] }]);
+    const back = loadComponents(raw);
+    expect(back).toHaveLength(1); // the builtin was not persisted
+    expect(back[0].name).toBe('Test comp');
+    expect(loadComponents('{nope').length).toBe(0);
+    expect(loadComponents(JSON.stringify({ version: 1, components: [{ junk: 1 }] })).length).toBe(0);
+    // cap: oldest evicted
+    let many: ComponentDef[] = [];
+    for (let i = 0; i < COMPONENT_CAP + 3; i++) many = addComponent(many, { ...DEF, id: `c-${i}` });
+    expect(many).toHaveLength(COMPONENT_CAP);
+    expect(many[0].id).toBe('c-3');
+    expect(removeComponent(many, 'c-3')).toHaveLength(COMPONENT_CAP - 1);
+  });
+});
+
+describe('catalog fit + legacy subtype migration', () => {
+  it('isSingleColumnComponent: one slot of the right type; multi-slot never fits a column', () => {
+    const single: ComponentDef = { ...DEF, slots: [{ key: 'Due', label: 'Due', types: ['date'] }] };
+    expect(isSingleColumnComponent(single, 'date')).toBe(true);
+    expect(isSingleColumnComponent(single, 'text')).toBe(false);
+    expect(isSingleColumnComponent(DEF, 'date')).toBe(false); // two slots
+  });
+
+  it('customComponents() swallows legacy wb-subtypes customs as single-slot components (once)', async () => {
+    const { customComponents } = await import('./componentLibrary');
+    localStorage.clear();
+    localStorage.setItem('wb-subtypes', JSON.stringify({
+      version: 1,
+      subtypes: [{
+        id: 'legacy-1', name: 'My Due Look', origin: 'custom', baseTypes: ['date'],
+        formatter: { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' },
+        knobs: [], vocab: { refs: ['@currentField'], values: [] },
+      }],
+    }));
+    const migrated = customComponents();
+    expect(migrated).toHaveLength(1);
+    expect(migrated[0].name).toBe('My Due Look');
+    expect(migrated[0].slots).toEqual([{ key: 'Column', label: 'The column to format', types: ['date'] }]);
+    // @currentField became the slot reference, so binding works like any component
+    expect(migrated[0].root.txtContent).toBe('=toLocaleDateString([$Column])');
+    // the legacy key is untouched (rollback path); re-reads don't duplicate
+    expect(localStorage.getItem('wb-subtypes')).toContain('legacy-1');
+    expect(customComponents()).toHaveLength(1);
+    localStorage.clear();
+  });
+});
+
+describe('built-ins definitely render (the generated-formatter bar)', () => {
+  const ctx = (rowIndex: number): EvalContext => ({
+    row: defaultRows()[rowIndex],
+    rowIndex,
+    currentFieldName: 'Status',
+    me: state.me,
+    iterators: {},
+    iteratorIndex: {},
+    displayNames: {},
+    now: new Date(),
+  });
+
+  for (const def of BUILTIN_COMPONENTS) {
+    it(`${def.name}: best-guess binds to the default schema and renders every mock row cleanly`, () => {
+      const mapping = bestGuessMapping(def, defaultFields());
+      expect(mappingComplete(def, mapping)).toBe(true);
+      const bound = bindComponent(def, mapping);
+      // no leftover slot keys — every author-side ref was rewritten or is a real field
+      const fields = new Set(defaultFields().map((f) => f.name));
+      for (const ref of fieldRefsIn(bound)) expect(fields.has(ref)).toBe(true);
+      for (let i = 0; i < defaultRows().length; i++) {
+        const issues: RenderIssue[] = [];
+        const el = renderElement(bound, ctx(i), { issues });
+        expect(el).toBeTruthy();
+        expect(issues).toEqual([]); // definitely-works: not one runtime complaint
+      }
+    });
+
+    it(`${def.name}: never emits a standalone ! (no logical NOT in SP)`, () => {
+      const json = JSON.stringify(def.root);
+      // `!=` is fine; a bare `!` (prefix negation) must never appear
+      expect(json.replace(/!=/g, '').replace(/\[!/g, '')).not.toContain('!');
+    });
+  }
+});
