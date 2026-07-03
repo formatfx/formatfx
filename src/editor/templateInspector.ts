@@ -62,31 +62,45 @@ function inspectorTitle(ui: ModalUI): string {
 
 // ─── zone view ───────────────────────────────────────────────────────────────
 
+/** A section wrapper that PEEKS its setting onto the preview's zone tags while
+ *  hovered (data-peek stamp — see templateModal.setPeek; no rerender). */
+function peekSection(api: ModalApi, peek: 'size' | 'flow' | 'align', ...children: HTMLElement[]): HTMLElement {
+  const wrap = el('div', 'wb-template-peeksec');
+  wrap.dataset.peekSection = peek;
+  wrap.addEventListener('mouseenter', () => api.setPeek(peek));
+  wrap.addEventListener('mouseleave', () => api.setPeek(null));
+  wrap.append(...children);
+  return wrap;
+}
+
 function renderZoneView(host: HTMLElement, ui: ModalUI, api: ModalApi, zi: number): void {
   const zone = ui.config.zones[zi];
 
   host.appendChild(section('Zone name'));
   host.appendChild(textField('', zone.label, (v) => api.patchZone(zi, { label: v.trim() || zone.label })));
 
-  host.appendChild(section('Width'));
-  host.appendChild(segmented<ZoneSize>('zonesize',
-    (['hug', 'normal', 'wide', 'widest'] as ZoneSize[]).map((s) => [s, ZONE_SIZE_LABEL[s]] as const),
-    zone.size, (s) => api.patchZone(zi, { size: s })));
-  host.appendChild(hintNote('Hug takes only what the content needs; Fill zones share the leftover space by their weights.'));
+  host.appendChild(peekSection(api, 'size',
+    section('Width'),
+    segmented<ZoneSize>('zonesize',
+      (['hug', 'normal', 'wide', 'widest'] as ZoneSize[]).map((s) => [s, ZONE_SIZE_LABEL[s]] as const),
+      zone.size, (s) => api.patchZone(zi, { size: s })),
+    hintNote('Hug takes only what the content needs; Fill zones share the leftover space by their weights.')));
 
-  host.appendChild(section('Items'));
-  host.appendChild(segmented<ZoneFlow>('zoneflow',
-    [['side', 'Side by side'], ['wrap', 'Wrap when tight'], ['stack', 'Stacked']], zone.flow,
-    (f) => api.patchZone(zi, { flow: f })));
-  host.appendChild(hintNote(zone.flow === 'wrap'
-    ? 'Items sit side by side; when the zone runs out of room, the right item moves beneath the left one. Squeeze the preview to watch it.'
-    : zone.flow === 'stack' ? 'Items always stack vertically.'
-      : 'Items stay on one line; fill items truncate when squeezed.'));
+  host.appendChild(peekSection(api, 'flow',
+    section('Items'),
+    segmented<ZoneFlow>('zoneflow',
+      [['side', 'Side by side'], ['wrap', 'Wrap when tight'], ['stack', 'Stacked']], zone.flow,
+      (f) => api.patchZone(zi, { flow: f })),
+    hintNote(zone.flow === 'wrap'
+      ? 'Items sit side by side; when the zone runs out of room, the right item moves beneath the left one. Squeeze the preview to watch it.'
+      : zone.flow === 'stack' ? 'Items always stack vertically.'
+        : 'Items stay on one line; fill items truncate when squeezed.')));
 
-  host.appendChild(section('Align'));
-  host.appendChild(segmented<ZoneAlign>('align',
-    [['left', 'Left'], ['center', 'Center'], ['right', 'Right']], zone.align,
-    (al) => api.patchZone(zi, { align: al })));
+  host.appendChild(peekSection(api, 'align',
+    section('Align'),
+    segmented<ZoneAlign>('align',
+      [['left', 'Left'], ['center', 'Center'], ['right', 'Right']], zone.align,
+      (al) => api.patchZone(zi, { align: al }))));
 
   const rm = el('button', 'wb-template-remove', '✕ Remove zone') as HTMLButtonElement;
   rm.type = 'button';

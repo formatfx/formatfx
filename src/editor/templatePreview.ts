@@ -17,7 +17,10 @@ import { state } from './state';
 import { renderElement, type RenderOptions } from '../core/renderer';
 import { evaluate, type EvalContext } from '../core/expressions';
 import { ctxForRow, resolveColumnRef } from './previewCtx';
-import { buildTemplateView, childSlotOrder, WIREFRAMES, ZONE_SIZE_LABEL, type Wireframe } from './rowTemplates';
+import {
+  buildTemplateView, childSlotOrder, WIREFRAMES,
+  ZONE_SIZE_LABEL, ZONE_FLOW_LABEL, type Wireframe,
+} from './rowTemplates';
 import { WEIGHT_FLEX } from './areas';
 import type { SPElement } from '../core/types';
 import {
@@ -88,10 +91,15 @@ function wireframeThumb(wf: Wireframe): HTMLElement {
   return t;
 }
 
-function renderGallery(host: HTMLElement, api: ModalApi): void {
+function renderGallery(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.appendChild(el('div', 'wb-template-gallery-title', 'Start from a layout'));
   host.appendChild(el('div', 'wb-template-gallery-sub',
     'Each layout is a set of zones. Drop fields and components into them, then tune how every zone shares space and wraps.'));
+  if (ui.foreignRow) {
+    host.appendChild(el('div', 'wb-template-foreign-note',
+      'The current row layout was built or edited outside this builder, so it can\'t be reopened as zones. '
+      + 'Picking a layout starts fresh — Apply replaces the row (one Ctrl+Z brings it back).'));
+  }
   const grid = el('div', 'wb-template-gallery');
   for (const wf of WIREFRAMES) {
     const card = el('button', 'wb-wf-card') as HTMLButtonElement;
@@ -110,7 +118,7 @@ function renderGallery(host: HTMLElement, api: ModalApi): void {
 
 export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.innerHTML = '';
-  if (ui.stage === 'pick') { renderGallery(host, api); return; }
+  if (ui.stage === 'pick') { renderGallery(host, ui, api); return; }
 
   const head = el('div', 'wb-template-prev-head');
   const left = el('div', 'wb-template-prev-headgroup');
@@ -128,6 +136,7 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   host.appendChild(head);
 
   const body = el('div', 'wb-template-prev-body');
+  body.appendChild(zoneTree(ui, api));
   const stage = el('div', 'wb-template-stage');
   if (ui.stageWidth) stage.style.width = `${ui.stageWidth}px`;
   body.appendChild(stage);
@@ -140,6 +149,58 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   else renderLiveRows(stage, root, additionalRowClass, ui, api);
 
   host.appendChild(statusStrip(ui));
+}
+
+/** The zone TREE rail — the builder's structure pane: one row per zone, its
+ *  items nested beneath, "+ Zone" at the foot. The deterministic selection
+ *  surface (canvas clicks can land on whichever item fills a zone's center;
+ *  a tree row can't miss). Visible in BOTH modes so nothing shifts on the
+ *  Edit/Preview flip; clicking a row in Preview switches back to Edit. */
+function zoneTree(ui: ModalUI, api: ModalApi): HTMLElement {
+  const rail = el('div', 'wb-template-tree');
+  rail.appendChild(el('div', 'wb-template-tree-head', 'Zones'));
+  const rows = el('div', 'wb-template-tree-rows');
+  const comps = api.components();
+
+  ui.config.zones.forEach((zone, zi) => {
+    // NAMESPACED classes (wb-ztree-*): the studio structure tree owns wb-tree-*
+    const zrow = el('button', 'wb-ztree-row wb-ztree-zone') as HTMLButtonElement;
+    zrow.type = 'button';
+    zrow.dataset.treeZone = String(zi);
+    zrow.append(el('span', 'wb-ztree-icon', '▤'), el('span', 'wb-ztree-label', zone.label));
+    if (ui.selected?.zone === zi && ui.selected.item === null && ui.mode === 'edit') zrow.classList.add('wb-ztree-on');
+    zrow.addEventListener('click', () => {
+      if (ui.mode === 'preview') api.setMode('edit');
+      api.selectZone(zi);
+    });
+    rows.appendChild(zrow);
+
+    zone.items.forEach((item, ii) => {
+      const irow = el('button', 'wb-ztree-row wb-ztree-item') as HTMLButtonElement;
+      irow.type = 'button';
+      irow.dataset.treeItem = `${zi}:${ii}`;
+      const label = item.kind === 'field'
+        ? item.fieldName || '(empty)'
+        : `⬡ ${comps.find((c) => c.id === item.componentId)?.name ?? '(missing)'}`;
+      irow.appendChild(el('span', 'wb-ztree-label', label));
+      if (item.kind === 'component') irow.classList.add('wb-ztree-comp');
+      if (ui.selected?.zone === zi && ui.selected.item === ii && ui.mode === 'edit') irow.classList.add('wb-ztree-on');
+      irow.addEventListener('click', () => {
+        if (ui.mode === 'preview') api.setMode('edit');
+        api.selectItem(zi, ii);
+      });
+      rows.appendChild(irow);
+    });
+  });
+  rail.appendChild(rows);
+
+  const add = el('button', 'wb-template-mini wb-template-addzone', '＋ Zone') as HTMLButtonElement;
+  add.type = 'button';
+  add.title = 'Add an empty zone (drop fields or components into it whenever)';
+  add.disabled = ui.mode === 'preview';
+  add.addEventListener('click', () => api.addEmptyZone());
+  rail.appendChild(add);
+  return rail;
 }
 
 /** The Full / Medium / Narrow squeeze presets. */
@@ -219,7 +280,7 @@ function decorateEditRow(editRoot: HTMLElement, ui: ModalUI, api: ModalApi): voi
   const config = ui.config;
   const slots = childSlotOrder(config);
   const kids = Array.from(editRoot.children) as HTMLElement[];
-  if (kids.length !== slots.length) { addEndGap(editRoot, api); return; } // fail-safe
+  if (kids.length !== slots.length) return; // fail-safe: undecorated but visible
 
   let prevZone: number | null = null;
   slots.forEach((slot, k) => {
@@ -235,7 +296,6 @@ function decorateEditRow(editRoot: HTMLElement, ui: ModalUI, api: ModalApi): voi
     if (prevZone !== null) editRoot.insertBefore(makeDivider(prevZone, ui, api), node);
     prevZone = slot;
   });
-  addEndGap(editRoot, api);
 }
 
 function acceptedPayload(dt: DataTransfer | null): boolean {
@@ -252,7 +312,16 @@ function decorateZone(node: HTMLElement, zi: number, ui: ModalUI, api: ModalApi)
   node.classList.add('wb-edit-zone');
   node.dataset.editZone = String(zi);
   if (ui.selected?.zone === zi && ui.selected.item === null) node.classList.add('wb-edit-selected');
-  const tag = el('span', 'wb-edit-zone-tag', `${zone.label} · ${ZONE_SIZE_LABEL[zone.size]}`);
+  // the tag leads with the zone's NAME; the other spans are the hover-peek
+  // values (data-peek on the modal picks which one paints — pure CSS, no rerender)
+  const tag = el('span', 'wb-edit-zone-tag');
+  tag.append(
+    el('span', 'wb-zt wb-zt-name', zone.label),
+    el('span', 'wb-zt wb-zt-size', ZONE_SIZE_LABEL[zone.size]),
+    el('span', 'wb-zt wb-zt-flow', ZONE_FLOW_LABEL[zone.flow]),
+    el('span', 'wb-zt wb-zt-align', zone.align[0].toUpperCase() + zone.align.slice(1)),
+  );
+  tag.title = `${zone.label} — ${ZONE_SIZE_LABEL[zone.size]} · ${ZONE_FLOW_LABEL[zone.flow]}`;
   node.appendChild(tag);
   if (zone.items.length === 0) node.appendChild(el('span', 'wb-edit-zone-hint', '＋ drop a field or component'));
 
@@ -339,29 +408,6 @@ function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLEleme
   d.title = `Resize: click to cycle the left zone (now ${next}: Hug → Fill → Fill 2× → Fill 3×)`;
   d.addEventListener('click', (e) => { e.stopPropagation(); api.cycleZoneSize(leftZoneIdx); });
   return d;
-}
-
-function addEndGap(editRoot: HTMLElement, api: ModalApi): void {
-  const gap = el('div', 'wb-edit-endgap', '＋ drop for a new zone');
-  gap.addEventListener('dragover', (e) => {
-    const dt = (e as DragEvent).dataTransfer;
-    if (dt && (dt.types.includes(FIELD_MIME) || dt.types.includes(COMPONENT_MIME))) {
-      e.preventDefault();
-      gap.classList.add('wb-drop-hover');
-    }
-  });
-  gap.addEventListener('dragleave', () => gap.classList.remove('wb-drop-hover'));
-  gap.addEventListener('drop', (e) => {
-    e.preventDefault();
-    gap.classList.remove('wb-drop-hover');
-    const dt = (e as DragEvent).dataTransfer;
-    if (!dt) return;
-    const field = dt.getData(FIELD_MIME);
-    if (field) { api.dropNewZone({ field }); return; }
-    const componentId = dt.getData(COMPONENT_MIME);
-    if (componentId) api.dropNewZone({ componentId });
-  });
-  editRoot.appendChild(gap);
 }
 
 function renderLiveRows(

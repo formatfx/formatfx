@@ -15,7 +15,7 @@ import { isPureGrid } from './gridScaffold';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { themePalette } from '../core/theme';
 import {
-  buildTemplateView, defaultConfigFor, applyBlocker,
+  buildTemplateView, defaultConfigFor, applyBlocker, configFromView,
   addZone, removeZone, moveZone, patchZone, newZone,
   addItem, removeItem, moveItem, patchItem,
   newFieldItem, newComponentItem, nextZoneSize,
@@ -50,17 +50,29 @@ function elementComponents(): ComponentDef[] {
 
 export function openTemplateModal(onToast: (m: string) => void): void {
   const comps = elementComponents(); // cached per open — chips, previews, and Apply all agree
+  // Reopen, don't restart: a row view the builder produced parses back into
+  // zones (configFromView's rebuild-verify gate guarantees losslessness), so
+  // the builder opens straight onto the editable layout. Anything it can't
+  // represent faithfully → the gallery, with an honest note.
+  const rawRowClass = state.doc.viewExtras?.additionalRowClass;
+  const reopened = state.doc.kind === 'row'
+    ? configFromView(state.doc.root, typeof rawRowClass === 'string' ? rawRowClass : undefined,
+      state.fields, state.columnRefs, comps)
+    : null;
+  const editingExisting = reopened !== null;
   const ui: ModalUI = {
-    config: defaultConfigFor('lead-detail', state.fields),
-    stage: 'pick',
+    config: reopened ?? defaultConfigFor('lead-detail', state.fields),
+    stage: editingExisting ? 'edit' : 'pick',
     mode: 'edit',
     selected: null,
     dock: readDock(),
     stageWidth: null,
+    foreignRow: !editingExisting && state.doc.kind === 'row',
   };
   /** Has the maker changed anything since the last wireframe pick? Re-picking
-   *  over untouched seeds shouldn't nag; re-picking over real work confirms. */
-  let dirty = false;
+   *  over untouched seeds shouldn't nag; re-picking over real work (including
+   *  a reopened layout) confirms. */
+  let dirty = editingExisting;
 
   let handle: OverlayHandle;
   handle = createOverlay('wb-template-modal-overlay', () => handle.close());
@@ -81,6 +93,7 @@ export function openTemplateModal(onToast: (m: string) => void): void {
     modal.dataset.stage = ui.stage;
     modal.dataset.dock = ui.dock;
     modal.dataset.mode = ui.mode;
+    modal.dataset.peek = modal.dataset.peek ?? '';
     renderChips(chips, ui, api);
     renderPreview(preview, ui, api);
     renderInspector(inspector, ui, api);
@@ -91,13 +104,15 @@ export function openTemplateModal(onToast: (m: string) => void): void {
   function doApply(): void {
     if (applyBlocker(ui.config, comps)) return;
     // structural click-safety gate: confirm only when the current layout is
-    // genuinely hand-built (not a pristine grid). Single-undo is the safety net.
-    const overwrites = state.doc.kind !== 'grid' && !isPureGrid(state.doc.root);
+    // genuinely hand-built (not a pristine grid) AND the builder didn't reopen
+    // it losslessly — editing your own layout is what reopen is FOR, and a
+    // wireframe re-pick over it already confirmed. Single-undo is the net.
+    const overwrites = !editingExisting && state.doc.kind !== 'grid' && !isPureGrid(state.doc.root);
     if (overwrites && !confirm('Replace the current row layout with this one? Ctrl+Z reverts it in one step.')) return;
     const { root, additionalRowClass } = buildTemplateView(
       ui.config, state.fields, state.columnRefs, palette(), comps, { prune: true });
     state.applyRowTemplate(root, additionalRowClass);
-    onToast('Row layout applied');
+    onToast(editingExisting ? 'Row layout updated' : 'Row layout applied');
     handle.close();
   }
 
@@ -117,17 +132,12 @@ export function openTemplateModal(onToast: (m: string) => void): void {
       ui.selected = { zone: zi, item: next.zones[zi].items.length - 1 };
       rerender();
     },
-    dropNewZone: ({ field, componentId }) => {
-      let next = addZone(ui.config, newZone(`Zone ${ui.config.zones.length + 1}`));
-      const zi = next.zones.length - 1;
-      if (field) next = addItem(next, zi, newFieldItem(field, next.zones[zi]));
-      if (componentId) {
-        const def = comps.find((c) => c.id === componentId);
-        if (def) next = addItem(next, zi, newComponentItem(def.id, bestGuessMapping(def, state.fields)));
-      }
+    addEmptyZone: () => {
+      const next = addZone(ui.config, newZone(`Zone ${ui.config.zones.length + 1}`));
       ui.config = next;
       dirty = true;
-      ui.selected = { zone: zi, item: next.zones[zi].items.length ? 0 : null };
+      // select it so the inspector (name field first) opens ready to shape it
+      ui.selected = { zone: next.zones.length - 1, item: null };
       rerender();
     },
     removeZone: (zi) => { ui.config = removeZone(ui.config, zi); dirty = true; ui.selected = null; rerender(); },
@@ -158,6 +168,9 @@ export function openTemplateModal(onToast: (m: string) => void): void {
     setMode: (m) => { ui.mode = m; rerender(); },
     toggleDock: () => { ui.dock = ui.dock === 'bottom' ? 'left' : 'bottom'; writeDock(ui.dock); rerender(); },
     setStageWidth: (w) => { ui.stageWidth = w; rerender(); },
+    // hover-transient: a dataset stamp only — a rerender here would rebuild the
+    // control under the pointer and make the peek flicker
+    setPeek: (p) => { modal.dataset.peek = p ?? ''; },
     apply: doApply,
     cancel: () => handle.close(),
     notify: onToast,
