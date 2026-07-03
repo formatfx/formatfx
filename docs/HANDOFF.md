@@ -255,6 +255,26 @@ Key structural invariants:
   remains in code + unit tests but is currently unreachable from the UI.
   The library's "Whole rows" group points into **New rowview** (the
   templateModal) — the row-scoped sibling, one implementation.
+- **Row components + the pnp bridge + replace-and-push (2026-07-03, issue
+  #148 executed)**: `ComponentDef.kind: 'element' | 'row'` — a ROW component
+  is the whole row layout (+ optional `additionalRowClass`); applying one
+  runs `applyRowTemplate` (one undoable step, template semantics), so
+  component libraries can carry whole rowformatter shapes. Saving the ROOT
+  of an explicit row view offers row kind automatically; row components
+  live under the library's "Whole rows" group beside the New rowview
+  pointer and never enter the one-click column catalog. **Import from
+  formatter JSON…** ("Bring your own") is the pnp/List-Formatting bridge:
+  paste any column/view formatter → `componentFromFormatterDoc` (core
+  `importJson` does wrapper detection) — @currentField becomes an ANY-type
+  'Column' slot, refs the current schema doesn't know get ALL_FIELD_TYPES
+  slots (never guess-and-hide), tiles and CFR-carrying trees refuse with
+  teaching. **Replace-and-push**: saving over an existing component name
+  REPLACES it (keeps its id) and, for a single-slot element component,
+  `pushSubtypeUpdate(def.id, …)` re-bakes every column wearing it — one
+  Ctrl+Z reverts the batch (the knobs half of subtype parity is tracked
+  separately). Items 1 & 4 of #148 were assessed and deliberately deferred:
+  palette drops stay prompt-free (unifying catalogs would tax simple drops)
+  and the two Save labels never co-appear post-#149.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -539,7 +559,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 629 vitest unit tests across 40 files (engine semantics incl.
+- `npm test` — 634 vitest unit tests across 40 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -551,7 +571,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 114 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 117 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

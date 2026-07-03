@@ -20,17 +20,18 @@
 
 import { state } from './state';
 import { renderElement } from '../core/renderer';
+import { importJson } from '../core/serializer';
 import type { EvalContext } from '../core/expressions';
 import type { SPElement, NodePath, MockField } from '../core/types';
 import { createOverlay } from './overlay';
-import { inlineColumnFormatter } from './cfr';
+import { inlineColumnFormatter, toColumnFormatter } from './cfr';
 import { listSubtypes } from './subtypes';
 import { openTemplateModal } from './templateModal';
 import {
   COMPONENTS_KEY, BUILTIN_COMPONENTS,
   loadComponents, serializeComponents, addComponent, removeComponent,
   bestGuessMapping, mappingComplete, bindComponent, deriveSlots, containsCfr,
-  componentId, widenType,
+  componentId, widenType, componentKind, componentFromFormatterDoc,
   type ComponentDef,
 } from './components';
 
@@ -214,33 +215,47 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       el.appendChild(miss);
     }
 
+    const isRow = componentKind(def) === 'row';
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'wb-comp-add';
-    add.textContent = 'Add to view…';
-    add.title = 'Map your columns into this component and add it to the canvas';
+    add.textContent = isRow ? 'Use as the row layout…' : 'Add to view…';
+    add.title = isRow
+      ? 'Map your columns into this layout and make it THE row layout for this view (one undoable step)'
+      : 'Map your columns into this component and add it to the canvas';
     add.addEventListener('click', () => openMappingDialog(def, onToast));
     el.appendChild(add);
 
     return el;
   };
 
-  section('Built-in', BUILTIN_COMPONENTS);
-  section('Yours', customComponents(),
+  const customs = customComponents();
+  section('Built-in', BUILTIN_COMPONENTS.filter((c) => componentKind(c) === 'element'));
+  section('Yours', customs.filter((c) => componentKind(c) === 'element'),
     'Nothing saved yet — right-click an element and “Save as component…” to package it.');
 
-  // ── the row-scoped sibling: whole-row shapes live in New rowview ──────────
-  const rowHead = document.createElement('div');
-  rowHead.className = 'wb-complib-group';
-  rowHead.textContent = 'Whole rows';
-  host.appendChild(rowHead);
+  // ── the row-scoped siblings: whole-row components + New rowview ───────────
+  section('Whole rows', customs.filter((c) => componentKind(c) === 'row'));
   const rowCard = document.createElement('button');
   rowCard.type = 'button';
   rowCard.className = 'wb-comp-rowlink';
-  rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New rowview…</span><span class="wb-comp-rowlink-desc">Components drop INTO a view; a whole-row shape replaces it — pre-built row layouts live here.</span>';
+  rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New rowview…</span><span class="wb-comp-rowlink-desc">Start the whole row from a pre-built layout; save a row you like as a component (right-click its root) to see it here.</span>';
   rowCard.title = 'Start the whole row from a pre-built layout (the same templates as the View dropdown)';
   rowCard.addEventListener('click', () => openTemplateModal(onToast));
   host.appendChild(rowCard);
+
+  // ── the pnp/List-Formatting bridge: paste any formatter JSON ──────────────
+  const importHead = document.createElement('div');
+  importHead.className = 'wb-complib-group';
+  importHead.textContent = 'Bring your own';
+  host.appendChild(importHead);
+  const importCard = document.createElement('button');
+  importCard.type = 'button';
+  importCard.className = 'wb-comp-rowlink';
+  importCard.innerHTML = '<span class="wb-comp-rowlink-name">⤓ Import from formatter JSON…</span><span class="wb-comp-rowlink-desc">Paste any column or view formatter — a pnp/List-Formatting sample, a teammate’s copy — and it becomes a mappable component.</span>';
+  importCard.title = 'Convert formatter JSON into a component with typed slots';
+  importCard.addEventListener('click', () => openImportComponentDialog(() => renderComponentLibrary(host, onToast), onToast));
+  host.appendChild(importCard);
 }
 
 // ─── "Add to view…": the typed mapping dialog ────────────────────────────────
@@ -331,14 +346,25 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void): voi
 
   const foot = document.createElement('div');
   foot.className = 'wb-compmap-foot';
+  const isRow = componentKind(def) === 'row';
   const insert = document.createElement('button');
   insert.type = 'button';
   insert.className = 'wb-compmap-insert';
-  insert.textContent = 'Add to the view';
+  insert.textContent = isRow ? 'Use as the row layout' : 'Add to the view';
   insert.disabled = !mappingComplete(def, mapping);
-  insert.title = 'Insert the bound component — one undoable step';
+  insert.title = isRow
+    ? 'Replace this view\'s row layout with the bound component — one undoable step'
+    : 'Insert the bound component — one undoable step';
   insert.addEventListener('click', () => {
     const bound = bindComponent(def, mapping);
+    if (isRow) {
+      // a row component IS the view body — same apply as a row template
+      if (state.activeDocKey !== 'main') state.openMain();
+      state.applyRowTemplate(bound, def.additionalRowClass);
+      close();
+      onToast(`${def.name} is now this view's row layout — Ctrl+Z restores what you had`);
+      return;
+    }
     // on the grid, root children ARE the view columns — arrive as a new one;
     // elsewhere insert at the selection like a palette drop
     const at = state.doc.kind === 'grid' ? [] : undefined;
@@ -350,6 +376,88 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void): voi
   panel.appendChild(foot);
 
   document.body.appendChild(overlay);
+}
+
+// ─── "Import from formatter JSON…" (the pnp/List-Formatting bridge) ──────────
+
+function openImportComponentDialog(onSaved: () => void, onToast: (m: string) => void): void {
+  const { overlay, close } = createOverlay('wb-compmap-overlay', () => close());
+  const panel = document.createElement('div');
+  panel.className = 'wb-compmap';
+  overlay.appendChild(panel);
+
+  const head = document.createElement('div');
+  head.className = 'wb-compmap-head';
+  const title = document.createElement('span');
+  title.className = 'wb-compmap-title';
+  title.textContent = 'Import a component from formatter JSON';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'wb-compmap-close';
+  closeBtn.textContent = '✕';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.addEventListener('click', () => close());
+  head.append(title, closeBtn);
+  panel.appendChild(head);
+
+  const note = document.createElement('div');
+  note.className = 'wb-compmap-note';
+  note.textContent = 'Paste a column formatter or a view (row) formatter — e.g. a pnp/List-Formatting sample. Its column references become typed slots you map to YOUR columns when you use it.';
+  panel.appendChild(note);
+
+  const nameRow = document.createElement('label');
+  nameRow.className = 'wb-compmap-row';
+  const nameLab = document.createElement('span');
+  nameLab.className = 'wb-compmap-label';
+  nameLab.textContent = 'Name';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'wb-compmap-name';
+  nameInput.value = 'Imported component';
+  nameRow.append(nameLab, nameInput);
+  panel.appendChild(nameRow);
+
+  const jsonBox = document.createElement('textarea');
+  jsonBox.className = 'wb-compmap-json';
+  jsonBox.placeholder = 'Paste the formatter JSON here…';
+  jsonBox.setAttribute('aria-label', 'Formatter JSON to import');
+  jsonBox.rows = 10;
+  panel.appendChild(jsonBox);
+
+  const err = document.createElement('div');
+  err.className = 'wb-compmap-error';
+  err.hidden = true;
+  panel.appendChild(err);
+
+  const foot = document.createElement('div');
+  foot.className = 'wb-compmap-foot';
+  const doImport = document.createElement('button');
+  doImport.type = 'button';
+  doImport.className = 'wb-compmap-insert';
+  doImport.textContent = 'Import to the library';
+  doImport.addEventListener('click', () => {
+    err.hidden = true;
+    try {
+      const doc = importJson(jsonBox.value);
+      const name = nameInput.value.trim() || 'Imported component';
+      const def = componentFromFormatterDoc(doc, name, state.fields, componentId(new Date()));
+      if (!writeCustom(addComponent(readCustom(), def))) {
+        throw new Error('Could not save — browser storage is full or blocked.');
+      }
+      close();
+      onSaved();
+      onToast(`Imported “${name}” — ${componentKind(def) === 'row' ? 'a whole-row layout' : 'an element component'} with ${def.slots.length} slot${def.slots.length === 1 ? '' : 's'}`);
+    } catch (e) {
+      // refuse-and-teach: the serializer/converter errors explain themselves
+      err.textContent = (e as Error).message;
+      err.hidden = false;
+    }
+  });
+  foot.appendChild(doImport);
+  panel.appendChild(foot);
+
+  document.body.appendChild(overlay);
+  jsonBox.focus();
 }
 
 // ─── "Save as component…" (element context menu) ─────────────────────────────
@@ -371,7 +479,12 @@ export function openSaveAsComponent(path: NodePath, onToast: (m: string) => void
   const inColumn = state.activeDocKey !== 'main' || state.doc.kind === 'column';
   const tree = inColumn ? inlineColumnFormatter(node, state.currentFieldName)
     : JSON.parse(JSON.stringify(node)) as SPElement;
-  openSaveDialog(tree, node._elmName ?? 'My component', onToast);
+  // the ROOT of an explicit row view is the whole row layout — save it as a
+  // row component (applying one replaces a view's body, template-style)
+  const isRowRoot = path.length === 0 && state.activeDocKey === 'main' && state.doc.kind === 'row';
+  const arc = state.doc.viewExtras?.additionalRowClass;
+  openSaveDialog(tree, node._elmName ?? (isRowRoot ? 'My row layout' : 'My component'), onToast,
+    isRowRoot ? { kind: 'row', ...(typeof arc === 'string' ? { additionalRowClass: arc } : {}) } : {});
 }
 
 /**
@@ -386,8 +499,15 @@ export function openSaveColumnAsComponent(field: MockField, onToast: (m: string)
   openSaveDialog(inlineColumnFormatter(formatter, field.name), `${field.displayName ?? field.name} look`, onToast);
 }
 
-/** The shared save dialog: name it, see its derived slots and preview, save. */
-function openSaveDialog(tree: SPElement, defaultName: string, onToast: (m: string) => void): void {
+/** The shared save dialog: name it, see its derived slots and preview, save.
+ *  Saving over an existing name REPLACES that component and, for a single-slot
+ *  element component, pushes the new recipe to every column wearing it. */
+function openSaveDialog(
+  tree: SPElement,
+  defaultName: string,
+  onToast: (m: string) => void,
+  opts: { kind?: 'row'; additionalRowClass?: string } = {},
+): void {
   const slots = deriveSlots(tree, state.fields);
 
   const { overlay, close } = createOverlay('wb-compmap-overlay', () => close());
@@ -411,9 +531,11 @@ function openSaveDialog(tree: SPElement, defaultName: string, onToast: (m: strin
 
   const note = document.createElement('div');
   note.className = 'wb-compmap-note';
-  note.textContent = slots.length
-    ? 'A component is formatting without a column to call home — anyone adding it maps their own columns into these slots:'
-    : 'A component is formatting without a column to call home. This one references no columns, so it will drop in anywhere as-is.';
+  note.textContent = opts.kind === 'row'
+    ? 'This saves the WHOLE row layout as a component — using it later replaces a view\'s body (one undoable step), with your columns mapped into these slots:'
+    : slots.length
+      ? 'A component is formatting without a column to call home — anyone adding it maps their own columns into these slots:'
+      : 'A component is formatting without a column to call home. This one references no columns, so it will drop in anywhere as-is.';
   panel.appendChild(note);
 
   if (slots.length) {
@@ -449,22 +571,43 @@ function openSaveDialog(tree: SPElement, defaultName: string, onToast: (m: strin
   save.className = 'wb-compmap-insert';
   save.textContent = 'Save to the library';
   save.addEventListener('click', () => {
-    const name = nameInput.value.trim() || 'My component';
+    // a cleared Name falls back to the dialog's own default ("My row layout"
+    // for a row save), never a generic that mislabels the kind
+    const name = nameInput.value.trim() || defaultName;
+    // saving over an existing name replaces it (keeps its identity, so
+    // columns wearing it can be re-baked below)
+    const existing = readCustom().find((c) => c.name.toLowerCase() === name.toLowerCase());
     const def: ComponentDef = {
-      id: componentId(new Date()),
+      id: existing?.id ?? componentId(new Date()),
       name,
-      description: slots.length
-        ? `Saved from this workspace — maps ${slots.map((s) => slotTypesLabel(s.types)).join(', ')}.`
-        : 'Saved from this workspace.',
+      description: opts.kind === 'row'
+        ? 'Saved from this workspace — a whole-row layout.'
+        : slots.length
+          ? `Saved from this workspace — maps ${slots.map((s) => slotTypesLabel(s.types)).join(', ')}.`
+          : 'Saved from this workspace.',
       slots,
       root: tree,
+      ...(opts.kind === 'row' ? { kind: 'row' as const } : {}),
+      ...(opts.additionalRowClass ? { additionalRowClass: opts.additionalRowClass } : {}),
     };
-    if (!writeCustom(addComponent(readCustom(), def))) {
+    const base = existing ? removeComponent(readCustom(), existing.id) : readCustom();
+    if (!writeCustom(addComponent(base, def))) {
       onToast('Could not save the component — browser storage is full or blocked');
       return;
     }
     close();
-    onToast(`Saved “${name}” to the component library (the ⬡ Components tab)`);
+    // replace + push: columns wearing this component (tagged by its id via the
+    // Format-this-column catalog) re-bake to the new recipe as ONE undo step
+    if (existing && componentKind(def) === 'element' && def.slots.length === 1) {
+      const key = def.slots[0].key;
+      const pushed = state.pushSubtypeUpdate(def.id, () =>
+        toColumnFormatter(bindComponent(def, { [key]: key }), key));
+      if (pushed > 0) {
+        onToast(`Replaced “${name}” and updated the ${pushed} column${pushed === 1 ? '' : 's'} wearing it — one Ctrl+Z reverts them`);
+        return;
+      }
+    }
+    onToast(`${existing ? 'Replaced' : 'Saved'} “${name}” ${existing ? 'in' : 'to'} the component library (the ⬡ Components tab)`);
   });
   foot.appendChild(save);
   panel.appendChild(foot);

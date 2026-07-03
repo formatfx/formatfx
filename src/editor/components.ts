@@ -23,7 +23,8 @@
  * stay frozen). Built-ins ship in code and are never persisted.
  */
 
-import type { SPElement, MockField, FieldType } from '../core/types';
+import type { SPElement, MockField, FieldType, FormatterDocument } from '../core/types';
+import { inlineColumnFormatter } from './cfr';
 
 export interface ComponentSlot {
   /** The author-side field name used inside `root` (e.g. 'Due' ⇄ `[$Due]`). */
@@ -42,8 +43,18 @@ export interface ComponentDef {
   slots: ComponentSlot[];
   /** The element tree, written against the slot keys as field names. */
   root: SPElement;
+  /** 'element' (default) drops INTO a view; 'row' IS the whole row layout —
+   *  applying one replaces the view body (applyRowTemplate semantics). */
+  kind?: 'element' | 'row';
+  /** Row components: the zebra/extra row class the layout shipped with. */
+  additionalRowClass?: string;
   /** Ships in code; not persisted, not deletable. */
   builtin?: boolean;
+}
+
+/** The kind, defaulted — most components are element-scoped. */
+export function componentKind(def: ComponentDef): 'element' | 'row' {
+  return def.kind === 'row' ? 'row' : 'element';
 }
 
 /** ADDITIVE localStorage key — see the frozen-keys rule in docs/HANDOFF.md §1. */
@@ -121,13 +132,68 @@ export function widenType(t: FieldType): FieldType[] {
   return TYPE_SIBLINGS[t] ?? [t];
 }
 
+/** Every field type — the slot typing for references we can't infer (foreign
+ *  JSON built against a schema we never saw). The mapping picker then offers
+ *  every column rather than guessing wrong and hiding the right one. */
+export const ALL_FIELD_TYPES: FieldType[] = [
+  'text', 'note', 'number', 'currency', 'choice', 'choiceMulti',
+  'date', 'person', 'personMulti', 'boolean', 'hyperlink', 'lookup', 'lookupMulti',
+];
+
 /** Derive slots from a tree: every referenced field, typed by the schema it
- *  was built against (unknown names fall back to text). */
-export function deriveSlots(tree: SPElement, fields: MockField[]): ComponentSlot[] {
+ *  was built against; `unknownTypes` types the names that schema doesn't know
+ *  (text-ish for workspace saves, EVERY type for foreign JSON imports). */
+export function deriveSlots(
+  tree: SPElement,
+  fields: MockField[],
+  unknownTypes: FieldType[] = widenType('text'),
+): ComponentSlot[] {
   return fieldRefsIn(tree).map((name) => {
-    const type = fields.find((f) => f.name === name)?.type ?? 'text';
-    return { key: name, label: name, types: widenType(type) };
+    const type = fields.find((f) => f.name === name)?.type;
+    return { key: name, label: name, types: type ? widenType(type) : unknownTypes };
   });
+}
+
+/**
+ * Convert an imported formatter document (the pnp/List-Formatting bridge —
+ * paste any column or view formatter JSON) into a component. Throws
+ * teaching errors on shapes that can't be self-contained components:
+ * tile formatters (not yet supported) and CFR-carrying trees (that content
+ * lives in a registry the component can't carry).
+ */
+export function componentFromFormatterDoc(
+  doc: FormatterDocument,
+  name: string,
+  fields: MockField[],
+  id: string,
+): ComponentDef {
+  if (doc.kind === 'tile') {
+    throw new Error('Tile formatters aren\'t supported as components yet — import it via the JSON pane to edit it as a view instead.');
+  }
+  if (containsCfr(doc.root)) {
+    throw new Error('This formatter references another column\'s formatter (columnFormatterReference) — components must be self-contained. Inline that content first, then import.');
+  }
+  if (doc.kind === 'column') {
+    // column recipes speak @currentField — make it an explicit slot reference
+    const root = inlineColumnFormatter(doc.root, 'Column');
+    const refsColumn = fieldRefsIn(root).includes('Column');
+    const slots = deriveSlots(root, fields, ALL_FIELD_TYPES).map((s) =>
+      // the @currentField slot could be ANY type — the author's intent is unknowable from JSON
+      s.key === 'Column' && refsColumn ? { ...s, label: 'The column to format', types: ALL_FIELD_TYPES } : s);
+    return { id, name, description: 'Imported from formatter JSON.', slots, root };
+  }
+  // row (grid imports also detect as 'row'): the whole row layout
+  return {
+    id,
+    name,
+    description: 'Imported from formatter JSON — a whole-row layout.',
+    kind: 'row',
+    slots: deriveSlots(doc.root, fields, ALL_FIELD_TYPES),
+    root: JSON.parse(JSON.stringify(doc.root)) as SPElement,
+    ...(typeof doc.viewExtras?.additionalRowClass === 'string'
+      ? { additionalRowClass: doc.viewExtras.additionalRowClass }
+      : {}),
+  };
 }
 
 /**
@@ -156,10 +222,11 @@ export function mappingComplete(def: ComponentDef, mapping: Record<string, strin
 }
 
 /** A component the "Format this column" catalog can offer for a `type` column:
- *  exactly one slot, and that slot accepts the type. (Multi-slot components
- *  need the mapping dialog — they live in the ⬡ library.) */
+ *  element-scoped, exactly one slot, and that slot accepts the type.
+ *  (Multi-slot components need the mapping dialog; row components replace the
+ *  whole view — both live in the ⬡ library.) */
 export function isSingleColumnComponent(def: ComponentDef, type: FieldType): boolean {
-  return def.slots.length === 1 && def.slots[0].types.includes(type);
+  return componentKind(def) === 'element' && def.slots.length === 1 && def.slots[0].types.includes(type);
 }
 
 /** Bind a component to real columns: rewrite each slot key to its mapped
@@ -186,21 +253,33 @@ function isValidSlot(s: unknown): s is ComponentSlot {
 }
 
 function isValidDef(c: unknown): c is ComponentDef {
+  const kind = (c as ComponentDef)?.kind;
   return Boolean(c && typeof c === 'object'
     && typeof (c as ComponentDef).id === 'string'
     && typeof (c as ComponentDef).name === 'string' && (c as ComponentDef).name.length > 0
+    && (kind === undefined || kind === 'element' || kind === 'row')
     && Array.isArray((c as ComponentDef).slots) && (c as ComponentDef).slots.every(isValidSlot)
     && (c as ComponentDef).root && typeof (c as ComponentDef).root === 'object'
     && typeof ((c as ComponentDef).root as SPElement).elmType === 'string');
 }
 
-/** Parse the persisted custom components; corrupt/foreign entries are dropped. */
+/** Parse the persisted custom components; corrupt/foreign entries are dropped,
+ *  and a corrupt OPTIONAL field (a non-string additionalRowClass, or one on a
+ *  non-row component) is stripped rather than sinking the whole entry — it
+ *  would otherwise flow into viewExtras on apply. */
 export function loadComponents(raw: string | null): ComponentDef[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.version !== 1 || !Array.isArray(parsed.components)) return [];
-    return (parsed.components as unknown[]).filter(isValidDef).map((c) => ({ ...c, builtin: false }));
+    return (parsed.components as unknown[]).filter(isValidDef).map((c) => {
+      const def: ComponentDef = { ...c, builtin: false };
+      if (def.additionalRowClass !== undefined
+        && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
+        delete def.additionalRowClass;
+      }
+      return def;
+    });
   } catch {
     return [];
   }
