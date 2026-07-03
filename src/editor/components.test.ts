@@ -14,6 +14,7 @@ import {
   loadComponents, serializeComponents, addComponent, removeComponent, componentId,
   componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
+  uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel } from './componentUsage';
@@ -239,6 +240,106 @@ describe('row components + the formatter-JSON import bridge', () => {
       version: 1, components: [{ ...row, additionalRowClass: 'zebra' }],
     }));
     expect(good[0].additionalRowClass).toBe('zebra');
+  });
+});
+
+describe('the component editor brain: variants, re-binding, restamping', () => {
+  const NOW = new Date('2026-07-03T12:00:00Z');
+
+  it('uniqueName / variantName: dated as-found names, counter-deduped case-insensitively', () => {
+    expect(uniqueName('X', ['Y'])).toBe('X');
+    expect(uniqueName('X', ['x'])).toBe('X 2');
+    expect(uniqueName('X', ['x', 'X 2'])).toBe('X 3');
+    expect(variantName('Chip', [], NOW)).toBe('Chip (as-found 2026-07-03)');
+    expect(variantName('Chip', ['Chip (as-found 2026-07-03)'], NOW)).toBe('Chip (as-found 2026-07-03) 2');
+  });
+
+  it('createVariant freezes the OLD recipe with lineage — pure, builtin stripped', () => {
+    const parent: ComponentDef = { ...DEF, builtin: true };
+    const v = createVariant(parent, 'c-v1', [], NOW);
+    expect(v.variantOf).toBe('c-test');
+    expect(v.id).toBe('c-v1');
+    expect(v.name).toBe('Test comp (as-found 2026-07-03)');
+    expect(v.builtin).toBeUndefined();
+    expect(v.root).toEqual(DEF.root);
+    // deep-cloned: mutating the variant never touches the parent recipe
+    v.root.txtContent = 'MUTATED';
+    expect(parent.root.txtContent).toBe(DEF.root.txtContent);
+    expect(parent.builtin).toBe(true);
+  });
+
+  it('variantOf round-trips the store; a corrupt (non-string) value is stripped, old stores load unchanged', () => {
+    const v = createVariant(DEF, 'c-v2', [], NOW);
+    const back = loadComponents(serializeComponents([v]));
+    expect(back[0].variantOf).toBe('c-test');
+    // corrupt lineage strips without sinking the entry (schema stays v1)
+    const corrupt = loadComponents(JSON.stringify({ version: 1, components: [{ ...v, variantOf: 7 }] }));
+    expect(corrupt).toHaveLength(1);
+    expect(corrupt[0].variantOf).toBeUndefined();
+    // a pre-variant store (no variantOf anywhere) loads exactly as before
+    const old = loadComponents(JSON.stringify({ version: 1, components: [DEF] }));
+    expect(old).toHaveLength(1);
+    expect(old[0].variantOf).toBeUndefined();
+  });
+
+  it('rebindInstance re-bakes with the instance\'s OWN map; preserves renames + grid layout artifacts', () => {
+    const newDef: ComponentDef = {
+      ...DEF,
+      root: { elmType: 'div', txtContent: '=[$Due]', style: { 'font-weight': '600' } },
+    };
+    const instance: SPElement = {
+      elmType: 'div',
+      _elmName: 'Test comp', // NOT renamed (it wears the old def name)
+      _component: { id: 'c-test', map: { Due: 'DueDate', Person: 'Owner' } },
+      style: { 'flex': '2', 'min-width': '0', 'color': 'red' },
+    };
+    const out = rebindInstance(newDef, instance, 'Test comp')!;
+    expect(out.txtContent).toBe('=[$DueDate]'); // bound with the stored map
+    expect(out._component).toEqual({ id: 'c-test', map: { Due: 'DueDate', Person: 'Owner' } });
+    expect(out._elmName).toBe('Test comp'); // un-renamed → the def's own naming
+    // grid-layout artifacts survive; the OLD look (color) does not
+    expect(out.style?.['flex']).toBe('2');
+    expect(out.style?.['min-width']).toBe('0');
+    expect(out.style?.['color']).toBeUndefined();
+    // a maker's rename is preserved verbatim
+    const renamed = rebindInstance(newDef, { ...instance, _elmName: 'My deadline' }, 'Test comp')!;
+    expect(renamed._elmName).toBe('My deadline');
+    // purity: the instance was not mutated
+    expect(instance.txtContent).toBeUndefined();
+    // unstamped elements have nothing to re-bind
+    expect(rebindInstance(newDef, { elmType: 'div' }, 'Test comp')).toBeNull();
+  });
+
+  it('replaceStampedIn substitutes stamped subtrees (children + card content) and stays pure', () => {
+    const stamped: SPElement = { elmType: 'div', _component: { id: 'c-test', map: {} } };
+    const tree: SPElement = {
+      elmType: 'div',
+      children: [
+        { elmType: 'span' },
+        stamped,
+        { elmType: 'div', customCardProps: { formatter: { ...stamped }, openOnEvent: 'hover' } },
+      ],
+    };
+    const out = replaceStampedIn(tree, 'c-test', () => ({ elmType: 'span', txtContent: 'NEW' }));
+    expect(out.children?.[1].txtContent).toBe('NEW');
+    expect(out.children?.[2].customCardProps?.formatter.txtContent).toBe('NEW');
+    expect(out.children?.[0].txtContent).toBeUndefined();
+    expect(tree.children?.[1]._component?.id).toBe('c-test'); // input untouched
+    // other ids untouched
+    const other = replaceStampedIn(tree, 'c-else', () => ({ elmType: 'span' }));
+    expect(other.children?.[1]._component?.id).toBe('c-test');
+  });
+
+  it('restampIn moves every matching stamp to the variant id (pinning), purely', () => {
+    const tree: SPElement = {
+      elmType: 'div',
+      _component: { id: 'c-test', map: { Due: 'DueDate' } },
+      children: [{ elmType: 'div', _component: { id: 'c-other', map: {} } }],
+    };
+    const out = restampIn(tree, 'c-test', 'c-variant');
+    expect(out._component).toEqual({ id: 'c-variant', map: { Due: 'DueDate' } }); // map kept
+    expect(out.children?.[0]._component?.id).toBe('c-other'); // foreign stamps untouched
+    expect(tree._component?.id).toBe('c-test'); // input untouched
   });
 });
 

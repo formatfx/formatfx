@@ -1188,6 +1188,23 @@ export class EditorState {
     return targets.length;
   }
 
+  /**
+   * Batched cross-cutting apply (the component editor's Save-and-apply): view
+   * subtree replacements, registry re-bakes and field-tag restamps together as
+   * ONE undoable step. Leaves a drilled column first (navigation, not a
+   * mutation — the applySnapshot precedent) so the MAIN doc is live and inside
+   * snapState, and bumps `touchedColumns`' versions so the registry rewrites
+   * survive restoreSnap's merge. `fn` runs inside one mutateDocument: a single
+   * Ctrl+Z reverts everything it touched (doc + columnRefs + subtype tags),
+   * and a no-op `fn` pushes nothing.
+   */
+  batchProjectUpdate(touchedColumns: string[], fn: () => void): void {
+    if (this.activeDocKey !== 'main') this.openMain();
+    for (const name of touchedColumns) this.incrementColumnVersion(name);
+    this.mutateDocument(fn);
+    this.emit('data'); // registry/tag changes show up in pickers/tree/gallery
+  }
+
   loadDocument(doc: FormatterDocument): void {
     // NOTE: when a column formatter is open, this intentionally applies to that
     // open doc — the JSON tab's "Apply to canvas" edits whichever formatter is

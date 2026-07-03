@@ -390,6 +390,126 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-compmap-insert:hover:not(:disabled) { filter: brightness(1.08); }
 .wb-compmap-insert:disabled { opacity: .45; cursor: default; }
 
+/* ── as-found variants (the component editor's "keep as-found" one-offs) ──── */
+.wb-comp-vtag {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 8px;
+  color: var(--wb-component); background: var(--wb-component-bg);
+  border: 1px dashed var(--wb-component-border);
+}
+.wb-comp-lineage { font-size: 10.5px; font-style: italic; color: var(--wb-lp-text-2); }
+.wb-comp-variantcard { margin-left: 14px; border-left: 3px solid var(--wb-component-border); }
+.wb-comp-edit {
+  font-size: 11px; padding: 4px 8px; cursor: pointer;
+  border: 1px solid var(--wb-lp-border); border-radius: 5px;
+  background: transparent; color: var(--wb-lp-text-2);
+}
+.wb-comp-edit:hover { border-color: var(--wb-component); color: var(--wb-component); }
+
+/* ── the component EDITOR (over the canvas pane; JS pins it to .wb-pane-canvas) ── */
+.wb-compedit-overlay {
+  position: fixed; inset: 0; z-index: 300; /* inset is the no-canvas fallback */
+  background: rgba(0, 0, 0, .35);
+  display: flex; padding: 10px; box-sizing: border-box;
+}
+.wb-ce {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-top: 3px solid var(--wb-component);
+  border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  padding: 12px 16px; font-size: 12px;
+}
+.wb-ce-head { display: flex; align-items: baseline; gap: 10px; }
+.wb-ce-title { font-size: 15px; font-weight: 600; }
+.wb-ce-sub { color: var(--wb-text-2); font-size: 11px; }
+.wb-ce-close {
+  margin-left: auto; border: none; background: transparent; color: var(--wb-text-2);
+  font-size: 14px; cursor: pointer; padding: 2px 6px;
+}
+.wb-ce-close:hover { color: var(--wb-component); }
+.wb-ce-body { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.wb-ce-col { flex: 1 1 300px; min-width: 260px; display: flex; flex-direction: column; }
+.wb-ce-seclab {
+  margin-top: 8px; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--wb-text-2);
+}
+.wb-ce-sec { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+.wb-ce-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wb-ce-rowlab { flex: 0 0 72px; font-size: 11px; font-weight: 600; color: var(--wb-text-2); }
+.wb-ce-input {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 5px 8px;
+  border: 1px solid var(--wb-border); border-radius: 5px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-ce-input:focus { outline: none; border-color: var(--wb-component); }
+.wb-ce-note { font-size: 11px; font-style: italic; color: var(--wb-text-2); line-height: 1.45; }
+.wb-ce-slot { display: flex; align-items: center; gap: 6px; }
+.wb-ce-slotkey {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 8px;
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  color: var(--wb-component); background: var(--wb-component-bg);
+  border: 1px solid var(--wb-component-border);
+}
+.wb-ce-slotlabel { flex: 1 1 40%; }
+.wb-ce-slotdesc { flex: 1 1 40%; }
+.wb-ce-preview {
+  padding: 12px; border: 1px dashed var(--wb-component-border); border-radius: 6px;
+  background: var(--wb-bg); cursor: pointer;
+}
+.wb-ce-picked { outline: 2px solid var(--wb-component); outline-offset: 1px; }
+.wb-ce-struct { display: flex; flex-direction: column; gap: 1px; max-height: 130px; overflow-y: auto; }
+.wb-ce-struct-row {
+  text-align: left; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
+}
+.wb-ce-struct-row:hover { background: var(--wb-component-bg); color: var(--wb-component); }
+.wb-ce-struct-row.active { background: var(--wb-component-bg); color: var(--wb-component); font-weight: 600; }
+.wb-ce-style { display: flex; flex-direction: column; gap: 6px; }
+.wb-ce-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wb-ce-chip {
+  font-size: 11px; padding: 3px 8px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 10px;
+  background: transparent; color: var(--wb-text);
+}
+.wb-ce-chip:hover { border-color: var(--wb-component); }
+.wb-ce-chip.active {
+  border-color: var(--wb-component); color: var(--wb-component);
+  background: var(--wb-component-bg); font-weight: 600;
+}
+.wb-ce-swatch {
+  width: 18px; height: 18px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--wb-border); padding: 0;
+}
+.wb-ce-swatch.active { outline: 2px solid var(--wb-component); outline-offset: 1px; }
+.wb-ce-usage { display: flex; align-items: center; gap: 8px; }
+.wb-ce-jump {
+  flex: 1 1 auto; min-width: 0; text-align: left; font-size: 11px; padding: 4px 8px;
+  cursor: pointer; border: 1px solid var(--wb-border); border-radius: 5px;
+  background: transparent; color: var(--wb-text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wb-ce-jump:hover { border-color: var(--wb-component); color: var(--wb-component); }
+.wb-ce-pinlab {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; color: var(--wb-text-2); cursor: pointer;
+}
+.wb-ce-foot {
+  display: flex; justify-content: flex-end; gap: 8px; align-items: center;
+  margin-top: auto; padding-top: 8px; border-top: 1px solid var(--wb-border);
+}
+.wb-ce-foot button { font-size: 12px; padding: 6px 12px; cursor: pointer; border-radius: 6px; }
+.wb-ce-savenew {
+  border: 1px solid var(--wb-component); background: transparent; color: var(--wb-component);
+}
+.wb-ce-savenew:hover { background: var(--wb-component-bg); }
+.wb-ce-save {
+  font-weight: 600; border: 1px solid var(--wb-component);
+  background: var(--wb-component); color: #ffffff;
+}
+body.wb-dark .wb-ce-save { color: #10393b; }
+.wb-ce-save:hover { filter: brightness(1.08); }
+
 /* ── topbar ☰ menu ───────────────────────────────────────── */
 .wb-menu { position: relative; }
 .wb-menu-panel[hidden] { display: none; } /* display:flex below would defeat [hidden] */

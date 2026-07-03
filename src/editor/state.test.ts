@@ -323,6 +323,56 @@ describe('pushSubtypeUpdate: batched re-bake, one undo reverts all columns (US-7
   });
 });
 
+describe('batchProjectUpdate: the component editor\'s one-step apply', () => {
+  it('doc replacement + registry re-bake + tag restamp revert on ONE undo', () => {
+    const s = new EditorState();
+    s.doc.root.children = [{ elmType: 'div', txtContent: 'OLD-VIEW', _component: { id: 'c-x', map: {} } }];
+    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD-COL' };
+    const due = s.fields.find((f) => f.name === 'DueDate')!;
+    due.subtype = 'c-x';
+    const before = JSON.stringify(s.doc);
+
+    s.batchProjectUpdate(['DueDate'], () => {
+      s.doc.root.children![0] = { elmType: 'div', txtContent: 'NEW-VIEW', _component: { id: 'c-x', map: {} } };
+      s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'NEW-COL' };
+      due.subtype = 'c-x-variant';
+    });
+    expect(s.doc.root.children![0].txtContent).toBe('NEW-VIEW');
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW-COL');
+    expect(due.subtype).toBe('c-x-variant');
+
+    s.undo(); // ONE Ctrl+Z reverts ALL THREE together
+    expect(JSON.stringify(s.doc)).toBe(before);
+    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD-COL');
+    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x');
+
+    s.redo(); // and redo re-applies the whole batch
+    expect(s.doc.root.children![0].txtContent).toBe('NEW-VIEW');
+    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW-COL');
+    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x-variant');
+  });
+
+  it('leaves a drilled column first, so the MAIN doc is live inside the snapshot', () => {
+    const s = new EditorState();
+    s.openColumnRef('Status');
+    expect(s.activeDocKey).toBe('Status');
+    s.batchProjectUpdate([], () => {
+      s.doc.root.children![0]._elmName = 'Renamed by the apply';
+    });
+    expect(s.activeDocKey).toBe('main'); // navigation happened before the mutate
+    expect(s.doc.root.children![0]._elmName).toBe('Renamed by the apply');
+    s.undo();
+    expect(s.doc.root.children![0]._elmName).not.toBe('Renamed by the apply');
+  });
+
+  it('a no-op fn pushes no phantom undo step', () => {
+    const s = new EditorState();
+    expect(s.canUndo).toBe(false);
+    s.batchProjectUpdate(['DueDate'], () => { /* nothing */ });
+    expect(s.canUndo).toBe(false);
+  });
+});
+
 describe('view name (project metadata)', () => {
   it('defaults to "View 1"', () => {
     expect(new EditorState().viewName).toBe('View 1');

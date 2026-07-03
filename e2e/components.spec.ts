@@ -234,6 +234,83 @@ test('saving over an existing name replaces the component instead of duplicating
   await expect(page.locator('.wb-comp-card', { hasText: 'Same look' })).toHaveCount(1);
 });
 
+test('the component editor: edit a slot label + a style, pin one usage as-found — one undo reverts the whole apply', async ({ page }) => {
+  // package the DueDate cell as a custom component…
+  await treeRow(page, 'DueDate').click({ button: 'right' });
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  await page.locator('.wb-compmap .wb-compmap-name').fill('My date look');
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  // …and insert it TWICE (two view usages, two new grid columns)
+  await page.locator('.wb-fmt-tab-comp').click();
+  await page.locator('.wb-comp-card', { hasText: 'My date look' }).locator('.wb-comp-add').click();
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  const used = page.locator('.wb-comp-used', { hasText: 'My date look' });
+  await used.locator('.wb-comp-addmore').click();
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await expect(used.locator('.wb-comp-count')).toHaveText('used in 2 places');
+
+  // open the editor from the inventory card — it covers the canvas pane only,
+  // the Left Edit Pane (the library) stays visible behind it
+  await used.locator('.wb-comp-edit').click();
+  const ce = page.locator('.wb-ce');
+  await expect(ce).toBeVisible();
+  await expect(page.locator('#wb-lp-library')).toBeVisible();
+  // slot KEY is immutable; the LABEL (what the mapping dialog asks) is not
+  await expect(ce.locator('.wb-ce-slotkey')).toHaveText('[$DueDate]');
+  await ce.locator('.wb-ce-slotlabel').fill('The date to show');
+  // staged style edit on the selected root: purple text (nothing else in the
+  // default workspace uses #5c2d91, so the canvas assertion below is exact —
+  // Chromium serializes the inline style as rgb(92, 45, 145))
+  const purple = '[style*="rgb(92, 45, 145)"]';
+  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  // nothing committed yet — the canvas still has no purple anywhere
+  await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
+
+  // pin the SECOND usage "keep as-found"; the save button counts honestly
+  await expect(ce.locator('.wb-ce-usage')).toHaveCount(2);
+  await ce.locator('.wb-ce-usage').nth(1).locator('.wb-ce-pin').check();
+  const save = ce.locator('.wb-ce-save');
+  await expect(save).toHaveText('Save and apply to 1 place');
+  await save.click();
+  await expect(page.locator('#wb-toast')).toContainText('kept 1 as-found');
+
+  // the unpinned instance wears the new look (once per mock row), the pinned
+  // one keeps the old look — 3 purple elements, not 6
+  await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(3);
+  // the as-found variant nests under its parent card with the one-off tag
+  const variant = page.locator('.wb-comp-variantcard', { hasText: 'as-found' });
+  await expect(variant).toBeVisible();
+  await expect(variant.locator('.wb-comp-vtag')).toHaveText('as-found one-off');
+  await expect(variant.locator('.wb-comp-lineage')).toContainText('Kept as-found from “My date look”');
+  // the edited slot label is what the mapping dialog now asks (scope to the
+  // PARENT card — the variant card's name also contains "My date look")
+  const parentCard = page.locator('.wb-comp-used:not(.wb-comp-variantcard)', { hasText: 'My date look' });
+  await parentCard.locator('.wb-comp-addmore').click();
+  await expect(page.locator('.wb-compmap .wb-compmap-label')).toHaveText('The date to show');
+  await page.locator('.wb-compmap .wb-compmap-close').click();
+
+  // ONE Ctrl+Z reverts the WHOLE apply — re-bake and restamp together
+  await page.keyboard.press('Control+z');
+  await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
+});
+
+test('editing a built-in offers Save-as-new only and lands the copy under Yours', async ({ page }) => {
+  await page.locator('.wb-fmt-tab-comp').click();
+  await page.locator('.wb-comp-card', { hasText: 'Deadline chip' }).locator('.wb-comp-edit').click();
+  const ce = page.locator('.wb-ce');
+  await expect(ce).toBeVisible();
+  await expect(ce.locator('.wb-ce-sub')).toContainText('built-ins can\'t be overwritten');
+  // no replace/apply button — Save as new component is the ONLY save
+  await expect(ce.locator('.wb-ce-foot button', { hasText: 'Save and apply' })).toHaveCount(0);
+  await expect(ce.locator('.wb-ce-foot button', { hasText: /^Save$/ })).toHaveCount(0);
+  await ce.locator('.wb-ce-name').fill('My chip copy');
+  await ce.locator('.wb-ce-savenew').click();
+  await expect(page.locator('#wb-toast')).toContainText('Saved “My chip copy” as a new component');
+  await expect(page.locator('.wb-comp-card', { hasText: 'My chip copy' })).toBeVisible();
+  // the built-in itself is untouched
+  await expect(page.locator('.wb-comp-card', { hasText: 'Deadline chip' })).toBeVisible();
+});
+
 test('a CFR-carrying subtree is refused with teaching, not silently broken', async ({ page }) => {
   // the Status cell hosts a columnFormatterReference — not self-contained
   await treeRow(page, 'Status').click({ button: 'right' });

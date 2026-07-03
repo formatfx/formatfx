@@ -24,15 +24,17 @@ type Tab = 'font' | 'border' | 'fill' | 'alignment';
 type Side = 'top' | 'right' | 'bottom' | 'left';
 const SIDES: Side[] = ['top', 'right', 'bottom', 'left'];
 
-const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '20px'];
-const RADII = ['2px', '4px', '6px', '12px', '50%'];
+// The Format-cells vocabulary — exported so the component editor's compact
+// style panel (componentEditor.ts) speaks the exact same value set.
+export const FONT_SIZES = ['10px', '11px', '12px', '13px', '14px', '16px', '20px'];
+export const RADII = ['2px', '4px', '6px', '12px', '50%'];
 const BORDER_STYLES = ['solid', 'dashed', 'dotted'];
 const BORDER_WIDTHS = ['1px', '2px', '3px'];
-const INK_SWATCHES = [
+export const INK_SWATCHES = [
   '#323130', '#605e5c', '#ffffff', '#0078d4', '#107c10',
   '#d13438', '#ca5010', '#5c2d91', '#038387',
 ];
-const HAIRLINE = '#e1dfdd';
+export const HAIRLINE = '#e1dfdd';
 
 /** Properties this dialog owns, per tab — used for the formula warning. */
 const MANAGED = [

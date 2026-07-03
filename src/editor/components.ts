@@ -48,6 +48,11 @@ export interface ComponentDef {
   kind?: 'element' | 'row';
   /** Row components: the zebra/extra row class the layout shipped with. */
   additionalRowClass?: string;
+  /** Lineage of an as-found one-off: the parent def this variant was frozen
+   *  from ("keep as-found" in the component editor). ADDITIVE — absent on
+   *  every pre-variant store (schema stays version 1), and a dangling id
+   *  (parent deleted) just renders as a normal top-level card. */
+  variantOf?: string;
   /** Ships in code; not persisted, not deletable. */
   builtin?: boolean;
 }
@@ -320,6 +325,11 @@ export function loadComponents(raw: string | null): ComponentDef[] {
         && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
         delete def.additionalRowClass;
       }
+      // variantOf is optional lineage — strip a corrupt (non-string) value
+      // rather than sinking the entry; pre-variant stores simply lack it
+      if (def.variantOf !== undefined && typeof def.variantOf !== 'string') {
+        delete def.variantOf;
+      }
       return def;
     });
   } catch {
@@ -343,6 +353,87 @@ export function removeComponent(components: ComponentDef[], id: string): Compone
 
 export function componentId(now: Date): string {
   return `c-${now.getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ─── the component editor brain: variants, re-binding, restamping ───────────
+// Pure helpers behind componentEditor.ts's Save-and-apply: freeze the OLD
+// recipe as a one-off variant for pinned ("keep as-found") usages, re-bind
+// every unpinned instance with its OWN stored slot map, and restamp pinned
+// instances onto the variant — all composed into ONE undoable state step by
+// state.batchProjectUpdate.
+
+/** `base`, made unique against `taken` (case-insensitive) with " 2", " 3", … */
+export function uniqueName(base: string, taken: string[]): string {
+  const has = (n: string): boolean => taken.some((t) => t.toLowerCase() === n.toLowerCase());
+  if (!has(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base} ${i}`;
+    if (!has(candidate)) return candidate;
+  }
+}
+
+/** The dated as-found name: `"<Name> (as-found 2026-07-03)"`, counter-deduped. */
+export function variantName(base: string, taken: string[], now: Date): string {
+  return uniqueName(`${base} (as-found ${now.toISOString().slice(0, 10)})`, taken);
+}
+
+/** Freeze `oldDef`'s CURRENT recipe as a one-off variant (the "keep as-found"
+ *  flow): a normal custom def carrying `variantOf` lineage. Pure — deep-clones,
+ *  never mutates `oldDef`. */
+export function createVariant(oldDef: ComponentDef, id: string, takenNames: string[], now: Date): ComponentDef {
+  const clone = JSON.parse(JSON.stringify(oldDef)) as ComponentDef;
+  delete clone.builtin;
+  return { ...clone, id, name: variantName(oldDef.name, takenNames, now), variantOf: oldDef.id };
+}
+
+/**
+ * Re-bind a stamped INSTANCE to a (new) recipe using ITS OWN stored slot map —
+ * the save-and-apply re-bake. Preserves the maker's rename (an `_elmName` that
+ * differs from the name the old def gave it) and the instance's grid-layout
+ * artifacts (flex/min-width — the forkCfr convention). Returns null for an
+ * unstamped element (nothing to re-bind). Pure.
+ */
+export function rebindInstance(def: ComponentDef, el: SPElement, oldDefName: string): SPElement | null {
+  const tag = el._component;
+  if (!tag) return null;
+  const next = bindComponentInstance(def, tag.map);
+  if (el._elmName && el._elmName !== oldDefName) next._elmName = el._elmName;
+  for (const prop of ['flex', 'min-width']) {
+    const v = el.style?.[prop];
+    if (v !== undefined && next.style?.[prop] === undefined) {
+      next.style = { ...next.style, [prop]: v };
+    }
+  }
+  return next;
+}
+
+/** Deep-map a tree, substituting every subtree stamped with `id` via `make`
+ *  (children and card content included; substitutes aren't re-walked — a fresh
+ *  bind carries no nested stamps). Pure — returns a new tree. */
+export function replaceStampedIn(tree: SPElement, id: string, make: (el: SPElement) => SPElement): SPElement {
+  const walk = (el: SPElement): SPElement => {
+    if (el._component?.id === id) return make(el);
+    const out: SPElement = { ...el };
+    if (el.children) out.children = el.children.map(walk);
+    if (el.customCardProps?.formatter) {
+      out.customCardProps = { ...el.customCardProps, formatter: walk(el.customCardProps.formatter) };
+    }
+    return out;
+  };
+  return walk(JSON.parse(JSON.stringify(tree)) as SPElement);
+}
+
+/** Restamp every `_component.id` `from` → `to` in a tree (pinning instances
+ *  onto their as-found variant). Pure — returns a new tree. */
+export function restampIn(tree: SPElement, from: string, to: string): SPElement {
+  const clone = JSON.parse(JSON.stringify(tree)) as SPElement;
+  const walk = (el: SPElement): void => {
+    if (el._component?.id === from) el._component = { ...el._component, id: to };
+    el.children?.forEach(walk);
+    if (el.customCardProps?.formatter) walk(el.customCardProps.formatter);
+  };
+  walk(clone);
+  return clone;
 }
 
 // ─── built-ins ───────────────────────────────────────────────────────────────
