@@ -3,7 +3,7 @@
  *
  * Builds and wires the whole left column, top to bottom: the FORMATTERS bar
  * (its uppercase header line, then the ← back + 🕘 snapshot buttons leading
- * the VIEW / COLUMNS / COMPONENTS tabs), the document dropdown (the pill
+ * the VIEWS / COLUMNS / COMPONENTS tabs), the document dropdown (the pill
  * naming what's on the canvas — its menu browses/renames views or the
  * formatted-columns gallery), the structure tree, a drag splitter, the
  * Simple/Pro/Code lens tabs, the draw toolbar (Select / Text / Frame / Icon /
@@ -74,7 +74,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
           <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
         </div>
         <div class="wb-fmt-tablist" role="tablist" aria-labelledby="wb-fmt-head">
-          <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>View</span></button>
+          <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>Views</span></button>
           <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
           <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
         </div>
@@ -349,7 +349,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
 
 // Inline SVG glyphs for the toolbar + tabs — crisp at any size, theme via currentColor.
 const ICONS = {
-  view: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M2.5 3.5h11v9h-11zM2.5 6.5h11M2.5 9.5h11"/></svg>',
+  view: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M2.5 3.5h11v9h-11zM2.5 6.5h11M2.5 9.5h11"/></svg>',
   history: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.8v2.4h2.4M8 5.4V8l1.9 1.4"/></svg>',
   select: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 2l9 5-3.6 1.2L10 12l-1.4.6L7 9 4 11z"/></svg>',
   text: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 3h10v2.2h-1.1V4.1H8.6v7.8H10V13H6v-1.1h1.4V4.1H4.1v1.1H3z"/></svg>',
