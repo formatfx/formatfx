@@ -14,7 +14,10 @@
  *               'wrap' (side by side until the zone tightens, then the right
  *               item moves BENEATH the left one — flex-wrap, allow-listed),
  *               'stack' (always vertical);
- *   · an ITEM is 'natural' (hug its content) or 'fill' (grow into the zone).
+ *   · an ITEM is 'natural' (hug its content) or 'fill' (grow into the zone);
+ *   · a TARGET says what the layout applies AS: a full-width 'row', or a
+ *     fixed 'tile' in the gallery grid — the same zones stack vertically
+ *     inside the tile box (zone size then shares HEIGHT instead of width).
  *
  * COMPOSES the shipped engines: areas.ts weights, gridScaffold cells,
  * components.ts binding (component items are bound + instance-stamped, so the
@@ -28,7 +31,12 @@ import { gridCellForField, fieldRefsIn as gridFieldRefsIn } from './gridScaffold
 import { cfrFieldName } from '../core/refs';
 import { bindComponentInstance, type ComponentDef } from './components';
 
-export type WireframeId = 'lead-detail' | 'avatar-card' | 'title-chips' | 'dashboard' | 'equal' | 'blank';
+export type WireframeId =
+  | 'lead-detail' | 'avatar-card' | 'title-chips' | 'dashboard' | 'equal' | 'blank'
+  | 'tile-headline' | 'tile-profile' | 'tile-stat' | 'tile-blank';
+/** What the layout applies AS: a full-width row, or a fixed tile in the
+ *  gallery grid. Same zones either way — a tile just stacks them vertically. */
+export type BuilderTarget = 'row' | 'tile';
 export type RowStyle = 'flat' | 'card' | 'minimalist';
 export type LeftStripe = 'none' | 'neutral'; // 'status' deferred to v2
 export type BorderStyle = 'none' | 'solid' | 'dashed';
@@ -99,6 +107,9 @@ export interface KebabConfig {
 }
 export interface RowTemplateConfig {
   wireframeId: WireframeId;
+  /** 'row' = the classic full-width row; 'tile' = a fixed gallery tile whose
+   *  zones stack top to bottom. The zone model is identical either way. */
+  target: BuilderTarget;
   rowStyle: RowStyle;
   density: RowDensity;
   zebraStriping: boolean;
@@ -109,7 +120,14 @@ export interface RowTemplateConfig {
   leftStripe: LeftStripe;
   zones: ZoneConfig[];
   kebab: KebabConfig;
+  /** The tile box (the wrapper's width/height) — meaningful only when
+   *  target === 'tile'. SP's stock tile is 254×220. */
+  tileWidth?: number;
+  tileHeight?: number;
 }
+
+export const TILE_DEFAULT_WIDTH = 254;
+export const TILE_DEFAULT_HEIGHT = 220;
 
 /** The one zebra wrapper expression the builder emits — also what the
  *  round-trip parser recognizes (any OTHER additionalRowClass refuses). */
@@ -137,6 +155,12 @@ export function composeRowStyle(config: RowTemplateConfig, palette: Record<strin
     disabled.zebra = 'Card fill covers row striping';
   } else if (config.rowStyle === 'minimalist') {
     disabled.border = 'Minimalist uses only a bottom separator';
+  }
+  // zebra rides the view wrapper's additionalRowClass — the tile wrapper has no
+  // such key, and tiles sit in a grid, so "every other row" has no meaning there
+  // (the target fact outranks any style reason, so it's stamped last)
+  if (config.target === 'tile') {
+    disabled.zebra = 'Striping alternates rows — tiles sit in a grid';
   }
   const borderLive = !disabled.border;
   const zebraLive = !disabled.zebra;
@@ -243,18 +267,21 @@ export interface WireframeZoneSpec {
   label: string;
   size: ZoneSize;
   flow: ZoneFlow;
+  align?: ZoneAlign;
   want: FieldType[][];
 }
 export interface Wireframe {
   id: WireframeId;
   name: string;
+  /** Which canvas this wireframe seeds — the gallery groups by it. */
+  target: BuilderTarget;
   blurb: string;
   zones: WireframeZoneSpec[];
 }
 
 export const WIREFRAMES: Wireframe[] = [
   {
-    id: 'lead-detail', name: 'Lead + details',
+    id: 'lead-detail', name: 'Lead + details', target: 'row',
     blurb: 'A main field up front, supporting details trailing — the details wrap under each other when the row tightens.',
     zones: [
       { label: 'Lead', size: 'wide', flow: 'side', want: [['text', 'note']] },
@@ -262,7 +289,7 @@ export const WIREFRAMES: Wireframe[] = [
     ],
   },
   {
-    id: 'avatar-card', name: 'Avatar card',
+    id: 'avatar-card', name: 'Avatar card', target: 'row',
     blurb: 'A person up front, a stacked title + status in the middle, a date hugging the end.',
     zones: [
       { label: 'Who', size: 'hug', flow: 'side', want: [['person', 'personMulti']] },
@@ -271,7 +298,7 @@ export const WIREFRAMES: Wireframe[] = [
     ],
   },
   {
-    id: 'title-chips', name: 'Title + chips',
+    id: 'title-chips', name: 'Title + chips', target: 'row',
     blurb: 'A title that fills, then a shelf of chips that flows onto new lines as the row narrows.',
     zones: [
       { label: 'Title', size: 'wide', flow: 'side', want: [['text', 'note']] },
@@ -279,7 +306,7 @@ export const WIREFRAMES: Wireframe[] = [
     ],
   },
   {
-    id: 'dashboard', name: 'Dashboard',
+    id: 'dashboard', name: 'Dashboard', target: 'row',
     blurb: 'Title, status, progress and people on one line — each zone sized to its job.',
     zones: [
       { label: 'Title', size: 'wide', flow: 'side', want: [['text', 'note']] },
@@ -289,7 +316,7 @@ export const WIREFRAMES: Wireframe[] = [
     ],
   },
   {
-    id: 'equal', name: 'Equal columns',
+    id: 'equal', name: 'Equal columns', target: 'row',
     blurb: 'Three equal zones, grid-like — a neutral starting point.',
     zones: [
       { label: 'Left', size: 'normal', flow: 'side', want: [[]] },
@@ -298,8 +325,42 @@ export const WIREFRAMES: Wireframe[] = [
     ],
   },
   {
-    id: 'blank', name: 'Blank',
+    id: 'blank', name: 'Blank', target: 'row',
     blurb: 'One empty zone — drop fields and components to build from nothing.',
+    zones: [
+      { label: 'Zone', size: 'normal', flow: 'wrap', want: [] },
+    ],
+  },
+  // ── tile wireframes: the same zones, stacked top to bottom in a fixed tile ──
+  {
+    id: 'tile-headline', name: 'Headline tile', target: 'tile',
+    blurb: 'A title up top, details in the middle, a footer hugging the bottom of the tile.',
+    zones: [
+      { label: 'Headline', size: 'hug', flow: 'side', want: [['text', 'note']] },
+      { label: 'Body', size: 'normal', flow: 'wrap', want: [['choice', 'choiceMulti'], ['number', 'currency']] },
+      { label: 'Footer', size: 'hug', flow: 'side', want: [['person', 'personMulti'], ['date']] },
+    ],
+  },
+  {
+    id: 'tile-profile', name: 'Profile tile', target: 'tile',
+    blurb: 'A person front and center, name and status stacked beneath them.',
+    zones: [
+      { label: 'Who', size: 'normal', flow: 'side', align: 'center', want: [['person', 'personMulti']] },
+      { label: 'About', size: 'hug', flow: 'stack', align: 'center', want: [['text', 'note'], ['choice', 'choiceMulti']] },
+    ],
+  },
+  {
+    id: 'tile-stat', name: 'Stat tile', target: 'tile',
+    blurb: 'One big figure with its label — a dashboard card.',
+    zones: [
+      { label: 'Label', size: 'hug', flow: 'side', want: [['text', 'note']] },
+      { label: 'Figure', size: 'normal', flow: 'side', align: 'center', want: [['number', 'currency']] },
+      { label: 'Context', size: 'hug', flow: 'wrap', want: [['choice', 'choiceMulti'], ['date']] },
+    ],
+  },
+  {
+    id: 'tile-blank', name: 'Blank tile', target: 'tile',
+    blurb: 'One zone filling the tile — build from nothing.',
     zones: [
       { label: 'Zone', size: 'normal', flow: 'wrap', want: [] },
     ],
@@ -307,7 +368,8 @@ export const WIREFRAMES: Wireframe[] = [
 ];
 
 export function wireframeById(id: WireframeId): Wireframe {
-  return WIREFRAMES.find((w) => w.id === id) ?? WIREFRAMES[WIREFRAMES.length - 1];
+  // fallback stays the ROW blank — tile is always an explicit pick
+  return WIREFRAMES.find((w) => w.id === id) ?? WIREFRAMES.find((w) => w.id === 'blank')!;
 }
 
 const EMPTY_ACTIONS: KebabActionFlags = {
@@ -346,7 +408,7 @@ export function defaultConfigFor(wireframeId: WireframeId, fields: MockField[]):
     return types.length === 0 ? usable.find((x) => !taken.has(x.name)) : undefined;
   };
   const zones: ZoneConfig[] = wf.zones.map((zs) => {
-    const zone: ZoneConfig = { label: zs.label, size: zs.size, flow: zs.flow, align: 'left', items: [] };
+    const zone: ZoneConfig = { label: zs.label, size: zs.size, flow: zs.flow, align: zs.align ?? 'left', items: [] };
     for (const want of zs.want) {
       const f = pick(want);
       if (!f) continue;
@@ -361,10 +423,11 @@ export function defaultConfigFor(wireframeId: WireframeId, fields: MockField[]):
     zones[0].items.push(newFieldItem(usable[0].name, zones[0]));
   }
   return {
-    wireframeId, rowStyle: 'flat', density: 'roomy',
+    wireframeId, target: wf.target, rowStyle: 'flat', density: 'roomy',
     zebraStriping: false, hoverHighlight: false, hoverToken: 'themeLighter',
     borderStyle: 'none', borderColor: 'neutralQuaternaryAlt', leftStripe: 'none',
     zones, kebab: { enabled: false, behavior: 'custom', position: 'right', actions: { ...EMPTY_ACTIONS } },
+    ...(wf.target === 'tile' ? { tileWidth: TILE_DEFAULT_WIDTH, tileHeight: TILE_DEFAULT_HEIGHT } : {}),
   };
 }
 
@@ -508,17 +571,31 @@ export function buildTemplateView(
   const zones = opts.prune ? pruneZones(config.zones) : config.zones;
   const zoneEls = zones.map((z) => buildZone(z, fields, columnRefs, components));
 
-  const kebab = config.kebab.enabled ? buildKebab(config.kebab) : null;
+  // the kebab is a row-layout feature: in a vertical tile every position would
+  // read as a full-width stacked strip, so tiles refuse it (teach, don't guess)
+  const kebab = config.target !== 'tile' && config.kebab.enabled ? buildKebab(config.kebab) : null;
   if (kebab && config.kebab.position === 'hover') {
     kebab.attributes = { ...kebab.attributes, class: joinClass(kebab.attributes?.class, 'sp-card-showOnHoverChild') };
   }
   const children = placeKebab(zoneEls, kebab, config.kebab.position);
 
-  const root: SPElement = {
-    elmType: 'div', _elmName: 'Row layout',
-    style: { 'display': 'flex', 'align-items': 'center', 'width': '100%', ...composed.rootStyle },
-    children,
-  };
+  const root: SPElement = config.target === 'tile'
+    ? {
+      // the tile stack: zones top to bottom, filling the fixed tile box
+      // (border-box so the density padding never overflows it; hug zones at
+      // the bottom really hug the bottom because the root spans full height)
+      elmType: 'div', _elmName: 'Tile layout',
+      style: {
+        'display': 'flex', 'flex-direction': 'column', 'box-sizing': 'border-box',
+        'width': '100%', 'height': '100%', 'overflow': 'hidden', ...composed.rootStyle,
+      },
+      children,
+    }
+    : {
+      elmType: 'div', _elmName: 'Row layout',
+      style: { 'display': 'flex', 'align-items': 'center', 'width': '100%', ...composed.rootStyle },
+      children,
+    };
   const cls = composed.rootClass.slice();
   if (kebab && config.kebab.position === 'hover') cls.push('sp-card-showOnHoverParent');
   if (cls.length) root.attributes = { class: cls.join(' ') };
@@ -855,9 +932,12 @@ function parseZone(el: SPElement, index: number, fields: MockField[]): ZoneConfi
 }
 
 /**
- * Reopen an applied row view as the builder config that produced it, or null
- * when the tree can't be represented losslessly (→ the caller falls back to
- * the wireframe gallery and Apply keeps its overwrite confirm). Pure.
+ * Reopen an applied row view OR tile as the builder config that produced it,
+ * or null when the tree can't be represented losslessly (→ the caller falls
+ * back to the wireframe gallery and Apply keeps its overwrite confirm). Pure.
+ * `target` names which canvas the tree claims to be — the rebuild-verify gate
+ * makes a cross-target parse structurally impossible (a tile stack never
+ * deep-equals a row rebuild and vice versa).
  */
 export function configFromView(
   root: SPElement,
@@ -865,8 +945,11 @@ export function configFromView(
   fields: MockField[],
   columnRefs: Record<string, SPElement>,
   components: ComponentDef[],
+  target: BuilderTarget = 'row',
 ): RowTemplateConfig | null {
   if (root.elmType !== 'div' || root.style?.['display'] !== 'flex') return null;
+  // the tile wrapper has no additionalRowClass — one arriving here is foreign
+  if (target === 'tile' && additionalRowClass) return null;
   if (additionalRowClass && additionalRowClass !== ZEBRA_ROW_CLASS) return null;
 
   const classes = classListOf(root);
@@ -882,7 +965,9 @@ export function configFromView(
   const hoverClass = classes.map((c) => /^ms-bgColor-(.+)--hover$/.exec(c)).find(Boolean);
 
   const kids = root.children ?? [];
-  const kebabIdx = kids.findIndex(isKebabEl);
+  // tiles never carry a kebab — a kebab-shaped child there is foreign by
+  // construction (it won't parse as a zone, so the whole reopen refuses)
+  const kebabIdx = target === 'tile' ? -1 : kids.findIndex(isKebabEl);
   let kebab: KebabConfig = {
     enabled: false, behavior: 'custom', position: 'right',
     actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false },
@@ -903,7 +988,9 @@ export function configFromView(
   }
 
   const config: RowTemplateConfig = {
-    wireframeId: 'blank', // the source wireframe isn't recoverable (and nothing rebuilds from it)
+    // the source wireframe isn't recoverable (and nothing rebuilds from it)
+    wireframeId: target === 'tile' ? 'tile-blank' : 'blank',
+    target,
     rowStyle,
     density: rowDensityOf(root),
     zebraStriping: additionalRowClass === ZEBRA_ROW_CLASS,
@@ -914,6 +1001,9 @@ export function configFromView(
     leftStripe: stripe ? 'neutral' : 'none',
     zones,
     kebab,
+    // the tile box size lives on the DOCUMENT wrapper, not the tree — the
+    // caller reseeds it from the doc; the parse only carries the defaults
+    ...(target === 'tile' ? { tileWidth: TILE_DEFAULT_WIDTH, tileHeight: TILE_DEFAULT_HEIGHT } : {}),
   };
 
   // ── the losslessness gate: rebuild and require byte-equivalence ──
@@ -933,7 +1023,7 @@ export function configFromView(
  *  spliced kebab slot) without guessing. Pinned by rowTemplates.test.ts. */
 export function childSlotOrder(config: RowTemplateConfig): (number | 'kebab')[] {
   const zoneSlots: (number | 'kebab')[] = config.zones.map((_, i) => i);
-  const kebabEl = config.kebab.enabled ? buildKebab(config.kebab) : null;
+  const kebabEl = config.target !== 'tile' && config.kebab.enabled ? buildKebab(config.kebab) : null;
   if (!kebabEl) return zoneSlots;
   switch (config.kebab.position) {
     case 'left': return ['kebab', ...zoneSlots];

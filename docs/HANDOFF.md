@@ -412,6 +412,34 @@ Key structural invariants:
   hug sizing; pruned live rows never show it), nested-zone tags paint
   inside on hover/selection only, and the zone inspector gained
   "＋ Nested zone".
+  **Tiles (2026-07-04, owner brief — the builder works for tiles too)**:
+  the config carries a TARGET (`'row' | 'tile'`, `BuilderTarget`) — the
+  SAME zone model either way; a tile just stacks its zones top to bottom
+  inside the fixed tile box (root: flex column, width/height 100%,
+  box-sizing border-box, overflow hidden — all allow-listed; zone `size`
+  then shares HEIGHT). The gallery groups **Row layouts / Tile layouts**
+  (4 tile wireframes: Headline/Profile/Stat/Blank; `wireframeById`'s
+  fallback stays the ROW blank), the doc pill menu gained "+ New
+  tileview…" (an explicit ask that doesn't match what reopened lands on
+  the GALLERY, reopened config kept — the dirty re-pick confirm is the
+  net), and the root inspector's **"Applies as"** segmented re-targets
+  the same zones row↔tile mid-edit (modal-local until Save). Tile
+  differences are exclusions with reasons, not new machinery: zebra greys
+  ("tiles sit in a grid" — the tile wrapper has no additionalRowClass)
+  and the kebab section is a teaching note (every position would render
+  as a stacked strip; buildTemplateView + childSlotOrder both refuse it).
+  The Tile inspector owns the tile box (width/height knobs, stock
+  254×220, `TILE_DEFAULT_*`); the preview drops the width scrubber for
+  tiles and renders a live TILE DECK at the exact box instead. Save
+  routes to `state.applyTileTemplate` (one undoable mutation: root + kind
+  + tileWidth/Height together, same no-op guard as applyRowTemplate;
+  viewExtras deliberately untouched so switching back to a row view loses
+  nothing). The round trip is target-aware: `configFromView(…, target)`
+  reopens a tile doc as tile zones (the tile box reseeds from the doc
+  wrapper), and the rebuild-verify gate makes cross-target parses
+  structurally impossible. Root-zone drag axis + dividers follow the
+  target (vertical seams, `wb-edit-divider--h`); nested-zone drop axis
+  now follows the parent zone's flow everywhere.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
@@ -706,7 +734,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 756 vitest unit tests across 43 files (engine semantics incl.
+- `npm test` — 782 vitest unit tests across 43 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -718,7 +746,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the autosave-pause never-clobber guarantee). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 129 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 130 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

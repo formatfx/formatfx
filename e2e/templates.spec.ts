@@ -1,11 +1,12 @@
 /**
- * E2E: the row view builder. The Templates button on the row-view toolbar (and
- * "+ New rowview" in the document dropdown) opens the builder on a WIREFRAME
- * GALLERY; picking a layout enters the zone editor with a live preview. A
- * style exclusion is felt (a greyed control with a reason); Apply replaces the
- * layout as ONE undoable step; fields AND components drag from the chips bar
- * into zones; the width presets squeeze the preview so wrap behavior is
- * watchable.
+ * E2E: the row view (and tile) builder. The Templates button on the row-view
+ * toolbar (and "+ New rowview" / "+ New tileview" in the document dropdown)
+ * opens the builder on a WIREFRAME GALLERY (grouped Row/Tile); picking a
+ * layout enters the zone editor with a live preview. A style exclusion is
+ * felt (a greyed control with a reason); Apply replaces the layout as ONE
+ * undoable step; fields AND components drag from the chips bar into zones;
+ * the width presets squeeze the row preview so wrap behavior is watchable,
+ * while tiles preview as a live deck at their configured box.
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -158,4 +159,32 @@ test('New rowview is reachable from the document dropdown on the landing screen'
   await page.locator('[data-wireframe="avatar-card"]').click();
   await page.locator('.wb-template-apply').click();
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+});
+
+test('the builder makes a TILE view: tile gallery → tile editor → Save → the tile deck, then reopen', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#wb-doc-pill').click();
+  await page.locator('.wb-viewmenu-newtile').click();
+  await expect(page.locator('.wb-template-modal')).toBeVisible();
+  // the tile ask leads the gallery with the tile layouts
+  await expect(page.locator('.wb-template-gallery-head').first()).toHaveText('Tile layouts');
+  await page.locator('[data-wireframe="tile-headline"]').click();
+  // the tile editor: Tile inspector, size knobs, a live tile deck, no width scrubber
+  await expect(page.locator('.wb-template-insp-title')).toHaveText('Tile');
+  await expect(page.locator('.wb-template-tiledeck')).toBeVisible();
+  await expect(page.locator('[data-stagewidth="narrow"]')).toHaveCount(0);
+  await page.locator('.wb-template-apply').click();
+  await expect(page.locator('.wb-template-modal')).toHaveCount(0);
+  // the canvas is now the gallery deck with the tile toolbar
+  await expect(page.locator('.wb-mock-deck')).toBeVisible();
+  await expect(page.locator('.wb-rowview-bar-label')).toHaveText('Tile layout');
+  // reopen: straight into the TILE editor with the zones intact — no gallery
+  await page.locator('.wb-rowview-templates').click();
+  await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+  await expect(page.locator('.wb-wf-card')).toHaveCount(0);
+  await expect(page.locator('.wb-template-insp-title')).toHaveText('Tile');
+  // one undo on the canvas reverts the whole apply
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-grid-header').first()).toBeVisible();
 });

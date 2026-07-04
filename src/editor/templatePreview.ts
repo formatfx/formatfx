@@ -1,12 +1,14 @@
 /**
  * editor/templatePreview.ts — the CHIPS bar (fields + components, the drag
- * sources), the WIREFRAME GALLERY (stage 'pick'), the recursive ZONE TREE, and
- * the PREVIEW canvas. The canvas renders the row with the REAL renderer (same
- * path as the live grid), then decorates the EDIT row (zones select
- * zone-first; items drill in on the second click; everything drags) and, right
- * below it, renders up to 3 always-LIVE rows of the PRUNED layout — exactly
- * what Apply writes, hover/kebab behaviors real, stubs honest. The WIDTH
- * SCRUBBER squeezes both, so wrap behavior is watched while editing.
+ * sources), the WIREFRAME GALLERY (stage 'pick', grouped Row/Tile), the
+ * recursive ZONE TREE, and the PREVIEW canvas. The canvas renders the row (or
+ * tile) with the REAL renderer (same path as the live grid), then decorates
+ * the EDIT exemplar (zones select zone-first; items drill in on the second
+ * click; everything drags) and, right below it, renders up to 3 always-LIVE
+ * rows/tiles of the PRUNED layout — exactly what Apply writes, hover/kebab
+ * behaviors real, stubs honest. The WIDTH SCRUBBER squeezes rows so wrap
+ * behavior is watched while editing; tiles size by their own width/height
+ * knobs instead.
  *
  * Zones NEST, so every address here is a ZonePath and drag payloads carry one
  * NODE_MIME path — a zone drops INTO a zone to nest, between zones to sit
@@ -189,9 +191,10 @@ export function renderChips(host: HTMLElement, ui: ModalUI, api: ModalApi): void
 // ─── the wireframe gallery (stage 'pick') ────────────────────────────────────
 
 /** A CSS-drawn thumbnail of a wireframe: zone boxes at their flex proportions,
- *  item marks laid out by the zone's flow — the layout IS the picker. */
+ *  item marks laid out by the zone's flow — the layout IS the picker. Tile
+ *  wireframes draw as a vertical stack in a tile-shaped box. */
 function wireframeThumb(wf: Wireframe): HTMLElement {
-  const t = el('div', 'wb-wf-thumb');
+  const t = el('div', `wb-wf-thumb${wf.target === 'tile' ? ' wb-wf-thumb--tile' : ''}`);
   for (const z of wf.zones) {
     const zb = el('div', `wb-wf-zone wb-wf-zone--${z.flow}`);
     zb.style.flex = z.size === 'hug' ? '0 0 16%' : `${WEIGHT_FLEX[z.size]} 1 0%`;
@@ -205,24 +208,31 @@ function wireframeThumb(wf: Wireframe): HTMLElement {
 function renderGallery(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.appendChild(el('div', 'wb-template-gallery-title', 'Start from a layout'));
   host.appendChild(el('div', 'wb-template-gallery-sub',
-    'Each layout is a set of zones. Drop fields and components into them — or whole zones into zones — then tune how every zone shares space and wraps.'));
+    'Each layout is a set of zones. Drop fields and components into them — or whole zones into zones — then tune how every zone shares space and wraps. '
+    + 'Row layouts fill the list row; tile layouts stack their zones inside a gallery tile.'));
   if (ui.foreignRow) {
     host.appendChild(el('div', 'wb-template-foreign-note',
-      'The current row layout was built or edited outside this builder, so it can\'t be reopened as zones. '
-      + 'Picking a layout starts fresh — Apply replaces the row (one Ctrl+Z brings it back).'));
+      'The current view layout was built or edited outside this builder, so it can\'t be reopened as zones. '
+      + 'Picking a layout starts fresh — Apply replaces it (one Ctrl+Z brings it back).'));
   }
-  const grid = el('div', 'wb-template-gallery');
-  for (const wf of WIREFRAMES) {
-    const card = el('button', 'wb-wf-card') as HTMLButtonElement;
-    card.type = 'button';
-    card.dataset.wireframe = wf.id;
-    card.appendChild(wireframeThumb(wf));
-    card.appendChild(el('span', 'wb-wf-name', wf.name));
-    card.appendChild(el('span', 'wb-wf-blurb', wf.blurb));
-    card.addEventListener('click', () => api.pickWireframe(wf.id));
-    grid.appendChild(card);
+  const groups: readonly (readonly ['row' | 'tile', string])[] = ui.galleryFirst === 'tile'
+    ? [['tile', 'Tile layouts'], ['row', 'Row layouts']]
+    : [['row', 'Row layouts'], ['tile', 'Tile layouts']];
+  for (const [target, label] of groups) {
+    host.appendChild(el('div', 'wb-template-gallery-head', label));
+    const grid = el('div', 'wb-template-gallery');
+    for (const wf of WIREFRAMES.filter((w) => w.target === target)) {
+      const card = el('button', 'wb-wf-card') as HTMLButtonElement;
+      card.type = 'button';
+      card.dataset.wireframe = wf.id;
+      card.appendChild(wireframeThumb(wf));
+      card.appendChild(el('span', 'wb-wf-name', wf.name));
+      card.appendChild(el('span', 'wb-wf-blurb', wf.blurb));
+      card.addEventListener('click', () => api.pickWireframe(wf.id));
+      grid.appendChild(card);
+    }
+    host.appendChild(grid);
   }
-  host.appendChild(grid);
 }
 
 // ─── the zone TREE (structure pane, above the inspector) ─────────────────────
@@ -319,33 +329,37 @@ function treeZoneRows(
 export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.innerHTML = '';
   if (ui.stage === 'pick') { renderGallery(host, ui, api); return; }
+  const tile = ui.config.target === 'tile';
 
   const head = el('div', 'wb-template-prev-head');
   head.appendChild(el('span', 'wb-template-prev-title', 'Preview'));
-  head.appendChild(widthPresets(ui, api));
+  // a tile's width is its own knob (the Tile size section) — no viewport scrubber
+  if (!tile) head.appendChild(widthPresets(ui, api));
   host.appendChild(head);
 
   const body = el('div', 'wb-template-prev-body');
   const stage = el('div', 'wb-template-stage');
-  if (ui.stageWidth) stage.style.width = `${ui.stageWidth}px`;
+  if (!tile && ui.stageWidth) stage.style.width = `${ui.stageWidth}px`;
   body.appendChild(stage);
-  body.appendChild(widthHandle(stage, api));
+  if (!tile) body.appendChild(widthHandle(stage, api));
   host.appendChild(body);
 
-  // the EDIT row (full config — empty zones stay visible as drop targets)…
+  // the EDIT row/tile (full config — empty zones stay visible as drop targets)…
   const { root, additionalRowClass } = buildTemplateView(
     ui.config, state.fields, state.columnRefs, api.palette(), api.components());
   renderEditExemplar(stage, root, additionalRowClass, ui, api);
 
-  // …and the always-LIVE rows beneath it: the PRUNED layout, exactly what
-  // Apply writes — hover, zebra and custom kebab flyouts are real
+  // …and the always-LIVE rows/tiles beneath it: the PRUNED layout, exactly
+  // what Apply writes — hover and custom kebab flyouts are real
   stage.appendChild(el('div', 'wb-template-livehead', 'Live'));
   const pruned = buildTemplateView(
     ui.config, state.fields, state.columnRefs, api.palette(), api.components(), { prune: true });
-  renderLiveRows(stage, pruned.root, pruned.additionalRowClass, ui, api);
+  if (tile) renderLiveTiles(stage, pruned.root, ui, api);
+  else renderLiveRows(stage, pruned.root, pruned.additionalRowClass, ui, api);
 
   host.appendChild(el('div', 'wb-template-note',
-    'Click selects the zone; click again drills into what\'s inside. Drag anything anywhere — edges drop beside, the middle drops inside. The rows under “Live” behave like the real list.'));
+    'Click selects the zone; click again drills into what\'s inside. Drag anything anywhere — edges drop beside, the middle drops inside. '
+    + (tile ? 'The tiles under “Live” behave like the real gallery.' : 'The rows under “Live” behave like the real list.')));
 }
 
 /** The Full / Medium / Narrow squeeze presets. */
@@ -402,7 +416,15 @@ function renderEditExemplar(
   body: HTMLElement, root: SPElement, additionalRowClass: string | undefined, ui: ModalUI, api: ModalApi,
 ): void {
   const ctx = ctxForRow(0);
-  const prow = el('div', 'wb-template-prow wb-template-prow--edit');
+  const tile = ui.config.target === 'tile';
+  const prow = el('div', 'wb-template-prow wb-template-prow--edit'
+    + (tile ? ' wb-template-ptile wb-template-prow--tile' : ''));
+  if (tile) {
+    // the edit tile keeps the real WIDTH but only a MIN height — structure
+    // stays reachable while editing; the Live tiles below are the exact box
+    prow.style.width = `${ui.config.tileWidth ?? 254}px`;
+    prow.style.minHeight = `${ui.config.tileHeight ?? 220}px`;
+  }
   applyRowClass(prow, additionalRowClass, ctx);
   let rendered: HTMLElement;
   try {
@@ -427,6 +449,9 @@ function decorateEditRow(editRoot: HTMLElement, ui: ModalUI, api: ModalApi): voi
   const kids = Array.from(editRoot.children) as HTMLElement[];
   if (kids.length !== slots.length) return; // fail-safe: undecorated but visible
 
+  // root zones sit side by side in a row, top to bottom in a tile — the drop
+  // axis and the divider orientation follow
+  const horizontal = config.target !== 'tile';
   let prevZone: number | null = null;
   slots.forEach((slot, k) => {
     const node = kids[k];
@@ -437,13 +462,13 @@ function decorateEditRow(editRoot: HTMLElement, ui: ModalUI, api: ModalApi): voi
       prevZone = null;
       return;
     }
-    decorateZone(node, [slot], config.zones[slot], ui, api);
+    decorateZone(node, [slot], config.zones[slot], ui, api, horizontal);
     if (prevZone !== null) editRoot.insertBefore(makeDivider(prevZone, ui, api), node);
     prevZone = slot;
   });
 }
 
-function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: ModalUI, api: ModalApi): void {
+function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: ModalUI, api: ModalApi, horizontal: boolean): void {
   // decorate the children FIRST — the 1:1 children↔items mapping must be
   // captured before the tag/hint elements are appended below. Nested zones
   // recurse; leaves become items.
@@ -452,7 +477,8 @@ function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: M
     const child = itemNodes[ii];
     if (!child) return;
     const itemPath = [...path, ii];
-    if (item.kind === 'zone') decorateZone(child, itemPath, item.zone, ui, api);
+    // a nested zone's drop axis follows how THIS zone lays its items out
+    if (item.kind === 'zone') decorateZone(child, itemPath, item.zone, ui, api, zone.flow !== 'stack');
     else decorateItem(child, itemPath, item, zone, ui, api);
   });
 
@@ -499,7 +525,7 @@ function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: M
     if (!hasAny(dt, PAYLOADS)) return;
     e.preventDefault();
     e.stopPropagation();
-    markDrop(node, posFor(e as DragEvent, node, true, true), true);
+    markDrop(node, posFor(e as DragEvent, node, horizontal, true), horizontal);
   });
   node.addEventListener('dragleave', () => clearDrop(node));
   node.addEventListener('drop', (e) => {
@@ -508,7 +534,7 @@ function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: M
     e.preventDefault();
     e.stopPropagation();
     clearDrop(node);
-    dropOnZone(e as DragEvent, dt!, node, path, true, api);
+    dropOnZone(e as DragEvent, dt!, node, path, horizontal, api);
   });
 }
 
@@ -531,9 +557,10 @@ function decorateItem(node: HTMLElement, itemPath: ZonePath, item: ZoneItem, zon
 }
 
 function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLElement {
-  const d = el('div', 'wb-edit-divider');
+  const tile = ui.config.target === 'tile';
+  const d = el('div', `wb-edit-divider${tile ? ' wb-edit-divider--h' : ''}`);
   const next = ZONE_SIZE_LABEL[ui.config.zones[leftZoneIdx].size];
-  d.title = `Resize: click to cycle the left zone (now ${next}: Hug → Fill → Fill 2× → Fill 3×). Drop here for a new zone between.`;
+  d.title = `Resize: click to cycle the ${tile ? 'zone above' : 'left zone'} (now ${next}: Hug → Fill → Fill 2× → Fill 3×). Drop here for a new zone between.`;
   d.addEventListener('click', (e) => { e.stopPropagation(); api.cycleZoneSize([leftZoneIdx]); });
   // the divider IS the between-zones gap — dropping a chip, item or zone here
   // lands it right at this seam (zones stay zones, leaves get a zone of their own)
@@ -579,6 +606,27 @@ function renderLiveRows(
     }
     body.appendChild(prow);
   }
+}
+
+/** The live TILE deck: up to 3 tiles at the exact configured box, side by
+ *  side like the real gallery — hover behaviors and stubs are real. */
+function renderLiveTiles(body: HTMLElement, root: SPElement, ui: ModalUI, api: ModalApi): void {
+  const deck = el('div', 'wb-template-tiledeck');
+  const tileCount = Math.min(3, Math.max(1, state.rows.length));
+  const onAction = (elx: SPElement, summary: string): void => api.notify(stubMessage(elx, summary));
+  for (let i = 0; i < tileCount; i++) {
+    const box = el('div', 'wb-template-ptile');
+    box.style.width = `${ui.config.tileWidth ?? 254}px`;
+    box.style.height = `${ui.config.tileHeight ?? 220}px`;
+    if (ui.config.hoverHighlight) box.classList.add('wb-prow-hoverable');
+    try {
+      box.appendChild(renderElement(root, ctxForRow(i), { tagPaths: false, resolveColumnRef, issues: [], onAction }));
+    } catch (e) {
+      box.textContent = `⚠ ${(e as Error).message}`;
+    }
+    deck.appendChild(box);
+  }
+  body.appendChild(deck);
 }
 
 function stubMessage(elx: SPElement, summary: string): string {

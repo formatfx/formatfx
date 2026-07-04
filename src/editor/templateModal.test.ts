@@ -428,6 +428,125 @@ describe('row view builder — modal-local undo/redo', () => {
   });
 });
 
+describe('tile target — the builder works for tiles too', () => {
+  it('the gallery groups Row and Tile layouts (rows lead from a grid landing)', () => {
+    openTemplateModal(() => {});
+    const heads = [...document.querySelectorAll('.wb-template-gallery-head')].map((h) => h.textContent);
+    expect(heads).toEqual(['Row layouts', 'Tile layouts']);
+    expect(document.querySelector('[data-wireframe="tile-headline"]')).toBeTruthy();
+  });
+
+  it('an explicit tile ask leads the gallery with the tile layouts', () => {
+    openTemplateModal(() => {}, { target: 'tile' });
+    const heads = [...document.querySelectorAll('.wb-template-gallery-head')].map((h) => h.textContent);
+    expect(heads).toEqual(['Tile layouts', 'Row layouts']);
+  });
+
+  it('picking a tile wireframe enters the TILE editor: Tile inspector, size knobs, no width scrubber', () => {
+    enterEditor('tile-headline');
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Tile');
+    expect(document.querySelector('input[data-tile="width"]')).toBeTruthy();
+    expect(document.querySelector('input[data-tile="height"]')).toBeTruthy();
+    expect(document.querySelector('[data-stagewidth="narrow"]')).toBeNull();
+    expect(document.querySelector('.wb-template-widthhandle')).toBeNull();
+  });
+
+  it('zebra greys with the tile reason; the kebab section teaches instead of configuring', () => {
+    enterEditor('tile-headline');
+    const zebra = document.querySelector('[data-toggle="zebra"]') as HTMLElement;
+    expect(zebra.classList.contains('wb-disabled')).toBe(true);
+    expect(zebra.title).toContain('tiles sit in a grid');
+    expect(document.querySelector('[data-toggle="kebab"]')).toBeNull();
+    expect(document.querySelector('.wb-template-kebab-tilenote')?.textContent).toContain('row-layout feature');
+  });
+
+  it('the preview shows the edit tile and a live tile deck at the configured box', () => {
+    enterEditor('tile-headline');
+    const edit = document.querySelector('.wb-template-prow--edit.wb-template-ptile') as HTMLElement;
+    expect(edit).toBeTruthy();
+    expect(edit.style.width).toBe('254px');
+    expect(document.querySelector('.wb-template-tiledeck')).toBeTruthy();
+    expect(document.querySelectorAll('.wb-template-tiledeck .wb-template-ptile').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the tile size knobs resize the preview; nonsense snaps back', () => {
+    enterEditor('tile-headline');
+    const width = document.querySelector('input[data-tile="width"]') as HTMLInputElement;
+    width.value = '320';
+    width.dispatchEvent(new Event('change'));
+    const edit = document.querySelector('.wb-template-prow--edit.wb-template-ptile') as HTMLElement;
+    expect(edit.style.width).toBe('320px');
+    const w2 = document.querySelector('input[data-tile="width"]') as HTMLInputElement;
+    w2.value = '7';
+    w2.dispatchEvent(new Event('change'));
+    expect(w2.value).toBe('320'); // refused, snapped back
+  });
+
+  it('Save calls state.applyTileTemplate once — kind, root and tile box land together', () => {
+    const spy = vi.spyOn(state, 'applyTileTemplate');
+    enterEditor('tile-headline');
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(state.doc.kind).toBe('tile');
+    expect(state.doc.tileWidth).toBe(254);
+    expect(state.doc.root._elmName).toBe('Tile layout');
+    spy.mockRestore();
+  });
+
+  it('reopening a builder-made tile lands in the TILE editor with zones intact', () => {
+    enterEditor('tile-headline');
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Tile');
+    const tags = [...document.querySelectorAll('.wb-edit-zone-tag')].map((t) => t.textContent);
+    expect(tags.some((t) => t?.startsWith('Headline'))).toBe(true);
+  });
+
+  it('a reopened tile remembers a custom tile box from the document', () => {
+    enterEditor('tile-headline');
+    const width = document.querySelector('input[data-tile="width"]') as HTMLInputElement;
+    width.value = '400';
+    width.dispatchEvent(new Event('change'));
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(state.doc.tileWidth).toBe(400);
+    openTemplateModal(() => {});
+    expect((document.querySelector('input[data-tile="width"]') as HTMLInputElement).value).toBe('400');
+  });
+
+  it('“Applies as” re-targets the same zones between row and tile', () => {
+    enterEditor(); // lead-detail, a ROW layout
+    (document.querySelector('[data-target="tile"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Tile');
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(2); // zones carried over
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(state.doc.kind).toBe('tile');
+  });
+
+  it('a hand-built tile falls back to the gallery, tiles first, with the honest note', () => {
+    state.loadDocument({ kind: 'tile', root: { elmType: 'div', style: { 'display': 'flex' },
+      children: [{ elmType: 'div', txtContent: '=[$Title]+[$Status]' }] }, tileWidth: 254, tileHeight: 220 });
+    openTemplateModal(() => {});
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    expect(document.querySelector('.wb-template-foreign-note')?.textContent).toContain('outside this builder');
+    expect(document.querySelector('.wb-template-gallery-head')?.textContent).toBe('Tile layouts');
+  });
+
+  it('“+ New tileview” over a builder-made ROW keeps it but opens the gallery (pick confirms)', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // now a builder row
+    openTemplateModal(() => {}, { target: 'tile' });
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    expect(document.querySelector('.wb-template-foreign-note')).toBeNull(); // the row is NOT foreign
+    const confirmSpy = vi.fn(() => false); // maker says no — the reopened row survives
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('[data-wireframe="tile-headline"]') as HTMLElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('row view builder — kebab refusal hints', () => {
   it('a custom kebab action with a blank param shows an inline refusal hint (mirrors buildKebab)', () => {
     enterEditor();

@@ -987,6 +987,22 @@ export class EditorState {
     this.emit('kind');
   }
 
+  /** Apply a pre-built TILE template: replace the formatter body, switch to
+   *  'tile', and set the tile box size — ONE undoable mutation with the same
+   *  snapshot-before + no-op guard as applyRowTemplate. viewExtras stay
+   *  untouched: the tile wrapper doesn't export them, but switching back to a
+   *  row view must not have lost them. */
+  applyTileTemplate(root: SPElement, size?: { width?: number; height?: number }): void {
+    const before = this.snapState();
+    this.doc.root = root;
+    this.doc.kind = 'tile';
+    this.doc.tileWidth = size?.width ?? this.doc.tileWidth ?? 254;
+    this.doc.tileHeight = size?.height ?? this.doc.tileHeight ?? 220;
+    if (this.snapState() !== before) this.pushUndo(before);
+    this.selection = [];
+    this.emit('kind');
+  }
+
   /** Set one area's weight (Normal/Wide/Widest). Conflict-free — only the
    *  named area's flex changes; neighbors keep theirs (CSS-fr semantics). */
   setAreaWeight(path: NodePath, weight: AreaWeight): void {

@@ -54,6 +54,19 @@ describe('viewMenu', () => {
     expect(document.querySelector('.wb-template-modal')).toBeNull();
   });
 
+  it('New tileview opens the template modal with the tile layouts leading', () => {
+    openViewMenu(anchor(), toast);
+    const newTile = document.querySelector('.wb-viewmenu-newtile') as HTMLElement;
+    expect(newTile).not.toBeNull();
+    newTile.dispatchEvent(new Event('click'));
+    expect(document.querySelector('.wb-viewmenu')).toBeNull();           // menu closed
+    expect(document.querySelector('.wb-template-modal')).not.toBeNull(); // builder opened
+    expect(document.querySelector('.wb-template-gallery-head')?.textContent).toBe('Tile layouts');
+    // close via the real path so createOverlay detaches its document Esc listener
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+  });
+
   it('a blank rename falls back to "View 1"', () => {
     state.setViewName('Something');
     openViewMenu(anchor(), toast);
