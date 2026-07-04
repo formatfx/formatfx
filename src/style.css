@@ -2522,13 +2522,13 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-edit-kebab { cursor: pointer; }
 .wb-edit-divider {
   flex: 0 0 auto; width: 6px; align-self: stretch; min-height: 20px; margin: 0 1px;
-  cursor: ew-resize; border-radius: 3px; background: var(--wb-border); opacity: .5;
+  border-radius: 3px; background: var(--wb-border); opacity: .5;
 }
 .wb-edit-divider:hover { opacity: 1; background: var(--wb-accent); }
 /* between STACKED zones (tile target) the divider is a horizontal seam */
 .wb-edit-divider--h {
   width: auto; min-height: 0; height: 6px; align-self: stretch;
-  margin: 1px 0; cursor: ns-resize;
+  margin: 1px 0;
 }
 
 /* the zone TREE (lives in .wb-template-treehost, above the inspector) */

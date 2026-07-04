@@ -4,7 +4,7 @@ import {
   addZone, insertZone, newZone, zoneAt, nodeAt, pruneZones,
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem, wireframeById,
-  nextZoneSize, childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
+  childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem, type WireframeId,
 } from './rowTemplates';
 import type { ComponentDef } from './components';
@@ -376,12 +376,6 @@ describe('zone + item ops (pure, immutable)', () => {
     expect(a.zones[1].items[0]).toMatchObject({ width: 'fill' });
   });
 
-  it('nextZoneSize cycles hug → normal → wide → widest → hug', () => {
-    expect(nextZoneSize('hug')).toBe('normal');
-    expect(nextZoneSize('normal')).toBe('wide');
-    expect(nextZoneSize('wide')).toBe('widest');
-    expect(nextZoneSize('widest')).toBe('hug');
-  });
 });
 
 describe('nested zones — the recursive model', () => {

@@ -451,7 +451,7 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
 
   const grid = document.createElement('div');
   grid.className = 'wb-grid';
-  const template = `repeat(${cols.length}, minmax(140px, 1fr))${unplaced.length ? ' 88px' : ''}`;
+  const template = `repeat(${cols.length}, minmax(140px, 1fr))${unplaced.length ? ' 108px' : ''}`;
   grid.style.setProperty('--wb-grid-cols', template);
 
   // ── multi-select + "make a row view" bar ──────────────────────────────────
@@ -616,10 +616,12 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
   if (unplaced.length) {
     const add = document.createElement('button');
     add.className = 'wb-grid-addcol';
-    add.textContent = '+ column';
-    add.title = 'Add a column from your schema to the grid';
+    // the count answers "where the heck is that column" at a glance — hidden
+    // and never-placed fields both wait here (formatted ones stay formatted)
+    add.textContent = `+ column · ${unplaced.length}`;
+    add.title = `${unplaced.length} column${unplaced.length > 1 ? 's' : ''} from your schema ${unplaced.length > 1 ? 'aren’t' : 'isn’t'} shown in this grid — click to bring one back`;
     add.addEventListener('click', () => {
-      openMenu(add, 'Add a column', unplaced.map((f) => ({
+      openMenu(add, 'Columns not shown', unplaced.map((f) => ({
         icon: f.name in state.columnRefs ? 'Brush' : 'TripleColumn',
         label: fieldLabel(f) + (f.name in state.columnRefs ? ' · formatted' : ''),
         fn: () => {

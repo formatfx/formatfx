@@ -94,7 +94,6 @@ export interface ModalApi {
   moveNode(from: ZonePath, toZone: ZonePath, toIndex: number): void;
   /** Remove whatever a path names (zone or item). */
   removeNode(path: ZonePath): void;
-  cycleZoneSize(zonePath: ZonePath): void;
   patchZone(zonePath: ZonePath, patch: Partial<Omit<ZoneConfig, 'items'>>): void;
   patchItem(itemPath: ZonePath, patch: ZoneItemPatch): void;
   setConfig(next: RowTemplateConfig): void;
