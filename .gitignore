@@ -31,3 +31,8 @@ playwright-report
 
 # firebase deploy cache
 .firebase
+
+# visual-compare harness: bottled auth + run artifacts (never commit either)
+e2e/visual-compare/.auth
+e2e/visual-compare/artifacts
+e2e/visual-compare/report
