@@ -228,26 +228,40 @@ describe('row-view builder (stage 3, one undo step each)', () => {
     expect(s.doc.root.children!.map((c) => c._elmName)).toEqual(['Project', 'Status']);
   });
 
-  it('makeRowView(kind=tile) is an explicit tile pick with default dims', () => {
+  it('makeRowView(kind=tile) is an explicit tile pick with default dims and a vertical stack', () => {
     const s = gridState();
     s.makeRowView(undefined, 'tile');
     expect(s.doc.kind).toBe('tile');
     expect(s.doc.tileWidth).toBe(254);
     expect(s.doc.tileHeight).toBe(220);
+    // a tile stacks its areas top to bottom — never a row squeezed into a box
+    expect(s.doc.root.style?.['flex-direction']).toBe('column');
+    expect(s.doc.root.style?.['height']).toBe('100%');
   });
 
-  it('setAreaWeight changes only the named area; setRowDensity is one undo step', () => {
+  it('setRowDensity is one undo step', () => {
     const s = gridState();
     s.makeRowView();
-    s.setAreaWeight([1], 'widest');
-    expect(s.doc.root.children![1].style?.['flex']).toBe('3');
-    expect(s.doc.root.children![0].style?.['flex']).toBe('1'); // neighbor untouched
     s.setRowDensity('compact');
     expect(s.doc.root.style?.['gap']).toBe('8px');
     s.undo(); // undo density
     expect(s.doc.root.style?.['gap']).not.toBe('8px');
-    s.undo(); // undo weight
-    expect(s.doc.root.children![1].style?.['flex']).toBe('1');
+  });
+
+  it('leaving a row/tile view for the grid remembers the way back', () => {
+    const s = gridState();
+    expect(s.lastLayoutKind).toBeNull();
+    s.makeRowView();
+    expect(s.lastLayoutKind).toBeNull();
+    s.setKind('grid'); // "Back to grid" relabels — the layout kind is remembered
+    expect(s.lastLayoutKind).toBe('row');
+    s.setKind('row'); // ⟳ Reopen — arriving at a layout clears the memory
+    expect(s.lastLayoutKind).toBeNull();
+    s.setKind('tile');
+    s.setKind('grid');
+    expect(s.lastLayoutKind).toBe('tile');
+    s.loadDocument({ kind: 'grid', root: buildGridRoot(FIELDS, REFS, ['Title']) });
+    expect(s.lastLayoutKind).toBeNull(); // a fresh document owes nothing to the old one
   });
 });
 

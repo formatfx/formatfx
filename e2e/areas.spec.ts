@@ -1,8 +1,9 @@
 /**
  * E2E: Stage 3 — the row-view builder. Ctrl-click grid columns to multi-select,
- * "make a row view" turns them into weighted areas, per-area sizing lives on the
- * right-click menu, density is a separate row-level knob, and tile is an explicit
- * layout pick that can never emerge on its own.
+ * "make a row view" turns them into weighted areas, density is a separate
+ * row-level knob, and tile is an explicit layout pick that can never emerge on
+ * its own. Zone/area sizing lives in the template builder's inspector — the old
+ * right-click "Area width" entries were retired 2026-07-04 (FLOOR-AND-SHEETS).
  */
 import { test, expect } from '@playwright/test';
 import { freshApp, header } from './helpers';
@@ -29,17 +30,17 @@ test('Ctrl-click multi-selects columns and the areas bar makes a row view', asyn
   await expect(firstRow.locator('[data-sp-path="0"]')).toHaveCSS('flex-grow', '1');
 });
 
-test('per-area sizing is independent (CSS-fr-like) and lives on the right-click menu', async ({ page }) => {
+test('the retired right-click Area width entries stay gone (sizing is the builder inspector\'s job)', async ({ page }) => {
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await header(page, 'Status').click({ modifiers: ['Control'] });
   await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
 
-  const area0 = page.locator('.wb-mock-viewrow').first().locator('[data-sp-path="0"]');
   const area1 = page.locator('.wb-mock-viewrow').first().locator('[data-sp-path="1"]');
   await area1.click({ button: 'right' });
-  await page.locator('.wb-grid-menu button', { hasText: 'Area width: Widest' }).click();
-  await expect(area1).toHaveCSS('flex-grow', '3');
-  await expect(area0).toHaveCSS('flex-grow', '1'); // neighbor untouched
+  await expect(page.locator('.wb-grid-menu')).toBeVisible(); // the element menu still opens
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Area width' })).toHaveCount(0);
+  // the graduated areas still carry their conflict-free weights
+  await expect(area1).toHaveCSS('flex-grow', '1');
 });
 
 test('density is a separate row-level knob, and you can go back to the grid', async ({ page }) => {
@@ -57,12 +58,22 @@ test('density is a separate row-level knob, and you can go back to the grid', as
   // the two areas come back as grid columns (other fields wait under "+ column")
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Title', 'Status']);
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
+
+  // …and the way back is VISIBLE: the grid offers ⟳ Reopen, which restores
+  // the row view untouched (the fix for "you can never get back")
+  await page.locator('.wb-grid-returnbar button', { hasText: 'Reopen the row view' }).click();
+  await expect(page.locator('.wb-rowview-bar')).toBeVisible();
+  await expect(page.locator('.wb-mock-viewrow').first().locator('> [data-sp-path] > [data-sp-path]')).toHaveCount(2);
+  await expect(page.locator('.wb-grid-returnbar')).toHaveCount(0); // back on the layout — no bar
 });
 
 test('tile is an explicit layout pick from the selection', async ({ page }) => {
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await page.locator('.wb-areas-bar button', { hasText: 'Make a tile' }).click();
   await expect(page.locator('.wb-mock-tile')).toHaveCount(3);
+  // a graduated tile stacks its areas vertically — never a row in a tile box
+  await expect(page.locator('.wb-mock-tile').first().locator('> [data-sp-path=""]'))
+    .toHaveCSS('flex-direction', 'column');
   // a tile is still a view formatter → the VIEW FORMATTERS tab stays active,
   // the document dropdown still names View 1 (as a tile schema now)
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);

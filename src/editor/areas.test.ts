@@ -98,4 +98,21 @@ describe('buildRowView', () => {
     buildRowView(grid, undefined, 'compact');
     expect(JSON.stringify(grid)).toBe(before);
   });
+
+  it('as tile: areas stack vertically and fill the tile box (never a row in tile clothing)', () => {
+    const grid = buildGridRoot(FIELDS, {}, ['Title', 'Status', 'DueDate']);
+    const tile = buildRowView(grid, undefined, 'roomy', 'tile');
+    expect(tile.style?.['flex-direction']).toBe('column');
+    expect(tile.style?.['height']).toBe('100%');
+    expect(tile.style?.['overflow']).toBe('hidden');
+    expect(tile.style?.['box-sizing']).toBe('border-box');
+    // the grid's row-centering must not shrink-wrap the stacked zones
+    expect(tile.style?.['align-items']).toBeUndefined();
+    expect(tile._elmName).toBe('Tile layout');
+    // areas keep their conflict-free weights (they now share HEIGHT)
+    expect(tile.children?.every((c) => c.style?.['flex'] !== undefined)).toBe(true);
+    // a maker's custom root name is never clobbered
+    const named = buildRowView({ ...grid, _elmName: 'My board' }, undefined, 'roomy', 'tile');
+    expect(named._elmName).toBe('My board');
+  });
 });

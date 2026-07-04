@@ -206,11 +206,15 @@ export function openTemplateModal(onToast: (m: string) => void, opts: { target?:
   function doApply(): void {
     if (applyBlocker(ui.config, comps)) return;
     const noun = ui.config.target === 'tile' ? 'Tile layout' : 'Row layout';
-    // structural click-safety gate: confirm only when the current layout is
-    // genuinely hand-built (not a pristine grid) AND the builder didn't reopen
-    // it losslessly — editing your own layout is what reopen is FOR, and a
-    // wireframe re-pick over it already confirmed. Single-undo is the net.
-    const overwrites = !editingExisting && state.doc.kind !== 'grid' && !isPureGrid(state.doc.root);
+    // structural click-safety gate: confirm whenever the current root holds
+    // real layout work (neither empty nor a pristine grid of plain columns)
+    // and the builder didn't reopen it losslessly — editing your own layout
+    // is what reopen is FOR, and a wireframe re-pick over it already
+    // confirmed. The doc KIND doesn't matter: "Back to grid" merely relabels
+    // a row/tile layout, and Save must not silently replace it just because
+    // the label says grid. Single-undo is the net either way.
+    const pristine = !state.doc.root.children?.length || isPureGrid(state.doc.root);
+    const overwrites = !editingExisting && !pristine;
     if (overwrites && !confirm(`Replace the current view layout with this ${noun.toLowerCase()}? Ctrl+Z reverts it in one step.`)) return;
     const { root, additionalRowClass } = buildTemplateView(
       ui.config, state.fields, state.columnRefs, palette(), comps, { prune: true });

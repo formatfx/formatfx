@@ -83,26 +83,44 @@ export function setRowDensity(root: SPElement, density: RowDensity): void {
  * weight (Normal unless it already carried a heavier one) so sizing is
  * conflict-free, and the row gets the requested density. The tree is otherwise
  * the same elements, so it round-trips as a view (row) formatter unchanged.
+ *
+ * `as: 'tile'` builds the TILE variant of the same graduation: areas stack
+ * top to bottom and fill the fixed tile box (mirroring the template builder's
+ * tile root — weights then share HEIGHT), never a horizontal row squeezed
+ * into tile dimensions.
  */
 export function buildRowView(
   gridRoot: SPElement,
   include?: number[],
   density: RowDensity = 'roomy',
+  as: 'row' | 'tile' = 'row',
 ): SPElement {
   const kids = gridRoot.children ?? [];
   const chosen = include?.length
     ? include.filter((i) => i >= 0 && i < kids.length).map((i) => kids[i])
     : kids;
+  const style: Record<string, string> = {
+    'display': 'flex',
+    'align-items': 'center',
+    'width': '100%',
+    ...gridRoot.style,
+  };
+  if (as === 'tile') {
+    // the grid root's row-centering would shrink-wrap a column stack
+    delete style['align-items'];
+    style['flex-direction'] = 'column';
+    style['box-sizing'] = 'border-box';
+    style['height'] = '100%';
+    style['overflow'] = 'hidden';
+  }
+  const defaultName = as === 'tile' ? 'Tile layout' : 'Row layout';
   const root: SPElement = {
     ...gridRoot,
     elmType: gridRoot.elmType || 'div',
-    _elmName: gridRoot._elmName ?? 'Row layout',
-    style: {
-      'display': 'flex',
-      'align-items': 'center',
-      'width': '100%',
-      ...gridRoot.style,
-    },
+    // buildGridRoot stamps 'Row layout' — that default must not survive onto a tile
+    _elmName: gridRoot._elmName === undefined || gridRoot._elmName === 'Row layout'
+      ? defaultName : gridRoot._elmName,
+    style,
     children: chosen.map((c) => {
       const area: SPElement = { ...c, style: { ...c.style } };
       setAreaWeight(area, areaWeightOf(area)); // normalize: every area has a weight

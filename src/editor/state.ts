@@ -12,8 +12,8 @@ import { buildGridRoot, gridCellForField, gridColumnField } from './gridScaffold
 import { inlineColumnFormatter, toColumnFormatter } from './cfr';
 import {
   buildRowView, rowDensityOf,
-  setAreaWeight as applyAreaWeight, setRowDensity as applyRowDensity,
-  type AreaWeight, type RowDensity,
+  setRowDensity as applyRowDensity,
+  type RowDensity,
 } from './areas';
 import {
   snapshotId, defaultLabel,
@@ -931,9 +931,21 @@ export class EditorState {
     this.emit('document');
   }
 
+  /** The layout kind the maker last LEFT for the grid ('row'/'tile'), so the
+   *  grid can offer "⟳ Reopen" — setKind('grid') is a relabel, not a
+   *  demolition, and the way back must be visible (FLOOR-AND-SHEETS Stage 0).
+   *  Session-local: never persisted; cleared on arrival at a layout or a
+   *  document load. */
+  lastLayoutKind: 'row' | 'tile' | null = null;
+
   setKind(kind: DocumentKind): void {
     if (this.doc.kind === kind) return; // no-op: don't snapshot an unchanged kind
     this.snapshot();
+    if (kind === 'grid' && (this.doc.kind === 'row' || this.doc.kind === 'tile')) {
+      this.lastLayoutKind = this.doc.kind; // remember the way back
+    } else if (kind === 'row' || kind === 'tile') {
+      this.lastLayoutKind = null; // arrived — nothing to reopen
+    }
     this.doc.kind = kind;
     if (kind === 'tile') {
       this.doc.tileWidth = this.doc.tileWidth ?? 254;
@@ -953,8 +965,9 @@ export class EditorState {
   makeRowView(indices?: number[], kind: 'row' | 'tile' = 'row'): void {
     if (this.doc.kind !== 'grid') { this.setKind(kind); return; }
     this.snapshot();
-    this.doc.root = buildRowView(this.doc.root, indices, rowDensityOf(this.doc.root));
+    this.doc.root = buildRowView(this.doc.root, indices, rowDensityOf(this.doc.root), kind);
     this.doc.kind = kind;
+    this.lastLayoutKind = null;
     if (kind === 'tile') {
       this.doc.tileWidth = this.doc.tileWidth ?? 254;
       this.doc.tileHeight = this.doc.tileHeight ?? 220;
@@ -983,6 +996,7 @@ export class EditorState {
       delete this.doc.viewExtras.additionalRowClass;
     }
     if (this.snapState() !== before) this.pushUndo(before);
+    this.lastLayoutKind = null;
     this.selection = [];
     this.emit('kind');
   }
@@ -999,16 +1013,9 @@ export class EditorState {
     this.doc.tileWidth = size?.width ?? this.doc.tileWidth ?? 254;
     this.doc.tileHeight = size?.height ?? this.doc.tileHeight ?? 220;
     if (this.snapState() !== before) this.pushUndo(before);
+    this.lastLayoutKind = null;
     this.selection = [];
     this.emit('kind');
-  }
-
-  /** Set one area's weight (Normal/Wide/Widest). Conflict-free — only the
-   *  named area's flex changes; neighbors keep theirs (CSS-fr semantics). */
-  setAreaWeight(path: NodePath, weight: AreaWeight): void {
-    const el = this.nodeAt(path);
-    if (!el) return;
-    this.mutateDocument(() => applyAreaWeight(el, weight));
   }
 
   /** Set the row's density (Roomy/Compact) — gap + padding on the root only. */
@@ -1282,6 +1289,7 @@ export class EditorState {
     // "replace the MAIN doc" (e.g. schema import) call openMain() first.
     this.snapshot();
     this.doc = doc;
+    this.lastLayoutKind = null; // a fresh document owes nothing to the old one
     this.selection = [];
     this.emit('load');
   }

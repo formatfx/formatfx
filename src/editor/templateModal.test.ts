@@ -335,6 +335,21 @@ describe('row view builder — reopen as zones (the round trip)', () => {
     expect((document.querySelector('[data-edit-item="0:0"]') as HTMLElement).dataset.fieldName).toBe('Title');
   });
 
+  it('Save over a relabeled layout (kind grid, non-pure root) asks the overwrite confirm', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // builder row applied
+    state.setKind('grid'); // "Back to grid" relabels the same root — the layout is still there
+    const rootBefore = JSON.stringify(state.doc.root);
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    const confirmSpy = vi.fn(() => false); // maker says no — the layout survives
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(state.doc.root)).toBe(rootBefore);
+    vi.unstubAllGlobals();
+  });
+
   it('re-Apply on a reopened layout never asks the overwrite confirm (it IS the edit flow)', () => {
     const confirmSpy = vi.fn(() => true);
     vi.stubGlobal('confirm', confirmSpy);
