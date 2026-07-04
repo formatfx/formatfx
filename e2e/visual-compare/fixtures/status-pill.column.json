@@ -1,0 +1,16 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+  "elmType": "div",
+  "txtContent": "=if([$Status]=='','None',[$Status])",
+  "style": {
+    "display": "inline-flex",
+    "align-items": "center",
+    "justify-content": "center",
+    "border-radius": "12px",
+    "padding": "2px 10px",
+    "font-size": "12px",
+    "font-weight": "600",
+    "color": "#ffffff",
+    "background-color": "=if([$Status]=='Done','#107c10',if([$Status]=='Blocked','#d13438',if([$Status]=='In Progress','#0078d4','#737a7f')))"
+  }
+}

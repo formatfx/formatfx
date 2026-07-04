@@ -775,6 +775,15 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).
+- `npm run visual:compare` — the ground-truth harness (`e2e/visual-compare/`,
+  the public tenant-agnostic rebuild of the private repo's excluded
+  visual-compare, scaffolded 2026-07-04): renders a fixture in the sandbox,
+  deploys the same JSON to a real SharePoint list under the maker's own
+  bottled browser session (`npm run visual:auth`), probes text + painted
+  background on both surfaces and judges via `verdict.ts`. Manual CLI only,
+  never CI (`.vspec.ts` suffix keeps it out of `test:ui`); the SP half has
+  NOT yet run against a live tenant — `sp.ts`/`compare.vspec.ts` mark the
+  two likely first-run adjustment spots.
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.
