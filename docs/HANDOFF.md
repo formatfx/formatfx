@@ -793,6 +793,15 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   (`.claude/skills/visual-compare/`) is the local-agent runbook — run,
   visually review every triptych, diagnose to a culprit (symptom→culprit
   map inside), calibrate `verdict.ts` when the thresholds misjudge.
+  Interactive surfaces are driven, not just painted: customCardProps
+  hover cards open on both sides (scored, `hover-card-missing` fails),
+  customRowAction/inlineEditField get clicked with before/after evidence
+  (a pixel-identical after-click means `click-no-effect`). Every finding
+  carries a label from `labels.ts` (the stable "what it looks like"
+  taxonomy) and the agent appends labeled findings to the committed
+  `findings.jsonl` ledger — the months-long dataset the skill's periodic
+  assessment mines for recurring gotchas to bake into rules (skill map →
+  verdict knobs → teaching lint rules).
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.

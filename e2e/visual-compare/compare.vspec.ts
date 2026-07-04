@@ -30,6 +30,8 @@ import { provisionList } from './sp';
 import { probeCell, paintedElement, type CellProbe } from './probes';
 import { diffCrops } from './imageDiff';
 import { verdict, type CellComparison } from './verdict';
+import { findInteractions, type InteractionPoint } from './interactions';
+import type { LabeledNote } from './labels';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE_DIR = path.join(DIR, 'artifacts', 'sandbox-capture');
@@ -43,6 +45,10 @@ interface Capture {
   /** field internal name → per-row probes; crops live at <field>-<row>.png */
   columns: Record<string, CellProbe[]>;
   rowCount: number;
+  /** Interactive features found in the workspace — each MUST be driven. */
+  interactions: InteractionPoint[];
+  /** hover-card probe per field ('null' = the card never opened in the sandbox). */
+  hoverCards: Record<string, CellProbe | null>;
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -76,10 +82,11 @@ test('sandbox side: render the workspace and capture every formatted column', as
   await expect(page.locator('.wb-grid')).toBeVisible();
 
   const plan = planProvision(ws);
-  const capture: Capture = { shareUrl, columns: {}, rowCount: plan.items.length };
+  const capture: Capture = { shareUrl, columns: {}, rowCount: plan.items.length, interactions: findInteractions(ws), hoverCards: {} };
   fs.rmSync(CAPTURE_DIR, { recursive: true, force: true });
   fs.mkdirSync(CAPTURE_DIR, { recursive: true });
 
+  const colIndex: Record<string, number> = {};
   for (const { name } of plan.columnFormatters) {
     const field = ws.fields.find((f) => f.name === name);
     const col = await gridColumnIndex(page, field?.displayName ?? name);
@@ -88,6 +95,7 @@ test('sandbox side: render the workspace and capture every formatted column', as
       testInfo.annotations.push({ type: 'capture', description: `skipped ${name}: formatted but not placed on the grid` });
       continue;
     }
+    colIndex[name] = col;
     const probes: CellProbe[] = [];
     for (let row = 0; row < capture.rowCount; row++) {
       const cell = page.locator('.wb-grid-row').nth(row).locator('.wb-grid-cell').nth(col);
@@ -96,6 +104,35 @@ test('sandbox side: render the workspace and capture every formatted column', as
       await painted.screenshot({ path: path.join(CAPTURE_DIR, `${name}-${row}.png`) });
     }
     capture.columns[name] = probes;
+  }
+
+  // interactive features: DRIVE each one and capture the effect (row 0).
+  // View-formatter interactions (field '') are covered by the SP side's
+  // whole-row evidence in v1 — the sandbox grid can't isolate them per cell.
+  for (const it of capture.interactions) {
+    if (!it.field || colIndex[it.field] === undefined) continue;
+    const cell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').nth(colIndex[it.field]);
+    if (it.kind === 'hoverCard') {
+      // the sandbox's flyout emulation opens on click regardless of openOnEvent
+      await cell.locator('.wb-has-card').first().click();
+      const fly = page.locator('.wb-flyout');
+      if (await fly.isVisible().catch(() => false)) {
+        capture.hoverCards[it.field] = await probeCell(fly);
+        await fly.screenshot({ path: path.join(CAPTURE_DIR, `${it.field}-hovercard.png`) });
+      } else {
+        capture.hoverCards[it.field] = null;
+      }
+      await page.mouse.click(5, 5); // dismiss before the next interaction
+    } else {
+      // rowAction / inlineEdit: the sandbox stubs actions — capture the
+      // clicked state as evidence for the reviewing agent, unscored
+      const target = cell.locator('button').first();
+      if (await target.count()) {
+        await target.click();
+        await cell.screenshot({ path: path.join(CAPTURE_DIR, `${it.field}-${it.kind}-clicked.png`) });
+        await page.keyboard.press('Escape');
+      }
+    }
   }
   fs.writeFileSync(CAPTURE_FILE, JSON.stringify(capture, null, 2));
 
@@ -153,6 +190,62 @@ test('sharepoint side: provision the workspace on a real list and compare', asyn
       }
     }
 
+    // ── Phase C (scored for hover cards, evidence for clicks): drive every
+    // interactive feature on the REAL list. Hover/click is not optional —
+    // customCardProps, customRowAction and inlineEditField only exist when
+    // driven (owner requirement).
+    const extraNotes: LabeledNote[] = [];
+    for (const it of capture.interactions) {
+      if (!it.field || !capture.columns[it.field]) continue; // view-formatter interactions: Phase B evidence
+      const cell = rows.first().locator(`[data-automation-key^="${it.field}"]`);
+      if (it.kind === 'hoverCard') {
+        const target = await paintedElement(cell);
+        if (it.openOn === 'hover') await target.hover(); else await target.click();
+        // ⚠ first-live-run watch spot #4: SP hover cards render into a Fluent
+        // callout layer at document level — adjust this selector if it drifts
+        const card = page.locator('.ms-Callout').first();
+        const opened = await card.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false);
+        const sandboxCard = capture.hoverCards[it.field] ?? null;
+        if (opened && sandboxCard) {
+          const spCrop = await card.screenshot();
+          fs.writeFileSync(path.join(RUN_DIR, `${it.field}-hovercard-sp.png`), spCrop);
+          const sandboxCrop = fs.readFileSync(path.join(CAPTURE_DIR, `${it.field}-hovercard.png`));
+          const diff = diffCrops(sandboxCrop, spCrop);
+          fs.writeFileSync(path.join(RUN_DIR, `${it.field}-hovercard.png`), diff.triptych);
+          await testInfo.attach(`${it.field} hover card sandbox|SP|diff`, { body: diff.triptych, contentType: 'image/png' });
+          comparisons.push({
+            label: `${it.field}[hoverCard]`, sandbox: sandboxCard, sharepoint: await probeCell(card),
+            pixel: { mismatchRatio: diff.mismatchRatio, widthDelta: diff.widthDelta, heightDelta: diff.heightDelta },
+          });
+        } else if (opened !== Boolean(sandboxCard)) {
+          extraNotes.push({
+            label: 'hover-card-missing',
+            message: `${it.field}: the hover card opened on ${opened ? 'SharePoint only' : 'the sandbox only'}`,
+          });
+        }
+        await page.keyboard.press('Escape');
+      } else {
+        // rowAction / inlineEdit: click and prove SOMETHING happened —
+        // before/after screenshots that pixel-match exactly mean a dead button
+        const target = cell.locator('button, [data-automation-key] a').first();
+        if (!(await target.count())) {
+          extraNotes.push({ label: 'click-no-effect', message: `${it.field} (${it.kind}): no clickable element found on SharePoint` });
+          continue;
+        }
+        const before = await page.screenshot();
+        await target.click();
+        await page.waitForTimeout(1_500); // panels/editors animate in
+        const after = await page.screenshot();
+        fs.writeFileSync(path.join(RUN_DIR, `${it.field}-${it.kind}-clicked-sp.png`), after);
+        await testInfo.attach(`${it.field} ${it.kind} after click (SP)`, { body: after, contentType: 'image/png' });
+        if (diffCrops(before, after).mismatchRatio === 0) {
+          extraNotes.push({ label: 'click-no-effect', message: `${it.field} (${it.kind}): clicking changed nothing on SharePoint` });
+        }
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape'); // dismiss any panel/editor before the next drive
+      }
+    }
+
     // ── Phase B (human review): the view formatter on its own view ──
     await page.goto(new URL(provisioned.formatterViewUrl, SP_SITE_URL).href);
     const vfRows = page.locator('[data-automationid="DetailsRow"]');
@@ -164,10 +257,13 @@ test('sharepoint side: provision the workspace on a real list and compare', asyn
     }
 
     const v = verdict(comparisons);
+    v.notes.push(...extraNotes);
+    // a hover card that exists on one surface only is a real divergence
+    if (extraNotes.some((n) => n.label === 'hover-card-missing')) v.pass = false;
     const verdictJson = JSON.stringify({ ...v, provisionNotes: provisioned.notes, comparisons }, null, 2);
     fs.writeFileSync(path.join(RUN_DIR, 'verdict.json'), verdictJson);
     await testInfo.attach('verdict', { body: verdictJson, contentType: 'application/json' });
-    expect(v.pass, v.notes.join('\n')).toBe(true);
+    expect(v.pass, v.notes.map((n) => `[${n.label}] ${n.message}`).join('\n')).toBe(true);
   } finally {
     await ctx.close();
   }

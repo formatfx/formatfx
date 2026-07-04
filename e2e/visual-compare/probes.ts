@@ -31,9 +31,12 @@ export async function probeCell(cell: Locator): Promise<CellProbe> {
       for (const child of node.children) walk(child, depth + 1);
     };
     walk(el, 0);
-    // innerText (not textContent) so hidden overlays don't leak into the probe
+    // innerText (not textContent) so hidden overlays don't leak into the probe;
+    // a text-less painted element (a beak, a bare bar) falls back to the root's
+    // text so cards and decorated cells still probe their words
     const subject = (painted ?? el) as HTMLElement;
-    return { text: subject.innerText.trim(), background: painted ? getComputedStyle(painted).backgroundColor : 'none' };
+    const text = subject.innerText.trim() || (el as HTMLElement).innerText.trim();
+    return { text, background: painted ? getComputedStyle(painted).backgroundColor : 'none' };
   });
 }
 

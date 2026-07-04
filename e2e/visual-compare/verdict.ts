@@ -16,6 +16,7 @@
  * rendering differs); that's a third knob to add when it bites.
  */
 import type { CellProbe } from './probes';
+import type { LabeledNote } from './labels';
 
 /** Max per-channel rgb delta that still counts as "the same color, whatever". */
 export const COLOR_DELTA_LIMIT = 80;
@@ -33,8 +34,10 @@ export interface CellComparison {
 
 export interface Verdict {
   pass: boolean;
-  /** Human-readable line per finding — failures AND soft observations. */
-  notes: string[];
+  /** One labeled line per finding — failures AND soft observations. The
+   *  label is the stable taxonomy findings.jsonl accumulates over months
+   *  (labels.ts); the message is for humans. */
+  notes: LabeledNote[];
 }
 
 /** Per-channel distance between two computed rgb()/rgba() strings; null when unparsable. */
@@ -49,26 +52,26 @@ function colorDelta(a: string, b: string): number | null {
 }
 
 export function verdict(cells: CellComparison[]): Verdict {
-  const notes: string[] = [];
+  const notes: LabeledNote[] = [];
   let pass = true;
 
   for (const c of cells) {
     if (c.sandbox.text !== c.sharepoint.text) {
       pass = false;
-      notes.push(`${c.label}: text differs — sandbox "${c.sandbox.text}" vs SharePoint "${c.sharepoint.text}"`);
+      notes.push({ label: 'text-content', message: `${c.label}: text differs — sandbox "${c.sandbox.text}" vs SharePoint "${c.sharepoint.text}"` });
     }
 
     const sb = c.sandbox.background; const sp = c.sharepoint.background;
     if (sb === 'none' || sp === 'none') {
       const sides = [sb === 'none' ? 'sandbox' : '', sp === 'none' ? 'SharePoint' : ''].filter(Boolean).join(' and ');
-      notes.push(`${c.label}: background unprobed on the ${sides} side — check probe selectors before trusting color results`);
+      notes.push({ label: 'probe-unprobed', message: `${c.label}: background unprobed on the ${sides} side — check probe selectors before trusting color results` });
     } else if (sb !== sp) {
       const delta = colorDelta(sb, sp);
       if (delta === null || delta > COLOR_DELTA_LIMIT) {
         pass = false;
-        notes.push(`${c.label}: different color family — sandbox ${sb} vs SharePoint ${sp}${delta === null ? '' : ` (Δ${delta})`}`);
+        notes.push({ label: 'color-family', message: `${c.label}: different color family — sandbox ${sb} vs SharePoint ${sp}${delta === null ? '' : ` (Δ${delta})`}` });
       } else {
-        notes.push(`${c.label}: shade drift within tolerance — ${sb} vs ${sp} (Δ${delta} ≤ ${COLOR_DELTA_LIMIT})`);
+        notes.push({ label: 'shade-drift', message: `${c.label}: shade drift within tolerance — ${sb} vs ${sp} (Δ${delta} ≤ ${COLOR_DELTA_LIMIT})` });
       }
     }
 
@@ -76,13 +79,13 @@ export function verdict(cells: CellComparison[]): Verdict {
       const pct = (c.pixel.mismatchRatio * 100).toFixed(1);
       if (c.pixel.mismatchRatio > PIXEL_MISMATCH_LIMIT) {
         pass = false;
-        notes.push(`${c.label}: crops disagree on ${pct}% of pixels (limit ${PIXEL_MISMATCH_LIMIT * 100}%) — see the triptych`);
+        notes.push({ label: 'pixel-mismatch', message: `${c.label}: crops disagree on ${pct}% of pixels (limit ${PIXEL_MISMATCH_LIMIT * 100}%) — see the triptych` });
       } else if (c.pixel.mismatchRatio > 0) {
-        notes.push(`${c.label}: pixel drift ${pct}% within tolerance (size Δ ${c.pixel.widthDelta}×${c.pixel.heightDelta}px)`);
+        notes.push({ label: 'pixel-drift', message: `${c.label}: pixel drift ${pct}% within tolerance (size Δ ${c.pixel.widthDelta}×${c.pixel.heightDelta}px)` });
       }
     }
   }
 
-  if (notes.length === 0) notes.push('all probes and crops match');
+  if (notes.length === 0) notes.push({ label: 'pixel-drift', message: 'all probes and crops match' });
   return { pass, notes };
 }

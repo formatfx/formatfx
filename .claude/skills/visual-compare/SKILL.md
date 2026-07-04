@@ -32,16 +32,21 @@ steps — run it, LOOK at it, and name the culprit.
 
 Everything lands at stable paths under `e2e/visual-compare/artifacts/run/`:
 
-- `verdict.json` — pass/fail, per-cell notes, provisioning notes
+- `verdict.json` — pass/fail, LABELED notes (see step 4), provisioning notes
 - `<Field>-<row>.png` — triptychs: **sandbox | SharePoint | diff mask**
+- `<Field>-hovercard.png` — hover-card triptychs (customCardProps, scored)
+- `<Field>-<kind>-clicked-sp.png` — post-click state on SharePoint
+  (customRowAction / inlineEditField — unscored, YOUR review is the check)
 - `view-row-<n>.png` — the view formatter's real rows (unscored in v1)
 
-Read `verdict.json` first, then **Read every triptych PNG** — including on
-a PASS. The thresholds are deliberately lenient (shade drift and ≤25% pixel
+Read `verdict.json` first, then **Read every image** — including on a PASS.
+The thresholds are deliberately lenient (shade drift and ≤25% pixel
 mismatch pass silently into notes); your eyes are the strict pass. For each
 triptych ask: same text? same color family? same shape (radius, padding,
-bar length)? anything missing entirely? Then Read the `view-row-*.png`
-shots — nothing scores them, so visual review is their ONLY check.
+bar length)? anything missing entirely? For each clicked/hovered state:
+did the effect happen at all, and does it do the same thing on both sides?
+The interactive evidence and view-row shots have NO automated score —
+visual review is their only check.
 
 ## 3. Diagnose to a culprit
 
@@ -55,6 +60,8 @@ Characterize each real difference, then localize it. The map:
 | SP cell empty or unformatted | SP rejected the formatter (schema-invalid) or the write silently targeted the wrong field | Lint the exported JSON (`node dist-lib/cli.js lint`); `workspace.ts` export; `verdict.json` provisioning notes |
 | HTTP errors during provisioning | The numbered ⚠ watch spots (OData flavor, DOM selectors, multi-choice payloads) | `sp.ts`, `compare.vspec.ts`, `workspace.ts` — fix at the marked spot only |
 | Wrapping/truncation only | SP's real column widths vs the sandbox's — expected surface difference | Note it; not a bug |
+| Hover card on one side only | `openOnEvent` semantics, or the sandbox's flyout emulation diverging from SP's callout | `src/core/renderer.ts` (flyout emulation); watch spot #4 selector in `compare.vspec.ts` |
+| Click did nothing | `customRowAction`/`inlineEditField` the sandbox stubs vs SP executes — or a genuinely dead button (bad `actionParams`) | `src/core/renderer.ts` (action stubs); the formatter's `customRowAction` block |
 
 Ground rules while diagnosing:
 
@@ -69,10 +76,48 @@ Ground rules while diagnosing:
 - Never mark a watch spot "fixed" without a fresh green run against the
   tenant.
 
-## 4. Report
+## 4. Label every finding and append it to the ledger
 
-End with: the verdict; per-cell findings (nature of the difference →
-probable culprit → the evidence file that shows it); and either the fix you
-made (with the usual verification) or the smallest next step. If everything
-matched, say so plainly — and attach/name the triptychs you checked so the
-owner knows the pass had eyes on it.
+`e2e/visual-compare/labels.ts` is the controlled "what it looks like"
+vocabulary. Every finding — the automated notes in `verdict.json` (already
+labeled) AND anything your own eyes caught — gets one label plus a
+plain-words `looksLike` line. Then append one JSON object per finding to
+`e2e/visual-compare/findings.jsonl` (committed, append-only) and include
+the file in your commit:
+
+```json
+{"ts":"2026-07-04","workspace":"sprint board","subject":"Status[1]","label":"shade-drift","looksLike":"pill is a touch darker on SP","culprit":"theme slot re-tint","culpritPath":"src/core/theme.ts","resolution":"tolerated","source":"agent"}
+```
+
+- `source`: `"verdict"` for automated notes, `"agent"` for your visual ones.
+- `resolution`: `fixed` / `tolerated` / `calibrated` / `open`.
+- NEVER put tenant URLs, list URLs, or anything identifying in an entry —
+  the ledger is committed to a public repo. Workspace goes by nickname.
+- Use an existing label whenever one fits; a new label is a PR-worthy event.
+
+This ledger is the long game: over weeks and months of runs it becomes the
+dataset for finding the common gotchas.
+
+## 5. Periodic assessment (when the owner asks, or ~monthly)
+
+Read all of `findings.jsonl`. Cluster by `label` + `culpritPath`. For the
+recurring clusters, bake the lesson into a rule so the next run
+troubleshoots itself faster — in priority order:
+
+1. Extend the symptom→culprit map in THIS skill with the specific
+   observed pattern (fastest payoff).
+2. Calibrate `verdict.ts` knobs if a label keeps resolving as `tolerated`
+   (the harness should stop flagging it) or keeps slipping through.
+3. Propose a teaching lint rule (`src/core/linter.ts`) when the gotcha is
+   something makers do in formatters — then the app prevents it upstream.
+
+Present the clusters and the proposed rule changes to the owner before
+changing verdict knobs or the linter; skill-map extensions you may just do.
+
+## 6. Report
+
+End with: the verdict; per-cell findings (label → nature of the difference
+→ probable culprit → the evidence file that shows it); the ledger entries
+you appended; and either the fix you made (with the usual verification) or
+the smallest next step. If everything matched, say so plainly — and name
+the images you checked so the owner knows the pass had eyes on it.
