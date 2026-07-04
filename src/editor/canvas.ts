@@ -22,7 +22,8 @@ import { styleBannerLabel } from './styleScope';
 import { cfrBlastRadius } from './cfr';
 
 /** The Stage-3 row-view toolbar: density (Roomy/Compact) + back to the grid.
- *  Per-area sizing lives on each area's right-click menu (independent weights). */
+ *  Area/zone sizing lives in the template builder's inspector (the old
+ *  right-click Area width entries were retired — FLOOR-AND-SHEETS Stage 0). */
 function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'wb-rowview-bar';
@@ -54,16 +55,15 @@ function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   templates.addEventListener('click', () => openTemplateModal(onToast));
   bar.appendChild(templates);
 
-  const hint = document.createElement('span');
-  hint.className = 'wb-rowview-bar-hint';
-  hint.textContent = 'right-click an area to size it';
-  bar.appendChild(hint);
-
   const back = document.createElement('button');
   back.className = 'wb-rowview-bar-btn wb-rowview-back';
   back.textContent = '◧ Back to grid';
-  back.title = 'Return to the column grid — the same elements, shown column by column';
-  back.addEventListener('click', () => { state.setKind('grid'); onToast('Back to the grid'); });
+  back.title = 'Return to the column grid — the same elements, shown column by column. "⟳ Reopen" above the grid brings this layout back.';
+  back.addEventListener('click', () => {
+    const noun = state.doc.kind === 'tile' ? 'tile layout' : 'row view';
+    state.setKind('grid');
+    onToast(`Back to the grid — "⟳ Reopen the ${noun}" above the grid takes you back`);
+  });
   bar.appendChild(back);
   return bar;
 }

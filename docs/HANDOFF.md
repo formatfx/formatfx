@@ -674,8 +674,11 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    a row view" turns them into weighted **areas** (Normal/Wide/Widest, a
    conflict-free CSS-fr-like flex; areas.ts), with row **density**
    (Roomy/Compact) a separate knob and **tile** an explicit pick that can never
-   emerge; per-area sizing on each area's right-click menu, density + back-to-
-   grid in a row-view toolbar. **Stage 4 (this branch): CFR linked instances
+   emerge (a graduated tile STACKS its areas — buildRowView's `as: 'tile'`);
+   density + back-to-grid in a row-view toolbar, and the grid offers
+   "⟳ Reopen" after a back-to-grid (state.lastLayoutKind, session-local —
+   FLOOR-AND-SHEETS Stage 0). Per-area right-click sizing was retired
+   2026-07-04 — zone sizing is the template builder inspector's job. **Stage 4 (this branch): CFR linked instances
    (the Figma model)** — a teal link badge (`.wb-cfr-link`, the `#038387` of
    the Structure ⤷ chip) marks a columnFormatterReference cell; its header menu
    offers "Format this Column" (edit the shared format, blast radius named) and
@@ -736,7 +739,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 781 vitest unit tests across 43 files (engine semantics incl.
+- `npm test` — 784 vitest unit tests across 43 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated

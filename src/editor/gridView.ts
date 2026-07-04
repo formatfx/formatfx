@@ -706,6 +706,27 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     grid.appendChild(empty);
   }
 
+  // ⟳ the way back: "Back to grid" merely relabels a row/tile view as this
+  // grid, so while the memory holds, offer the reverse relabel right here —
+  // the layout must never feel lost (FLOOR-AND-SHEETS Stage 0).
+  if (state.lastLayoutKind) {
+    const kind = state.lastLayoutKind;
+    const noun = kind === 'tile' ? 'tile layout' : 'row view';
+    const ret = document.createElement('div');
+    ret.className = 'wb-grid-returnbar';
+    const text = document.createElement('span');
+    text.textContent = `You're on the grid — the ${noun} you left is intact.`;
+    const btn = document.createElement('button');
+    btn.className = 'wb-grid-returnbar-btn';
+    btn.textContent = `⟳ Reopen the ${noun}`;
+    btn.title = `Show this layout as the ${noun} again — same elements, nothing is rebuilt`;
+    btn.addEventListener('click', () => {
+      state.setKind(kind);
+      onToast(`Reopened the ${noun}`);
+    });
+    ret.append(text, btn);
+    host.appendChild(ret);
+  }
   host.appendChild(bar);
   host.appendChild(grid);
   refreshBar();
