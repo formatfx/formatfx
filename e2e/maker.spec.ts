@@ -1,23 +1,8 @@
 // e2e/maker.spec.ts
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { freshApp, loadExample, openJson } from './helpers';
 
-// The JSON pane (the "Advanced" escape hatch) is hidden by default; reveal it
-// idempotently. The left edit pane and canvas are always visible.
-async function openJson(page: Page): Promise<void> {
-  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
-}
-
-// the example/sample loader now lives in the ☰ menu — open it, then pick
-async function loadExample(page: Page, value: string): Promise<void> {
-  await page.click('#wb-menu-btn');
-  await page.selectOption('#wb-example', value);
-}
-
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
+test.beforeEach(async ({ page }) => { await freshApp(page); });
 
 test('first load is grid-first: left pane + canvas visible, JSON pane hidden', async ({ page }) => {
   // the Left Edit Pane and the grid canvas are always on screen

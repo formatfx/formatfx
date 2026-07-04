@@ -9,24 +9,9 @@
  * wb-subtypes customs migrate into the component library on first read.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { freshApp, header, importPastedText } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-function header(page: Page, label: string) {
-  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
-}
-
-/** Reveal the Data dock (it starts collapsed). */
-async function openDataDock(page: Page): Promise<void> {
-  const dock = page.locator('#wb-data-dock');
-  if (await dock.evaluate((el) => el.classList.contains('wb-min'))) {
-    await page.click('#wb-data-min');
-  }
-}
+test.beforeEach(async ({ page }) => { await freshApp(page); });
 
 /** Import a schema with an unformatted Currency column (so Money has a target). */
 async function importCurrencyColumn(page: Page): Promise<void> {
@@ -40,10 +25,7 @@ async function importCurrencyColumn(page: Page): Promise<void> {
     + '"Title","Price"\n'
     + '"Widget","149.5"\n'
     + '"Gadget","299"\n';
-  await openDataDock(page);
-  await page.click('button:has-text("Import schema…")');
-  await page.fill('.wb-schema-form textarea', csv);
-  await page.click('button:has-text("Import pasted text")');
+  await importPastedText(page, csv);
 }
 
 /** Import a schema with two unformatted Date columns (Start, End). */
@@ -58,28 +40,7 @@ async function importTwoDateColumns(page: Page): Promise<void> {
   const csv = `ListSchema=${JSON.stringify(schema)}\n`
     + '"Title","Start","End"\n'
     + '"Task","2026-07-01","2026-08-01"\n';
-  await openDataDock(page);
-  await page.click('button:has-text("Import schema…")');
-  await page.fill('.wb-schema-form textarea', csv);
-  await page.click('button:has-text("Import pasted text")');
-}
-
-/** Import a schema with a Title + three unformatted Choice columns. */
-async function importChoiceColumns(page: Page): Promise<void> {
-  const choice = (n: string): string => `<Field Type="Choice" Name="${n}" DisplayName="${n}"><CHOICES><CHOICE>A</CHOICE><CHOICE>B</CHOICE></CHOICES></Field>`;
-  const schema = {
-    schemaXmlList: [
-      '<Field Type="Text" Name="Title" DisplayName="Title" ReadOnly="FALSE" />',
-      choice('Phase1'), choice('Phase2'), choice('Phase3'),
-    ],
-  };
-  const csv = `ListSchema=${JSON.stringify(schema)}\n`
-    + '"Title","Phase1","Phase2","Phase3"\n'
-    + '"T","A","B","A"\n';
-  await openDataDock(page);
-  await page.click('button:has-text("Import schema…")');
-  await page.fill('.wb-schema-form textarea', csv);
-  await page.click('button:has-text("Import pasted text")');
+  await importPastedText(page, csv);
 }
 
 /** Seed a LEGACY maker-authored subtype into the retired wb-subtypes store —

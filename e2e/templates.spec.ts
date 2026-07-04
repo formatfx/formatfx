@@ -9,17 +9,10 @@
  * while tiles preview as a live deck at their configured box.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { freshApp, header } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); }); // accept the overwrite confirm
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-function header(page: Page, label: string) {
-  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
-}
+// dialogs accepted for the overwrite confirm
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 async function enterRowView(page: Page) {
   await header(page, 'Title').click({ modifiers: ['Control'] });

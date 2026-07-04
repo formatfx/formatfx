@@ -4,26 +4,13 @@
  * another generates named row-formatter scaffolding, one undo step per
  * grid mutation.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { freshApp, header, openJson } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  // accept dialogs: applying name-less JSON over a named design now asks first
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
+// dialogs accepted: applying name-less JSON over a named design asks first
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 const HEADERS = ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project'];
-
-function header(page: Page, label: string) {
-  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
-}
-
-// The JSON pane ("Advanced") is hidden by default — reveal it idempotently.
-async function openJson(page: Page): Promise<void> {
-  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
-}
 
 test('header menu formats an unformatted column: scaffold registered, grid renders it via CFR', async ({ page }) => {
   await header(page, 'DueDate').click();

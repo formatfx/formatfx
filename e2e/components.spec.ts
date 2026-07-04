@@ -9,20 +9,12 @@
  * (components are self-contained).
  */
 import { test, expect, type Page } from '@playwright/test';
+import { freshApp, header } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 function treeRow(page: Page, name: string) {
   return page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: name }) });
-}
-
-function header(page: Page, label: string) {
-  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
 test('the COMPONENTS tab opens the inventory + browser: empty "In this project", built-ins below', async ({ page }) => {

@@ -766,6 +766,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   restore flows, Explain, Stress Test), `styleLegibility.spec.ts`
   ("violet = shared"), `icons.spec.ts`, `subtypes.spec.ts` and
   `templates.spec.ts`.
+  Shared mechanics (fresh-app reset, `header()`, `openJson()`,
+  `openPalette()`, `loadExample()`, the Data-dock schema-import steps) live
+  in `e2e/helpers.ts` — navigation only, never assertions; each spec keeps
+  its own contracts. Despite the directory name these are browser UI tests
+  against the local app with mock data, not end-to-end against real
+  SharePoint — live-SP semantics are pinned headlessly (§3).
   Containers that can't reach the browser CDN: `npm i -D --no-save
   @sparticuz/chromium`, extract with `executablePath()`, run with
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).

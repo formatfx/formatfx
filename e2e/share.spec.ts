@@ -9,24 +9,11 @@
  * beforeunload autosave.
  */
 import { test, expect, type Page, type Browser } from '@playwright/test';
+import { freshApp, loadExample, openJson } from './helpers';
 
 const KEY = 'list-formatting-sandbox.project.v1';
 
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-async function openJson(page: Page): Promise<void> {
-  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
-}
-
-async function loadExample(page: Page, value: string): Promise<void> {
-  await page.click('#wb-menu-btn');
-  await page.selectOption('#wb-example', value);
-}
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 /** Mint a share link for the current workspace via the Share dialog. */
 async function mintShareLink(page: Page): Promise<string> {

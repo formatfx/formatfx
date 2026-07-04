@@ -5,18 +5,10 @@
  * "Detach from style" (fork to a local copy). A plain column promotes to a shared
  * style via "Save as the [Field] column style".
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { freshApp, header } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-function header(page: Page, label: string) {
-  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
-}
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 test('a linked column wears the § style mark; plain columns do not', async ({ page }) => {
   // Status & Progress ship as CFR cells (registered formatters) → linked

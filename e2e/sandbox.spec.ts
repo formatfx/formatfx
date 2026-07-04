@@ -3,35 +3,16 @@
  * Run locally: npm run test:ui   (uses your installed Edge/Chrome)
  * Screenshots land in test-results/ for every test.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { freshApp, loadExample, openJson, openPalette } from './helpers';
 
 let lastDialog = '';
 test.beforeEach(async ({ page }) => {
+  // capture dialog messages (some tests assert on them), then a fresh run
   lastDialog = '';
   page.on('dialog', (d) => { lastDialog = d.message(); void d.accept(); });
-  await page.goto('/');
-  // a fresh run each time — clear the autosaved project
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
+  await freshApp(page);
 });
-
-// The JSON pane (the Advanced escape hatch) is hidden by default — reveal it
-// idempotently.
-async function openJson(page: Page): Promise<void> {
-  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
-}
-
-// The full palette is now a popover off the draw toolbar. Open it; items live
-// in #wb-palette-pop .wb-palette-item. Clicking one inserts AND closes the popover.
-async function openPalette(page: Page): Promise<void> {
-  await page.click('.wb-tool[data-tool="palette"]');
-}
-
-// the example/sample loader now lives in the ☰ menu — open it, then pick
-async function loadExample(page: Page, value: string): Promise<void> {
-  await page.click('#wb-menu-btn');
-  await page.selectOption('#wb-example', value);
-}
 
 test('first load shows the grid-first workspace: Lists-style grid, formatted columns resolve', async ({ page }) => {
   // default is a grid — one column per view column, real headers
