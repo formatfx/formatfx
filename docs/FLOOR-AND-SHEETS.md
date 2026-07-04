@@ -88,6 +88,18 @@ sheet. Leaving is navigation, never mutation.
 One Escape convention through the `wb-esc-owner` marker (already the
 chokepoint) — no hand-maintained exception lists.
 
+**The undo contract — global but layered (owner, 2026-07-04):** every
+modal editor keeps a LOCAL undo stack that bottoms out at the moment it
+opened — in-editor undo can never reach past its own opening into the
+document's history. Committing (Save/Apply/OK) collapses the whole editor
+session into exactly ONE app-level undo step: after commit, the main
+Ctrl+Z reverts the editor's entire output at once, never replaying its
+intermediate states onto the canvas (those were modal-preview states the
+document never held, and some would be states the editor's own Save
+guards refuse). This is the template builder's shipped behavior,
+generalized to every tier-1/tier-2 editor. Undo remains GLOBAL across
+floor and sheets at the app level.
+
 ### 2.4 The canvas gets a Select / Live toggle
 
 Interactivity (customRowAction, customCardProps triggers, …) needs a
@@ -114,9 +126,14 @@ that precedent to every canvas (floor, sheets, builder).
      "⟳ Reopen …" affordance above the grid (session-local memory; the
      real fix is Stage 1's separate documents).
 - **Stage 1 — split the documents.** The floor becomes its own document;
-  views become named documents (the multi-view list). State model,
-  autosave shape (ADDITIVE keys only — frozen-key rule), share codec
-  (versioned scheme addition, w1/w1r stay decodable). This deletes the
+  views become named documents (the multi-view list). Reshape the state
+  model, autosave shape, and share codec **freely** — there are no users
+  yet, so pre-Stage-1 autosaves and share links carry NO support
+  obligation and **no migration/upgrade code is built or maintained**
+  (owner call, 2026-07-04). If an old blob doesn't parse, the app simply
+  falls back to a fresh default — that's a load guard, not a converter.
+  The frozen-NAMES rule (never rename localStorage keys or `wb-`
+  prefixes) still stands; frozen names ≠ frozen formats. This deletes the
   relabeling bug class entirely and makes "minimize" trivial.
 - **Stage 2 — sheet chrome.** The left view strip (open/minimize/rename/
   new), "Back to grid" retired in favor of minimize; the floor stops ever
@@ -133,5 +150,9 @@ that precedent to every canvas (floor, sheets, builder).
   view is navigation and must never mutate.
 - Generated formatters stay schema-valid and definitely-work-on-real-SP;
   refuse-and-teach; no standalone `!`.
-- localStorage keys and `wb-` CSS names are frozen — new state is ADDITIVE.
-- Share links: existing schemes keep decoding forever.
+- localStorage keys and `wb-` CSS names are frozen (naming, not format —
+  renames must never wipe work; formats may change while nobody's here).
+- No compatibility machinery: until there are real users, old saved
+  formats and share schemes are DROPPED, not migrated (owner call,
+  2026-07-04 — this supersedes any decode-forever wording elsewhere,
+  e.g. SHARE-URL.md, until the owner declares a real-user baseline).
