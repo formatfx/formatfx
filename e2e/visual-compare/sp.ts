@@ -10,6 +10,7 @@
  * bar as src/bridge.
  */
 import type { Page } from '@playwright/test';
+import type { ProvisionPlan } from './workspace';
 
 type Json = Record<string, unknown>;
 
@@ -53,9 +54,15 @@ export async function spPost(
 }
 
 /**
- * Ensure the sacrificial list exists with a Status choice column and the
- * given rows. Idempotent-ish: creates what's missing, adds rows only while
- * the list has fewer items than asked for (it never deletes).
+ * Provision the sacrificial list FROM SCRATCH out of a workspace plan:
+ * delete any previous run's list, recreate it, create every creatable
+ * column, add the data rows, MERGE each column formatter onto its field,
+ * and put the view formatter on a SECOND view ("FormatFX View Compare") so
+ * the default view keeps SharePoint's native cell DOM for symmetric
+ * per-cell crops.
+ *
+ * DESTRUCTIVE BY DESIGN toward SP_LIST — the README's "sacrificial list"
+ * rule is load-bearing. Nothing else on the site is touched.
  *
  * ⚠ first-live-run watch spot #1: field creation uses createfieldasxml with
  * a nometadata body — some tenants insist on odata=verbose here. If you get
@@ -63,40 +70,64 @@ export async function spPost(
  * { parameters: { __metadata: { type: 'SP.XmlSchemaFieldCreationInformation' }, SchemaXml } }
  * and switch both headers to application/json;odata=verbose for this call.
  */
-export async function ensureList(
-  page: Page, web: string, title: string, rows: ReadonlyArray<{ Title: string; Status: string }>,
-): Promise<string> {
-  const listUrl = `${web}/_api/web/lists/getByTitle('${encodeURIComponent(title)}')`;
-
-  const probe = await spGet(page, `${listUrl}?$select=ItemCount`);
-  if (probe.status === 404) {
-    const made = await spPost(page, web, `${web}/_api/web/lists`, { Title: title, BaseTemplate: 100 });
-    if (made.status >= 400) throw new Error(`Could not create list "${title}" (HTTP ${made.status}) — you need Manage Lists on the site.`);
-    const choices = [...new Set(rows.map((r) => r.Status))]
-      .map((c) => `<CHOICE>${c}</CHOICE>`).join('');
-    const xml = `<Field Type="Choice" Name="Status" DisplayName="Status"><CHOICES>${choices}</CHOICES></Field>`;
-    const field = await spPost(page, web, `${listUrl}/fields/createfieldasxml`, { parameters: { SchemaXml: xml } });
-    if (field.status >= 400) throw new Error(`Could not add the Status column (HTTP ${field.status}) — see the watch-spot note in sp.ts.`);
-    // show Status on the default view so the formatter has a cell to paint
-    const shown = await spPost(page, web, `${listUrl}/defaultview/viewfields/addviewfield('Status')`, {});
-    if (shown.status >= 400) throw new Error(`Could not add Status to the default view (HTTP ${shown.status}) — without it the DOM probes have nothing to find.`);
-  } else if (probe.status >= 400) {
-    throw new Error(`Could not read list "${title}" (HTTP ${probe.status}).`);
-  }
-
-  const count = (probe.body?.ItemCount as number | undefined) ?? 0;
-  if (count < rows.length) {
-    for (const row of rows.slice(count)) {
-      const added = await spPost(page, web, `${listUrl}/items`, row as unknown as Json);
-      if (added.status >= 400) throw new Error(`Could not add a row (HTTP ${added.status}).`);
-    }
-  }
-  return listUrl;
+export interface ProvisionResult {
+  listUrl: string;
+  defaultViewUrl: string;
+  /** Server-relative URL of the view carrying the view formatter. */
+  formatterViewUrl: string;
+  notes: string[];
 }
 
-/** MERGE the fixture into the Status column's CustomFormatter (deploySnippet's write, step 4). */
-export async function applyColumnFormatter(page: Page, web: string, listUrl: string, formatterJson: string): Promise<void> {
-  const target = `${listUrl}/fields/getByInternalNameOrTitle('Status')`;
-  const put = await spPost(page, web, target, { CustomFormatter: formatterJson }, true);
-  if (put.status >= 400) throw new Error(`Formatter write failed (HTTP ${put.status}) — formatters need Manage Lists (part of Edit).`);
+export async function provisionList(
+  page: Page, web: string, title: string, plan: ProvisionPlan,
+): Promise<ProvisionResult> {
+  const notes: string[] = plan.skipped.map((s) => `skipped ${s.name}: ${s.reason}`);
+  const listUrl = `${web}/_api/web/lists/getByTitle('${encodeURIComponent(title)}')`;
+
+  // a previous run's list starts every run from zero — sacrificial by contract
+  const existing = await spGet(page, `${listUrl}?$select=Id`);
+  if (existing.status === 200) {
+    const gone = await spPost(page, web, `${listUrl}/deleteObject`, {});
+    if (gone.status >= 400) throw new Error(`Could not delete the previous "${title}" list (HTTP ${gone.status}).`);
+  }
+
+  const made = await spPost(page, web, `${web}/_api/web/lists`, { Title: title, BaseTemplate: 100 });
+  if (made.status >= 400) throw new Error(`Could not create list "${title}" (HTTP ${made.status}) — you need Manage Lists on the site.`);
+
+  for (const f of plan.fieldsXml) {
+    const field = await spPost(page, web, `${listUrl}/fields/createfieldasxml`, { parameters: { SchemaXml: f.xml } });
+    if (field.status >= 400) throw new Error(`Could not create the ${f.name} column (HTTP ${field.status}) — see watch spot #1 in sp.ts.`);
+    const shown = await spPost(page, web, `${listUrl}/defaultview/viewfields/addviewfield('${encodeURIComponent(f.name)}')`, {});
+    if (shown.status >= 400) throw new Error(`Could not add ${f.name} to the default view (HTTP ${shown.status}).`);
+  }
+
+  for (const item of plan.items) {
+    const added = await spPost(page, web, `${listUrl}/items`, item as Json);
+    if (added.status >= 400) throw new Error(`Could not add a row (HTTP ${added.status}) — payload keys: ${Object.keys(item).join(', ')}.`);
+  }
+
+  for (const cf of plan.columnFormatters) {
+    const put = await spPost(page, web,
+      `${listUrl}/fields/getByInternalNameOrTitle('${encodeURIComponent(cf.name)}')`,
+      { CustomFormatter: cf.json }, true);
+    if (put.status >= 400) throw new Error(`Column-formatter write on ${cf.name} failed (HTTP ${put.status}) — formatters need Manage Lists (part of Edit).`);
+  }
+
+  // the view formatter goes on its OWN view so the default view stays native
+  const view = await spPost(page, web, `${listUrl}/views`, { Title: 'FormatFX View Compare' });
+  if (view.status >= 400) throw new Error(`Could not create the view-formatter view (HTTP ${view.status}).`);
+  const viewUrl = String(view.body?.ServerRelativeUrl ?? '');
+  for (const f of plan.fieldsXml) {
+    await spPost(page, web, `${listUrl}/views/getByTitle('FormatFX%20View%20Compare')/viewfields/addviewfield('${encodeURIComponent(f.name)}')`, {});
+  }
+  const vf = await spPost(page, web, `${listUrl}/views/getByTitle('FormatFX%20View%20Compare')`,
+    { CustomFormatter: plan.viewFormatterJson }, true);
+  if (vf.status >= 400) throw new Error(`View-formatter write failed (HTTP ${vf.status}).`);
+
+  const dv = await spGet(page, `${listUrl}?$select=DefaultViewUrl`);
+  const defaultViewUrl = dv.body?.DefaultViewUrl;
+  if (dv.status >= 400 || typeof defaultViewUrl !== 'string') {
+    throw new Error(`Could not read the list's DefaultViewUrl (HTTP ${dv.status}) — session expired? Re-run visual:auth.`);
+  }
+  return { listUrl, defaultViewUrl, formatterViewUrl: viewUrl, notes };
 }

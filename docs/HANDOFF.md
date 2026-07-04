@@ -777,13 +777,18 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   `PW_EXECUTABLE=/tmp/chromium` (verified working 2026-06-12).
 - `npm run visual:compare` — the ground-truth harness (`e2e/visual-compare/`,
   the public tenant-agnostic rebuild of the private repo's excluded
-  visual-compare, scaffolded 2026-07-04): renders a fixture in the sandbox,
-  deploys the same JSON to a real SharePoint list under the maker's own
-  bottled browser session (`npm run visual:auth`), probes text + painted
-  background on both surfaces and judges via `verdict.ts`. Manual CLI only,
-  never CI (`.vspec.ts` suffix keeps it out of `test:ui`); the SP half has
-  NOT yet run against a live tenant — `sp.ts`/`compare.vspec.ts` mark the
-  two likely first-run adjustment spots.
+  visual-compare, scaffolded 2026-07-04): a share link IS the fixture
+  (decoded in Node via `core/share.ts`; unset → minted from the default
+  workspace). It provisions a sacrificial list from the workspace under the
+  maker's own bottled browser session (`npm run visual:auth`) — typed
+  columns, rows, column formatters, view formatter on a second view — then
+  compares per-cell: exact text, lenient color (family-level, per owner
+  2026-07-04), and pixelmatch crop diffs with sandbox|SP|diff triptychs
+  attached. pixelmatch + pngjs are the harness's only (dev) deps; the
+  runtime app stays at zero. Manual CLI only, never CI (`.vspec.ts` suffix
+  keeps it out of `test:ui`); the SP half has NOT yet run against a live
+  tenant — numbered ⚠ watch spots in `sp.ts`/`compare.vspec.ts`/
+  `workspace.ts` mark the likely first-run adjustments.
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.

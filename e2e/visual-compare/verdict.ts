@@ -3,27 +3,33 @@
  * rendered, decide pass or fail. This is the one real design decision in
  * the harness, and it's deliberately isolated here.
  *
- * The scaffold default below is the strictest thing that can honestly pass:
- * texts must match exactly; backgrounds must match exactly WHEN both sides
- * painted one. A side that painted nothing ('none') doesn't fail the run —
- * it lands in `notes` for human review instead, because a missing probe is
- * usually a probe-selector problem (SharePoint's list DOM shifts), not an
- * engine divergence.
+ * Owner-set posture (2026-07-04): LENIENT ON SHADE, STRICT ON SUBSTANCE.
+ * Text must match exactly; colors only fail when they're a different color
+ * FAMILY (per-channel delta beyond COLOR_DELTA_LIMIT); pixel mismatch only
+ * fails past PIXEL_MISMATCH_LIMIT of the crop. Everything softer than a
+ * failure still lands in `notes`, and the triptychs are always attached —
+ * the report is built for human eyes first.
  *
- * TODO(owner): calibrate this after the first real tenant run. Knobs worth
- * considering once you've seen live data:
- *   - Color tolerance: SharePoint themes can nudge hex values (e.g. section
- *     backgrounds re-tinted by theme slots). Exact rgb() equality may be too
- *     strict — a small per-channel delta (±2?) may be right. Too loose and
- *     the harness stops catching real engine drift; that's the trade-off.
- *   - Should a 'none' background on ONE side fail instead of note? Once the
- *     SP probe selectors are proven stable, flipping that to a failure makes
- *     the harness strictly stronger.
- *   - Whitespace/casing in text: Excel-style formatters sometimes differ in
- *     locale rendering (dates, numbers). Exact match is right for the
- *     status-pill fixture; date fixtures will need a looser rule.
+ * TODO(owner): calibrate the two limits after the first real tenant run —
+ * tighten until a run you'd call "wrong" fails and a run you'd call "fine"
+ * passes. Date/number fixtures may also need a looser TEXT rule (locale
+ * rendering differs); that's a third knob to add when it bites.
  */
 import type { CellProbe } from './probes';
+
+/** Max per-channel rgb delta that still counts as "the same color, whatever". */
+export const COLOR_DELTA_LIMIT = 80;
+/** Max fraction of mismatched pixels in a crop pair before it's a failure. */
+export const PIXEL_MISMATCH_LIMIT = 0.25;
+
+export interface CellComparison {
+  /** Field internal name + 0-based row, e.g. "Status[1]". */
+  label: string;
+  sandbox: CellProbe;
+  sharepoint: CellProbe;
+  /** From imageDiff.diffCrops, when both crops exist. */
+  pixel?: { mismatchRatio: number; widthDelta: number; heightDelta: number };
+}
 
 export interface Verdict {
   pass: boolean;
@@ -31,30 +37,52 @@ export interface Verdict {
   notes: string[];
 }
 
-export function verdict(sandbox: CellProbe[], sharepoint: CellProbe[]): Verdict {
+/** Per-channel distance between two computed rgb()/rgba() strings; null when unparsable. */
+function colorDelta(a: string, b: string): number | null {
+  const parse = (c: string): number[] | null => {
+    const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(c);
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+  };
+  const pa = parse(a); const pb = parse(b);
+  if (!pa || !pb) return null;
+  return Math.max(Math.abs(pa[0] - pb[0]), Math.abs(pa[1] - pb[1]), Math.abs(pa[2] - pb[2]));
+}
+
+export function verdict(cells: CellComparison[]): Verdict {
   const notes: string[] = [];
   let pass = true;
 
-  if (sandbox.length !== sharepoint.length) {
-    return { pass: false, notes: [`row count differs: sandbox ${sandbox.length}, SharePoint ${sharepoint.length}`] };
+  for (const c of cells) {
+    if (c.sandbox.text !== c.sharepoint.text) {
+      pass = false;
+      notes.push(`${c.label}: text differs — sandbox "${c.sandbox.text}" vs SharePoint "${c.sharepoint.text}"`);
+    }
+
+    const sb = c.sandbox.background; const sp = c.sharepoint.background;
+    if (sb === 'none' || sp === 'none') {
+      const sides = [sb === 'none' ? 'sandbox' : '', sp === 'none' ? 'SharePoint' : ''].filter(Boolean).join(' and ');
+      notes.push(`${c.label}: background unprobed on the ${sides} side — check probe selectors before trusting color results`);
+    } else if (sb !== sp) {
+      const delta = colorDelta(sb, sp);
+      if (delta === null || delta > COLOR_DELTA_LIMIT) {
+        pass = false;
+        notes.push(`${c.label}: different color family — sandbox ${sb} vs SharePoint ${sp}${delta === null ? '' : ` (Δ${delta})`}`);
+      } else {
+        notes.push(`${c.label}: shade drift within tolerance — ${sb} vs ${sp} (Δ${delta} ≤ ${COLOR_DELTA_LIMIT})`);
+      }
+    }
+
+    if (c.pixel) {
+      const pct = (c.pixel.mismatchRatio * 100).toFixed(1);
+      if (c.pixel.mismatchRatio > PIXEL_MISMATCH_LIMIT) {
+        pass = false;
+        notes.push(`${c.label}: crops disagree on ${pct}% of pixels (limit ${PIXEL_MISMATCH_LIMIT * 100}%) — see the triptych`);
+      } else if (c.pixel.mismatchRatio > 0) {
+        notes.push(`${c.label}: pixel drift ${pct}% within tolerance (size Δ ${c.pixel.widthDelta}×${c.pixel.heightDelta}px)`);
+      }
+    }
   }
 
-  sandbox.forEach((sb, i) => {
-    const sp = sharepoint[i];
-    if (sb.text !== sp.text) {
-      pass = false;
-      notes.push(`row ${i}: text differs — sandbox "${sb.text}" vs SharePoint "${sp.text}"`);
-    }
-    if (sb.background === 'none' || sp.background === 'none') {
-      const sides = [sb.background === 'none' ? 'sandbox' : '', sp.background === 'none' ? 'SharePoint' : '']
-        .filter(Boolean).join(' and ');
-      notes.push(`row ${i}: background unprobed on the ${sides} side — check probe selectors before trusting color results`);
-    } else if (sb.background !== sp.background) {
-      pass = false;
-      notes.push(`row ${i}: background differs — sandbox ${sb.background} vs SharePoint ${sp.background}`);
-    }
-  });
-
-  if (notes.length === 0) notes.push('all probes match exactly');
+  if (notes.length === 0) notes.push('all probes and crops match');
   return { pass, notes };
 }
