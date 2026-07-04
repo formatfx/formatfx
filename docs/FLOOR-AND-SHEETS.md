@@ -88,6 +88,18 @@ sheet. Leaving is navigation, never mutation.
 One Escape convention through the `wb-esc-owner` marker (already the
 chokepoint) — no hand-maintained exception lists.
 
+**The undo contract — global but layered (owner, 2026-07-04):** every
+modal editor keeps a LOCAL undo stack that bottoms out at the moment it
+opened — in-editor undo can never reach past its own opening into the
+document's history. Committing (Save/Apply/OK) collapses the whole editor
+session into exactly ONE app-level undo step: after commit, the main
+Ctrl+Z reverts the editor's entire output at once, never replaying its
+intermediate states onto the canvas (those were modal-preview states the
+document never held, and some would be states the editor's own Save
+guards refuse). This is the template builder's shipped behavior,
+generalized to every tier-1/tier-2 editor. Undo remains GLOBAL across
+floor and sheets at the app level.
+
 ### 2.4 The canvas gets a Select / Live toggle
 
 Interactivity (customRowAction, customCardProps triggers, …) needs a
