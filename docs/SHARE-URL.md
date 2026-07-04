@@ -138,6 +138,16 @@ too-long link is better replaced by the project file.
 
 ## Stability promises
 
+> **Suspended until a real-user baseline exists (owner call, 2026-07-04 —
+> see FLOOR-AND-SHEETS.md).** While FormatFX has no users, promises 1–3
+> below are NOT in force: the Floor & Sheets Stage 1 rework may reshape
+> the payload schema and DROP `w1`/`w1r` outright rather than keep
+> decoders alive — no migration/compat code is built or maintained. Do
+> not mint links expecting long-term stability yet. Promise 4 (fragments
+> stay server-invisible) holds regardless. When the owner declares a
+> real-user baseline, this section resumes as written for the schemes
+> alive at that point.
+
 1. **`w1` and `w1r` never change meaning.** Future encodings get new scheme
    names; old links decode forever.
 2. **The payload schema only grows additively.** `loadProject` tolerates
