@@ -147,6 +147,19 @@ test('zones nest: drop a zone onto a zone, and the nest survives Apply → reope
   await expect(page.locator('[data-edit-item="0:1:0"]')).toBeVisible(); // its item came along
 });
 
+test('the tree root-drop target can bring a nested zone back when only one root zone remains', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page);
+  await page.locator('[data-tree-zone="0"]').click();
+  await page.locator('.wb-template-addnested').click(); // Lead inner at 0:1
+  await page.locator('[data-tree-zone="1"]').dragTo(page.locator('[data-tree-zone="0"]')); // Details → into Lead at 0:2
+  await expect(page.locator('[data-tree-zone="1"]')).toHaveCount(0);
+  await expect(page.locator('[data-tree-zone="0:2"]')).toBeVisible();
+  await page.locator('[data-tree-zone="0:2"]').dragTo(page.locator('[data-tree-root-drop="end"]'));
+  await expect(page.locator('[data-tree-zone="1"]')).toBeVisible();
+  await expect(page.locator('[data-tree-zone="0:2"]')).toHaveCount(0);
+});
+
 test('New rowview is reachable from the document dropdown on the landing screen', async ({ page }) => {
   await page.goto('/');
   // straight from the grid landing — no need to enter Row View first
