@@ -245,6 +245,33 @@ export function renderZoneTree(host: HTMLElement, ui: ModalUI, api: ModalApi): v
   const rows = el('div', 'wb-template-tree-rows');
   const comps = api.components();
   ui.config.zones.forEach((zone, zi) => treeZoneRows(rows, zone, [zi], 0, ui, api, comps));
+  const rootDrop = el('div', 'wb-ztree-row wb-ztree-rootdrop');
+  rootDrop.dataset.treeRootDrop = 'end';
+  rootDrop.appendChild(el('span', 'wb-ztree-label', 'Drop below for a root zone'));
+  rootDrop.title = 'Drop a field, component or zone here to add it after the current root zones.';
+  rootDrop.addEventListener('dragover', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, PAYLOADS)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    rootDrop.classList.add('wb-drop-hover');
+  });
+  rootDrop.addEventListener('dragleave', () => clearDrop(rootDrop));
+  rootDrop.addEventListener('drop', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, PAYLOADS)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearDrop(rootDrop);
+    const at = ui.config.zones.length;
+    const field = dt!.getData(FIELD_MIME);
+    if (field) { api.newRootZoneAt(at, { field }); return; }
+    const componentId = dt!.getData(COMPONENT_MIME);
+    if (componentId) { api.newRootZoneAt(at, { componentId }); return; }
+    const moved = nodePayload(dt!);
+    if (moved) api.moveNode(moved, [], at);
+  });
+  rows.appendChild(rootDrop);
   host.appendChild(rows);
 
   const add = el('button', 'wb-template-mini wb-template-addzone', '＋ Zone') as HTMLButtonElement;
