@@ -34,6 +34,9 @@ import { verdict, type CellComparison } from './verdict';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE_DIR = path.join(DIR, 'artifacts', 'sandbox-capture');
 const CAPTURE_FILE = path.join(CAPTURE_DIR, 'capture.json');
+/** Stable, predictable paths so a reviewing agent can Read the evidence
+ *  directly (.claude/skills/visual-compare) without parsing the HTML report. */
+const RUN_DIR = path.join(DIR, 'artifacts', 'run');
 
 interface Capture {
   shareUrl: string;
@@ -112,6 +115,9 @@ test('sharepoint side: provision the workspace on a real list and compare', asyn
   const ws: WorkspaceFixture = await decodeShareUrl(capture.shareUrl);
   const plan = planProvision(ws);
 
+  fs.rmSync(RUN_DIR, { recursive: true, force: true });
+  fs.mkdirSync(RUN_DIR, { recursive: true });
+
   const ctx = await browser.newContext({
     storageState: STATE_PATH, viewport: { width: 1440, height: 900 },
   });
@@ -138,6 +144,7 @@ test('sharepoint side: provision the workspace on a real list and compare', asyn
         const spCrop = await (await paintedElement(cell)).screenshot();
         const sandboxCrop = fs.readFileSync(path.join(CAPTURE_DIR, `${name}-${row}.png`));
         const diff = diffCrops(sandboxCrop, spCrop);
+        fs.writeFileSync(path.join(RUN_DIR, `${name}-${row}.png`), diff.triptych);
         await testInfo.attach(`${name}[${row}] sandbox|SP|diff`, { body: diff.triptych, contentType: 'image/png' });
         comparisons.push({
           label: `${name}[${row}]`, sandbox: sandboxProbes[row], sharepoint: spProbe,
@@ -151,15 +158,15 @@ test('sharepoint side: provision the workspace on a real list and compare', asyn
     const vfRows = page.locator('[data-automationid="DetailsRow"]');
     await expect(vfRows.first()).toBeVisible({ timeout: 30_000 });
     for (let row = 0; row < Math.min(capture.rowCount, await vfRows.count()); row++) {
-      await testInfo.attach(`view-formatter row ${row} (unscored)`, {
-        body: await vfRows.nth(row).screenshot(), contentType: 'image/png',
-      });
+      const shot = await vfRows.nth(row).screenshot();
+      fs.writeFileSync(path.join(RUN_DIR, `view-row-${row}.png`), shot);
+      await testInfo.attach(`view-formatter row ${row} (unscored)`, { body: shot, contentType: 'image/png' });
     }
 
     const v = verdict(comparisons);
-    await testInfo.attach('verdict', {
-      body: JSON.stringify({ ...v, comparisons }, null, 2), contentType: 'application/json',
-    });
+    const verdictJson = JSON.stringify({ ...v, provisionNotes: provisioned.notes, comparisons }, null, 2);
+    fs.writeFileSync(path.join(RUN_DIR, 'verdict.json'), verdictJson);
+    await testInfo.attach('verdict', { body: verdictJson, contentType: 'application/json' });
     expect(v.pass, v.notes.join('\n')).toBe(true);
   } finally {
     await ctx.close();

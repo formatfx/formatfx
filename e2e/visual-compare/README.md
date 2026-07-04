@@ -61,6 +61,12 @@ exercises the share codec.
 Missing `SP_SITE_URL` or auth state? The SharePoint half skips and the
 sandbox half still runs — so the harness itself stays testable anywhere.
 
+Evidence also lands at stable paths in `artifacts/run/` (`verdict.json`,
+`<Field>-<row>.png` triptychs, `view-row-<n>.png`) so an agent can review
+it directly — the `/visual-compare` skill (`.claude/skills/visual-compare/`)
+is the runbook: run locally, LOOK at every triptych, diagnose divergences
+to a culprit using the repo's docs, fix or calibrate.
+
 ## Ground rules
 
 - Point `SP_LIST` at a **sacrificial list name**: the harness DELETES and

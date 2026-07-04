@@ -788,7 +788,11 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   runtime app stays at zero. Manual CLI only, never CI (`.vspec.ts` suffix
   keeps it out of `test:ui`); the SP half has NOT yet run against a live
   tenant — numbered ⚠ watch spots in `sp.ts`/`compare.vspec.ts`/
-  `workspace.ts` mark the likely first-run adjustments.
+  `workspace.ts` mark the likely first-run adjustments. Evidence persists
+  to stable paths in `artifacts/run/`; the `/visual-compare` skill
+  (`.claude/skills/visual-compare/`) is the local-agent runbook — run,
+  visually review every triptych, diagnose to a culprit (symptom→culprit
+  map inside), calibrate `verdict.ts` when the thresholds misjudge.
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.
