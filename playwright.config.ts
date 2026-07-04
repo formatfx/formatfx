@@ -12,6 +12,9 @@ const channel = process.env.PW_CHANNEL ?? 'msedge';
 
 export default defineConfig({
   testDir: './e2e',
+  // every test resets its own context (freshApp in e2e/helpers.ts), so tests
+  // within a file can fan out across workers too, not just file-by-file
+  fullyParallel: true,
   timeout: 30_000,
   use: {
     // PW_CHANNEL=bundled uses Playwright's own chromium (CI runners);
