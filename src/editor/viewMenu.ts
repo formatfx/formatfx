@@ -80,8 +80,10 @@ export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void):
     input.select();
   });
 
-  // "+ New rowview" — start a fresh row view from a pre-built template, so the
-  // feature is reachable from the landing screen, not only after entering Row View.
+  // "+ New rowview" / "+ New tileview" — start a fresh layout from a pre-built
+  // template, reachable from the landing screen, not only after entering the
+  // row/tile canvas. Both open the SAME builder; tileview leads its gallery
+  // with the tile layouts.
   const newRow = document.createElement('button');
   newRow.type = 'button';
   newRow.className = 'wb-viewmenu-newrow';
@@ -89,9 +91,20 @@ export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void):
   newRow.title = 'Start a new row view from a pre-built template';
   newRow.addEventListener('click', () => {
     closeViewMenu();
-    openTemplateModal(onToast);
+    openTemplateModal(onToast, { target: 'row' });
   });
   panel.appendChild(newRow);
+
+  const newTile = document.createElement('button');
+  newTile.type = 'button';
+  newTile.className = 'wb-viewmenu-newtile';
+  newTile.textContent = '+ New tileview…';
+  newTile.title = 'Start a tile (gallery) layout from a pre-built template';
+  newTile.addEventListener('click', () => {
+    closeViewMenu();
+    openTemplateModal(onToast, { target: 'tile' });
+  });
+  panel.appendChild(newTile);
 
   document.body.appendChild(panel);
 

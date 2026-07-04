@@ -5,7 +5,7 @@
  * UI<->Api contract in one place so the region modules stay focused. No state
  * import — everything flows through ModalApi.
  */
-import type { RowTemplateConfig, WireframeId, ZoneConfig, ZoneItemPatch, ZonePath } from './rowTemplates';
+import type { BuilderTarget, RowTemplateConfig, WireframeId, ZoneConfig, ZoneItemPatch, ZonePath } from './rowTemplates';
 import type { ComponentDef } from './components';
 
 /** Drag MIME for a field chip → zone. Mirrors the palette/tree/grid channels. */
@@ -61,11 +61,16 @@ export interface ModalUI {
   config: RowTemplateConfig;
   stage: Stage;
   selected: Selection;
-  /** Simulated row width in px (the squeeze scrubber); null = full width. */
+  /** Simulated row width in px (the squeeze scrubber); null = full width.
+   *  Row target only — a tile's width is its own knob, not a viewport. */
   stageWidth: number | null;
-  /** The canvas holds a row view the round-trip parser REFUSED (hand-built or
-   *  hand-edited) — the gallery says so instead of silently starting fresh. */
+  /** The canvas holds a row view or tile the round-trip parser REFUSED
+   *  (hand-built or hand-edited) — the gallery says so instead of silently
+   *  starting fresh. */
   foreignRow: boolean;
+  /** Which wireframe group the gallery leads with ('+ New tileview…' and a
+   *  tile doc lead with tiles; everything else leads with rows). */
+  galleryFirst: BuilderTarget;
 }
 
 /** Everything the region renderers may do — all mutations funnel through the

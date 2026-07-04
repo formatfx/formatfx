@@ -3,9 +3,9 @@ import {
   composeRowStyle, buildKebab, defaultConfigFor, buildTemplateView, buildZone,
   addZone, insertZone, newZone, zoneAt, nodeAt, pruneZones,
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
-  newFieldItem, newComponentItem,
+  newFieldItem, newComponentItem, wireframeById,
   nextZoneSize, childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
-  type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem,
+  type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem, type WireframeId,
 } from './rowTemplates';
 import type { ComponentDef } from './components';
 import { themePalette } from '../core/theme';
@@ -13,7 +13,7 @@ import type { MockField } from '../core/types';
 
 const PAL = themePalette('light');
 const base = (over: Partial<RowTemplateConfig> = {}): RowTemplateConfig => ({
-  wireframeId: 'equal', rowStyle: 'flat', density: 'roomy',
+  wireframeId: 'equal', target: 'row', rowStyle: 'flat', density: 'roomy',
   zebraStriping: false, hoverHighlight: false, hoverToken: 'themeLighter',
   borderStyle: 'none', borderColor: 'neutralQuaternaryAlt', leftStripe: 'none',
   zones: [], kebab: { enabled: false, behavior: 'custom', position: 'right',
@@ -503,7 +503,7 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
     columnRefs: Record<string, import('../core/types').SPElement> = {},
   ): RowTemplateConfig | null => {
     const { root, additionalRowClass } = buildTemplateView(config, FIELDS, columnRefs, PAL, [CHIP], { prune: true });
-    return configFromView(root, additionalRowClass, FIELDS, columnRefs, [CHIP]);
+    return configFromView(root, additionalRowClass, FIELDS, columnRefs, [CHIP], config.target);
   };
 
   it('every wireframe seed survives apply → reopen with zones intact', () => {
@@ -602,6 +602,91 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
     const { root } = buildTemplateView(c, FIELDS, {}, themePalette('dark'), [], { prune: true });
     // reopened under the light palette — the baked dark stripe color must not refuse
     expect(configFromView(root, undefined, FIELDS, {}, [])).not.toBeNull();
+  });
+});
+
+describe('tile target — the same zones on a vertical canvas', () => {
+  const NUMFIELDS: MockField[] = [...FIELDS, { name: 'Progress', type: 'number' }];
+  const tileCfg = (): RowTemplateConfig => defaultConfigFor('tile-headline', NUMFIELDS);
+
+  it('tile wireframes seed a tile config carrying the stock tile box', () => {
+    const c = tileCfg();
+    expect(c.target).toBe('tile');
+    expect(c.tileWidth).toBe(254);
+    expect(c.tileHeight).toBe(220);
+    // row wireframes stay row and carry no tile box
+    const r = defaultConfigFor('equal', NUMFIELDS);
+    expect(r.target).toBe('row');
+    expect(r.tileWidth).toBeUndefined();
+  });
+
+  it('the wireframeById fallback stays the ROW blank — tile is an explicit pick', () => {
+    expect(wireframeById('never-such-id' as WireframeId).id).toBe('blank');
+  });
+
+  it('builds a vertical stack that fills the tile box, allow-listed styles only', async () => {
+    const { root, additionalRowClass } = buildTemplateView(tileCfg(), NUMFIELDS, {}, PAL);
+    expect(root._elmName).toBe('Tile layout');
+    expect(root.style!['flex-direction']).toBe('column');
+    expect(root.style!['height']).toBe('100%');
+    expect(root.style!['box-sizing']).toBe('border-box');
+    expect(additionalRowClass).toBeUndefined();
+    const { ALLOWED_STYLES } = await import('../core/schema');
+    for (const k of Object.keys(root.style!)) expect(ALLOWED_STYLES.has(k), k).toBe(true);
+  });
+
+  it('zebra is disabled for tiles with a reason and never reaches the wrapper', () => {
+    const c = { ...tileCfg(), zebraStriping: true };
+    expect(composeRowStyle(c, PAL).disabled.zebra).toContain('tiles sit in a grid');
+    expect(buildTemplateView(c, NUMFIELDS, {}, PAL).additionalRowClass).toBeUndefined();
+  });
+
+  it('the kebab never lands in a tile — buildTemplateView and childSlotOrder agree', () => {
+    const c: RowTemplateConfig = { ...tileCfg(), kebab: { enabled: true, behavior: 'native', position: 'right', actions: { ...NATIVE_ACTIONS } } };
+    const { root } = buildTemplateView(c, NUMFIELDS, {}, PAL);
+    expect(root.children!.every((k) => k.elmType === 'div')).toBe(true); // zones only, no ⋯ button
+    expect(childSlotOrder(c)).toEqual(c.zones.map((_, i) => i));
+  });
+
+  it('card + hover styling composes on the tile root exactly like a row', () => {
+    const c = { ...tileCfg(), rowStyle: 'card' as const, hoverHighlight: true };
+    const { root } = buildTemplateView(c, NUMFIELDS, {}, PAL);
+    expect(String(root.attributes!.class)).toContain('ms-bgColor-white');
+    expect(String(root.attributes!.class)).toContain('ms-bgColor-themeLighter--hover');
+    expect(root.style!['border-radius']).toBe('4px');
+  });
+
+  it('every tile wireframe survives apply → reopen as a TILE config (the round trip)', () => {
+    for (const wf of WIREFRAMES.filter((w) => w.target === 'tile')) {
+      const seeded = defaultConfigFor(wf.id, NUMFIELDS);
+      const { root, additionalRowClass } = buildTemplateView(seeded, NUMFIELDS, {}, PAL, [CHIP], { prune: true });
+      expect(additionalRowClass, wf.id).toBeUndefined();
+      const parsed = configFromView(root, undefined, NUMFIELDS, {}, [CHIP], 'tile');
+      expect(parsed, wf.id).not.toBeNull();
+      expect(parsed!.target).toBe('tile');
+      expect(parsed!.zones, wf.id).toEqual(seeded.zones.filter((z) => z.items.length > 0));
+    }
+  });
+
+  it('a tile tree refuses to parse as a row, and a row tree as a tile (the rebuild gate)', () => {
+    const t = buildTemplateView(tileCfg(), NUMFIELDS, {}, PAL, [], { prune: true });
+    expect(configFromView(t.root, undefined, NUMFIELDS, {}, [], 'row')).toBeNull();
+    const r = buildTemplateView(defaultConfigFor('equal', NUMFIELDS), NUMFIELDS, {}, PAL, [], { prune: true });
+    expect(configFromView(r.root, undefined, NUMFIELDS, {}, [], 'tile')).toBeNull();
+  });
+
+  it('a tile arriving with an additionalRowClass is foreign by definition', () => {
+    const t = buildTemplateView(tileCfg(), NUMFIELDS, {}, PAL, [], { prune: true });
+    expect(configFromView(t.root, ZEBRA_ROW_CLASS, NUMFIELDS, {}, [], 'tile')).toBeNull();
+  });
+
+  it('tile styling + zone knobs round-trip (card, compact, centered stack)', () => {
+    let c: RowTemplateConfig = { ...tileCfg(), rowStyle: 'card', density: 'compact', hoverHighlight: true };
+    c = patchZoneAt(c, [1], { flow: 'stack', align: 'center' });
+    const { root } = buildTemplateView(c, NUMFIELDS, {}, PAL, [CHIP], { prune: true });
+    const parsed = configFromView(root, undefined, NUMFIELDS, {}, [CHIP], 'tile')!;
+    expect(parsed).toMatchObject({ target: 'tile', rowStyle: 'card', density: 'compact', hoverHighlight: true });
+    expect(parsed.zones[1]).toMatchObject({ flow: 'stack', align: 'center' });
   });
 });
 

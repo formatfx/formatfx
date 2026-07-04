@@ -576,6 +576,38 @@ describe('applyRowTemplate', () => {
   });
 });
 
+describe('applyTileTemplate', () => {
+  it('is one undo step that reverts root + kind + tile box together', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'grid', root: { elmType: 'div', _elmName: 'grid', children: [] } });
+    s.applyTileTemplate({ elmType: 'div', _elmName: 'Tile layout', children: [] }, { width: 300, height: 240 });
+    expect(s.doc.kind).toBe('tile');
+    expect(s.doc.tileWidth).toBe(300);
+    expect(s.doc.tileHeight).toBe(240);
+    s.undo();                                   // a single undo reverts ALL of it
+    expect(s.doc.kind).toBe('grid');
+    expect(s.doc.root._elmName).toBe('grid');
+    expect(s.doc.tileWidth).toBeUndefined();
+  });
+
+  it('defaults the tile box to the SP stock 254×220 when no size is passed', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'grid', root: { elmType: 'div', children: [] } });
+    s.applyTileTemplate({ elmType: 'div', _elmName: 'Tile layout' });
+    expect(s.doc.tileWidth).toBe(254);
+    expect(s.doc.tileHeight).toBe(220);
+  });
+
+  it('does not push a phantom undo step when Apply reproduces the current tile', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'tile', root: { elmType: 'div', _elmName: 'A', children: [] }, tileWidth: 254, tileHeight: 220 });
+    s.applyTileTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // real change (one undo)
+    s.applyTileTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // identical (no undo)
+    s.undo();
+    expect(s.doc.root._elmName).toBe('A');
+  });
+});
+
 describe('multi-select', () => {
   function threeChildren(): EditorState {
     const s = new EditorState();

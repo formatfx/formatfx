@@ -372,7 +372,10 @@ export function mountInspector(host: HTMLElement): void {
     // skip rebuilding for our own commits — keeps focus in the input being
     // edited (arrow-stepping, rapid toggles) while canvas/tree still update
     if (reason === 'document' && selfCommit) return;
-    if (reason === 'selection' || reason === 'load' || reason === 'document' || reason === 'lens') render();
+    // 'kind' rides along like everywhere else (treeView/fxBar/explainPanel):
+    // applying a row/tile template or switching kind swaps the whole document
+    // shape, and the Document section must not keep naming the old kind
+    if (reason === 'selection' || reason === 'load' || reason === 'document' || reason === 'lens' || reason === 'kind') render();
   });
   (host as any)._unsub = unsub;
   render();

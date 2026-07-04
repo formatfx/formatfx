@@ -2378,6 +2378,14 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-wf-zone--stack .wb-wf-mark { flex: 0 0 auto; height: 6px; }
 .wb-wf-name { font-size: 13px; font-weight: 600; }
 .wb-wf-blurb { font-size: 11px; color: var(--wb-text-2); line-height: 1.35; }
+/* the gallery groups: Row layouts / Tile layouts */
+.wb-template-gallery-head {
+  margin: 14px 0 8px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--wb-text-2);
+}
+/* tile wireframes draw as a vertical stack in a tile-shaped box */
+.wb-wf-thumb--tile { flex-direction: column; height: 64px; width: 58%; align-self: center; }
+.wb-wf-thumb--tile .wb-wf-zone { min-height: 0; }
 .wb-template-foreign-note {
   margin-bottom: 12px; padding: 8px 10px; border-radius: 6px; font-size: 12px;
   border: 1px solid var(--wb-warn, #c08a00); color: var(--wb-text);
@@ -2409,7 +2417,10 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-template-prev-head { display: flex; align-items: center; justify-content: space-between; }
 .wb-template-prev-headgroup { display: flex; align-items: center; gap: 8px; }
 .wb-template-prev-title { font-size: 13px; font-weight: 600; }
-.wb-template-prev-body { position: relative; display: flex; min-height: 0; }
+/* flex-shrink 0: the body must GROW with a tall stage (the tile deck wraps)
+   so the note below never overlaps overflowing content — the preview pane
+   itself scrolls */
+.wb-template-prev-body { position: relative; display: flex; flex-shrink: 0; }
 .wb-template-widths .wb-seg-btn { padding: 3px 8px; font-size: 11px; }
 
 /* the width scrubber stage: the row lives inside; the right edge drags */
@@ -2440,6 +2451,19 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-template-prow { padding: 2px 0; }
 .wb-template-prow--edit { outline: 1px dashed var(--wb-border); border-radius: 6px; padding: 4px; }
 .wb-prow-hoverable:hover { background: var(--wb-surface); }
+/* tile target: the edit tile + the live tile deck (the real gallery box) */
+.wb-template-ptile {
+  box-sizing: border-box; overflow: hidden; border: 1px solid var(--wb-border);
+  border-radius: 6px; background: var(--wb-surface);
+}
+.wb-template-prow--edit.wb-template-ptile { overflow: visible; background: transparent; }
+.wb-template-tiledeck { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; padding: 4px 0; }
+/* stacked zones (tile edit): the tag chips onto the seam above its zone so a
+   compact stack stays readable (root row tags float in open space instead) */
+.wb-template-prow--tile .wb-edit-zone > .wb-edit-zone-tag {
+  top: -14px; padding: 0 4px; border-radius: 3px;
+  background: var(--wb-surface); z-index: 1;
+}
 /* the always-live rows sit right below the edit row, behind a quiet caption */
 .wb-template-livehead {
   margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--wb-border);
@@ -2501,6 +2525,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   cursor: ew-resize; border-radius: 3px; background: var(--wb-border); opacity: .5;
 }
 .wb-edit-divider:hover { opacity: 1; background: var(--wb-accent); }
+/* between STACKED zones (tile target) the divider is a horizontal seam */
+.wb-edit-divider--h {
+  width: auto; min-height: 0; height: 6px; align-self: stretch;
+  margin: 1px 0; cursor: ns-resize;
+}
 
 /* the zone TREE (lives in .wb-template-treehost, above the inspector) */
 .wb-template-tree-head { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--wb-text-2); }
@@ -2530,7 +2559,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-seg-btn:last-child { border-right: none; }
 .wb-seg-on { background: var(--wb-accent); color: var(--wb-accent-text); }
 .wb-template-ctl { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12px; color: var(--wb-text-2); }
-.wb-template-ctl input[type="text"], .wb-template-ctl select { border: 1px solid var(--wb-border); border-radius: 4px; background: var(--wb-bg); color: var(--wb-text); padding: 5px 6px; font-size: 12px; }
+.wb-template-ctl input[type="text"], .wb-template-ctl input[type="number"], .wb-template-ctl select { border: 1px solid var(--wb-border); border-radius: 4px; background: var(--wb-bg); color: var(--wb-text); padding: 5px 6px; font-size: 12px; }
 .wb-template-toggle { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }
 .wb-template-inspector .wb-disabled { opacity: .45; }
 .wb-template-hint { font-size: 11px; color: var(--wb-warn, #c08a00); margin: 2px 0 6px; }

@@ -1,8 +1,10 @@
 /**
- * editor/templateModal.ts — the ROW VIEW BUILDER shell. Opens on the wireframe
- * GALLERY (pick a pre-built zone layout) unless the canvas already holds a
- * layout the builder produced — then it REOPENS it as editable zones
- * (configFromView's rebuild-verify gate guarantees losslessness).
+ * editor/templateModal.ts — the ROW VIEW (and TILE) BUILDER shell. Opens on
+ * the wireframe GALLERY (pick a pre-built zone layout — row and tile groups)
+ * unless the canvas already holds a layout the builder produced — then it
+ * REOPENS it as editable zones (configFromView's rebuild-verify gate
+ * guarantees losslessness). The config's TARGET decides what Save writes:
+ * applyRowTemplate or applyTileTemplate, either way one undoable mutation.
  *
  * The editor resembles the app's Left Edit Pane: a TOP bar with the 2×2
  * action grid (↶ ↷ / Cancel Save) beside the FIELDS/COMPONENTS chips, then a
@@ -29,7 +31,7 @@ import {
   addZone, insertZone, newZone, zoneAt, nodeAt,
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt, nextZoneSize,
   newFieldItem, newComponentItem,
-  type RowTemplateConfig,
+  type BuilderTarget, type RowTemplateConfig,
 } from './rowTemplates';
 import {
   BUILTIN_COMPONENTS, loadComponents, bestGuessMapping, componentKind,
@@ -48,23 +50,36 @@ function elementComponents(): ComponentDef[] {
   return [...BUILTIN_COMPONENTS, ...customs].filter((c) => componentKind(c) === 'element');
 }
 
-export function openTemplateModal(onToast: (m: string) => void): void {
+export function openTemplateModal(onToast: (m: string) => void, opts: { target?: BuilderTarget } = {}): void {
   const comps = elementComponents(); // cached per open — chips, previews, and Save all agree
-  // Reopen, don't restart: a row view the builder produced parses back into
-  // zones. Anything it can't represent faithfully → the gallery, with an
+  // Reopen, don't restart: a row view OR tile the builder produced parses back
+  // into zones. Anything it can't represent faithfully → the gallery, with an
   // honest note.
   const rawRowClass = state.doc.viewExtras?.additionalRowClass;
   const reopened = state.doc.kind === 'row'
     ? configFromView(state.doc.root, typeof rawRowClass === 'string' ? rawRowClass : undefined,
       state.fields, state.columnRefs, comps)
-    : null;
+    : state.doc.kind === 'tile'
+      ? configFromView(state.doc.root, undefined, state.fields, state.columnRefs, comps, 'tile')
+      : null;
+  if (reopened?.target === 'tile') {
+    // the tile box size lives on the document wrapper — reseed it from there
+    reopened.tileWidth = state.doc.tileWidth ?? reopened.tileWidth;
+    reopened.tileHeight = state.doc.tileHeight ?? reopened.tileHeight;
+  }
   const editingExisting = reopened !== null;
+  // An explicit "+ New tileview…" (or rowview) ask that doesn't match what
+  // reopened lands on the GALLERY — the reopened config is kept, so picking a
+  // wireframe over it still confirms (dirty), and Escape abandons nothing.
+  const askedFor = opts.target;
+  const reopensAsAsked = editingExisting && (askedFor === undefined || reopened.target === askedFor);
   const ui: ModalUI = {
-    config: reopened ?? defaultConfigFor('lead-detail', state.fields),
-    stage: editingExisting ? 'edit' : 'pick',
+    config: reopened ?? defaultConfigFor(askedFor === 'tile' ? 'tile-headline' : 'lead-detail', state.fields),
+    stage: reopensAsAsked ? 'edit' : 'pick',
     selected: null,
     stageWidth: null,
-    foreignRow: !editingExisting && state.doc.kind === 'row',
+    foreignRow: !editingExisting && (state.doc.kind === 'row' || state.doc.kind === 'tile'),
+    galleryFirst: askedFor ?? reopened?.target ?? (state.doc.kind === 'tile' ? 'tile' : 'row'),
   };
   /** Has the maker changed anything since the last wireframe pick? Re-picking
    *  over untouched seeds shouldn't nag; re-picking over real work (including
@@ -190,16 +205,21 @@ export function openTemplateModal(onToast: (m: string) => void): void {
 
   function doApply(): void {
     if (applyBlocker(ui.config, comps)) return;
+    const noun = ui.config.target === 'tile' ? 'Tile layout' : 'Row layout';
     // structural click-safety gate: confirm only when the current layout is
     // genuinely hand-built (not a pristine grid) AND the builder didn't reopen
     // it losslessly — editing your own layout is what reopen is FOR, and a
     // wireframe re-pick over it already confirmed. Single-undo is the net.
     const overwrites = !editingExisting && state.doc.kind !== 'grid' && !isPureGrid(state.doc.root);
-    if (overwrites && !confirm('Replace the current row layout with this one? Ctrl+Z reverts it in one step.')) return;
+    if (overwrites && !confirm(`Replace the current view layout with this ${noun.toLowerCase()}? Ctrl+Z reverts it in one step.`)) return;
     const { root, additionalRowClass } = buildTemplateView(
       ui.config, state.fields, state.columnRefs, palette(), comps, { prune: true });
-    state.applyRowTemplate(root, additionalRowClass);
-    onToast(editingExisting ? 'Row layout updated' : 'Row layout applied');
+    if (ui.config.target === 'tile') {
+      state.applyTileTemplate(root, { width: ui.config.tileWidth, height: ui.config.tileHeight });
+    } else {
+      state.applyRowTemplate(root, additionalRowClass);
+    }
+    onToast(editingExisting ? `${noun} updated` : `${noun} applied`);
     close();
   }
 
