@@ -158,7 +158,7 @@ describe('row view builder — direct manipulation on the preview', () => {
 describe('row view builder — the zone tree + name-first tags', () => {
   it('the tree lists every zone with its items nested, and selects deterministically', () => {
     enterEditor();
-    const labels = [...document.querySelectorAll('.wb-ztree-row .wb-ztree-label')].map((n) => n.textContent);
+    const labels = [...document.querySelectorAll('.wb-ztree-row:not(.wb-ztree-rootdrop) .wb-ztree-label')].map((n) => n.textContent);
     expect(labels).toEqual(['Lead', 'Title', 'Details', 'Status', 'Due']);
     (document.querySelector('[data-tree-zone="1"]') as HTMLElement).click();
     expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Details zone');
@@ -219,6 +219,18 @@ describe('row view builder — zones inside zones', () => {
     expect(document.querySelector('[data-edit-zone="0:1"]')).toBeNull();
     expect(document.querySelectorAll('.wb-edit-divider').length).toBe(2); // three root zones now
     expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Lead inner zone');
+  });
+
+  it('the tree offers a root-drop target so a nested zone can come back below the last root zone', () => {
+    enterEditor();
+    zone(0).click();
+    (document.querySelector('.wb-template-addnested') as HTMLButtonElement).click(); // Lead inner at 0:1
+    zone(0).dispatchEvent(nodeDrop([1])); // Details → into Lead, leaving one root zone
+    expect(document.querySelector('[data-edit-zone="0:2"]')).toBeTruthy();
+    expect(document.querySelector('[data-tree-zone="1"]')).toBeNull();
+    (document.querySelector('[data-tree-root-drop="end"]') as HTMLElement).dispatchEvent(nodeDrop([0, 2]));
+    expect(document.querySelector('[data-edit-zone="1"]')).toBeTruthy();
+    expect(document.querySelector('[data-edit-zone="0:2"]')).toBeNull();
   });
 
   it('a nested layout survives Apply → reopen (recursive round trip through the doc)', () => {
