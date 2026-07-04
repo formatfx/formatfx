@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.1.0",
     "@types/pngjs": "^6.0.5",
     "happy-dom": "^20.10.2",
     "pixelmatch": "^7.2.0",
