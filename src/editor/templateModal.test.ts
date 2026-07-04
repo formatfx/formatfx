@@ -144,14 +144,12 @@ describe('row view builder — direct manipulation on the preview', () => {
     expect(document.querySelectorAll('.wb-edit-zone').length).toBe(before - 1);
   });
 
-  it('a divider click cycles the left zone size (visible in its tag)', () => {
+  it('a divider click is inert — zone size changes only in the inspector', () => {
     enterEditor();
     const tag = (): string => (zone(0).querySelector('.wb-edit-zone-tag') as HTMLElement).textContent ?? '';
     expect(tag()).toContain('Fill 2×');   // Lead seeds wide
     (document.querySelector('.wb-edit-divider') as HTMLElement).click();
-    expect(tag()).toContain('Fill 3×');   // wide → widest
-    (document.querySelector('.wb-edit-divider') as HTMLElement).click();
-    expect(tag()).toContain('Hug');       // widest → hug
+    expect(tag()).toContain('Fill 2×');   // no click-to-cycle: still wide
   });
 });
 

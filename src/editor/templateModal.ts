@@ -29,7 +29,7 @@ import { themePalette } from '../core/theme';
 import {
   buildTemplateView, defaultConfigFor, applyBlocker, configFromView,
   addZone, insertZone, newZone, zoneAt, nodeAt,
-  addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt, nextZoneSize,
+  addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem,
   type BuilderTarget, type RowTemplateConfig,
 } from './rowTemplates';
@@ -286,11 +286,6 @@ export function openTemplateModal(onToast: (m: string) => void, opts: { target?:
       commit(next, landed);
     },
     removeNode: (path) => commit(removeNode(ui.config, path), path.length > 1 ? path.slice(0, -1) : null),
-    cycleZoneSize: (zonePath) => {
-      const zone = zoneAt(ui.config, zonePath);
-      if (!zone) return;
-      commit(patchZoneAt(ui.config, zonePath, { size: nextZoneSize(zone.size) }));
-    },
     patchZone: (zonePath, patch) => commit(patchZoneAt(ui.config, zonePath, patch)),
     patchItem: (itemPath, patch) => commit(patchItemAt(ui.config, itemPath, patch)),
     setConfig,

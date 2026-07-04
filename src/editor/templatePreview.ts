@@ -559,9 +559,7 @@ function decorateItem(node: HTMLElement, itemPath: ZonePath, item: ZoneItem, zon
 function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLElement {
   const tile = ui.config.target === 'tile';
   const d = el('div', `wb-edit-divider${tile ? ' wb-edit-divider--h' : ''}`);
-  const next = ZONE_SIZE_LABEL[ui.config.zones[leftZoneIdx].size];
-  d.title = `Resize: click to cycle the ${tile ? 'zone above' : 'left zone'} (now ${next}: Hug → Fill → Fill 2× → Fill 3×). Drop here for a new zone between.`;
-  d.addEventListener('click', (e) => { e.stopPropagation(); api.cycleZoneSize([leftZoneIdx]); });
+  d.title = 'Drop a field, component or zone here for a new zone between. Size a zone from its inspector.';
   // the divider IS the between-zones gap — dropping a chip, item or zone here
   // lands it right at this seam (zones stay zones, leaves get a zone of their own)
   d.addEventListener('dragover', (e) => {

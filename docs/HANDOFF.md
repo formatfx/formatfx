@@ -342,7 +342,9 @@ Key structural invariants:
   (`data-wireframe` cards), then the zone canvas: chips for fields AND
   element components (best-guess mapping prefilled on drop; an unmapped
   slot BLOCKS Apply via `applyBlocker`, refuse-and-teach), zone/item
-  selection with a contextual inspector, dividers cycling zone size, and
+  selection with a contextual inspector (zone size lives there — the
+  divider is a drop seam only, its click-to-cycle was removed 2026-07-04
+  at the owner's request), and
   the WIDTH SCRUBBER — Full/Medium/Narrow presets + a draggable stage edge
   that squeezes the preview so shrink/wrap behavior is watched, not
   imagined. Empty zones render as drop targets but are PRUNED on Apply.
@@ -734,7 +736,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 782 vitest unit tests across 43 files (engine semantics incl.
+- `npm test` — 781 vitest unit tests across 43 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated

@@ -758,12 +758,6 @@ export function moveNode(config: RowTemplateConfig, from: ZonePath, toZone: Zone
   return next === removed ? config : next; // bad target after removal → whole move refuses
 }
 
-const SIZE_CYCLE: ZoneSize[] = ['hug', 'normal', 'wide', 'widest'];
-/** The next size in the Hug → Fill → Fill 2× → Fill 3× → Hug cycle (divider click). */
-export function nextZoneSize(s: ZoneSize): ZoneSize {
-  return SIZE_CYCLE[(SIZE_CYCLE.indexOf(s) + 1) % SIZE_CYCLE.length];
-}
-
 export const ZONE_SIZE_LABEL: Record<ZoneSize, string> = {
   hug: 'Hug content', normal: 'Fill', wide: 'Fill 2×', widest: 'Fill 3×',
 };
