@@ -4,29 +4,9 @@
  * re-pointed at the Left Edit Pane UI.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { freshApp, loadExample, openJson, openPalette } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-// the JSON ("Advanced") pane is hidden by default — reveal it idempotently
-async function openJson(page: Page): Promise<void> {
-  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
-}
-
-// the palette is a popover off the draw toolbar; clicking an item inserts AND closes it
-async function openPalette(page: Page): Promise<void> {
-  await page.click('.wb-tool[data-tool="palette"]');
-}
-
-// the example/sample loader now lives in the ☰ menu — open it, then pick
-async function loadExample(page: Page, value: string): Promise<void> {
-  await page.click('#wb-menu-btn');
-  await page.selectOption('#wb-example', value);
-}
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 /** Load a known row-layout document (the box-model/alignment fixture):
  *  a flex row with 10px/14px padding, rendered once per mock row. */

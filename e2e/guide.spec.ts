@@ -4,12 +4,9 @@
  * "In this article" rail, prev/next pager, filtering, and Esc to close.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { freshApp } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
+test.beforeEach(async ({ page }) => { await freshApp(page); });
 
 async function openGuide(page: Page): Promise<void> {
   await page.click('#wb-menu-btn');

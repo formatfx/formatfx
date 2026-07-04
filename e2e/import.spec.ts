@@ -3,25 +3,9 @@
  * columnFormatterReference rendering from the registry.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { freshApp, importPastedText, openDataDock, openJson } from './helpers';
 
-async function openJson(page: Page): Promise<void> {
-  if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
-}
-
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-/** The Data editor is a dock below the preview; reveal it (it starts collapsed). */
-async function openDataDock(page: Page): Promise<void> {
-  const dock = page.locator('#wb-data-dock');
-  if (await dock.evaluate((el) => el.classList.contains('wb-min'))) {
-    await page.click('#wb-data-min');
-  }
-}
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 /** Minimal synthetic native export: schema header + CSV body. */
 function listSchemaCsv(): string {
@@ -39,10 +23,7 @@ function listSchemaCsv(): string {
 }
 
 async function importExport(page: Page): Promise<void> {
-  await openDataDock(page);
-  await page.click('button:has-text("Import schema…")');
-  await page.fill('.wb-schema-form textarea', listSchemaCsv());
-  await page.click('button:has-text("Import pasted text")');
+  await importPastedText(page, listSchemaCsv());
   // listSchemaCsv carries a column formatter (Pct) → confirm the opt-out review
   await page.click('#wb-fmt-review-import');
 }
@@ -64,10 +45,7 @@ test('native CSV-with-schema import: fields, real rows, formatters registered', 
 });
 
 test('import review opts a column formatter out: unchecked → column imports but formatter is not registered', async ({ page }) => {
-  await openDataDock(page);
-  await page.click('button:has-text("Import schema…")');
-  await page.fill('.wb-schema-form textarea', listSchemaCsv());
-  await page.click('button:has-text("Import pasted text")');
+  await importPastedText(page, listSchemaCsv());
   // the review lists the one formatter-bearing column (Pct); uncheck it
   const review = page.locator('#wb-fmt-review');
   await expect(review).toContainText('[$Pct]');
@@ -151,10 +129,7 @@ test('list snapshot import: fields + views land; the default view\'s row formatt
 });
 
 test('list snapshot without a default-view formatter rebuilds the grid; Load-as-main works from the views section', async ({ page }) => {
-  await openDataDock(page);
-  await page.click('button:has-text("Import schema…")');
-  await page.fill('.wb-schema-form textarea', listSnapshot());
-  await page.click('button:has-text("Import pasted text")');
+  await importPastedText(page, listSnapshot());
   await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   // grid rebuilt around the snapshot (display names as headers)
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);

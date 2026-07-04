@@ -3,18 +3,10 @@
  * on a selected linked cell, and double-click drill-in. (The left-edge rail
  * was retired: linked cells read via § + hover outline + name-tag only.)
  */
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { freshApp, header } from './helpers';
 
-test.beforeEach(async ({ page }) => {
-  page.on('dialog', (d) => { void d.accept(); });
-  await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-});
-
-function header(page: Page, label: string) {
-  return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
-}
+test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 test('linked cells are marked; plain cells are not — and no rail is painted', async ({ page }) => {
   await expect(page.locator('.wb-grid-cell.wb-cell-linked').first()).toBeVisible();
