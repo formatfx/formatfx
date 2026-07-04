@@ -245,8 +245,7 @@ export function renderZoneTree(host: HTMLElement, ui: ModalUI, api: ModalApi): v
   const rows = el('div', 'wb-template-tree-rows');
   const comps = api.components();
   ui.config.zones.forEach((zone, zi) => treeZoneRows(rows, zone, [zi], 0, ui, api, comps));
-  const rootDrop = el('button', 'wb-ztree-row wb-ztree-rootdrop') as HTMLButtonElement;
-  rootDrop.type = 'button';
+  const rootDrop = el('div', 'wb-ztree-row wb-ztree-rootdrop');
   rootDrop.dataset.treeRootDrop = 'end';
   rootDrop.appendChild(el('span', 'wb-ztree-label', 'Drop below for a root zone'));
   rootDrop.title = 'Drop a field, component or zone here to add it after the current root zones.';
