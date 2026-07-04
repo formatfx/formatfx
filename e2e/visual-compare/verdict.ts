@@ -46,7 +46,9 @@ export function verdict(sandbox: CellProbe[], sharepoint: CellProbe[]): Verdict 
       notes.push(`row ${i}: text differs — sandbox "${sb.text}" vs SharePoint "${sp.text}"`);
     }
     if (sb.background === 'none' || sp.background === 'none') {
-      notes.push(`row ${i}: background unprobed on ${sb.background === 'none' ? 'sandbox' : 'SharePoint'} side — check probe selectors before trusting color results`);
+      const sides = [sb.background === 'none' ? 'sandbox' : '', sp.background === 'none' ? 'SharePoint' : '']
+        .filter(Boolean).join(' and ');
+      notes.push(`row ${i}: background unprobed on the ${sides} side — check probe selectors before trusting color results`);
     } else if (sb.background !== sp.background) {
       pass = false;
       notes.push(`row ${i}: background differs — sandbox ${sb.background} vs SharePoint ${sp.background}`);

@@ -78,7 +78,8 @@ export async function ensureList(
     const field = await spPost(page, web, `${listUrl}/fields/createfieldasxml`, { parameters: { SchemaXml: xml } });
     if (field.status >= 400) throw new Error(`Could not add the Status column (HTTP ${field.status}) — see the watch-spot note in sp.ts.`);
     // show Status on the default view so the formatter has a cell to paint
-    await spPost(page, web, `${listUrl}/defaultview/viewfields/addviewfield('Status')`, {});
+    const shown = await spPost(page, web, `${listUrl}/defaultview/viewfields/addviewfield('Status')`, {});
+    if (shown.status >= 400) throw new Error(`Could not add Status to the default view (HTTP ${shown.status}) — without it the DOM probes have nothing to find.`);
   } else if (probe.status >= 400) {
     throw new Error(`Could not read list "${title}" (HTTP ${probe.status}).`);
   }

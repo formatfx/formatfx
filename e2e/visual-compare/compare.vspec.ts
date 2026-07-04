@@ -54,6 +54,8 @@ test('sandbox side: render the fixture over the mock rows', async ({ page }, tes
 test('sharepoint side: deploy the same JSON to a real list and compare', async ({ browser }, testInfo) => {
   test.skip(!SP_SITE_URL, 'Set SP_SITE_URL to compare against a real tenant.');
   test.skip(!hasAuthState(), 'No bottled session — run `npm run visual:auth` first.');
+  test.skip(!fs.existsSync(PROBE_FILE),
+    'No sandbox probes from this run — run the full visual:compare (the sandbox test writes them), not a -g filter.');
 
   const sandboxProbes: CellProbe[] = JSON.parse(fs.readFileSync(PROBE_FILE, 'utf8'));
 
@@ -69,8 +71,11 @@ test('sharepoint side: deploy the same JSON to a real list and compare', async (
     await applyColumnFormatter(page, SP_SITE_URL, listUrl, JSON.stringify(JSON.parse(FIXTURE)));
 
     const view = await spGet(page, `${listUrl}?$select=DefaultViewUrl`);
-    const viewUrl = new URL(String(view.body?.DefaultViewUrl), SP_SITE_URL).href;
-    await page.goto(viewUrl);
+    const rel = view.body?.DefaultViewUrl;
+    if (view.status >= 400 || typeof rel !== 'string') {
+      throw new Error(`Could not read the list's DefaultViewUrl (HTTP ${view.status}) — session expired? Re-run visual:auth.`);
+    }
+    await page.goto(new URL(rel, SP_SITE_URL).href);
 
     // ⚠ first-live-run watch spot #2: modern-list DOM selectors. Rows carry
     // data-automationid="DetailsRow"; each cell's data-automation-key starts

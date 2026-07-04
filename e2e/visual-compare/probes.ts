@@ -19,14 +19,16 @@ export interface CellProbe {
 export async function probeCell(cell: Locator): Promise<CellProbe> {
   return cell.evaluate((el) => {
     const transparent = (c: string): boolean => c === 'rgba(0, 0, 0, 0)' || c === 'transparent';
-    // walk depth-first for the most specific painted surface (the pill, not the cell)
+    // the most specific painted surface (the pill, not the cell): the DEEPEST
+    // non-transparent background; first in document order wins a depth tie
     let background = 'none';
-    const walk = (node: Element): void => {
+    let bestDepth = -1;
+    const walk = (node: Element, depth: number): void => {
       const bg = getComputedStyle(node).backgroundColor;
-      if (!transparent(bg)) background = bg;
-      for (const child of node.children) walk(child);
+      if (!transparent(bg) && depth > bestDepth) { background = bg; bestDepth = depth; }
+      for (const child of node.children) walk(child, depth + 1);
     };
-    walk(el);
+    walk(el, 0);
     return { text: (el.textContent ?? '').trim(), background };
   });
 }
