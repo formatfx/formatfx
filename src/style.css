@@ -1056,6 +1056,16 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-areas-bar-clear { background: transparent; color: var(--wb-text-2); border-color: var(--wb-border); }
 .wb-areas-bar-clear:hover { color: var(--wb-accent); border-color: var(--wb-accent); filter: none; }
 
+/* ── modal-local undo chrome (Stage 4): the ↶↷ pair the editors share ─────── */
+.wb-mu { display: inline-flex; gap: 2px; margin-left: auto; align-self: center; }
+.wb-mu-btn {
+  width: 24px; height: 22px; cursor: pointer; font-size: 13px; line-height: 1;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: transparent; color: var(--wb-text-2);
+}
+.wb-mu-btn:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-mu-btn:disabled { opacity: .35; cursor: default; }
+
 /* ── FLOOR-AND-SHEETS Stage 3: the Select/Live canvas toggle ──────────────── */
 .wb-canvas-modebar { display: flex; justify-content: flex-end; margin: 0 0 6px; }
 .wb-canvas-modeseg {

@@ -17,6 +17,7 @@ import { state } from './state';
 import { COND_COLORS } from './condRules';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { elementRefChip } from './elmRef';
+import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -46,12 +47,15 @@ const MANAGED = [
 
 let handle: OverlayHandle | null = null;
 let enterHandler: ((e: KeyboardEvent) => void) | null = null;
+let detachMuKeys: (() => void) | null = null;
 /** Remember the last-used tab within the session so reopening the dialog
  *  continues where you left off — matches the Excel Format Cells convention. */
 let _lastTab: Tab = 'font';
 
 export function closeFormatCells(): void {
   if (enterHandler) { document.removeEventListener('keydown', enterHandler); enterHandler = null; }
+  detachMuKeys?.();
+  detachMuKeys = null;
   handle?.close();
   handle = null;
 }
@@ -138,6 +142,25 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
   handle = createOverlay('wb-fc-overlay', closeFormatCells);
   const overlay = handle.overlay;
 
+  // modal-local undo (§2.3, Stage 4): the staged patch — plus the border
+  // model that feeds it — bottoms out at the moment the dialog opened.
+  // render() is the commit chokepoint (every chip/toggle ends there); tab
+  // switches stay free because the tab isn't in the bag. OK still applies
+  // the whole session as ONE app-level mutation.
+  interface FcBag { patch: Record<string, string | null>; line: { width: string; style: string; color: string }; sidesOn: Side[] }
+  const muBag = (): FcBag => ({ patch, line, sidesOn: [...sidesOn] });
+  const mu = createModalUndo(muBag());
+  const muRestore = (bag: FcBag | null): void => {
+    if (!bag) return;
+    for (const k of Object.keys(patch)) delete patch[k];
+    Object.assign(patch, bag.patch);
+    Object.assign(line, bag.line);
+    sidesOn.clear();
+    for (const s of bag.sidesOn) sidesOn.add(s);
+    render();
+  };
+  detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
+
   const panel = document.createElement('div');
   panel.className = 'wb-fc';
   overlay.appendChild(panel);
@@ -186,6 +209,9 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
 
   const render = (): void => {
     panel.innerHTML = '';
+    // every gesture funnels through render(): snapshot here (no-op renders
+    // and tab switches are free — the brain drops identical states)
+    mu.commit(muBag());
 
     const head = document.createElement('div');
     head.className = 'wb-fc-head';
@@ -201,6 +227,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     sub.textContent = 'nothing changes until you Apply (then Ctrl+Z undoes)';
 
     head.append(title, sub);
+    head.appendChild(modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo())).root);
 
     const close = document.createElement('button');
     close.className = 'wb-fc-close';

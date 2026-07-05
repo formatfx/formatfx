@@ -342,3 +342,23 @@ test('palette components: offered in the library, draggable straight onto the ca
   await page.keyboard.press('Control+z');
   await expect(treeRow(page, 'Facepile')).toHaveCount(0);
 });
+
+test('component editor: modal-local ↶↷ over element edits; text fields stay native', async ({ page }) => {
+  await page.locator('.wb-fmt-tab-comp').click();
+  await page.locator('.wb-comp-card', { hasText: 'Deadline chip' }).locator('.wb-comp-edit').click();
+  const ce = page.locator('.wb-ce');
+  await expect(ce).toBeVisible();
+  await expect(ce.locator('.wb-mu-undo')).toBeDisabled(); // bottoms out at open
+  // a style gesture on the selected root = one local step, live in the preview
+  const purple = '[style*="rgb(92, 45, 145)"]';
+  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await expect(ce.locator(`.wb-ce-preview ${purple}`)).not.toHaveCount(0);
+  await ce.locator('.wb-mu-undo').click();
+  await expect(ce.locator(`.wb-ce-preview ${purple}`)).toHaveCount(0);
+  await ce.locator('.wb-mu-redo').click();
+  await expect(ce.locator(`.wb-ce-preview ${purple}`)).not.toHaveCount(0);
+  // nothing reached the document or the app stack — staged means staged
+  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+  await ce.locator('.wb-ce-close').click(); // dirty → confirm, auto-accepted
+  await expect(ce).not.toBeVisible();
+});

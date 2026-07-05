@@ -184,11 +184,17 @@ Key structural invariants:
   (`state.canvasMode`, session-only; `RenderOptions.interactive: false`
   makes Select-mode clicks select customRowAction buttons instead of
   firing them; Live fires behaviors and never selects; card flyouts open
-  in both modes). Stage 4 structural half: condFormat now rides
+  in both modes). Stage 4: condFormat now rides
   `createOverlay`, viewMenu carries `wb-esc-owner`, and the marker is the
   whole Escape convention (no owner lists — the old prose enumerations
-  were stale and are gone). Open: modal-local ↶↷ undo beyond the template
-  builder (see FLOOR-AND-SHEETS §3 Stage 4).
+  were stale and are gone). The §2.3 modal-local ↶↷ undo is shared:
+  `modalUndo.ts` (pure brain + capture-phase key wiring + the ↶↷ button
+  pair) is wired into the component editor (staged tree only — text
+  fields stay native), Format cells and conditional formatting, each with
+  render()-chokepoint commits; Save/Apply still lands as ONE app-level
+  step. Deliberate exemptions (knob form, compmap dialogs, playground,
+  the builder's own predating stack) are recorded in FLOOR-AND-SHEETS §3
+  Stage 4.
 - **Node addressing**: selection/lint paths are arrays of child indices;
   the sentinel **`CARD_SEGMENT = -1` descends into
   `customCardProps.formatter`** — that's how card content is fully
@@ -786,7 +792,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 860 vitest unit tests across 47 files (engine semantics incl.
+- `npm test` — 867 vitest unit tests across 48 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -801,7 +807,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the Select/Live canvas mode). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 137 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 140 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

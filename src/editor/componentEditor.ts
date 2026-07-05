@@ -37,6 +37,7 @@ import {
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
+import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
 
 // Store access mirrors componentLibrary's readCustom/writeCustom — duplicated
 // (6 lines) rather than imported so componentLibrary → componentEditor stays
@@ -99,6 +100,25 @@ export function openComponentEditor(
   let dirty = false;
   let sel: NodePath = [];
 
+  // modal-local undo (§2.3, Stage 4): the ELEMENT edits — the destructive
+  // gestures — bottom out at the moment the editor opened. Name/description/
+  // slot text fields stay on native input undo (the builder rule), so the
+  // bag is the staged TREE only. Save still commits ONE app-level step.
+  // (muRestore is a function declaration on purpose: it runs only after the
+  // render fns below are assigned, but the head's buttons wire up first.)
+  const mu = createModalUndo({ root: staged.root });
+  function muRestore(bag: { root: SPElement } | null): void {
+    if (!bag) return;
+    staged.root = bag.root;
+    if (!nodeAtStaged(sel)) sel = [];
+    renderPreview();
+    renderStruct();
+    renderStylePanel();
+    muButtons.refresh();
+  }
+  const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
+  const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
+
   // usages, scanned once at open (same live-doc merge as the library render);
   // built-ins can be in use too, but they only ever save-as-new
   const refs = state.activeDocKey !== 'main'
@@ -129,6 +149,7 @@ export function openComponentEditor(
   window.addEventListener('resize', place);
   const close = (): void => {
     window.removeEventListener('resize', place);
+    detachMuKeys();
     closeOverlay();
   };
 
@@ -164,7 +185,7 @@ export function openComponentEditor(
   closeBtn.title = 'Close (Esc) — discards staged edits';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.addEventListener('click', confirmClose);
-  head.append(title, sub, closeBtn);
+  head.append(title, sub, muButtons.root, closeBtn);
   panel.appendChild(head);
 
   const body = document.createElement('div');
@@ -320,6 +341,8 @@ export function openComponentEditor(
     else node.style[prop] = value;
     if (Object.keys(node.style).length === 0) delete node.style;
     dirty = true;
+    mu.commit({ root: staged.root }); // one gesture = one ↶ step
+    muButtons.refresh();
     renderPreview();
     renderStylePanel();
   };
