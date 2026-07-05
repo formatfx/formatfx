@@ -1163,15 +1163,23 @@ export const GUIDE_CHAPTERS: Array<{ chapter: string; pages: GuidePage[] }> = ((
 /**
  * Nav-tree depth per page id, from the parent chain. 0 = a chapter's
  * plain-language on-ramp; each level down is more technical (the nav indents
- * accordingly). Cycles/bad ids would loop forever here — guideContent.test.ts
- * pins the invariants that make this walk safe.
+ * accordingly). A typo'd parent or a parent cycle throws right here at module
+ * init — fail fast beats a frozen UI (or a hung test import). The stricter
+ * editorial invariants (parent precedes child, same chapter, depth ≤ 2) live
+ * in guideContent.test.ts.
  */
 export const GUIDE_DEPTH: ReadonlyMap<string, number> = (() => {
   const byId = new Map(GUIDE_PAGES.map((p) => [p.id, p]));
   const depth = new Map<string, number>();
   for (const page of GUIDE_PAGES) {
     let d = 0;
-    for (let cur = page; cur.parent; cur = byId.get(cur.parent)!) d++;
+    let cur = page;
+    while (cur.parent) {
+      const parent = byId.get(cur.parent);
+      if (!parent) throw new Error(`guide page "${cur.id}" names a missing parent "${cur.parent}"`);
+      if (++d > GUIDE_PAGES.length) throw new Error(`guide page "${page.id}" sits on a parent cycle`);
+      cur = parent;
+    }
     depth.set(page.id, d);
   }
   return depth;
