@@ -19,6 +19,7 @@ import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
+import { hoverRevealStatus, setRevealOnHover } from './hoverReveal';
 
 /** Common-but-unlisted style properties offered as one-click "quick adds" in the
  *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
@@ -184,6 +185,30 @@ export function mountInspector(host: HTMLElement): void {
         n.txtContent = v;
       }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}"));
 
+    // Reveal on hover (issue #203, semantics HANDOFF §3.7) — one toggle applies
+    // both class edits (sp-card-showOnHoverChild here + sp-card-showOnHoverParent
+    // on the container the user will hover) as one undoable gesture. Offered in
+    // BOTH lenses: it's a maker-facing concept, not a Pro superpower.
+    const revealSection = (): HTMLElement => {
+      const sel = state.selection ?? [];
+      const st = hoverRevealStatus(state.doc.root, sel);
+      const cb = checkbox(st.on, (v) => {
+        state.mutateDocument(() => setRevealOnHover(state.doc.root, sel, v));
+      });
+      cb.disabled = !st.can;
+      const row = labeled('show only while hovered', cb);
+      if (st.reason) row.title = st.reason;
+      const note = document.createElement('div');
+      note.className = 'wb-inspector-empty';
+      note.textContent = st.reason ?? (st.on
+        ? 'Hidden until its highlighted container is hovered — works on real SP in column, row and tile formatters.'
+        : 'Hides this element until the surrounding container is hovered (like a row\'s ⋯ menu).');
+      return section('Reveal on hover', [row, note], false, {
+        active: st.on,
+        onReset: () => state.mutateDocument(() => setRevealOnHover(state.doc.root, sel, false)),
+      });
+    };
+
     // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
     if (!pro) {
       host.appendChild(section('Text', [txtContentField()]));
@@ -193,6 +218,7 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
       host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
+      host.appendChild(revealSection());
     }
 
     // ── Pro: the mechanical layout engine + full control ──
@@ -215,6 +241,7 @@ export function mountInspector(host: HTMLElement): void {
       host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
       host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
+      host.appendChild(revealSection());
     }
 
     // Box model (DevTools-style): Simple's intuitive padding/margin editor; Pro

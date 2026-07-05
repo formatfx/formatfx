@@ -200,6 +200,96 @@ describe('linter', () => {
     expect(rules).not.toContain('inline-edit-foreach');
   });
 
+  it('hover-child-no-parent: showOnHoverChild with no showOnHoverParent ancestor warns', () => {
+    // §3: the child class hides the element until an ANCESTOR carrying the
+    // parent class is hovered — with no such ancestor it never appears.
+    const orphan: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        children: [{ elmType: 'span', attributes: { class: 'sp-card-showOnHoverChild' }, txtContent: 'hi' }],
+      },
+    };
+    const issue = lintDocument(orphan).find((i) => i.rule === 'hover-child-no-parent')!;
+    expect(issue).toBeTruthy();
+    expect(issue.severity).toBe('warning');
+    expect(issue.path).toEqual([0]);
+  });
+
+  it('hover-child-no-parent: the parent class on the SAME element does not count as an ancestor', () => {
+    // the reveal selector is a descendant selector — a hidden element can't
+    // hover itself, so self-carrying both classes never appears either
+    const selfPair: FormatterDocument = {
+      kind: 'column',
+      root: { elmType: 'div', attributes: { class: 'sp-card-showOnHoverParent sp-card-showOnHoverChild' } },
+    };
+    expect(lintDocument(selfPair).map((i) => i.rule)).toContain('hover-child-no-parent');
+  });
+
+  it('hover pairing is satisfied by any ancestor, including the root', () => {
+    const paired: FormatterDocument = {
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        attributes: { class: 'sp-card-showOnHoverParent' },
+        children: [
+          { elmType: 'div', children: [{ elmType: 'span', attributes: { class: 'sp-card-showOnHoverChild' } }] },
+        ],
+      },
+    };
+    const rules = lintDocument(paired).map((i) => i.rule);
+    expect(rules).not.toContain('hover-child-no-parent');
+    expect(rules).not.toContain('hover-parent-no-child');
+  });
+
+  it('hover pairing counts classes emitted by =expressions', () => {
+    const conditional: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        attributes: { class: "=if([$Status]=='Done','sp-card-showOnHoverParent','')" },
+        children: [{ elmType: 'span', attributes: { class: 'sp-card-showOnHoverChild' } }],
+      },
+    };
+    const rules = lintDocument(conditional).map((i) => i.rule);
+    expect(rules).not.toContain('hover-child-no-parent');
+    expect(rules).not.toContain('hover-parent-no-child');
+  });
+
+  it('hover-parent-no-child: a parent with no child anywhere in its subtree is an info', () => {
+    const lonely: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        children: [{ elmType: 'div', attributes: { class: 'sp-card-showOnHoverParent' }, txtContent: 'x' }],
+      },
+    };
+    const issue = lintDocument(lonely).find((i) => i.rule === 'hover-parent-no-child')!;
+    expect(issue).toBeTruthy();
+    expect(issue.severity).toBe('info');
+    expect(issue.path).toEqual([0]);
+  });
+
+  it('hover pairing does not cross the customCardProps boundary (the card is a separate DOM tree)', () => {
+    // a child inside the card formatter is NOT a descendant of the host in the
+    // rendered DOM (the card lives in a callout), so the host parent class
+    // can't reveal it — and vice versa
+    const acrossBoundary: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        attributes: { class: 'sp-card-showOnHoverParent' },
+        customCardProps: {
+          openOnEvent: 'hover',
+          formatter: { elmType: 'div', attributes: { class: 'sp-card-showOnHoverChild' } },
+        },
+      },
+    };
+    const rules = lintDocument(acrossBoundary).map((i) => i.rule);
+    expect(rules).toContain('hover-parent-no-child');
+    expect(rules).toContain('hover-child-no-parent');
+  });
+
   it("no-bang-operator fires on a standalone '!' but never on '!='", () => {
     // §3.1: there is no logical NOT. A standalone '!' before (, [$Field] or @token
     // must be flagged; '!=' (not-equals) is a different, fully-legal operator.

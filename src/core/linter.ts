@@ -21,6 +21,10 @@
  *  - non-ASCII characters garble through CSOM deployment
  *  - nested if() depth > 10 may silently fail
  *  - className instead of attributes.class
+ *  - hover-reveal pairing: sp-card-showOnHoverChild with no
+ *    sp-card-showOnHoverParent ancestor never appears (the reveal is a
+ *    descendant :hover selector — HANDOFF §3); a parent with no child in its
+ *    subtree is inert (info)
  *
  * Retracted (owner-verified in production, 2026-06-13 — do not re-add without
  * fresh evidence): "CFR inside customCardProps renders blank" and
@@ -47,6 +51,31 @@ interface WalkState {
   fieldTypes?: Record<string, string>;
   /** forEach iterator names in scope. */
   iterators: Set<string>;
+  /** A strict ancestor carries sp-card-showOnHoverParent (hover-reveal pairing). */
+  underHoverParent?: boolean;
+}
+
+const HOVER_PARENT_CLASS = 'sp-card-showOnHoverParent';
+const HOVER_CHILD_CLASS = 'sp-card-showOnHoverChild';
+
+/** The element's class value as searchable text — attributes.class is an
+ *  SPExpr, so a conditional class may live inside an "=if(...)" expression
+ *  string or an operator-tree object; both carry the class token verbatim. */
+function classText(el: SPElement): string {
+  const c = el.attributes?.class;
+  if (typeof c === 'string') return c;
+  if (c && typeof c === 'object') return JSON.stringify(c);
+  return '';
+}
+
+/** True if any DOM descendant carries the hover child class. Does not cross
+ *  into customCardProps.formatter — the card renders in a callout, not as a
+ *  descendant, so the parent's :hover can never reveal anything inside it. */
+function hasHoverChildInSubtree(el: SPElement): boolean {
+  for (const child of el.children ?? []) {
+    if (classText(child).includes(HOVER_CHILD_CLASS) || hasHoverChildInSubtree(child)) return true;
+  }
+  return false;
 }
 
 export function lintDocument(
@@ -216,6 +245,21 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     }
   }
 
+  // hover-reveal pairing (HANDOFF §3): the child class hides the element until
+  // an ANCESTOR carrying the parent class is hovered — the reveal selector is
+  // .sp-card-showOnHoverParent:hover .sp-card-showOnHoverChild, so the parent
+  // class on the element ITSELF doesn't count (a hidden element can't be hovered)
+  const cls = classText(el);
+  if (cls.includes(HOVER_CHILD_CLASS) && !state.underHoverParent) {
+    push('warning', 'hover-child-no-parent', `${HOVER_CHILD_CLASS} with no ancestor carrying ${HOVER_PARENT_CLASS} — this element is hidden and nothing can ever reveal it. Add ${HOVER_PARENT_CLASS} to the container the user will hover (the reveal works in column, row and tile formatters alike).`);
+  }
+  if (cls.includes(HOVER_PARENT_CLASS)) {
+    if (!hasHoverChildInSubtree(el)) {
+      push('info', 'hover-parent-no-child', `${HOVER_PARENT_CLASS} with no ${HOVER_CHILD_CLASS} anywhere inside it — the class does nothing on its own. Put ${HOVER_CHILD_CLASS} on the element(s) that should appear on hover.`);
+    }
+    state = { ...state, underHoverParent: true };
+  }
+
   // style checks
   for (const prop of Object.keys(el.style ?? {})) {
     if (prop === '_comment') continue;
@@ -345,7 +389,9 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     if (f) {
       const cardIssues: LintIssue[] = [];
       path.push(-1);
-      walk(f, path, state, cardIssues);
+      // the card body renders in a callout, not as a DOM descendant of the
+      // host — a host-side showOnHoverParent can't reveal anything inside it
+      walk(f, path, { ...state, underHoverParent: false }, cardIssues);
       path.pop();
       for (const issue of cardIssues) {
         // keep each issue's walk-computed path (host path + -1 CARD_SEGMENT +

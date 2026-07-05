@@ -22,6 +22,7 @@ import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
 import { openTemplateModal } from './templateModal';
 import { styleBannerLabel } from './styleScope';
 import { cfrBlastRadius } from './cfr';
+import { HOVER_CHILD_CLASS } from './hoverReveal';
 
 /** The Stage-3 row-view toolbar: density (Roomy/Compact) + Templates.
  *  Area/zone sizing lives in the template builder's inspector (the old
@@ -98,7 +99,38 @@ function canvasModeBar(onToast: (m: string) => void): HTMLElement {
   mk('select', 'Select', 'Clicking an element selects it for editing (the default)');
   mk('live', '⚡ Live', 'Clicks behave like real SharePoint — action buttons fire, cards open, nothing gets selected');
   bar.appendChild(seg);
+
+  // Simulate-hover pin (issue #203): a hidden-on-hover element is invisible in
+  // the preview, which makes it unselectable/uneditable — the pin force-reveals
+  // every sp-card-showOnHoverChild while editing. Only offered when the
+  // document actually uses the class; Live mode always behaves like real SP.
+  if (usesHoverReveal(state.doc.root)) {
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'wb-canvas-hoverpin' + (state.simulateHover ? ' active' : '');
+    pin.setAttribute('aria-pressed', String(state.simulateHover));
+    pin.textContent = '👁 Show hover-only';
+    pin.disabled = state.canvasMode === 'live';
+    pin.title = state.canvasMode === 'live'
+      ? 'Live mode behaves like real SharePoint — hover the parent to reveal. Switch to Select to pin hidden elements visible.'
+      : 'Pin every hide-until-hover element visible so you can select and edit it. Preview-only — the shipped formatter is unchanged.';
+    pin.addEventListener('click', () => {
+      state.setSimulateHover(!state.simulateHover);
+      onToast(state.simulateHover
+        ? 'Hover-only elements pinned visible (dashed outline) so you can click and edit them. Preview-only.'
+        : 'Hover-only elements hidden again — hover their container to reveal, like real SharePoint.');
+    });
+    bar.appendChild(pin);
+  }
   return bar;
+}
+
+/** The document uses the hover-reveal child class anywhere (incl. card bodies). */
+function usesHoverReveal(el: SPElement): boolean {
+  const c = el.attributes?.class;
+  if (typeof c === 'string' && c.includes(HOVER_CHILD_CLASS)) return true;
+  if (el.customCardProps?.formatter && usesHoverReveal(el.customCardProps.formatter)) return true;
+  return (el.children ?? []).some(usesHoverReveal);
 }
 
 export interface CanvasApi {
@@ -145,6 +177,8 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     runtimeIssues = [];
     host.classList.toggle('wb-style-editing', state.doc.kind === 'column' && state.activeDocKey !== 'main');
     host.classList.toggle('wb-canvas-live', state.canvasMode === 'live');
+    // simulate-hover pin: Select mode only — Live must behave like real SP
+    host.classList.toggle('wb-simulate-hover', state.simulateHover && state.canvasMode === 'select');
     const issues: RenderIssue[] = [];
     const opts = {
       issues,
