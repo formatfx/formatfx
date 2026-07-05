@@ -21,7 +21,11 @@ import { openTemplateModal } from './templateModal';
 
 export function mountViewStrip(host: HTMLElement, onToast: (m: string) => void): void {
   host.classList.add('wb-viewstrip');
-  host.setAttribute('role', 'tablist');
+  // plain NAVIGATION semantics, deliberately not the ARIA tabs pattern — the
+  // chips are ordinary buttons with no tab-panel relationship, so tab roles
+  // would promise interactions (roving focus, aria-controls) they don't have;
+  // the active chip is announced via aria-current instead
+  host.setAttribute('role', 'navigation');
   host.setAttribute('aria-label', 'Views');
 
   /** Swap a sheet chip for an inline rename input (Enter commits, Esc cancels,
@@ -68,8 +72,7 @@ export function mountViewStrip(host: HTMLElement, onToast: (m: string) => void):
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'wb-viewstrip-chip wb-viewstrip-sheet' + (active ? ' active' : '');
-      chip.setAttribute('role', 'tab');
-      chip.setAttribute('aria-selected', String(active));
+      if (active) chip.setAttribute('aria-current', 'true');
       chip.textContent = view.name;
       chip.title = (active
         ? 'This view is on the canvas'

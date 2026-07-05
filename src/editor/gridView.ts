@@ -518,13 +518,23 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       entries.push({ col, i, group: g });
     });
   }
-  /** A collapsed group's slim cell (header or body row) — click to expand. */
+  /** A collapsed group's slim cell — click to expand. The HEADER cell is a
+   *  real button (focusable, Enter/Space work natively); the body-row cells
+   *  keep the pointer convenience but hide from AT so a screen reader hears
+   *  ONE expand control per group, not one per mock row. */
   const collapsedCell = (g: ColumnGroup, header: boolean): HTMLElement => {
-    const c = document.createElement('div');
+    const c = document.createElement(header ? 'button' : 'div');
     c.className = (header ? 'wb-grid-header' : 'wb-grid-cell') + ' wb-grid-collapsed';
     c.style.setProperty('--wb-group-color', g.color);
-    c.title = `Expand “${g.name}” — its ${g.fields.length} column${g.fields.length > 1 ? 's' : ''} wait${g.fields.length > 1 ? '' : 's'} intact`;
-    if (header) c.textContent = '⋯';
+    const label = `Expand “${g.name}” — its ${g.fields.length} column${g.fields.length > 1 ? 's' : ''} wait${g.fields.length > 1 ? '' : 's'} intact`;
+    c.title = label;
+    if (header) {
+      (c as HTMLButtonElement).type = 'button';
+      c.setAttribute('aria-label', label);
+      c.textContent = '⋯';
+    } else {
+      c.setAttribute('aria-hidden', 'true');
+    }
     c.addEventListener('click', () => {
       state.toggleGroupCollapsed(g.id);
       onToast(`Expanded “${g.name}”`);

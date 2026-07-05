@@ -828,10 +828,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-grid-grouppill-collapsed { justify-self: stretch; max-width: none; margin: 0 2px 4px; padding: 1px 4px; text-align: center; }
 /* member headers wear the group's band (box-shadow: no layout shift) */
 .wb-grid-header-grouped { box-shadow: inset 0 2px 0 0 var(--wb-group-color); }
-/* the collapsed group's slim track — click anywhere on it to expand */
+/* the collapsed group's slim track — click anywhere on it to expand
+   (the header cell is a real <button>, hence the font/border resets) */
 .wb-grid-collapsed {
   cursor: pointer; display: flex; align-items: center; justify-content: center;
-  min-width: 0; padding: 0;
+  min-width: 0; padding: 0; border: none; font: inherit;
   background: color-mix(in srgb, var(--wb-group-color) 8%, transparent);
   color: var(--wb-group-color); font-weight: 700;
 }
