@@ -140,6 +140,13 @@ export function applyTriggerAt(
 ): NodePath | null {
   const host = nodeAt(root, hostPath);
   if (!host) return null;
+  // re-validate at apply time — the pick may be stale (the candidate scan ran
+  // when the picker opened): a host that gained a trigger since, or stopped
+  // being a division-with-children, refuses instead of colliding (#205 parks
+  // nested triggers). Setting href on a bare <a> only needs the no-collision
+  // half of the test.
+  const linkOnAnchor = spec.action === 'link' && (host.elmType as string) === 'a';
+  if (linkOnAnchor ? subtreeHasTrigger(host) : !canHostTrigger(host)) return null;
 
   if (spec.action === 'card') {
     if (!content) return null;
@@ -165,13 +172,17 @@ export function applyTriggerAt(
 
   if (spec.action === 'link') {
     if (!spec.href) return null;
-    if (host.elmType === 'a' as string) {
-      host.attributes = { ...(host.attributes ?? {}), href: spec.href, target: '_blank' };
+    // rel rides the EXPORTED JSON (allow-listed attribute), not just the
+    // sandbox render — target=_blank without it is a reverse-tabnabbing hole
+    // on real SP
+    const linkAttrs = { href: spec.href, target: '_blank', rel: 'noopener noreferrer' };
+    if (linkOnAnchor) {
+      host.attributes = { ...(host.attributes ?? {}), ...linkAttrs };
       if (spec.cursor) host.style = { ...(host.style ?? {}), cursor: spec.cursor };
       return hostPath;
     }
     const overlay = overlayElement(spec, 'a');
-    overlay.attributes = { ...overlay.attributes, href: spec.href, target: '_blank' };
+    overlay.attributes = { ...overlay.attributes, ...linkAttrs };
     ensurePositioned(host);
     host.children = [...(host.children ?? []), overlay];
     return [...hostPath, host.children.length - 1];

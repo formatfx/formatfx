@@ -111,7 +111,7 @@ describe('applyTriggerAt — row actions and link (§5)', () => {
     expect(overlay.customRowAction).toEqual({ action: 'setValue', actionInput: { Status: 'Done' } });
   });
 
-  it('link generates an overlay <a href> (and refuses without href)', () => {
+  it('link generates an overlay <a href> with rel noopener (and refuses without href)', () => {
     const root = div([div([span('a')])]);
     expect(applyTriggerAt(root, [0], { action: 'link' })).toBeNull();
     const at = applyTriggerAt(root, [0], { action: 'link', href: 'https://contoso.com' });
@@ -120,14 +120,33 @@ describe('applyTriggerAt — row actions and link (§5)', () => {
     expect(overlay.elmType).toBe('a');
     expect(overlay.attributes?.href).toBe('https://contoso.com');
     expect(overlay.attributes?.target).toBe('_blank');
+    // the EXPORTED JSON carries rel — reverse-tabnabbing guard on real SP,
+    // not just in the sandbox renderer
+    expect(overlay.attributes?.rel).toBe('noopener noreferrer');
   });
 
-  it('link on an <a> host sets href directly instead of overlaying', () => {
+  it('link on an <a> host sets href + rel directly instead of overlaying', () => {
     const root = div([{ elmType: 'a', txtContent: 'go' } as SPElement]);
     const at = applyTriggerAt(root, [0], { action: 'link', href: 'https://contoso.com' });
     expect(at).toEqual([0]);
     expect(root.children![0].attributes?.href).toBe('https://contoso.com');
+    expect(root.children![0].attributes?.rel).toBe('noopener noreferrer');
     expect(root.children![0].children).toBeUndefined();
+  });
+
+  it('re-validates the host at apply time: a stale pick (host gained a trigger) refuses instead of colliding', () => {
+    const root = div([div([span('a')])]);
+    // first bind succeeds…
+    expect(applyTriggerAt(root, [0], { action: 'defaultClick' })).toEqual([0, 1]);
+    const snapshot = JSON.stringify(root);
+    // …a second bind against the SAME host (as a stale mapper pick would be)
+    // must refuse and leave the tree untouched — trigger collisions are #205
+    expect(applyTriggerAt(root, [0], { action: 'card', event: 'hover' }, { elmType: 'div' })).toBeNull();
+    expect(applyTriggerAt(root, [0], { action: 'executeFlow', actionParams: '{"id":"x"}' })).toBeNull();
+    expect(JSON.stringify(root)).toBe(snapshot);
+    // a host that is no longer a division with children refuses too
+    const leafRoot = div([span('just text')]);
+    expect(applyTriggerAt(leafRoot, [0], { action: 'card', event: 'hover' }, { elmType: 'div' })).toBeNull();
   });
 });
 

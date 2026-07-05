@@ -341,6 +341,10 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
 
     const drawer = detailsDrawer(def, inUse);
     drawer.hidden = true;
+    // the same def renders in the inventory AND the browser — suffix keeps
+    // the aria-controls target ids unique across the two sections
+    drawer.id = `wb-comp-drawer-${def.id}${inUse !== undefined ? '-used' : ''}`;
+    row.setAttribute('aria-controls', drawer.id);
     const toggle = (): void => {
       drawer.hidden = !drawer.hidden;
       row.setAttribute('aria-expanded', String(!drawer.hidden));

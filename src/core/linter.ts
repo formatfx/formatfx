@@ -382,8 +382,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
 
   // customCardProps checks
   if (el.customCardProps) {
-    if (el.elmType !== 'button' && el.children?.length) {
-      push('info', 'card-trigger-button', 'customCardProps on an element with children: the children have been seen to swallow the click so the card never opens (field observation). The robust trigger patterns: an absolutely-positioned overlay div, or a button with direct txtContent.');
+    // click-opened cards only: the field observation is about children
+    // swallowing the CLICK — hover propagates fine, and a hover card on a
+    // division with children is exactly what the trigger workflow generates
+    if (el.customCardProps.openOnEvent !== 'hover' && el.elmType !== 'button' && el.children?.length) {
+      push('info', 'card-trigger-button', 'customCardProps opening on click, on an element with children: the children have been seen to swallow the click so the card never opens (field observation). The robust trigger patterns: an absolutely-positioned overlay div (sp-card-defaultClickButton), or a button with direct txtContent.');
     }
     const f = el.customCardProps.formatter;
     if (f) {
