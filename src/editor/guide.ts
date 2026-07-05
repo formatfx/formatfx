@@ -2,13 +2,14 @@
  * editor/guide.ts — the field guide reader (☰ menu → 📖 Field guide).
  *
  * A full-screen, Microsoft-Learn-shaped documentation surface: library tree
- * on the left (chapters → pages, with a filter box), the article in the
- * middle, an "In this article" rail on the right built from the page's h2s
+ * on the left (chapters → nested pages whose indent encodes technicality,
+ * plus a filter box), the article in the middle, an
+ * "In this article" rail on the right built from the page's h2s
  * (scroll-spied), prev/next footer. Content lives in guideContent.ts.
  * Esc or ✕ closes; the last-read page is remembered for the session.
  */
 
-import { GUIDE_PAGES, GUIDE_CHAPTERS, type GuidePage } from './guideContent';
+import { GUIDE_PAGES, GUIDE_CHAPTERS, GUIDE_DEPTH, type GuidePage } from './guideContent';
 import { renderIconGrid } from './iconPicker';
 import { createOverlay, type OverlayHandle } from './overlay';
 
@@ -36,7 +37,7 @@ export function openGuide(pageId?: string): void {
   head.className = 'wb-guide-head';
   head.innerHTML = `
     <span class="wb-guide-title">📖 Field guide</span>
-    <span class="wb-guide-sub">SharePoint lists for people who build on them</span>`;
+    <span class="wb-guide-sub">SharePoint lists &amp; libraries — plain basics down to engine internals</span>`;
   const close = document.createElement('button');
   close.className = 'wb-guide-close';
   close.textContent = '✕';
@@ -83,6 +84,12 @@ export function openGuide(pageId?: string): void {
     });
     nav.appendChild(search);
 
+    // the tree's one reading rule, kept visible: nesting = technicality
+    const hint = document.createElement('div');
+    hint.className = 'wb-guide-navhint';
+    hint.textContent = 'Deeper pages are more technical.';
+    nav.appendChild(hint);
+
     const q = filter.trim().toLowerCase();
     for (const { chapter, pages } of GUIDE_CHAPTERS) {
       const visible = q ? pages.filter((p) => searchText.get(p.id)!.includes(q)) : pages;
@@ -93,7 +100,11 @@ export function openGuide(pageId?: string): void {
       nav.appendChild(group);
       for (const p of visible) {
         const b = document.createElement('button');
-        b.className = 'wb-guide-navitem' + (p.id === current.id ? ' active' : '');
+        const depth = GUIDE_DEPTH.get(p.id) ?? 0;
+        b.className =
+          'wb-guide-navitem' +
+          (depth ? ` wb-guide-navd${depth}` : '') +
+          (p.id === current.id ? ' active' : '');
         b.textContent = p.title;
         b.addEventListener('click', () => openPage(p.id));
         nav.appendChild(b);

@@ -710,6 +710,22 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    supported types, 5,000 view / 12-join thresholds, calculated-column
    own-row rule) and against §3 of this doc; keep new claims sourced the
    same way. `e2e/guide.spec.ts` covers it.
+   **RESTRUCTURED 2026-07-05** (owner request) as a progressive-technicality
+   gradient: reading order descends basic → complex AND the nav tree nests
+   (`GuidePage.parent` → `GUIDE_DEPTH`; indent classes `wb-guide-navd1/2`;
+   deeper page = more technical, and the nav says so). New pages: `basics`
+   (plain-language lists-and-libraries floor, now the landing page) and
+   `limits` (thresholds-from-the-engine, the chapter's depth-2 leaf, content
+   extracted from `overview` which is now "Under the hood: SQL + React"
+   nested under basics). joins/calculated/matrix nest under column-types;
+   icons/actions under formatting. Tree invariants are pinned in
+   `src/editor/guideContent.test.ts`. Sourcing caveat: the three
+   support.microsoft.com links added for the basics page (introduction to
+   lists, what is a document library, create/change/delete a view) are
+   standard article ids but could NOT be re-fetched at edit time — this
+   container's proxy blocks microsoft.com entirely — spot-check them from a
+   networked session; every other claim on the new pages reuses the
+   already-verified largeLists/spoLimits sources.
 1.10. **Connectivity Tier 0 — BUILT 2026-06-13** (owner brief; design in
    docs/CONNECTIVITY.md — read its §1 auth reality before touching
    anything here: no app registrations is a HARD constraint and only
@@ -809,7 +825,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 875 vitest unit tests across 48 files (engine semantics incl.
+- `npm test` — 881 vitest unit tests across 48 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -824,7 +840,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the Select/Live canvas mode). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 141 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 142 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
