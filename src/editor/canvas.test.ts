@@ -52,6 +52,59 @@ describe('row-view toolbar', () => {
   });
 });
 
+describe('simulate-hover pin (issue #203)', () => {
+  const hoverDoc = () => ({
+    kind: 'column' as const,
+    root: {
+      elmType: 'div' as const,
+      attributes: { class: 'sp-card-showOnHoverParent' },
+      children: [{ elmType: 'span' as const, attributes: { class: 'sp-card-showOnHoverChild' }, txtContent: '⋯' }],
+    },
+  });
+
+  it('offers the pin only when the document uses the hover-child class', () => {
+    state.resetAll();
+    state.doc = { kind: 'column', root: { elmType: 'div', txtContent: 'x' } };
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {});
+    expect(host.querySelector('.wb-canvas-hoverpin')).toBeNull();
+
+    state.doc = hoverDoc();
+    state.emit('document');
+    expect(host.querySelector('.wb-canvas-hoverpin')).toBeTruthy();
+    state.resetAll();
+  });
+
+  it('toggling the pin flags the canvas for force-reveal; Live mode stands it down', () => {
+    state.resetAll();
+    state.doc = hoverDoc();
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {});
+
+    expect(host.classList.contains('wb-simulate-hover')).toBe(false);
+    (host.querySelector('.wb-canvas-hoverpin') as HTMLButtonElement).click();
+    expect(state.simulateHover).toBe(true);
+    expect(host.classList.contains('wb-simulate-hover')).toBe(true);
+
+    // Live mode must behave like real SP: the reveal class comes off and the
+    // pin is disabled while live, even though the pin state itself is kept
+    state.setCanvasMode('live');
+    expect(host.classList.contains('wb-simulate-hover')).toBe(false);
+    expect((host.querySelector('.wb-canvas-hoverpin') as HTMLButtonElement).disabled).toBe(true);
+
+    state.setCanvasMode('select');
+    expect(host.classList.contains('wb-simulate-hover')).toBe(true);
+
+    state.setSimulateHover(false);
+    expect(host.classList.contains('wb-simulate-hover')).toBe(false);
+    state.resetAll();
+  });
+});
+
 describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
   it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
     state.resetAll();

@@ -225,6 +225,11 @@ export class EditorState {
    *  selects), like real SharePoint. UI view state: session-only, never
    *  persisted — a reload always lands back in Select. */
   canvasMode: 'select' | 'live' = 'select';
+  /** Simulate-hover pin (issue #203): in Select mode, force-reveal every
+   *  sp-card-showOnHoverChild so hidden-until-hover elements stay visible,
+   *  selectable and editable. UI view state, session-only — Live mode always
+   *  behaves like real SP regardless of the pin. */
+  simulateHover = false;
   /** The "last Save" checkpoint Discard reverts to (a snapState string). */
   private _savepoint: string | null = null;
   themeMode: 'light' | 'dark' = 'dark';
@@ -296,6 +301,14 @@ export class EditorState {
   setCanvasMode(mode: 'select' | 'live'): void {
     if (this.canvasMode === mode) return;
     this.canvasMode = mode;
+    this.emit('lens');
+  }
+
+  /** Pin/unpin the simulate-hover reveal (issue #203). UI-only, like the
+   *  canvas mode: off the undo stack, no autosave. */
+  setSimulateHover(on: boolean): void {
+    if (this.simulateHover === on) return;
+    this.simulateHover = on;
     this.emit('lens');
   }
 

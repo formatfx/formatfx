@@ -527,6 +527,23 @@ visual-compare harness (screenshot comparison, all 9 pairs MATCH on
    import usually means exactly this.
 6. The renderer **silently drops** styles not on the allow-list — exactly
    like SP. Surfacing them is the linter's job, not the renderer's.
+7. **Hover-reveal (`sp-card-showOnHoverParent` / `sp-card-showOnHoverChild`)
+   works in column formatters, row formatters AND tile/gallery formatters**
+   — no gallery view required, and no `additionalRowClass` or `sp-row-card`
+   scaffolding needed. Empirically confirmed in the sharepoint-list-formatting
+   skill corpus (ported here 2026-07-05, issue #203); no fresh tenant pass
+   needed. The mechanism is pure CSS: the child class hides the element
+   (`visibility:hidden`) and a **descendant `:hover` selector** on the parent
+   class reveals it — `theme.ts` emulates exactly this pair, verbatim:
+   `.sp-card-showOnHoverChild{visibility:hidden}` +
+   `.sp-card-showOnHoverParent:hover .sp-card-showOnHoverChild{visibility:visible}`.
+   Consequences the linter teaches (`hover-child-no-parent` warning,
+   `hover-parent-no-child` info, enforced by `core.test.ts` — the tests are
+   the spec): a child with no parent-class *ancestor* never appears (both
+   classes on the same element doesn't work — a hidden element can't be
+   hovered); a parent with no child in its subtree is inert; the pairing
+   never crosses a `customCardProps` boundary, because the card body renders
+   in a callout, not as a DOM descendant of the host.
 
 Blank-cell comparison semantics (dates, lookups, people) are also
 live-verified and settled — they're enforced by `core.test.ts` /
