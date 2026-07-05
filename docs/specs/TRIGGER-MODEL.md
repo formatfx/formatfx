@@ -1,10 +1,13 @@
 # TRIGGER MODEL — one workflow for binding content to hover cards, click cards and row actions
 
-> Design exploration for issue #204, written 2026-07-05. **Direction proposed,
-> not locked** — nothing here is canon until the owner signs off. Companion to
-> the hover-reveal work (issue #203, shipped: HANDOFF §3.7, lint pairing rules,
-> the inspector "Reveal on hover" toggle, the canvas simulate-hover pin).
-> Includes the advanced-toolbox authoring-parity audit (#203 item 4).
+> Design for issue #204, written 2026-07-05. **Direction locked 2026-07-05**:
+> the owner delegated the §8 open questions ("you're very capable of answering
+> that for me — finish 204") and asked for the components pane to be redesigned
+> into the same inventory language as Columns and Views while we're here.
+> Companion to the hover-reveal work (issue #203, shipped: HANDOFF §3.7, lint
+> pairing rules, the inspector "Reveal on hover" toggle, the canvas
+> simulate-hover pin). Includes the advanced-toolbox authoring-parity audit
+> (#203 item 4).
 
 ## 1. Problem
 
@@ -50,7 +53,30 @@ What stays *in* the component: nothing trigger-shaped. A component may hint
 the picker can use that hint to preselect "open card", but the hint is
 cosmetic, never binding.
 
-## 3. Proposed answer to question 2: the apply gesture (drop-target model)
+## 2b. Implementation status (2026-07-05, same day)
+
+Shipped alongside the components-pane inventory redesign:
+
+- **`src/editor/triggerBind.ts`** (pure, contract in `triggerBind.test.ts`):
+  the candidate scan (`candidateHostPaths`/`canHostTrigger`), the fixed
+  `TriggerSpec` vocabulary, and `applyTriggerAt` — the robust-pattern
+  generator (§5) for all five action kinds.
+- **The mapper's trigger picker** (`componentLibrary.ts`): "Where should this
+  appear?" — inline (default, unchanged one-click apply) or hover/click card
+  on a picked candidate division, with placement; Insert = one
+  `mutateDocument` (overlay + card props + stamped component together) and
+  selects the trigger carrier. DOM contract in `componentLibrary.test.ts`.
+- **The inspector's action door**: "⚡ Make this a click surface" on any
+  candidate division generates the `sp-card-defaultClickButton` overlay with
+  a `defaultClick` action (one undo step, overlay selected) — the action
+  kind/params are then tuned in the standard Row action section, which
+  already speaks the full vocabulary.
+- Still open (aspirational, per §3): the drag-and-drop drop-target gesture
+  with canvas highlighting, and dedicated executeFlow/setValue param pickers
+  in the picker itself (the generator supports them; the lint gate refuses
+  blanks at deploy).
+
+## 3. The apply gesture (drop-target model)
 
 When a component is applied **as a card or action**:
 
@@ -156,16 +182,17 @@ forms, (3) `defaultHoverField`/`inlineEditField` pickers.
 - Any new runtime dependency, localStorage key or `wb-` prefix change — none
   needed.
 
-## 8. Open questions for the owner
+## 8. Decisions (owner-delegated, 2026-07-05)
 
-1. Does the trigger picker live inside the existing component mapper dialog
-   (one more section) or as a second step after slot mapping? (Proposal: same
-   dialog, collapsed "Where should this appear?" section, defaulting to
-   "replace selection / add as element" so plain applies stay one click.)
-2. When a maker picks "open card" on a division that already carries a
-   *hover-reveal* (style-level) trigger, do we warn, allow silently, or
-   offer to convert? (Proposal: allow — they compose safely — but explain in
-   the picker's fine print.)
-3. Is `link` (plain `a href`) worth having in the action vocabulary, or does
-   it stay an element-level concern outside the trigger model? (Proposal:
-   keep it — makers think "click → go somewhere" as one family.)
+1. **The trigger picker lives inside the component mapper dialog** as a
+   "Where should this appear?" section after slot mapping. It defaults to the
+   plain apply (replace selection / add as element / row layout), so applying
+   a component with no trigger stays exactly one click; picking "as a hover
+   card / click card / action body" expands the fixed-vocabulary form.
+2. **Hover-reveal and structural triggers compose silently.** A division can
+   carry `sp-card-showOnHover*` classes AND gain a card/action — they operate
+   at different layers and work together on real SP. The picker explains the
+   combination in its fine print instead of warning.
+3. **`link` stays in the action vocabulary.** Makers think "click → go
+   somewhere" as one family; the generator emits the overlay `a` pattern (or
+   sets `href` directly when the host is already an `a`).

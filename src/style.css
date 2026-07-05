@@ -262,11 +262,13 @@ body {
 /* library mode: the browser replaces the doc-pill row + tree body */
 .wb-lp-library-open .wb-doc-pill-row,
 .wb-lp-library-open #wb-tree-body { display: none; }
-.wb-complib { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px !important; }
+/* tree-density stack: rows sit tight like the structure tree; the headings
+   carry the breathing room instead of a fat flex gap (owner redesign 2026-07-05) */
+.wb-complib { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px !important; }
 .wb-complib[hidden] { display: none; }
 .wb-complib-group {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--wb-lp-text-2); margin-top: 2px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin: 6px 0 2px;
+  color: var(--wb-lp-text-2);
 }
 .wb-complib-empty { font-size: 11px; font-style: italic; color: var(--wb-lp-text-2); }
 .wb-comp-card,
@@ -304,14 +306,15 @@ body {
   background: transparent; color: var(--wb-component);
 }
 .wb-comp-add:hover { background: var(--wb-component-bg); }
-/* the row-scoped sibling: a pointer into New rowview (one implementation) */
+/* the row-scoped sibling: a pointer into New rowview (one implementation) —
+   a single dashed ROW now, matching the inventory rows around it */
 .wb-comp-rowlink {
-  display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; cursor: pointer;
-  border: 1px dashed var(--wb-lp-border); border-radius: 8px;
+  display: flex; align-items: center; gap: 4px; padding: 3px 8px; cursor: pointer;
+  border: 1px dashed var(--wb-lp-border); border-radius: 3px;
   background: transparent; color: var(--wb-lp-text); font: inherit; text-align: left;
 }
-.wb-comp-rowlink:hover { border-color: var(--wb-component); }
-.wb-comp-rowlink-name { font-size: 12px; font-weight: 600; }
+.wb-comp-rowlink:hover { border-color: var(--wb-component); color: var(--wb-component); }
+.wb-comp-rowlink-name { font-size: 11px; font-weight: 600; }
 .wb-comp-rowlink-desc { font-size: 10.5px; color: var(--wb-lp-text-2); line-height: 1.4; }
 /* the project inventory ("In this project"): top-level headers, the usage
    count chip, and the show-usages jump rows */
@@ -411,6 +414,31 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 }
 .wb-comp-lineage { font-size: 10.5px; font-style: italic; color: var(--wb-lp-text-2); }
 .wb-comp-variantcard { margin-left: 14px; border-left: 3px solid var(--wb-component-border); }
+
+/* ── the ⬡ inventory ROWS (owner redesign 2026-07-05): the pane speaks the
+   structure tree's language — wb-tree-row hover/actions, teal ink, and a
+   click-to-expand details drawer instead of always-on cards ─────────────── */
+.wb-comp-node { display: flex; flex-direction: column; }
+.wb-comp-row { gap: 4px; }
+.wb-comp-row .wb-comp-mark { font-size: 12px; }
+.wb-comp-rowname { color: var(--wb-component); font-size: 11px; }
+.wb-comp-row.wb-comp-row-open,
+.wb-comp-row:hover { background: color-mix(in srgb, var(--wb-component) 7%, transparent); }
+.wb-comp-row .wb-comp-count { padding: 1px 6px; }
+.wb-comp-row .wb-tree-actions button { font-size: 11px; color: var(--wb-lp-text-2); }
+.wb-comp-row .wb-tree-actions button:hover { color: var(--wb-component); }
+.wb-comp-row[draggable="true"] { cursor: grab; }
+.wb-comp-row[draggable="true"]:active { cursor: grabbing; }
+.wb-comp-details {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 0 0 4px 7px; padding: 4px 6px 6px 10px;
+  border-left: 2px solid var(--wb-component-border);
+}
+.wb-comp-details[hidden] { display: none; }
+.wb-comp-variantnode { margin-left: 14px; border-left: 3px solid var(--wb-component-border); }
+
+/* the mapper's trigger picker fine print (issue #204) */
+.wb-compmap-fine { font-size: 10.5px; line-height: 1.45; }
 .wb-comp-edit {
   font-size: 11px; padding: 4px 8px; cursor: pointer;
   border: 1px solid var(--wb-lp-border); border-radius: 5px;

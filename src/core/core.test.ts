@@ -178,6 +178,22 @@ describe('linter', () => {
     expect(issue.path).toEqual([1, -1, 1]);
   });
 
+  it('card-trigger-button fires only for CLICK-opened cards — hover is never swallowed by children', () => {
+    // the field observation behind the rule is about CLICK swallowing; a
+    // hover card on a division with children is the exact shape the #204
+    // apply workflow generates, and it works on real SP
+    const shape = (openOnEvent: 'click' | 'hover'): FormatterDocument => ({
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        customCardProps: { openOnEvent, formatter: { elmType: 'div', txtContent: 'card' } },
+        children: [{ elmType: 'span', txtContent: 'x' }],
+      },
+    });
+    expect(lintDocument(shape('click')).map((i) => i.rule)).toContain('card-trigger-button');
+    expect(lintDocument(shape('hover')).map((i) => i.rule)).not.toContain('card-trigger-button');
+  });
+
   it('retracted canon stays retracted: CFR-in-card and inlineEditField-in-forEach are clean', () => {
     const doc: FormatterDocument = {
       kind: 'column',

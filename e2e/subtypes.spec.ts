@@ -81,9 +81,9 @@ test('catalog lists fitting seeds + your components; legacy customs migrate in; 
   // applying the migrated component renders it on the column
   await mine.click();
   await expect(page.locator('.wb-grid-cell[data-col="2"]').first()).not.toHaveText('');
-  // and it shows in the ⬡ library under Yours
+  // and it shows in the ⬡ library under Yours (as an inventory-idiom row)
   await page.locator('.wb-fmt-tab-comp').click();
-  await expect(page.locator('.wb-comp-card', { hasText: 'My Due Look' })).toBeVisible();
+  await expect(page.locator('.wb-comp-rowname', { hasText: 'My Due Look' }).first()).toBeVisible();
 });
 
 test('picking a seed snapshot-applies it: the cell renders it and Ctrl+Z restores prior state', async ({ page }) => {

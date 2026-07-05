@@ -6,7 +6,7 @@
  * Edits commit on change/blur and go through the state store (undoable).
  */
 
-import type { SPElement, SPExpr, CustomRowAction } from '../core/types';
+import type { SPElement, SPExpr, CustomRowAction, NodePath } from '../core/types';
 import {
   ELM_TYPES, ALLOWED_STYLES, ALLOWED_ATTRIBUTES, ROW_ACTIONS, DIRECTIONAL_HINTS,
   STYLE_VALUE_SUGGESTIONS, ATTRIBUTE_VALUE_SUGGESTIONS,
@@ -20,6 +20,7 @@ import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
 import { hoverRevealStatus, setRevealOnHover } from './hoverReveal';
+import { canHostTrigger, applyTriggerAt } from './triggerBind';
 
 /** Common-but-unlisted style properties offered as one-click "quick adds" in the
  *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
@@ -314,7 +315,31 @@ export function mountInspector(host: HTMLElement): void {
 
     // customRowAction
     const cra = node.customRowAction;
+    // the trigger model's action door (issue #204): on a candidate division
+    // (children, no card/action inside), generate the robust click surface —
+    // the sp-card-defaultClickButton overlay — instead of letting children
+    // swallow a raw customRowAction click. One undoable step; the overlay
+    // gets selected so its action can be tuned right here.
+    const clickSurface: HTMLElement[] = [];
+    if (!cra && canHostTrigger(node) && state.selection) {
+      const sel = state.selection;
+      const gen = document.createElement('button');
+      gen.className = 'wb-kv-add';
+      gen.textContent = '⚡ Make this a click surface';
+      gen.title = 'Adds a full-surface overlay button (the robust pattern — child elements can\'t swallow the click) with a defaultClick action, and selects it so you can change the action below. One undoable step.';
+      gen.addEventListener('click', () => {
+        let at: NodePath | null = null;
+        state.mutateDocument(() => {
+          at = applyTriggerAt(state.doc.root, sel, {
+            action: 'defaultClick', cursor: 'pointer', label: 'Open this item',
+          });
+        });
+        if (at) state.select(at);
+      });
+      clickSurface.push(gen);
+    }
     host.appendChild(section('Row action (customRowAction)', [
+      ...clickSurface,
       labeled('action', select(['(none)', ...ROW_ACTIONS.filter((a) => a !== '')], cra?.action ?? '(none)', (v) => commit((n) => {
         if (v === '(none)') delete n.customRowAction;
         else n.customRowAction = { ...(n.customRowAction ?? {}), action: v as CustomRowAction['action'] };
