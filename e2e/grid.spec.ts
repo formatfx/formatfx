@@ -29,7 +29,7 @@ test('header menu formats an unformatted column: scaffold registered, grid rende
     elmType: 'div', txtContent: "='⏰ '+toLocaleDateString(@currentField)",
   }));
   await page.click('#wb-json-apply');
-  await page.locator('.wb-fmt-tab-view').click();
+  await page.locator('.wb-fmt-tab-cols').click(); // COLUMNS = back to the grid
   await expect(page.locator('.wb-grid-row').first()).toContainText('⏰');
   // the cell became a reference — resolved, not a placeholder chip
   await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
@@ -49,24 +49,23 @@ test('"Format this column" is the subtype catalog: type-aware looks, badged, sna
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this column manually' })).toBeVisible();
   // a subtype that does not fit a people column never appears (refuse-don't-guess)
   await expect(page.locator('.wb-grid-menu button', { hasText: 'Data bar' })).toHaveCount(0);
-  // snapshot apply: stay on the grid (View Formatters, not drilled into a column),
+  // snapshot apply: stay on the grid (not drilled into a column),
   // the cell renders avatars, one Ctrl+Z reverts
   await facepile.click();
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-grid-cell img').first()).toBeVisible();
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
 });
 
-test('drilling into a column formatter lights the COLUMN tab; the VIEW tab returns to the named view', async ({ page }) => {
+test('drilling into a column formatter lights the COLUMN tab; clicking it again returns to the grid', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
-  // the VIEW FORMATTERS tab is the way back to the view you drilled from
-  await page.locator('.wb-fmt-tab-view').click();
-  // back on the floor: the dropdown names the grid again
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  // the grid is columns mode's canvas — the COLUMNS tab is the way back
+  await page.locator('.wb-fmt-tab-cols').click();
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(page.locator('.wb-grid-header-label').first()).toBeVisible();
 });
@@ -138,8 +137,8 @@ test('the tree graduates: Type→row starts a NEW view carrying the grid; grid m
   await page.selectOption('#wb-pane-side #wb-kind', 'grid');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status + DueDate group', 'Progress', 'AssignedTo', 'Project']);
-  // …and the view waits in the reopen bar (Stage 2 replaces this with the strip)
-  await expect(page.locator('.wb-grid-returnbar')).toBeVisible();
+  // …and the view waits as a chip in the Stage-2 view strip
+  await expect(page.locator('#wb-viewstrip .wb-viewstrip-chip')).toHaveText('View 1');
 });
 
 test('right-click: column menu on headers, element menu on cell content, remove + undo', async ({ page }) => {
@@ -198,7 +197,7 @@ test('conditional formatting from the header menu: condition → rule → data p
   // the JSON tab shows the sanitized export (Zero Whitespace Rule)
   expect(json).toContain("=if(toString([$DueDate])!=''&&[$DueDate]<@now,'#d13438','')");
   // back on the grid, the cell resolves the new formatter (no placeholder chip)
-  await page.locator('.wb-fmt-tab-view').click();
+  await page.locator('.wb-fmt-tab-cols').click();
   await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
 });
 
@@ -291,4 +290,48 @@ test('the app lands on the grid and the whole on-ramp is click/drag-only', async
   // grouping works
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
   await expect(page.locator('.wb-tree-name', { hasText: 'Status + DueDate group' })).toBeVisible();
+});
+
+test('column tab groups: group via multi-select, pill actions, collapse/expand, persist, ungroup', async ({ page }) => {
+  // Ctrl-select two columns → the selection bar offers browser-style grouping
+  await header(page, 'Status').click({ modifiers: ['Control'] });
+  await header(page, 'DueDate').click({ modifiers: ['Control'] });
+  await page.locator('.wb-areas-bar button', { hasText: 'Group columns' }).click();
+
+  // a colored pill spans the group; the member headers wear its band
+  const pill = page.locator('.wb-grid-grouppill');
+  await expect(pill).toHaveText('Group 1');
+  await expect(page.locator('.wb-grid-header-grouped')).toHaveCount(2);
+  // grouping is display-only — nothing landed on the undo stack (metadata,
+  // like sheet renames), so the undo toolbar button stays disabled
+  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+
+  // collapse via the pill menu — the columns wait intact behind a slim track
+  await pill.click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Collapse' }).click();
+  await expect(page.locator('.wb-grid-header-label'))
+    .toHaveText(['Title', 'Progress', 'AssignedTo', 'Project']);
+  // clicking the slim track expands it again
+  await page.locator('.wb-grid-headrow .wb-grid-collapsed').click();
+  await expect(page.locator('.wb-grid-header-label'))
+    .toHaveText(['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
+
+  // rename via the pill menu
+  await page.locator('.wb-grid-grouppill').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Rename group…' }).click();
+  const input = page.locator('.wb-rename-input');
+  await input.fill('Delivery');
+  await input.press('Enter');
+  await expect(page.locator('.wb-grid-grouppill')).toHaveText('Delivery');
+
+  // groups are project metadata — they autosave and survive a reload
+  await page.reload();
+  await expect(page.locator('.wb-grid-grouppill')).toHaveText('Delivery');
+
+  // ungroup dissolves the pill; the columns themselves are untouched
+  await page.locator('.wb-grid-grouppill').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Ungroup' }).click();
+  await expect(page.locator('.wb-grid-grouppill')).toHaveCount(0);
+  await expect(page.locator('.wb-grid-header-label'))
+    .toHaveText(['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
 });

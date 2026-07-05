@@ -20,7 +20,7 @@ import { exportJson } from '../core/serializer';
 import { openElementPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { openFormatCells } from './formatCells';
-import { openMenu, closeMenu, type MenuItem } from './menu';
+import { openMenu, closeMenu, openRenamePopover, type MenuItem } from './menu';
 import {
   gridCellForField, defaultColumnFormatter, gridColumnField, gridColumnLabel,
   groupName, unplacedFields, fieldLabel,
@@ -33,6 +33,7 @@ import {
 } from './subtypes';
 import { paletteItemById } from './palette';
 import { createOverlay } from './overlay';
+import { groupForField, GROUP_COLORS, type ColumnGroup } from './colGroups';
 import { cfrFieldName } from '../core/refs';
 import type { SPElement, NodePath, MockField, Subtype, Knob } from '../core/types';
 
@@ -88,6 +89,50 @@ function applyColumnFormatter(col: GridColumn, field: MockField, tree: SPElement
   }
   state.openColumnRef(field.name);
   onToast(msg);
+}
+
+/** The tab-group pill menu: collapse/expand, rename, recolor, ungroup — every
+ *  action is project metadata (the renameView rule: off the undo stack,
+ *  autosaved; the floor document is never touched). */
+function groupMenu(group: ColumnGroup, anchor: HTMLElement, onToast: (m: string) => void): void {
+  const r = anchor.getBoundingClientRect();
+  openMenu(anchor, `${group.name} — column group`, [
+    {
+      icon: group.collapsed ? 'ChevronDown' : 'ChevronUp',
+      label: group.collapsed ? 'Expand' : 'Collapse',
+      title: 'Collapsed columns wait intact — nothing leaves the document',
+      fn: () => {
+        const collapsing = !group.collapsed;
+        state.toggleGroupCollapsed(group.id);
+        onToast(collapsing
+          ? `Collapsed “${group.name}” — its columns wait intact behind the chip`
+          : `Expanded “${group.name}”`);
+      },
+    },
+    {
+      icon: 'Rename', label: 'Rename group…',
+      fn: () => openRenamePopover({ x: r.left, y: r.bottom + 4 }, 'Rename group', group.name, (v) => {
+        state.renameGroup(group.id, v);
+        onToast(`Group renamed to “${state.floorGroups.find((g) => g.id === group.id)?.name ?? group.name}”`);
+      }),
+    },
+    {
+      icon: 'Color', label: 'Color…',
+      fn: () => openMenu({ x: r.left, y: r.bottom + 4 }, `Color for “${group.name}”`, GROUP_COLORS.map((c) => ({
+        icon: 'CircleFill',
+        label: c.name + (group.color === c.color ? ' — current' : ''),
+        fn: () => state.setGroupColor(group.id, c.color),
+      }))),
+    },
+    {
+      icon: 'Clear', label: 'Ungroup',
+      title: 'Dissolve the group — the columns themselves stay exactly where they are',
+      fn: () => {
+        state.ungroupColumns(group.id);
+        onToast(`Ungrouped “${group.name}” — the columns are untouched`);
+      },
+    },
+  ]);
 }
 
 /** Icon for a subtype entry: the palette icon for a preset-derived seed, else a
@@ -449,9 +494,59 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     : [{ el: root, path: [] as NodePath }];
   const unplaced = root.children?.length ? unplacedFields(root, state.fields) : [];
 
+  // ── the tab-group lens (owner brief 2026-07-05) ────────────────────────────
+  // Which group each column belongs to, and the render ENTRIES: every visible
+  // column, plus ONE slim chip track per collapsed group (at its leftmost
+  // member's spot). Collapsed columns stay in the document untouched — the
+  // grid just stops drawing them; data-col keeps the ORIGINAL column index so
+  // selection/drag/drop indices stay valid either way.
+  const groupOf = (col: GridColumn): ColumnGroup | undefined => {
+    if (col.path.length === 0) return undefined;
+    const field = gridColumnField(col.el);
+    return field ? groupForField(state.floorGroups, field) : undefined;
+  };
+  type GridEntry = { col: GridColumn; i: number; group?: ColumnGroup } | { collapsed: ColumnGroup };
+  const entries: GridEntry[] = [];
+  {
+    const chipped = new Set<string>();
+    cols.forEach((col, i) => {
+      const g = groupOf(col);
+      if (g?.collapsed) {
+        if (!chipped.has(g.id)) { chipped.add(g.id); entries.push({ collapsed: g }); }
+        return;
+      }
+      entries.push({ col, i, group: g });
+    });
+  }
+  /** A collapsed group's slim cell — click to expand. The HEADER cell is a
+   *  real button (focusable, Enter/Space work natively); the body-row cells
+   *  keep the pointer convenience but hide from AT so a screen reader hears
+   *  ONE expand control per group, not one per mock row. */
+  const collapsedCell = (g: ColumnGroup, header: boolean): HTMLElement => {
+    const c = document.createElement(header ? 'button' : 'div');
+    c.className = (header ? 'wb-grid-header' : 'wb-grid-cell') + ' wb-grid-collapsed';
+    c.style.setProperty('--wb-group-color', g.color);
+    const label = `Expand “${g.name}” — its ${g.fields.length} column${g.fields.length > 1 ? 's' : ''} wait${g.fields.length > 1 ? '' : 's'} intact`;
+    c.title = label;
+    if (header) {
+      (c as HTMLButtonElement).type = 'button';
+      c.setAttribute('aria-label', label);
+      c.textContent = '⋯';
+    } else {
+      c.setAttribute('aria-hidden', 'true');
+    }
+    c.addEventListener('click', () => {
+      state.toggleGroupCollapsed(g.id);
+      onToast(`Expanded “${g.name}”`);
+    });
+    return c;
+  };
+
   const grid = document.createElement('div');
   grid.className = 'wb-grid';
-  const template = `repeat(${cols.length}, minmax(140px, 1fr))${unplaced.length ? ' 108px' : ''}`;
+  const template = entries
+    .map((e) => ('collapsed' in e ? '36px' : 'minmax(140px, 1fr)'))
+    .join(' ') + (unplaced.length ? ' 108px' : '');
   grid.style.setProperty('--wb-grid-cols', template);
 
   // ── multi-select + "make a row view" bar ──────────────────────────────────
@@ -497,6 +592,22 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       'Turn the selected columns into a stacked row layout — each becomes a sizeable area (one undo step)');
     graduate('tile', '▦ Make a tile',
       'Turn the selected columns into a gallery tile — an explicit layout choice (it can never emerge on its own)');
+    // tab-group the selection (owner brief 2026-07-05) — single-field columns
+    // only: a group is addressed by field names, so a composite has no home
+    const selFields = [...gridSel].sort((a, b2) => a - b2)
+      .map((i2) => (cols[i2] ? gridColumnField(cols[i2].el) : null));
+    if (selFields.every((f): f is string => f !== null)) {
+      const groupBtn = document.createElement('button');
+      groupBtn.className = 'wb-areas-bar-btn wb-areas-bar-group';
+      groupBtn.textContent = '⬒ Group columns';
+      groupBtn.title = 'Group the selected columns like browser tabs — name, color, collapse. Display-only: the exported formatter is unchanged.';
+      groupBtn.addEventListener('click', () => {
+        gridSel.clear();
+        const g = state.groupColumns(selFields);
+        if (g) onToast(`Grouped ${selFields.length} column${selFields.length > 1 ? 's' : ''} as “${g.name}” — click its pill to rename, recolor, or collapse`);
+      });
+      bar.appendChild(groupBtn);
+    }
     const clear = document.createElement('button');
     clear.className = 'wb-areas-bar-btn wb-areas-bar-clear';
     clear.textContent = 'Clear';
@@ -516,13 +627,62 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     refreshBar();
   }
 
+  // ── the tab-group ribbon: one colored pill per contiguous group run ───────
+  if (state.floorGroups.length) {
+    const ribbon = document.createElement('div');
+    ribbon.className = 'wb-grid-groupbar';
+    let run: { group: ColumnGroup; start: number; len: number; collapsed: boolean } | null = null;
+    const flush = (): void => {
+      if (!run) return;
+      const { group: g, start, len, collapsed } = run;
+      run = null;
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'wb-grid-grouppill' + (collapsed ? ' wb-grid-grouppill-collapsed' : '');
+      pill.style.gridColumn = `${start + 1} / span ${len}`;
+      pill.style.setProperty('--wb-group-color', g.color);
+      pill.textContent = collapsed ? `▸ ${g.name}` : g.name;
+      pill.title = collapsed
+        ? `“${g.name}” is collapsed — its ${g.fields.length} column${g.fields.length > 1 ? 's' : ''} wait intact. Click for group actions.`
+        : `Column group “${g.name}” — click to rename, recolor, collapse, or ungroup`;
+      pill.addEventListener('click', (e) => {
+        e.stopPropagation();
+        groupMenu(g, pill, onToast);
+      });
+      ribbon.appendChild(pill);
+    };
+    entries.forEach((e, idx) => {
+      const isCollapsed = 'collapsed' in e;
+      const g = isCollapsed ? e.collapsed : e.group;
+      if (!g) { flush(); return; }
+      if (run && run.group.id === g.id && !run.collapsed && !isCollapsed && run.start + run.len === idx) {
+        run.len++;
+        return;
+      }
+      flush();
+      run = { group: g, start: idx, len: 1, collapsed: isCollapsed };
+    });
+    flush();
+    grid.appendChild(ribbon);
+  }
+
   // header row
   const headrow = document.createElement('div');
   headrow.className = 'wb-grid-headrow';
-  cols.forEach((col, i) => {
+  entries.forEach((entry) => {
+    if ('collapsed' in entry) {
+      headrow.appendChild(collapsedCell(entry.collapsed, true));
+      return;
+    }
+    const { col, i, group: colGroup } = entry;
     const h = document.createElement('div');
     h.className = 'wb-grid-header';
     h.dataset.col = String(i);
+    if (colGroup) {
+      h.classList.add('wb-grid-header-grouped');
+      h.style.setProperty('--wb-group-color', colGroup.color);
+      h.dataset.group = colGroup.id;
+    }
     h.tabIndex = 0;
     h.setAttribute('role', 'button');
     h.setAttribute('aria-haspopup', 'menu');
@@ -639,7 +799,12 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     const rowEl = document.createElement('div');
     rowEl.className = 'wb-grid-row';
     const ctx = ctxForRow(rowIndex);
-    cols.forEach((col, i) => {
+    entries.forEach((entry) => {
+      if ('collapsed' in entry) {
+        rowEl.appendChild(collapsedCell(entry.collapsed, false));
+        return;
+      }
+      const { col, i } = entry;
       const cell = document.createElement('div');
       cell.className = 'wb-grid-cell';
       cell.dataset.col = String(i);
@@ -706,29 +871,6 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     grid.appendChild(empty);
   }
 
-  // ⟳ the way back: minimizing a sheet lands here, and the sheet waits intact
-  // in the view list — offer the reopen right where the maker is looking.
-  // Session memory picks the last sheet that was up; otherwise the newest.
-  // Stage 2's tab strip replaces this bar (FLOOR-AND-SHEETS Stage 1 → 2).
-  const returnView = (state.lastOpenViewId ? state.viewById(state.lastOpenViewId) : undefined)
-    ?? state.views[state.views.length - 1];
-  if (returnView) {
-    const noun = returnView.doc.kind === 'tile' ? 'tile layout' : 'row view';
-    const ret = document.createElement('div');
-    ret.className = 'wb-grid-returnbar';
-    const text = document.createElement('span');
-    text.textContent = `You're on the grid — “${returnView.name}” is intact in your views.`;
-    const btn = document.createElement('button');
-    btn.className = 'wb-grid-returnbar-btn';
-    btn.textContent = `⟳ Reopen ${returnView.name}`;
-    btn.title = `Open the “${returnView.name}” ${noun} again — it was never touched`;
-    btn.addEventListener('click', () => {
-      state.openView(returnView.id);
-      onToast(`Reopened “${returnView.name}”`);
-    });
-    ret.append(text, btn);
-    host.appendChild(ret);
-  }
   host.appendChild(bar);
   host.appendChild(grid);
   refreshBar();

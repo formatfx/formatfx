@@ -4,7 +4,9 @@
  * Builds and wires the whole left column, top to bottom: the FORMATTERS bar
  * (the ← back + 🕘 snapshot buttons leading the VIEWS / COLUMNS / COMPONENTS
  * tabs — no visible "Formatters" label; the tablist carries that name via
- * aria-label instead), the document dropdown (the pill
+ * aria-label instead), the VIEW STRIP (the workbook's sheet tabs: the grid
+ * floor + one chip per named view + ＋ — FLOOR-AND-SHEETS Stage 2), the
+ * document dropdown (the pill
  * naming what's on the canvas — its menu browses/renames views or the
  * formatted-columns gallery), the structure tree, a drag splitter, the
  * Simple/Pro/Code lens tabs, the draw toolbar (Select / Text / Frame / Icon /
@@ -13,6 +15,7 @@
  */
 
 import { state, type EditorLens } from './state';
+import { mountViewStrip } from './viewStrip';
 import { mountTree } from './treeView';
 import { mountInspector } from './inspector';
 import { mountCodeEditor } from './codeEditor';
@@ -80,6 +83,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         </div>
       </div>
     </div>
+    <div id="wb-viewstrip"></div>
     <div class="wb-lp-tree" id="wb-lp-tree">
       <div class="wb-doc-pill-row">
         <button class="wb-doc-pill" id="wb-doc-pill" aria-haspopup="menu">
@@ -116,15 +120,22 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   `;
 
   // ── mount the relocated panels ─────────────────────────────────────────────
+  // The view strip is the workbook's sheet tabs (FLOOR-AND-SHEETS Stage 2) —
+  // it sits above the tree region so it stays visible in every mode: on the
+  // floor, on a sheet, drilled into a column formatter, or browsing the
+  // component library. Flipping surfaces under a drill is an owner requirement.
+  mountViewStrip(host.querySelector<HTMLElement>('#wb-viewstrip')!, toast);
   mountTree(host.querySelector<HTMLElement>('#wb-tree-body')!, toast);
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!);
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
 
   // ── formatter tabs + document dropdown ─────────────────────────────────────
-  // Which tab is active derives from workspace state, exactly like the old
-  // breadcrumb did: drilled into a column ref, or a main doc whose kind is
-  // 'column', reads as the COLUMN FORMATTERS tab.
-  const isColumnMode = (): boolean =>
+  // Which tab is active derives from workspace state. A drilled column ref
+  // (or a kind-'column' doc) reads as COLUMNS; so does STANDING ON THE GRID —
+  // the grid floor IS the Columns tab's canvas (owner call 2026-07-05, the
+  // Stage-2 amendment: no flip-flop button, Columns mode opens the grid).
+  // VIEWS is active exactly while a sheet is up and no column is drilled.
+  const isColumnDoc = (): boolean =>
     state.activeDocKey !== 'main' || state.doc.kind === 'column';
 
   const viewTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-view')!;
@@ -135,15 +146,14 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const pillName = pill.querySelector<HTMLElement>('.wb-doc-pill-name')!;
   const pillType = pill.querySelector<HTMLElement>('.wb-doc-pill-type')!;
 
-  // the column formatter last on the canvas — where the COLUMN tab returns to
-  let lastColumnKey: string | null = null;
   // COMPONENTS is a library browser, not a document on the canvas — a local
   // UI mode that any doc navigation (tab click or canvas drill-in) exits
   let libraryOpen = false;
 
   const refreshFmtNav = (): void => {
-    const cols = !libraryOpen && isColumnMode();
-    const view = !libraryOpen && !isColumnMode();
+    const drilled = isColumnDoc();
+    const cols = !libraryOpen && (drilled || state.onFloor);
+    const view = !libraryOpen && !drilled && !state.onFloor;
     host.classList.toggle('wb-lp-library-open', libraryOpen);
     libHost.hidden = !libraryOpen;
     compTab.classList.toggle('active', libraryOpen);
@@ -152,8 +162,10 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     viewTab.setAttribute('aria-selected', String(view));
     colsTab.classList.toggle('active', cols);
     colsTab.setAttribute('aria-selected', String(cols));
-    pill.classList.toggle('wb-doc-pill-col', cols);
-    if (cols) {
+    // the pill is violet only for an actual column DOCUMENT — standing on the
+    // grid keeps the blue surface pill ("Grid · list row schema")
+    pill.classList.toggle('wb-doc-pill-col', drilled);
+    if (drilled) {
       const fieldName = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
       pillName.textContent = state.fields.find((f) => f.name === fieldName)?.displayName ?? fieldName;
       pillType.textContent = columnTypeLabel(fieldName);
@@ -165,31 +177,47 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     }
   };
 
-  const surfaceLabel = (): string =>
-    state.onFloor ? 'the grid' : `the ${state.activeViewName} view formatter`;
-
   viewTab.addEventListener('click', () => {
     libraryOpen = false;
-    if (state.activeDocKey !== 'main') {
-      state.openMain();
-      toast(`Back to ${surfaceLabel()}`);
+    const wasDrilled = state.activeDocKey !== 'main';
+    if (wasDrilled) state.openMain(); // leave the drill → the surface below it
+    if (!state.onFloor) {
+      if (wasDrilled) toast(`Back to the ${state.activeViewName} view formatter`);
+      refreshFmtNav();
+      return;
     }
-    refreshFmtNav();
+    // standing on the grid: the grid belongs to the COLUMNS tab now, so VIEWS
+    // returns to the sheet last on the canvas (newest as the fallback) — and
+    // with no sheets yet, the View Formatters menu is the "+ New …" on-ramp.
+    const target = (state.lastOpenViewId ? state.viewById(state.lastOpenViewId) : undefined)
+      ?? state.views[state.views.length - 1];
+    if (target) {
+      state.openView(target.id);
+      toast(`Opened “${target.name}”`);
+      refreshFmtNav();
+    } else {
+      refreshFmtNav();
+      openViewMenu(pill, toast);
+    }
   });
   colsTab.addEventListener('click', () => {
     const wasLibrary = libraryOpen;
     libraryOpen = false;
-    if (isColumnMode()) { if (wasLibrary) refreshFmtNav(); return; }
-    const names = Object.keys(state.columnRefs);
-    const target = lastColumnKey && Object.hasOwn(state.columnRefs, lastColumnKey) ? lastColumnKey : names[0];
-    if (target) {
-      state.openColumnRef(target);
-      toast(`Editing the ${target} column formatter`);
-    } else {
-      // nothing registered yet — the gallery's "Not yet formatted" list is the on-ramp
+    // COLUMNS opens the GRID — the floor is columns mode's canvas (owner call
+    // 2026-07-05). From a drill: back to the surface first; from a sheet:
+    // minimize (navigation — the sheet waits in the strip). Clicking it when
+    // the grid is already up browses the formatted-columns gallery instead.
+    const wasDrilled = state.activeDocKey !== 'main';
+    if (wasDrilled) state.openMain();
+    if (!state.onFloor) {
+      state.minimizeView();
+      toast('Your columns grid — views wait in the strip on the left');
       refreshFmtNav();
-      openColumnGallery(pill, toast);
+      return;
     }
+    if (wasDrilled) { toast('Back to the grid'); refreshFmtNav(); return; }
+    refreshFmtNav();
+    if (!wasLibrary) openColumnGallery(pill, toast);
   });
   compTab.addEventListener('click', () => {
     if (libraryOpen) return;
@@ -199,7 +227,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   });
   pill.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (isColumnMode()) openColumnGallery(pill, toast);
+    if (isColumnDoc()) openColumnGallery(pill, toast);
     else openViewMenu(pill, toast);
   });
 
@@ -331,7 +359,6 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const unsub = state.subscribe((reason) => {
     if (reason === 'lens') applyLens();
     if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo();
-    if (reason === 'load' && state.activeDocKey !== 'main') lastColumnKey = state.activeDocKey;
     // a doc switch (canvas drill-in, back button, …) exits the library browser
     if (reason === 'load') libraryOpen = false;
     if (reason === 'load' || reason === 'data' || reason === 'kind') { refreshFmtNav(); refreshBack(); }

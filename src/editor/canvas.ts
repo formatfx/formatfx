@@ -21,9 +21,11 @@ import { openTemplateModal } from './templateModal';
 import { styleBannerLabel } from './styleScope';
 import { cfrBlastRadius } from './cfr';
 
-/** The Stage-3 row-view toolbar: density (Roomy/Compact) + back to the grid.
+/** The Stage-3 row-view toolbar: density (Roomy/Compact) + Templates.
  *  Area/zone sizing lives in the template builder's inspector (the old
- *  right-click Area width entries were retired — FLOOR-AND-SHEETS Stage 0). */
+ *  right-click Area width entries were retired — FLOOR-AND-SHEETS Stage 0);
+ *  "◧ Back to grid" retired with Stage 2 — minimizing lives on the LEFT,
+ *  in the view strip, with the other view actions. */
 function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'wb-rowview-bar';
@@ -55,17 +57,6 @@ function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   templates.addEventListener('click', () => openTemplateModal(onToast));
   bar.appendChild(templates);
 
-  const back = document.createElement('button');
-  back.className = 'wb-rowview-bar-btn wb-rowview-back';
-  back.textContent = '◧ Back to grid';
-  back.title = 'Drop back to the grid floor. This view is untouched — "⟳ Reopen" above the grid (or the view menu) brings it back.';
-  back.addEventListener('click', () => {
-    const name = state.activeViewName;
-    // navigation, never a mutation: the sheet waits intact in the view list
-    state.minimizeView();
-    onToast(`Back to the grid — "⟳ Reopen ${name}" above the grid takes you back`);
-  });
-  bar.appendChild(back);
   return bar;
 }
 

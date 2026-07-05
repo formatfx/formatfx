@@ -95,8 +95,8 @@ test('picking a seed snapshot-applies it: the cell renders it and Ctrl+Z restore
   await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
   await page.locator('.wb-grid-menu button', { hasText: 'Due-date badge' }).click();
 
-  // stayed on the grid (View Formatters, not drilled); the cell now renders the badge
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  // stayed on the grid (not drilled); the cell now renders the badge
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(dueCell.locator('[style*="border-radius"]').first()).toBeVisible();
 
   // a single Ctrl+Z reverts to the plain cell
@@ -171,7 +171,7 @@ test('Save as component: a column format becomes a reusable component (Yours), a
   // the day counter renders "N days left/overdue" text in End's cells
   await expect(page.locator('.wb-grid-cell[data-col="2"]').first()).toContainText(/days/);
   // snapshot-apply semantics: stayed on the grid, one Ctrl+Z reverts
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid-cell[data-col="2"]').first()).not.toContainText(/days/);
 });

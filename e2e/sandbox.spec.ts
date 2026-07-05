@@ -19,9 +19,10 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-row')).toHaveCount(3);
-  // formatter navigation: the VIEW FORMATTERS tab is active, the document
-  // dropdown names the view, and the tree shows the view's structure
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  // formatter navigation: the grid IS columns mode (Stage 2, owner call
+  // 2026-07-05) — the COLUMNS tab is active, the document dropdown names the
+  // grid, and the tree shows its structure
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(page.locator('.wb-doc-pill-type')).toHaveText('list row schema');
   // the registered column formatters live behind the COLUMN FORMATTERS tab's

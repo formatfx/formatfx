@@ -26,9 +26,10 @@ async function loadRowFixture(page: Page): Promise<void> {
 }
 
 test('edit a column formatter, switch back, the view reflects it (CFR round-trip)', async ({ page }) => {
-  // open the Status column formatter via the COLUMN FORMATTERS tab
-  // (Status is first in the registry, so the tab lands on it)
+  // open the Status column formatter via the COLUMNS tab's gallery (clicking
+  // COLUMNS while the grid is up browses the formatted columns)
   await page.locator('.wb-fmt-tab-cols').click();
+  await page.locator('.wb-colgal-card', { has: page.locator('.wb-colgal-label', { hasText: 'Status' }) }).click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   await expect(page.locator('.wb-current-chip')).toContainText('@currentField → Status');
   // change the pill text via the JSON pane
@@ -39,8 +40,8 @@ test('edit a column formatter, switch back, the view reflects it (CFR round-trip
   }));
   await page.click('#wb-json-apply');
   await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('»In Progress«');
-  // back to the view — the grid's Status column renders the edited formatter
-  await page.locator('.wb-fmt-tab-view').click();
+  // back to the grid — its Status column renders the edited formatter
+  await page.locator('.wb-fmt-tab-cols').click();
   await expect(page.locator('.wb-grid-row').first()).toContainText('»In Progress«');
 });
 
@@ -265,7 +266,6 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
 });
 
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-view').click();
   // inserts at the grid root — arrives as a new grid column
   await openPalette(page);
   await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
@@ -309,6 +309,7 @@ test('Structure pane: an unregistered reference tag is inert', async ({ page }) 
   const ghostRow = page.locator('.wb-tree-row', { has: ghostTag });
   await expect(ghostRow.locator('.wb-tree-name')).toHaveText('Ghost');
   await ghostTag.click();
-  // still on the view — the click only selected the host row
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  // still on the grid — the click only selected the host row
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
 });

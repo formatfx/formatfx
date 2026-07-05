@@ -61,7 +61,7 @@ test('drilled into a column, the snapshot still captures (and restores) that col
   // restore the snapshot — back on the view, the original Status pill renders
   await page.click('#wb-snap-btn');
   await page.locator('.wb-snapmenu .wb-snap-restore').first().click();
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-grid-row').first()).not.toContainText('X-In Progress');
 });
 
@@ -78,7 +78,7 @@ test('a snapshot restores the view AND a column formatter in one undoable step',
   await openJson(page);
   await page.fill('#wb-json-text', JSON.stringify({ elmType: 'div', txtContent: "='Y-'+[$Status]" }));
   await page.click('#wb-json-apply');
-  await page.locator('.wb-fmt-tab-view').click();
+  await page.locator('.wb-fmt-tab-cols').click(); // back to the grid
   await expect(header(page, 'DueDate')).toHaveCount(0);
   await expect(page.locator('.wb-grid-row').first()).toContainText('Y-In Progress');
 
@@ -158,6 +158,6 @@ test('the ← button retraces doc switches — not undo', async ({ page }) => {
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   await back.click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(back).toBeDisabled();
 });

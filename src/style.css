@@ -806,6 +806,37 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-grid-headrow, .wb-grid-row { display: grid; grid-template-columns: var(--wb-grid-cols); }
 .wb-grid-headrow { border-bottom: 1px solid var(--wb-border); }
+
+/* ── column tab groups (owner brief 2026-07-05): the browser-tab-group model ─
+   Presentational only — a named colored pill spans the group's columns, the
+   member headers wear a matching band, and a collapsed group shrinks to one
+   slim clickable track. The ribbon shares the rows' track template so the
+   pills stay glued to their columns. */
+.wb-grid-groupbar {
+  display: grid; grid-template-columns: var(--wb-grid-cols);
+  padding-top: 4px;
+}
+.wb-grid-grouppill {
+  justify-self: start; max-width: calc(100% - 12px);
+  margin: 0 6px 4px; padding: 1px 10px; cursor: pointer;
+  border: 1px solid var(--wb-group-color); border-radius: 999px;
+  background: color-mix(in srgb, var(--wb-group-color) 14%, transparent);
+  color: var(--wb-group-color); font: inherit; font-size: 10.5px; font-weight: 700;
+  line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-grid-grouppill:hover { background: color-mix(in srgb, var(--wb-group-color) 26%, transparent); }
+.wb-grid-grouppill-collapsed { justify-self: stretch; max-width: none; margin: 0 2px 4px; padding: 1px 4px; text-align: center; }
+/* member headers wear the group's band (box-shadow: no layout shift) */
+.wb-grid-header-grouped { box-shadow: inset 0 2px 0 0 var(--wb-group-color); }
+/* the collapsed group's slim track — click anywhere on it to expand
+   (the header cell is a real <button>, hence the font/border resets) */
+.wb-grid-collapsed {
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  min-width: 0; padding: 0; border: none; font: inherit;
+  background: color-mix(in srgb, var(--wb-group-color) 8%, transparent);
+  color: var(--wb-group-color); font-weight: 700;
+}
+.wb-grid-collapsed:hover { background: color-mix(in srgb, var(--wb-group-color) 18%, transparent); }
 .wb-grid-row { border-bottom: 1px solid var(--wb-border); }
 .wb-grid-row:last-child { border-bottom: none; }
 .wb-grid-row:hover { background: color-mix(in srgb, var(--wb-bg) 55%, transparent); }
@@ -1023,7 +1054,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-areas-bar-clear { background: transparent; color: var(--wb-text-2); border-color: var(--wb-border); }
 .wb-areas-bar-clear:hover { color: var(--wb-accent); border-color: var(--wb-accent); filter: none; }
 
-/* ── stage 3: row-view toolbar (density + back to grid) ────── */
+/* ── stage 3: row-view toolbar (density + Templates) ────── */
 .wb-rowview-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 8px; padding: 6px 10px; font-size: 12px;
@@ -1038,18 +1069,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-rowview-bar-btn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 .wb-rowview-bar-btn.active { background: var(--wb-accent); color: var(--wb-accent-text); border-color: var(--wb-accent); }
-/* ⟳ the way back from the grid to the row/tile view it relabeled */
-.wb-grid-returnbar {
-  display: flex; align-items: center; gap: 10px; margin: 0 0 6px;
-  padding: 5px 10px; font-size: 12px; color: var(--wb-text-2);
-  border: 1px solid var(--wb-border); border-radius: 4px; background: var(--wb-surface);
-}
-.wb-grid-returnbar-btn {
-  padding: 2px 8px; font-size: 12px; cursor: pointer; white-space: nowrap;
-  border: 1px solid var(--wb-border); border-radius: 3px; background: transparent; color: inherit;
-}
-.wb-grid-returnbar-btn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-rowview-back { margin-left: 0; }
 
 /* selection + emulation affordances inside the preview.
    Deliberately NOT a solid border: dashed, offset away from the element and
@@ -2696,6 +2715,42 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-doc-pill.wb-doc-pill-col:hover { background: var(--wb-shared-bg); }
 .wb-doc-pill.wb-doc-pill-col .wb-doc-pill-type,
 .wb-doc-pill.wb-doc-pill-col .wb-doc-pill-caret { color: var(--wb-shared); }
+
+/* ── the view strip (FLOOR-AND-SHEETS Stage 2) — the workbook's sheet tabs ──
+   Grid floor + one chip per named view + ＋. Always visible (every mode incl.
+   a column drill — flipping surfaces under a drill is an owner requirement);
+   chips wrap rather than scroll so no view is ever off-screen. */
+.wb-viewstrip {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 6px 8px; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-viewstrip-chip {
+  display: inline-flex; align-items: center; max-width: 140px;
+  padding: 3px 9px; cursor: pointer;
+  border: 1px solid var(--wb-lp-border); border-radius: 999px;
+  background: transparent; color: var(--wb-lp-text-2); font: inherit;
+  font-size: 11.5px; font-weight: 600; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-viewstrip-chip:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-viewstrip-chip.active {
+  border-color: var(--wb-accent); color: var(--wb-accent);
+  background: color-mix(in srgb, var(--wb-accent) 10%, transparent);
+}
+.wb-viewstrip-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; cursor: pointer;
+  border: 1px dashed var(--wb-lp-border); border-radius: 999px;
+  background: transparent; color: var(--wb-lp-text-2); font: inherit;
+  font-size: 12px; line-height: 1;
+}
+.wb-viewstrip-add:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-viewstrip-input {
+  flex: 0 1 140px; min-width: 70px; padding: 2px 8px;
+  border: 1px solid var(--wb-accent); border-radius: 999px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text);
+  font: inherit; font-size: 11.5px; font-weight: 600;
+}
 
 /* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
 .wb-lens-tabs {

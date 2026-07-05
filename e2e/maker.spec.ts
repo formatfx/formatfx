@@ -40,9 +40,9 @@ test('the example/sample loader lives in the ☰ menu, not the topbar', async ({
 test('the formatter tabs state where you are, not a Type dropdown', async ({ page }) => {
   // the old upfront Type dropdown is gone from the topbar
   await expect(page.locator('.wb-topbar #wb-kind')).toHaveCount(0);
-  // default doc is a grid view → the VIEW FORMATTERS tab is active and the
-  // document dropdown names the view
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  // default surface is the grid → the COLUMNS tab is active (the grid is
+  // columns mode's canvas) and the document dropdown names it
+  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
 });
 
