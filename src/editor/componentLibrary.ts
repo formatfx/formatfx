@@ -315,8 +315,9 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     if (componentKind(def) === 'element') {
       el.draggable = true;
       el.addEventListener('dragstart', (e) => {
-        e.dataTransfer?.setData(COMPONENT_MIME, def.id);
-        e.dataTransfer!.effectAllowed = 'copy';
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData(COMPONENT_MIME, def.id);
+        e.dataTransfer.effectAllowed = 'copy';
       });
     }
     cardTitle(def, el, { del: true });

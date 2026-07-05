@@ -3,9 +3,23 @@
  * (an imported internal name) as text, never as HTML — see the matching
  * textContent treatment of the body cells right below it.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mountCanvas } from './canvas';
 import { state } from './state';
+
+// Each test mounts a canvas onto a fresh body-level host, and mountCanvas
+// installs document-level listeners (click, keydown) — tear every host down
+// via its _unsub hook so no listener leaks into later tests. The Escape
+// dispatch first closes any overlay a test left open via its own real path,
+// so createOverlay detaches its document listener too (the viewMenu.test
+// precedent) — a bare .remove() would leak it.
+afterEach(() => {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  document.querySelectorAll<HTMLElement>('body > *').forEach((el) => {
+    (el as unknown as { _unsub?: () => void })._unsub?.();
+    el.remove();
+  });
+});
 
 describe('canvas column preview', () => {
   it('renders the current field name as text, not HTML (no DOM-XSS)', () => {
