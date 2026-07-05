@@ -377,7 +377,13 @@ export function openSearch(onToast?: (m: string) => void): void {
   // selected node!) can never fire from inside the overlay — click-safety.
   panel.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') return; // let createOverlay's document handler close
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      // main.ts's Ctrl+F handler never sees events fenced in here, so keep the
+      // browser's native find suppressed ourselves; re-press = fresh query
+      e.preventDefault();
+      input.focus();
+      input.select();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (flat.length) {
         const delta = e.key === 'ArrowDown' ? 1 : -1;

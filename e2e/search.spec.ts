@@ -24,6 +24,12 @@ test.describe('universal search', () => {
     const groups = await page.locator('.wb-search-group').allTextContents();
     expect(groups.some((g) => g.startsWith('Columns & rules'))).toBe(true);
 
+    // Ctrl+F with the overlay already open stays inside it (no native find):
+    // the query is reselected for retyping, still exactly one overlay
+    await page.keyboard.press('Control+f');
+    await expect(page.locator('.wb-search-panel')).toHaveCount(1);
+    await expect(page.locator('.wb-search-input')).toBeFocused();
+
     await page.keyboard.press('Escape');
     await expect(page.locator('.wb-search-panel')).toHaveCount(0);
     const after = await page.evaluate(() => localStorage.getItem('list-formatting-sandbox.project.v1'));
