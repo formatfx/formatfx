@@ -1,3 +1,0 @@
-## 2024-06-27 - Missing ARIA labels on icon-only action and close buttons
-**Learning:** Found a recurring pattern in the editor's UI components where dialog close buttons and inline action buttons (like 'remove rule' or 'delete row') used only a visual '✕' character or an icon, combined with a tooltip (`title`). They lacked proper `aria-label`s, which means screen readers might read '✕' as 'multiplication sign' or fail to describe the button's action clearly.
-**Action:** Always pair visual icons and symbols (like '✕') with explicit `aria-label` attributes on interactive elements to ensure they have clear accessible names for assistive technologies.
