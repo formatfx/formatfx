@@ -484,6 +484,9 @@ export class EditorState {
     this.lastOpenViewId = sheet.id;
     this.doc = sheet.doc;
     this.selection = [];
+    // the canvas surface changed — emit 'load' like every other navigation so
+    // load-scoped UI state resets too (e.g. the left pane's library browser)
+    this.emit('load');
     this.emit('kind');
     this.emit('data');
     return sheet;
@@ -597,14 +600,18 @@ export class EditorState {
     const p = JSON.parse(text);
     const viewOk = (v: unknown): boolean => {
       const s = v as SheetDoc;
-      return Boolean(s && typeof s.id === 'string' && s.id
+      // 'floor' is reserved: it keys the floor surface in selection memory,
+      // so a sheet carrying it would collide with the floor deterministically
+      return Boolean(s && typeof s.id === 'string' && s.id && s.id !== 'floor'
         && typeof s.name === 'string'
         && (s.doc?.kind === 'row' || s.doc?.kind === 'tile')
         && s.doc?.root?.elmType);
     };
+    const idsUnique = (views: SheetDoc[]): boolean =>
+      new Set(views.map((v) => v.id)).size === views.length;
     if (!p || typeof p !== 'object'
       || !p.floor?.root?.elmType
-      || !Array.isArray(p.views) || !p.views.every(viewOk)
+      || !Array.isArray(p.views) || !p.views.every(viewOk) || !idsUnique(p.views)
       || !Array.isArray(p.fields) || !Array.isArray(p.rows)) {
       throw new Error('Not a formatfx workspace file (expected floor/views/fields/rows).');
     }

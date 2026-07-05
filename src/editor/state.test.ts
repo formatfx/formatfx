@@ -114,6 +114,16 @@ describe('the workspace: floor + named sheets', () => {
     expect(s.activeViewId).toBe(s.views[0].id);
   });
 
+  it('createView emits \'load\' — it navigates onto the new sheet like any doc switch', () => {
+    const s = new EditorState();
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    s.createView(rowDoc());
+    // load-scoped UI state (e.g. the left pane's library browser) resets on
+    // 'load' only, and the canvas surface really did change
+    expect(reasons).toContain('load');
+  });
+
   it('createView refuses non-view kinds and defaults tile dimensions', () => {
     const s = new EditorState();
     expect(s.createView({ kind: 'grid', root: { elmType: 'div' } })).toBeNull();
@@ -682,6 +692,19 @@ describe('autosave format v2 (same frozen key, strict load guard)', () => {
     expect(() => new EditorState().loadProject(JSON.stringify(good))).toThrow(/workspace file/);
     good.views = [{ name: 'X', doc: { kind: 'row', root: { elmType: 'div' } } }];
     expect(() => new EditorState().loadProject(JSON.stringify(good))).toThrow(/workspace file/);
+  });
+
+  it('rejects the reserved sheet id "floor" and duplicate ids (selection keys must be unambiguous)', () => {
+    const template = JSON.parse(new EditorState().serializeProject());
+    const row = (id: string) => ({ id, name: id, doc: { kind: 'row', root: { elmType: 'div' } } });
+    template.views = [row('floor')]; // would collide with the floor's selection-memory key
+    expect(() => new EditorState().loadProject(JSON.stringify(template))).toThrow(/workspace file/);
+    template.views = [row('v1'), row('v1')]; // would make viewById/openView ambiguous
+    expect(() => new EditorState().loadProject(JSON.stringify(template))).toThrow(/workspace file/);
+    template.views = [row('v1'), row('v2')]; // distinct ids stay fine
+    const s = new EditorState();
+    s.loadProject(JSON.stringify(template));
+    expect(s.views).toHaveLength(2);
   });
 
   it('an unknown activeViewId degrades to the floor instead of crashing', () => {
