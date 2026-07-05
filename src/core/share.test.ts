@@ -53,8 +53,10 @@ describe('parseShareHash', () => {
 
 describe('encode/decode', () => {
   const PROJECT = JSON.stringify({
-    version: 1,
-    doc: { kind: 'column', root: { elmType: 'div', txtContent: "=if([$Status]=='Done','✓','…')" } },
+    version: 2,
+    floor: { kind: 'grid', root: { elmType: 'div', children: [{ elmType: 'div', txtContent: '[$Status]' }] } },
+    views: [{ id: 'v1', name: 'Board', doc: { kind: 'row', root: { elmType: 'div', txtContent: "=if([$Status]=='Done','✓','…')" } } }],
+    activeViewId: 'v1',
     fields: [{ name: 'Status', type: 'choice' }],
     rows: [{ Status: 'Done' }],
     note: 'unicode survives: Zürich 東京 🚀',

@@ -57,7 +57,7 @@ test('share round trip: mint a link, open it fresh, Save a copy persists it', as
   await expect(p2.locator('.wb-share-banner')).toBeVisible();
   expect(p2.url()).not.toContain('#w1=');
   await openJson(p2);
-  await expect(p2.locator('#wb-kind')).toHaveValue('column');
+  await expect(p2.locator('#wb-kind')).toHaveValue('grid');
   expect(await p2.evaluate((k) => localStorage.getItem(k), KEY)).toBeNull();
 
   // the explicit gesture is what persists it
@@ -68,7 +68,7 @@ test('share round trip: mint a link, open it fresh, Save a copy persists it', as
   // and it survives a refresh as the recipient's own workspace, banner-free
   await p2.reload();
   await openJson(p2);
-  await expect(p2.locator('#wb-kind')).toHaveValue('column');
+  await expect(p2.locator('#wb-kind')).toHaveValue('grid');
   await expect(p2.locator('.wb-share-banner')).toHaveCount(0);
   await p2.context().close();
 });

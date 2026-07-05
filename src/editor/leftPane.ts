@@ -159,19 +159,20 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       pillType.textContent = columnTypeLabel(fieldName);
       pill.title = 'Browse the columns that have a formatter, or start one';
     } else {
-      pillName.textContent = state.viewName;
+      pillName.textContent = state.onFloor ? 'Grid' : state.activeViewName;
       pillType.textContent = viewSchemaLabel();
-      pill.title = 'This view formatter — rename it or start a new row view';
+      pill.title = 'The grid floor and your named views — open one, rename it, or start a new row view';
     }
   };
+
+  const surfaceLabel = (): string =>
+    state.onFloor ? 'the grid' : `the ${state.activeViewName} view formatter`;
 
   viewTab.addEventListener('click', () => {
     libraryOpen = false;
     if (state.activeDocKey !== 'main') {
       state.openMain();
-      toast(`Back to the ${state.viewName} view formatter`);
-    } else if (state.doc.kind === 'column') {
-      toast('The document on the canvas is a column formatter — switch its type under Advanced to build a view.');
+      toast(`Back to ${surfaceLabel()}`);
     }
     refreshFmtNav();
   });
@@ -205,7 +206,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   // ── navigation back (retrace doc switches — not undo) ──────────────────────
   const backBtn = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
   const backLabel = (key: string): string =>
-    key === 'main' ? `the ${state.viewName} view` : `the ${key} column formatter`;
+    key === 'main'
+      ? (state.onFloor ? 'the grid' : `the ${state.activeViewName} view`)
+      : `the ${key} column formatter`;
   const refreshBack = (): void => {
     const target = state.backTarget;
     backBtn.disabled = target === null;

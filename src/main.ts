@@ -33,7 +33,7 @@ import { mountExplainPanel } from './editor/explainPanel';
 import { openShareDialog, openSharedWorkspaceFromHash, wireRestoreBackup } from './editor/shareUi';
 import { parseShareHash } from './core/share';
 import { themeToggleView } from './editor/themeToggle';
-import type { DocumentKind, FormatterDocument } from './core/types';
+import type { DocumentKind } from './core/types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -108,11 +108,10 @@ app.innerHTML = `
           <button class="wb-side-tab active" id="wb-side-tab-json" role="tab" aria-selected="true" data-tab="wb-tab-json">JSON</button>
           <button class="wb-side-tab" id="wb-side-tab-explain" role="tab" aria-selected="false" data-tab="wb-tab-explain" title="Read this formatter back in plain English — what shows, what turns which color when, what clicking does">Explain</button>
         </div>
-        <div class="wb-side-adv" title="Advanced: change the wrapper this formatter compiles to. Normally the type follows what you build; use this to start a tile/gallery layout or switch the wrapper without rebuilding.">
+        <div class="wb-side-adv" title="Advanced: the surface on the canvas. On a view, switching row/tile changes its wrapper; picking Grid minimizes back to the floor (the view is untouched). On the grid, picking row/tile starts a new view carrying the grid's columns.">
           <span>Type</span>
           <select id="wb-kind">
             <option value="grid">Grid — view columns</option>
-            <option value="column">Column formatter</option>
             <option value="row">View (row) formatter</option>
             <option value="tile">Tile / Gallery</option>
           </select>
@@ -310,25 +309,28 @@ state.subscribe((reason) => {
   if (reason === 'theme' || reason === 'load') applyAppTheme();
 });
 
-// kind switch (Advanced: the wrapper this formatter compiles to)
+// kind switch (Advanced: the surface on the canvas — FLOOR-AND-SHEETS Stage 1)
 const kindSel = document.getElementById('wb-kind') as HTMLSelectElement;
 kindSel.addEventListener('change', () => {
+  const wasOnFloor = state.onFloor;
   state.setKind(kindSel.value as DocumentKind);
-  toast(kindSel.value === 'column'
-    ? 'Same element tree, new wrapper: this formatter now sits on ONE column (pick which in the Data tab). Your registered column formatters are untouched.'
-    : kindSel.value === 'grid'
-    ? 'Grid view: the same tree, column by column — click a header for actions, drag one onto another to group them into a row layout.'
-    : `Same element tree, new wrapper: this formatter now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
+  toast(kindSel.value === 'grid'
+    ? 'Back on the grid floor — your view is untouched and waits in the view list.'
+    : wasOnFloor
+    ? `Started a new ${kindSel.value === 'row' ? 'row' : 'tile'} view carrying the grid's columns — the grid itself is unchanged.`
+    : `Same element tree, new wrapper: this view now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 
-// wrapper kind/example only make sense on the main formatter
+// the wrapper kind only makes sense on a surface (floor or sheet); examples
+// route themselves (column → register + drill, row/tile → a new view), so
+// they stay loadable even while drilled into a column formatter
 const refreshStudioDisabled = () => {
   kindSel.disabled = state.activeDocKey !== 'main';
-  exampleSel.disabled = state.activeDocKey !== 'main';
 };
 state.subscribe((reason) => {
   if (reason === 'data' || reason === 'load' || reason === 'kind') {
-    kindSel.value = state.doc.kind;
+    // drilled docs are kind 'column' — not a surface; keep showing the surface
+    if (state.doc.kind !== 'column') kindSel.value = state.doc.kind;
     refreshStudioDisabled();
   }
 });
@@ -355,12 +357,18 @@ exampleSel.addEventListener('change', () => {
   if (!id) return;
   const item = paletteItemById(id);
   if (!item) return;
+  const root = instantiate(item, state.fields);
   const kind: DocumentKind = id === 'row-card' ? 'row' : id === 'tile-card' ? 'tile' : 'column';
-  const doc: FormatterDocument = { kind, root: instantiate(item, state.fields) };
-  if (kind === 'tile') { doc.tileWidth = 254; doc.tileHeight = 220; }
-  state.loadDocument(doc);
+  if (kind === 'column') {
+    // a column example becomes the CURRENT field's registered formatter and
+    // opens its drill-in — the main surface is always the floor or a view now
+    state.loadColumnDocument(root);
+    toast(`Loaded example: ${item.label} — editing it as the ${state.currentFieldName} column formatter`);
+  } else {
+    state.loadViewDocument({ kind, root }, item.label);
+    toast(`Loaded example: ${item.label} — added as its own view`);
+  }
   (document.getElementById('wb-menu-panel') as HTMLDivElement).hidden = true;
-  toast(`Loaded example: ${item.label}`);
 });
 
 // save / open / reset project
@@ -518,7 +526,9 @@ state.subscribe((reason) => {
 });
 refreshLintBadge(jsonPanel.refreshLint(canvas.getRuntimeIssues()));
 refreshStudioDisabled();
-kindSel.value = state.doc.kind; // restore() emits 'load' before the sync subscriber exists
+// restore() emits 'load' before the sync subscriber exists; drilled docs are
+// kind 'column' (not a surface) but a fresh boot always lands on a surface
+if (state.doc.kind !== 'column') kindSel.value = state.doc.kind;
 
 // A share link in the fragment loads AFTER the panels mount (loadProject
 // re-renders them) and with autosave paused, so the recipient's own work is

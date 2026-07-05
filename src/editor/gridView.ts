@@ -706,23 +706,25 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     grid.appendChild(empty);
   }
 
-  // ⟳ the way back: "Back to grid" merely relabels a row/tile view as this
-  // grid, so while the memory holds, offer the reverse relabel right here —
-  // the layout must never feel lost (FLOOR-AND-SHEETS Stage 0).
-  if (state.lastLayoutKind) {
-    const kind = state.lastLayoutKind;
-    const noun = kind === 'tile' ? 'tile layout' : 'row view';
+  // ⟳ the way back: minimizing a sheet lands here, and the sheet waits intact
+  // in the view list — offer the reopen right where the maker is looking.
+  // Session memory picks the last sheet that was up; otherwise the newest.
+  // Stage 2's tab strip replaces this bar (FLOOR-AND-SHEETS Stage 1 → 2).
+  const returnView = (state.lastOpenViewId ? state.viewById(state.lastOpenViewId) : undefined)
+    ?? state.views[state.views.length - 1];
+  if (returnView) {
+    const noun = returnView.doc.kind === 'tile' ? 'tile layout' : 'row view';
     const ret = document.createElement('div');
     ret.className = 'wb-grid-returnbar';
     const text = document.createElement('span');
-    text.textContent = `You're on the grid — the ${noun} you left is intact.`;
+    text.textContent = `You're on the grid — “${returnView.name}” is intact in your views.`;
     const btn = document.createElement('button');
     btn.className = 'wb-grid-returnbar-btn';
-    btn.textContent = `⟳ Reopen the ${noun}`;
-    btn.title = `Show this layout as the ${noun} again — same elements, nothing is rebuilt`;
+    btn.textContent = `⟳ Reopen ${returnView.name}`;
+    btn.title = `Open the “${returnView.name}” ${noun} again — it was never touched`;
     btn.addEventListener('click', () => {
-      state.setKind(kind);
-      onToast(`Reopened the ${noun}`);
+      state.openView(returnView.id);
+      onToast(`Reopened “${returnView.name}”`);
     });
     ret.append(text, btn);
     host.appendChild(ret);

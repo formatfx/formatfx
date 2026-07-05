@@ -18,7 +18,7 @@ beforeEach(() => {
 describe('workspace round trip through the codec', () => {
   it('serializeProject → encode → decode → loadProject is byte-for-byte', async () => {
     const source = new EditorState();
-    source.viewName = 'Quarterly view';
+    source.createView({ kind: 'row', root: { elmType: 'div', txtContent: '[$Title]' } }, 'Quarterly view');
     source.rows[0].Title = 'Zürich rollout 🚀';
     const original = source.serializeProject();
 
@@ -30,13 +30,25 @@ describe('workspace round trip through the codec', () => {
     expect(target.serializeProject()).toBe(original);
   });
 
-  it('a w1 link with FUTURE additive project keys still loads (the SHARE-URL.md stability promise)', async () => {
+  it('a w1 link with FUTURE additive project keys still loads', async () => {
     const project = JSON.parse(new EditorState().serializeProject());
     project.futureFeatureNobodyHasBuiltYet = { knobs: [1, 2, 3] };
     const decoded = await decodeShareFragment(parseShareHash(`#${await encodeShareFragment(JSON.stringify(project))}`)!);
     const target = new EditorState();
     target.loadProject(normalizeSharedPayload(decoded)); // must not throw
-    expect(target.viewName).toBe(project.viewName);
+    expect(target.floorDoc.kind).toBe('grid');
+  });
+
+  it('a PRE-Stage-1 payload is refused by the load guard — no migration path exists', async () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      doc: { kind: 'grid', root: { elmType: 'div' } },
+      fields: [], rows: [], columnRefs: {}, viewName: 'View 1',
+    });
+    const decoded = await decodeShareFragment(parseShareHash(`#${await encodeShareFragment(legacy)}`)!);
+    // normalize can't read it as a workspace, and it's no bare formatter either
+    expect(() => new EditorState().loadProject(normalizeSharedPayload(decoded)))
+      .toThrow();
   });
 
   it('a minified payload (what the Share dialog actually sends) round-trips identically', async () => {
@@ -57,7 +69,7 @@ describe('normalizeSharedPayload — bare formatter JSON becomes a live workspac
     expect(normalizeSharedPayload(json)).toBe(json);
   });
 
-  it('wraps a raw column formatter (a PnP sample) in a default workspace', () => {
+  it('wraps a raw column formatter (a PnP sample): registered on the current field, rendered by the floor', () => {
     const sample = JSON.stringify({
       elmType: 'div',
       txtContent: '@currentField',
@@ -65,18 +77,25 @@ describe('normalizeSharedPayload — bare formatter JSON becomes a live workspac
     });
     const s = new EditorState();
     s.loadProject(normalizeSharedPayload(sample));
-    expect(s.doc.kind).toBe('column');
+    expect(s.onFloor).toBe(true);
+    expect(s.doc.kind).toBe('grid');
+    expect(s.columnRefs[s.currentFieldName].txtContent).toBe('@currentField');
+    // the floor's cell for that field references the shared format
+    const cell = s.floorDoc.root.children!.find((c) => c.columnFormatterReference);
+    expect(cell?.columnFormatterReference).toBe(`[$${s.currentFieldName}]`);
     // referenced-but-unknown fields get text stubs so the sample renders
     expect(s.fields.some((f) => f.name === 'Approval')).toBe(true);
     expect(s.rows.length).toBeGreaterThan(0);
-    expect(s.viewName).toBe('Shared formatter');
   });
 
-  it('wraps a rowFormatter wrapper as a row document', () => {
+  it('wraps a rowFormatter wrapper as a named view over a default floor', () => {
     const sample = JSON.stringify({ rowFormatter: { elmType: 'div', txtContent: '[$Title]' } });
     const s = new EditorState();
     s.loadProject(normalizeSharedPayload(sample));
     expect(s.doc.kind).toBe('row');
+    expect(s.views).toHaveLength(1);
+    expect(s.views[0].name).toBe('Shared formatter');
+    expect(s.floorDoc.kind).toBe('grid');
   });
 
   it('refuses anything that is neither a project nor a formatter', () => {

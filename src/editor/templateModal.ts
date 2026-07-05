@@ -50,18 +50,27 @@ function elementComponents(): ComponentDef[] {
   return [...BUILTIN_COMPONENTS, ...customs].filter((c) => componentKind(c) === 'element');
 }
 
-export function openTemplateModal(onToast: (m: string) => void, opts: { target?: BuilderTarget } = {}): void {
+export function openTemplateModal(
+  onToast: (m: string) => void,
+  opts: { target?: BuilderTarget; createNew?: boolean } = {},
+): void {
   const comps = elementComponents(); // cached per open — chips, previews, and Save all agree
+  // Save-time routing (FLOOR-AND-SHEETS Stage 1): from the floor — or via an
+  // explicit "+ New rowview/tileview…" — Save CREATES a new named sheet;
+  // nothing is ever overwritten. Only with a sheet on the canvas does Save
+  // replace that sheet's document.
+  const creating = opts.createNew === true || state.activeDocKey !== 'main' || state.onFloor;
   // Reopen, don't restart: a row view OR tile the builder produced parses back
   // into zones. Anything it can't represent faithfully → the gallery, with an
-  // honest note.
+  // honest note. A create-new ask never reopens — it starts fresh.
   const rawRowClass = state.doc.viewExtras?.additionalRowClass;
-  const reopened = state.doc.kind === 'row'
-    ? configFromView(state.doc.root, typeof rawRowClass === 'string' ? rawRowClass : undefined,
-      state.fields, state.columnRefs, comps)
-    : state.doc.kind === 'tile'
-      ? configFromView(state.doc.root, undefined, state.fields, state.columnRefs, comps, 'tile')
-      : null;
+  const reopened = creating ? null
+    : state.doc.kind === 'row'
+      ? configFromView(state.doc.root, typeof rawRowClass === 'string' ? rawRowClass : undefined,
+        state.fields, state.columnRefs, comps)
+      : state.doc.kind === 'tile'
+        ? configFromView(state.doc.root, undefined, state.fields, state.columnRefs, comps, 'tile')
+        : null;
   if (reopened?.target === 'tile') {
     // the tile box size lives on the document wrapper — reseed it from there
     reopened.tileWidth = state.doc.tileWidth ?? reopened.tileWidth;
@@ -78,7 +87,7 @@ export function openTemplateModal(onToast: (m: string) => void, opts: { target?:
     stage: reopensAsAsked ? 'edit' : 'pick',
     selected: null,
     stageWidth: null,
-    foreignRow: !editingExisting && (state.doc.kind === 'row' || state.doc.kind === 'tile'),
+    foreignRow: !creating && !editingExisting && (state.doc.kind === 'row' || state.doc.kind === 'tile'),
     galleryFirst: askedFor ?? reopened?.target ?? (state.doc.kind === 'tile' ? 'tile' : 'row'),
   };
   /** Has the maker changed anything since the last wireframe pick? Re-picking
@@ -206,24 +215,36 @@ export function openTemplateModal(onToast: (m: string) => void, opts: { target?:
   function doApply(): void {
     if (applyBlocker(ui.config, comps)) return;
     const noun = ui.config.target === 'tile' ? 'Tile layout' : 'Row layout';
-    // structural click-safety gate: confirm whenever the current root holds
-    // real layout work (neither empty nor a pristine grid of plain columns)
-    // and the builder didn't reopen it losslessly — editing your own layout
-    // is what reopen is FOR, and a wireframe re-pick over it already
-    // confirmed. The doc KIND doesn't matter: "Back to grid" merely relabels
-    // a row/tile layout, and Save must not silently replace it just because
-    // the label says grid. Single-undo is the net either way.
+    // structural click-safety gate: creating adds a NEW named view, so there
+    // is nothing to confirm. Only a Save that REPLACES an open sheet the
+    // builder couldn't reopen losslessly (a foreign layout) asks first —
+    // editing your own layout is what reopen is FOR, and a wireframe re-pick
+    // over it already confirmed. Single-undo is the net either way.
     const pristine = !state.doc.root.children?.length || isPureGrid(state.doc.root);
-    const overwrites = !editingExisting && !pristine;
-    if (overwrites && !confirm(`Replace the current view layout with this ${noun.toLowerCase()}? Ctrl+Z reverts it in one step.`)) return;
+    const overwrites = !creating && !editingExisting && !pristine;
+    if (overwrites && !confirm(`Replace this view's layout with the ${noun.toLowerCase()}? Ctrl+Z reverts it in one step.`)) return;
     const { root, additionalRowClass } = buildTemplateView(
       ui.config, state.fields, state.columnRefs, palette(), comps, { prune: true });
-    if (ui.config.target === 'tile') {
-      state.applyTileTemplate(root, { width: ui.config.tileWidth, height: ui.config.tileHeight });
+    if (creating) {
+      const doc = ui.config.target === 'tile'
+        ? {
+          kind: 'tile' as const, root,
+          tileWidth: ui.config.tileWidth ?? 254, tileHeight: ui.config.tileHeight ?? 220,
+        }
+        : {
+          kind: 'row' as const, root,
+          ...(additionalRowClass ? { viewExtras: { additionalRowClass } } : {}),
+        };
+      const sheet = state.createView(doc);
+      onToast(sheet ? `${noun} created as “${sheet.name}” — it's in the view list` : `${noun} created`);
     } else {
-      state.applyRowTemplate(root, additionalRowClass);
+      if (ui.config.target === 'tile') {
+        state.applyTileTemplate(root, { width: ui.config.tileWidth, height: ui.config.tileHeight });
+      } else {
+        state.applyRowTemplate(root, additionalRowClass);
+      }
+      onToast(editingExisting ? `${noun} updated` : `${noun} applied`);
     }
-    onToast(editingExisting ? `${noun} updated` : `${noun} applied`);
     close();
   }
 

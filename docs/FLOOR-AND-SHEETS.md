@@ -125,16 +125,34 @@ that precedent to every canvas (floor, sheets, builder).
   4. A visible way back: leaving a row/tile view for the grid arms a
      "⟳ Reopen …" affordance above the grid (session-local memory; the
      real fix is Stage 1's separate documents).
-- **Stage 1 — split the documents.** The floor becomes its own document;
-  views become named documents (the multi-view list). Reshape the state
-  model, autosave shape, and share codec **freely** — there are no users
-  yet, so pre-Stage-1 autosaves and share links carry NO support
-  obligation and **no migration/upgrade code is built or maintained**
-  (owner call, 2026-07-04). If an old blob doesn't parse, the app simply
-  falls back to a fresh default — that's a load guard, not a converter.
-  The frozen-NAMES rule (never rename localStorage keys or `wb-`
-  prefixes) still stands; frozen names ≠ frozen formats. This deletes the
-  relabeling bug class entirely and makes "minimize" trivial.
+- **Stage 1 — split the documents. SHIPPED 2026-07-05.** The floor is its
+  own columns-only document (`EditorState.floorDoc`, kind always 'grid');
+  views are named sheet documents (`views: SheetDoc[]`, each
+  `{id, name, doc}` with kind 'row'|'tile'; `activeViewId` names the open
+  sheet, null = floor). `openView`/`minimizeView` are pure navigation —
+  no snapshot, ever — and work while drilled into a column formatter
+  (§2.2's owner requirement). Undo is ONE global app-level stack per
+  §2.3: snapshots capture the whole workspace plus where the mutation
+  happened, so undo/redo navigate back to the surface they change; the
+  per-document stack stashes and the columnRefVersions merge machinery
+  are gone. `columnRefs` stays workspace-owned (column formatters render
+  on both surfaces via CFR). A main document of kind 'column' no longer
+  exists — column examples/JSON register to the current field and open
+  the drill-in. Graduation (`makeRowView`, template Save from the floor,
+  schema-import default views) CREATES a sheet; the floor is never
+  overwritten, so the Stage-0 overwrite confirm died on that path.
+  Autosave is format v2 under the SAME frozen key
+  (`floor`/`views`/`activeViewId` replace `doc`/`viewName`); the share
+  codec is untouched (`w1` names the byte encoding). Per the owner call
+  of 2026-07-04 there is **no migration/upgrade code**: a pre-Stage-1
+  autosave, share link, or wb-snapshots entry fails its strict load
+  guard and the app falls back to a fresh default — a load guard, not a
+  converter. The frozen-NAMES rule (never rename localStorage keys or
+  `wb-` prefixes) still stands; frozen names ≠ frozen formats. This
+  deleted the relabeling bug class entirely: "◧ Back to grid" and the
+  "⟳ Reopen" bar now ride `minimizeView`/`openView` until Stage 2's
+  strip replaces them, and the View Formatters menu is the real
+  multi-view list (floor entry + every sheet + "+ New row/tileview…").
 - **Stage 2 — sheet chrome.** The left view strip (open/minimize/rename/
   new), "Back to grid" retired in favor of minimize; the floor stops ever
   rendering pseudo-columns.

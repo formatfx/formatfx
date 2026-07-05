@@ -43,7 +43,7 @@ test('the formatter tabs state where you are, not a Type dropdown', async ({ pag
   // default doc is a grid view → the VIEW FORMATTERS tab is active and the
   // document dropdown names the view
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
 });
 
 test('the kind control lives in the Advanced pane, and a column example flips to the COLUMN tab', async ({ page }) => {
