@@ -27,6 +27,7 @@ import { paletteItemById } from './editor/palette';
 import { instantiate } from './editor/presets';
 import { openPlayground } from './editor/playground';
 import { openGuide } from './editor/guide';
+import { openSearch } from './editor/searchUi';
 import { openAbout } from './editor/about';
 import { openStressTest } from './editor/stressTestUi';
 import { mountExplainPanel } from './editor/explainPanel';
@@ -49,6 +50,7 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
+      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything">🔎</button>
       <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
       <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere"><i class="ms-Icon ms-Icon--Share"></i> Share</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
@@ -256,6 +258,7 @@ document.addEventListener('pointerdown', (e) => {
 menuPanel.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
 });
+document.getElementById('wb-search-open')!.addEventListener('click', () => openSearch(toast));
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
 document.getElementById('wb-stress')!.addEventListener('click', () => openStressTest(toast));
 document.getElementById('wb-guide')!.addEventListener('click', () => openGuide());
@@ -428,6 +431,8 @@ document.addEventListener('keydown', (e) => {
     state.setLens(e.key === '1' ? 'simple' : e.key === '2' ? 'pro' : 'code');
     return;
   }
+  // universal search — replaces the browser find, and works from a focused field
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); openSearch(toast); return; }
   if (inText) return;
   if (mod && e.key === 'z') { e.preventDefault(); state.undo(); return; }
   if (mod && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { e.preventDefault(); state.redo(); return; }
