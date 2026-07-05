@@ -63,7 +63,7 @@ test('drilling in shows the § banner; Done and Esc both return to the view', as
   // Done returns
   await banner.locator('.wb-style-done').click();
   await expect(page.locator('.wb-style-banner')).toHaveCount(0);
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   // …and Esc returns too
   await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
   await expect(page.locator('.wb-style-banner')).toBeVisible();
@@ -84,7 +84,7 @@ test('a CFR host is ONE tree row: click selects the host, the reference tag dril
   expect(bg).toBe('rgba(0, 0, 0, 0)');
   // clicking the row selects the HOST element (no drill-in hijack)
   await row.click();
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(page.locator('.wb-scope-chip')).toHaveText('Host cell · this view only');
   // the explicit affordance is the door into the shared column formatter
   await tag.click();

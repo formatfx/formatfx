@@ -278,11 +278,11 @@ describe('row-view builder (graduation creates a SHEET — FLOOR-AND-SHEETS Stag
     s.makeRowView();
     const sheet = s.activeView!;
     const sheetJson = JSON.stringify(sheet.doc);
-    s.minimizeView(); // "Back to grid"
+    s.minimizeView(); // the COLUMNS tab (the grid is columns mode's canvas)
     expect(s.onFloor).toBe(true);
-    expect(s.lastOpenViewId).toBe(sheet.id); // feeds the ⟳ Reopen bar
+    expect(s.lastOpenViewId).toBe(sheet.id); // feeds the VIEWS tab's return
     expect(JSON.stringify(s.viewById(sheet.id)!.doc)).toBe(sheetJson); // untouched
-    s.openView(sheet.id); // ⟳ Reopen
+    s.openView(sheet.id); // a strip chip / the VIEWS tab
     expect(s.doc.kind).toBe('row');
     expect(JSON.stringify(s.doc)).toBe(sheetJson); // same document, nothing rebuilt
   });

@@ -33,8 +33,8 @@ test('the COMPONENTS tab opens the inventory + browser: empty "In this project",
   await expect(deadline.locator('.wb-comp-slot')).toContainText(['The deadline to track · date']);
   // best-guess preview renders against the mock rows (row 1 has a future date)
   await expect(deadline.locator('.wb-comp-preview')).toContainText(/Due|Overdue/);
-  // leaving via the VIEW tab restores the tree browser
-  await page.locator('.wb-fmt-tab-view').click();
+  // leaving via the COLUMNS tab (the grid) restores the tree browser
+  await page.locator('.wb-fmt-tab-cols').click();
   await expect(page.locator('#wb-lp-library')).toBeHidden();
   await expect(page.locator('#wb-tree-body')).toBeVisible();
 });
@@ -166,8 +166,9 @@ test('a whole row saves as a row component and later REPLACES a view\'s layout, 
   await dlg.locator('.wb-compmap-insert').click();
   await expect(page.locator('#wb-toast')).toContainText('Saved “My row shape”');
 
-  // back to the grid, then use the saved row component as the layout again
-  await page.locator('.wb-rowview-bar-btn', { hasText: 'Back to grid' }).click();
+  // back to the grid (the COLUMNS tab — Stage 2 retired the toolbar button),
+  // then use the saved row component as the layout again
+  await page.locator('.wb-fmt-tab-cols').click();
   await expect(page.locator('.wb-grid-headrow')).toBeVisible();
   await page.locator('.wb-fmt-tab-comp').click();
   const card = page.locator('.wb-comp-card', { hasText: 'My row shape' });

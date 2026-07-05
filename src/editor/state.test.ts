@@ -181,7 +181,7 @@ describe('navigation is never a mutation', () => {
     expect((s as unknown as { undoStack: string[] }).undoStack).toHaveLength(undoDepth);
   });
 
-  it('minimize remembers the way back (lastOpenViewId feeds the ⟳ Reopen bar)', () => {
+  it('minimize remembers the way back (lastOpenViewId feeds the VIEWS tab\'s return)', () => {
     const s = new EditorState();
     const sheet = s.createView(rowDoc())!;
     s.minimizeView();
@@ -727,6 +727,59 @@ describe('autosave format v2 (same frozen key, strict load guard)', () => {
   });
 });
 
+describe('column tab groups (owner brief 2026-07-05): project metadata, never a mutation', () => {
+  it('groupColumns creates an exclusive group over schema-known fields only', () => {
+    const s = new EditorState();
+    const g = s.groupColumns(['Status', 'DueDate', 'NotAField'])!;
+    expect(g.fields).toEqual(['Status', 'DueDate']);
+    expect(s.floorGroups).toEqual([g]);
+    expect(s.groupColumns(['NotAField'])).toBeNull(); // nothing groupable
+  });
+
+  it('group gestures live OFF the undo stack (the renameView rule) and never touch the floor', () => {
+    const s = new EditorState();
+    const floorBefore = JSON.stringify(s.floorDoc);
+    const g = s.groupColumns(['Status'])!;
+    s.renameGroup(g.id, 'People');
+    s.setGroupColor(g.id, '#107c10');
+    s.toggleGroupCollapsed(g.id);
+    expect(s.canUndo).toBe(false); // presentational metadata, not document edits
+    expect(JSON.stringify(s.floorDoc)).toBe(floorBefore);
+    expect(s.floorGroups[0]).toMatchObject({ name: 'People', color: '#107c10', collapsed: true });
+    s.ungroupColumns(g.id);
+    expect(s.floorGroups).toEqual([]);
+    expect(s.canUndo).toBe(false);
+  });
+
+  it('groups round-trip through the project file (additive key: absent → none, garbage → dropped)', () => {
+    const s = new EditorState();
+    const g = s.groupColumns(['Status', 'Progress'], 'Delivery')!;
+    s.toggleGroupCollapsed(g.id);
+    const s2 = new EditorState();
+    s2.loadProject(s.serializeProject());
+    expect(s2.floorGroups).toEqual(s.floorGroups);
+
+    const p = JSON.parse(s.serializeProject());
+    p.floorGroups = [{ bogus: true }, ...p.floorGroups];
+    const s3 = new EditorState();
+    s3.loadProject(JSON.stringify(p)); // garbage entries are dropped, not fatal
+    expect(s3.floorGroups).toEqual(s.floorGroups);
+
+    delete p.floorGroups;
+    const s4 = new EditorState();
+    s4.loadProject(JSON.stringify(p));
+    expect(s4.floorGroups).toEqual([]);
+  });
+
+  it('the exported floor document is byte-identical with or without groups', () => {
+    const s = new EditorState();
+    const before = JSON.stringify(s.floorDoc);
+    const g = s.groupColumns(['Status', 'DueDate'])!;
+    s.toggleGroupCollapsed(g.id);
+    expect(JSON.stringify(s.floorDoc)).toBe(before);
+  });
+});
+
 describe('STORAGE_KEY is frozen', () => {
   it('matches the literal that protects existing autosaved work', () => {
     // HANDOFF §1: these keys deliberately never change on rename — a rename
@@ -846,14 +899,48 @@ describe('applyRowTemplate / applyTileTemplate', () => {
 });
 
 describe('loadDocument: the Apply-to-canvas routing', () => {
-  it('on the floor, a row payload replaces the FLOOR ROOT — kind stays grid (lossless round-trip)', () => {
+  it('on the floor, a PURE-GRID row payload replaces the FLOOR ROOT — kind stays grid (lossless round-trip)', () => {
     const s = new EditorState();
-    s.loadDocument({ kind: 'row', root: { elmType: 'div', _elmName: 'pasted', children: [] } });
+    s.loadDocument({
+      kind: 'row',
+      root: {
+        elmType: 'div', _elmName: 'pasted',
+        children: [
+          { elmType: 'div', txtContent: '[$Title]' },
+          { elmType: 'div', txtContent: '[$Status]' },
+        ],
+      },
+    });
     expect(s.onFloor).toBe(true);
     expect(s.doc.kind).toBe('grid');
     expect(s.doc.root._elmName).toBe('pasted');
     s.undo();
     expect(s.doc.root._elmName).toBe('Row layout'); // the default floor scaffold
+  });
+
+  it('on the floor, a row LAYOUT (zones/composites) becomes a NEW sheet — the floor never renders pseudo-columns (Stage 2)', () => {
+    const s = new EditorState();
+    const floorBefore = JSON.stringify(s.floorDoc);
+    s.loadDocument({
+      kind: 'row',
+      root: {
+        elmType: 'div', _elmName: 'Row layout',
+        children: [{
+          elmType: 'div', _elmName: 'Lead zone',
+          children: [
+            { elmType: 'span', txtContent: '[$Title]' },
+            { elmType: 'span', txtContent: '[$Status]' },
+          ],
+        }],
+      },
+    });
+    expect(s.views).toHaveLength(1);
+    expect(s.activeViewId).toBe(s.views[0].id); // opened as its own sheet
+    expect(s.doc.kind).toBe('row');
+    expect(JSON.stringify(s.floorDoc)).toBe(floorBefore); // the floor is untouched
+    s.undo(); // sheet registration is ONE undoable step
+    expect(s.views).toHaveLength(0);
+    expect(s.onFloor).toBe(true);
   });
 
   it('on the floor, a tile payload becomes a NEW sheet (a tile can never be a floor)', () => {

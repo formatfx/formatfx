@@ -157,6 +157,21 @@ Key structural invariants:
   open column formatter updates the registry live (see `EditorState.emit`).
   A main document of kind 'column' no longer exists: column examples/JSON
   register to the current field and open the drill-in.
+  **Stage 2 (2026-07-05, owner-amended mid-build)**: the LEFT VIEW STRIP
+  (`viewStrip.ts`, in the Left Edit Pane) lists the sheets — chip click
+  opens, double-click renames, ＋ opens the template builder — and the
+  GRID IS THE COLUMNS TAB'S CANVAS (no flip-flop button): `colsTab` lands
+  on the grid from anywhere (an already-on-the-grid click opens the column
+  gallery), `viewTab` returns to `state.lastOpenViewId` (or the view menu
+  when no sheets exist). "◧ Back to grid" and the "⟳ Reopen" bar are
+  GONE. `loadDocument` gates row-payload-onto-floor on `isPureGrid` — a
+  zoned layout becomes a NEW sheet, so the floor never renders
+  pseudo-columns. Column TAB GROUPS (`colGroups.ts` pure + node-tested;
+  `state.floorGroups`, an ADDITIVE project key sanitized on load) are
+  presentational-only browser-style groups on the grid: pill ribbon +
+  header bands + collapsible slim tracks; group gestures are project
+  metadata off the undo stack (the renameView rule), and the exported
+  floor is byte-identical with or without them.
 - **Node addressing**: selection/lint paths are arrays of child indices;
   the sentinel **`CARD_SEGMENT = -1` descends into
   `customCardProps.formatter`** — that's how card content is fully
@@ -754,7 +769,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 784 vitest unit tests across 43 files (engine semantics incl.
+- `npm test` — 825 vitest unit tests across 45 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -763,10 +778,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   against stubbed fetch, and the collaborative-hub contracts: the share
   codec byte-exact round trips, the stress-test variant catalog incl.
   threshold mining, the Explain visitor over both expression syntaxes, and
-  the autosave-pause never-clobber guarantee). Run headlessly anywhere.
+  the autosave-pause never-clobber guarantee, the Stage-2 chrome: the view
+  strip, the column tab-groups brain, and the pure-grid Apply-to-canvas
+  guard). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 130 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 135 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
@@ -777,7 +794,8 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
   row-view builder, CFR linked instances, Studio/Advanced toggle),
   `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
-  document dropdown), `snapshots.spec.ts` (snapshots + navigation back),
+  document dropdown + the Stage-2 view strip and grid-under-COLUMNS
+  semantics), `snapshots.spec.ts` (snapshots + navigation back),
   `components.spec.ts` (the ⬡ tab: inventory + usage jumps, typed mapping
   into the view OR an open column formatter, the component editor incl.
   save-and-apply with as-found pinning, save-as, CFR refusal),

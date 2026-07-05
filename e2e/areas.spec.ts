@@ -54,19 +54,22 @@ test('density is a separate row-level knob, and you can go back to the grid', as
   await page.locator('.wb-rowview-bar-btn', { hasText: 'Roomy' }).click();
   await expect(root).toHaveCSS('gap', '16px');
 
-  await page.locator('.wb-rowview-bar-btn', { hasText: 'Back to grid' }).click();
+  // Stage 2: the toolbar's "Back to grid" is retired — the COLUMNS tab is the
+  // grid (minimize is navigation; the sheet waits as a chip in the view strip)
+  await page.locator('.wb-fmt-tab-cols').click();
   // the FLOOR comes back exactly as it was — a real separate document, not
   // the view's areas relabeled as pseudo-columns (FLOOR-AND-SHEETS Stage 1)
   await expect(page.locator('.wb-grid-header-label'))
     .toHaveText(['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
+  await expect(page.locator('.wb-rowview-bar-btn', { hasText: 'Back to grid' })).toHaveCount(0);
 
-  // …and the way back is VISIBLE: the grid offers ⟳ Reopen, which reopens
-  // the named view untouched (the fix for "you can never get back")
-  await page.locator('.wb-grid-returnbar button', { hasText: 'Reopen View 1' }).click();
+  // …and the way back is VISIBLE: the view strip's chip reopens the named
+  // view untouched (the fix for "you can never get back")
+  await page.locator('#wb-viewstrip .wb-viewstrip-chip', { hasText: 'View 1' }).click();
   await expect(page.locator('.wb-rowview-bar')).toBeVisible();
   await expect(page.locator('.wb-mock-viewrow').first().locator('> [data-sp-path] > [data-sp-path]')).toHaveCount(2);
-  await expect(page.locator('.wb-grid-returnbar')).toHaveCount(0); // back on the view — no bar
+  await expect(page.locator('#wb-viewstrip .wb-viewstrip-chip')).toHaveClass(/active/); // the chip shows it's up
 });
 
 test('tile is an explicit layout pick from the selection', async ({ page }) => {

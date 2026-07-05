@@ -74,7 +74,33 @@ sheet. Leaving is navigation, never mutation.
   This falls out of the model: the column-style editor rides on whichever
   surface is up — column formatters render on both via CFR — so the drill
   banner stays put while the surface underneath switches.
+- **Amended 2026-07-05 (owner, during the Stage-2 build):** the left strip
+  lists the SHEETS only — there is **no grid/floor chip and no flip-flop
+  button**. The grid isn't "in the background": standing on the floor is
+  what the **COLUMNS tab** means (see §2.2b below). Everything else here
+  stands: leaving is navigation, never mutation, and the strip + tabs are
+  always visible, so flipping under a drill still works.
 - The data pane stays as it is (owner call, 2026-07-04).
+
+### 2.2b The grid is the COLUMNS tab's canvas (owner, 2026-07-05)
+
+Selecting **COLUMNS** in the Left Edit Pane shows the grid — the
+columns-only floor document IS columns mode. Clicking COLUMNS from a drill
+or a sheet lands on the grid (pure navigation); clicking it when the grid
+is already up browses the formatted-columns gallery. **VIEWS** is active
+exactly while a sheet is up: from the grid it returns to the sheet last on
+the canvas, or opens the View Formatters menu as the on-ramp when no
+sheets exist yet.
+
+### 2.2c Column tab groups (owner, 2026-07-05)
+
+Grid columns group **like browser tabs**: multi-select headers →
+"⬒ Group columns" → a named, colored pill spanning the members; the pill
+menu renames, recolors, collapses (a slim track — the columns wait intact,
+nothing leaves the document) and ungroups. Groups are PRESENTATIONAL
+project metadata (`floorGroups`, an additive v2 key, sanitized on load):
+the exported floor document is byte-identical with or without them, and
+group gestures live off the undo stack exactly like sheet renames.
 
 ### 2.3 One editor chrome, three tiers
 
@@ -153,9 +179,22 @@ that precedent to every canvas (floor, sheets, builder).
   "⟳ Reopen" bar now ride `minimizeView`/`openView` until Stage 2's
   strip replaces them, and the View Formatters menu is the real
   multi-view list (floor entry + every sheet + "+ New row/tileview…").
-- **Stage 2 — sheet chrome.** The left view strip (open/minimize/rename/
-  new), "Back to grid" retired in favor of minimize; the floor stops ever
-  rendering pseudo-columns.
+- **Stage 2 — sheet chrome. SHIPPED 2026-07-05**, amended by the owner
+  mid-build (§2.2b/§2.2c). The left VIEW STRIP (`viewStrip.ts`, under the
+  Formatters bar) lists every sheet as a chip — click opens (navigation),
+  double-click renames inline, ＋ is the template on-ramp — and carries NO
+  grid chip: the grid is the COLUMNS tab's canvas, so "minimize" is
+  "click COLUMNS". The VIEWS tab returns to the sheet last on the canvas
+  (`lastOpenViewId`) or opens the View Formatters menu when none exist.
+  "◧ Back to grid" and the Stage-0/1 "⟳ Reopen" bar are retired. The
+  floor can no longer render pseudo-columns at all: the last path in —
+  Apply-to-canvas of a row payload over the floor — now gates on the
+  schema-import `isPureGrid` guard, so a zoned/composite layout becomes a
+  NEW named sheet instead (the floor's own columns-only export still
+  round-trips onto the floor; a childless root still seeds an empty
+  floor). Column TAB GROUPS (§2.2c) shipped with the same brief:
+  `colGroups.ts` (pure, node-tested) + `state.floorGroups`, rendered by
+  the grid as a pill ribbon, header bands and collapsible slim tracks.
 - **Stage 3 — Select/Live canvas toggle**, shared across floor, sheets,
   and the builder preview.
 - **Stage 4 — editor-chrome unification** (the three tiers), migrating

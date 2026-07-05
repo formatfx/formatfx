@@ -29,7 +29,8 @@ import type {
 } from '../core/types';
 import type { ImportedView } from '../core/schemaImport';
 import { cfrFieldName } from '../core/refs';
-import { buildGridRoot, gridCellForField, gridColumnField } from './gridScaffold';
+import { buildGridRoot, gridCellForField, gridColumnField, isPureGrid } from './gridScaffold';
+import { addGroup, sanitizeGroups, type ColumnGroup } from './colGroups';
 import { inlineColumnFormatter, toColumnFormatter } from './cfr';
 import {
   buildRowView, rowDensityOf,
@@ -195,10 +196,16 @@ export class EditorState {
   columnRefs: Record<string, SPElement> = defaultColumnRefs();
   /** Views captured by a List Snapshot import (formatters kept as raw text). */
   importedViews: ImportedView[] = [];
+  /** Column TAB GROUPS on the grid floor (owner brief 2026-07-05): named,
+   *  colored, collapsible groupings of columns. Presentational project
+   *  metadata like sheet names — never a document mutation, never an undo
+   *  step; the exported floor is identical with or without them. */
+  floorGroups: ColumnGroup[] = [];
   /** Which formatter is on the canvas: 'main' or a columnRefs key. */
   activeDocKey = 'main';
-  /** The sheet last on the canvas — session-local memory for the "⟳ Reopen"
-   *  affordance (Stage 2's tab strip replaces it). Never persisted. */
+  /** The sheet last on the canvas — session-local memory for the VIEWS tab's
+   *  return target (the grid lives on the COLUMNS tab since Stage 2, so the
+   *  VIEWS tab needs to know which sheet to come back to). Never persisted. */
   lastOpenViewId: string | null = null;
   /** The maker's data-tab field pick, stashed while a drill-in overrides
    *  currentFieldName, restored on the way back out. */
@@ -502,6 +509,50 @@ export class EditorState {
     this.emit('data');
   }
 
+  // ─── Column tab groups (grid floor chrome — the renameView metadata rule) ──
+
+  /** Group columns like browser tabs. `fields` are member field names (only
+   *  ones the schema knows are kept); members are stolen from any group they
+   *  were in. Returns the created group, or null if nothing groupable. */
+  groupColumns(fields: string[], name?: string): ColumnGroup | null {
+    const members = fields.filter((f) => this.fields.some((x) => x.name === f));
+    if (!members.length) return null;
+    const { groups, group } = addGroup(this.floorGroups, members, name);
+    this.floorGroups = groups;
+    this.emit('data');
+    return group;
+  }
+
+  renameGroup(id: string, name: string): void {
+    const g = this.floorGroups.find((x) => x.id === id);
+    if (!g) return;
+    g.name = name.trim() || g.name;
+    this.emit('data');
+  }
+
+  setGroupColor(id: string, color: string): void {
+    const g = this.floorGroups.find((x) => x.id === id);
+    if (!g || g.color === color) return;
+    g.color = color;
+    this.emit('data');
+  }
+
+  /** Collapse/expand a group — its columns wait intact in the document; the
+   *  grid just stops drawing them (presentational, zero document mutations). */
+  toggleGroupCollapsed(id: string): void {
+    const g = this.floorGroups.find((x) => x.id === id);
+    if (!g) return;
+    g.collapsed = !g.collapsed;
+    this.emit('data');
+  }
+
+  /** Dissolve a group. The columns themselves are untouched. */
+  ungroupColumns(id: string): void {
+    const before = this.floorGroups.length;
+    this.floorGroups = this.floorGroups.filter((g) => g.id !== id);
+    if (this.floorGroups.length !== before) this.emit('data');
+  }
+
   /** The main (view) formatter root, even while drilled into a column style —
    *  scope/blast-radius calculations need the active SURFACE. */
   get mainRootForScope(): SPElement | undefined {
@@ -585,6 +636,7 @@ export class EditorState {
       currentFieldName: (this.activeDocKey !== 'main' && this.drillFieldStash) || this.currentFieldName,
       columnRefs: this.columnRefs,
       ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
+      ...(this.floorGroups.length ? { floorGroups: this.floorGroups } : {}),
       themeMode: this.themeMode,
       customTheme: this.customTheme,
     }, null, 2);
@@ -624,6 +676,7 @@ export class EditorState {
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
     this.columnRefs = (p.columnRefs && typeof p.columnRefs === 'object') ? p.columnRefs : {};
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
+    this.floorGroups = sanitizeGroups(p.floorGroups); // additive key: absent → none
     this.activeDocKey = 'main';
     this.doc = this.surfaceDoc();
     this.lastOpenViewId = this.activeViewId;
@@ -666,6 +719,7 @@ export class EditorState {
     this.currentFieldName = 'Status';
     this.columnRefs = defaultColumnRefs();
     this.importedViews = [];
+    this.floorGroups = [];
     this.activeDocKey = 'main';
     this.lastOpenViewId = null;
     this.drillFieldStash = null;
@@ -1429,10 +1483,13 @@ export class EditorState {
    * tab's contract. Routing per surface:
    *   · drilled into a column → that column's tree (any payload kind);
    *   · a sheet up → the sheet's document (kind follows the payload);
-   *   · on the floor → a row payload replaces the FLOOR ROOT (kind stays
-   *     'grid' — the floor's own export round-trips losslessly), a tile
-   *     payload becomes a NEW sheet (a tile can never be a floor), a column
-   *     payload registers to the current field and drills in.
+   *   · on the floor → a PURE-GRID row payload (every root child still a
+   *     single-field column — the schema-import guard) replaces the FLOOR
+   *     ROOT, kind stays 'grid', so the floor's own export round-trips
+   *     losslessly; a row LAYOUT (zones/composites) becomes a NEW sheet —
+   *     the floor never renders pseudo-columns (FLOOR-AND-SHEETS Stage 2);
+   *     a tile payload becomes a NEW sheet (a tile can never be a floor);
+   *     a column payload registers to the current field and drills in.
    */
   loadDocument(doc: FormatterDocument): void {
     if (this.activeDocKey !== 'main') {
@@ -1449,6 +1506,13 @@ export class EditorState {
     if (this.onFloor) {
       if (doc.kind === 'column') { this.loadColumnDocument(doc.root); return; }
       if (doc.kind === 'tile') { this.createView(doc); return; }
+      if (doc.root.children?.length && !isPureGrid(doc.root)) {
+        // a LAYOUT can never be the floor — the floor renders columns only.
+        // (A childless/empty root has no columns to fake and stays a floor
+        // replacement, e.g. seeding an empty grid.)
+        this.createView({ ...doc, kind: 'row' });
+        return;
+      }
       this.snapshot();
       this.floorDoc.root = doc.root; // 'row'/'grid' payloads: the floor's tree
       if (doc.viewExtras) this.floorDoc.viewExtras = doc.viewExtras;
