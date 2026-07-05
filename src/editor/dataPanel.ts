@@ -13,7 +13,7 @@
 import { state } from './state';
 import { importSchema, buildSampleRows, sampleValue, FIELD_TYPE_OPTIONS, CSV_HELP } from '../core/schemaImport';
 import { buildGridRoot, isPureGrid } from './gridScaffold';
-import { importJson, exportJson, treeHasNames } from '../core/serializer';
+import { importJson, exportJson } from '../core/serializer';
 import { parseThemeJson } from '../core/theme';
 import { buildExtractSnippet } from '../bridge/extractSnippet';
 import type { CellValue, FieldType, MockField, PersonValue, LookupValue, SPElement } from '../core/types';
@@ -48,20 +48,23 @@ export function applyImportedSchema(
     if (!state.fields.some((f) => f.name === state.currentFieldName)) {
       state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
     }
+    // Rebuild the FLOOR from the imported schema while it's still pure
+    // scaffolding — never clobber a grid someone has started shaping. A
+    // default view's row/tile formatting becomes its own named SHEET (the
+    // floor never renders a view layout — FLOOR-AND-SHEETS Stage 1).
     let loadedView: string | null = null;
-    if (state.activeDocKey === 'main' && state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
-      const dv = schema.views?.find((v) => v.isDefault && v.customFormatter);
+    if (isPureGrid(state.floorDoc.root)) {
+      state.mutateDocument(() => {
+        state.floorDoc.root = buildGridRoot(state.fields, state.columnRefs);
+      });
+    }
+    const dv = schema.views?.find((v) => v.isDefault && v.customFormatter);
+    if (dv) {
       let viewDoc: FormatterDocument | null = null;
-      if (dv) {
-        try { viewDoc = importJson(dv.customFormatter!); } catch { /* fall back to the grid rebuild */ }
-      }
-      if (viewDoc) {
-        state.loadDocument(viewDoc);
-        loadedView = dv!.title;
-      } else {
-        state.mutateDocument(() => {
-          state.doc.root = buildGridRoot(state.fields, state.columnRefs);
-        });
+      try { viewDoc = importJson(dv.customFormatter!); } catch { /* leave the floor up */ }
+      if (viewDoc && (viewDoc.kind === 'row' || viewDoc.kind === 'tile')) {
+        state.loadViewDocument(viewDoc, dv.title);
+        loadedView = dv.title;
       }
     }
     state.emit('data');
@@ -71,7 +74,7 @@ export function applyImportedSchema(
       + `${schema.rows ? ` + ${schema.rows.length} rows` : ''}`
       + `${cfCount ? ` + ${cfCount} live column formatters (registered as references)` : ''}`
       + `${vCount ? ` + ${vCount} views` : ''}`
-      + `${loadedView ? ` — "${loadedView}" row formatting loaded as the main document (Ctrl+Z restores the grid)` : ''}`);
+      + `${loadedView ? ` — "${loadedView}" opened as its own view (Ctrl+Z removes it; the grid is untouched)` : ''}`);
     return true;
   } catch (e) {
     toast(`Schema import failed: ${(e as Error).message}`);
@@ -206,7 +209,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     const heading = document.createElement('div');
     heading.className = 'wb-data-fieldname';
     heading.textContent = `Views from your list (${state.importedViews.length})`;
-    heading.title = 'Captured by the live-extract snippet. A view\'s formatter is the row formatting of THAT view — load one as the main document to edit it.';
+    heading.title = 'Captured by the live-extract snippet. A view\'s formatter is the row formatting of THAT view — open one as its own named view to edit it.';
     wrap.appendChild(heading);
 
     for (const view of state.importedViews) {
@@ -219,17 +222,18 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       row.appendChild(label);
       if (view.customFormatter) {
         const load = document.createElement('button');
-        load.textContent = 'Load as main document';
-        load.title = 'Parse this view\'s row formatting and put it on the canvas (one undo step)';
+        load.textContent = 'Open as a view';
+        load.title = 'Parse this view\'s row formatting and open it as its own named view (one undo step; the grid is untouched)';
         load.addEventListener('click', () => {
           try {
             const doc = importJson(view.customFormatter!);
-            if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
-              if (!confirm(`"${view.title}" has no element names (_elmName), but your current design is named.\n\nLoading it replaces the main document and drops those names from the Structure pane. Load anyway?`)) return;
+            if (doc.kind === 'row' || doc.kind === 'tile') {
+              state.loadViewDocument(doc, view.title);
+              onToast(`"${view.title}" opened as its own view — Ctrl+Z removes it again`);
+            } else {
+              state.loadColumnDocument(doc.root);
+              onToast(`"${view.title}" holds a column formatter — editing it on the ${state.currentFieldName} column`);
             }
-            state.openMain();
-            state.loadDocument(doc);
-            onToast(`"${view.title}" loaded as the main document — Ctrl+Z brings the previous design back`);
           } catch (e) {
             onToast(`Couldn't load "${view.title}": ${(e as Error).message}`);
           }
@@ -449,9 +453,10 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       };
       state.fields.push(field);
       state.rows.forEach((row, i) => { row[n] = sampleValue(field, i); });
-      if (state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+      // a pure floor grows the new column right away, even while a sheet is up
+      if (isPureGrid(state.floorDoc.root)) {
         state.mutateDocument(() => {
-          state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+          state.floorDoc.root = buildGridRoot(state.fields, state.columnRefs);
         });
       }
       done();
@@ -632,9 +637,9 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         if (state.currentFieldName === field.name) {
           state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0]?.name ?? '';
         }
-        if (state.doc.kind === 'grid' && isPureGrid(state.doc.root)) {
+        if (isPureGrid(state.floorDoc.root)) {
           state.mutateDocument(() => {
-            state.doc.root = buildGridRoot(state.fields, state.columnRefs);
+            state.floorDoc.root = buildGridRoot(state.fields, state.columnRefs);
           });
         }
         state.emit('data');

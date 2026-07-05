@@ -3,12 +3,12 @@
  * history button on the Left Edit Pane's Formatters bar.
  *
  * Snapshots are full-workspace-only (owner decision, 2026-07-03): the ONE
- * take action always captures scope { kind: 'all' } — the view formatter,
- * every registered column formatter, and the view name together. The store
- * format still knows the old view/column scopes (snapshots.ts is unchanged
- * for compat), so any legacy scoped captures a maker already saved stay
- * restorable under a collapsed "Older, scoped snapshots" group — but taking
- * new scoped ones is gone. Every restore is one undoable step.
+ * take action always captures scope { kind: 'all' } — the floor grid, every
+ * named view sheet, and every registered column formatter together. Legacy
+ * column-scoped captures stay restorable under a collapsed "Older, scoped
+ * snapshots" group (their shape is unchanged); captures whose shape predates
+ * FLOOR-AND-SHEETS Stage 1 are dropped by the store's load guard, per the
+ * no-migration rule. Every restore is one undoable step.
  *
  * Persistence: localStorage under snapshots.STORAGE_KEY ('wb-snapshots.v1',
  * additive — the frozen project/prefs keys stay untouched). The store brain
@@ -74,7 +74,7 @@ export function openSnapMenu(anchor: HTMLElement, onToast: (m: string) => void):
     take.type = 'button';
     take.className = 'wb-snap-take';
     take.textContent = '📸 Take a snapshot';
-    take.title = 'Capture the whole workspace — the view formatter, every column formatter, and the view name — and restore it from this menu any time';
+    take.title = 'Capture the whole workspace — the grid, every named view, and every column formatter — and restore it from this menu any time';
     take.addEventListener('click', () => {
       const snap = state.captureSnapshot({ kind: 'all' });
       if (!snap) { onToast('Nothing to snapshot yet'); return; }
@@ -156,12 +156,12 @@ export function openSnapMenu(anchor: HTMLElement, onToast: (m: string) => void):
       const summary = document.createElement('summary');
       summary.className = 'wb-snapmenu-group';
       summary.textContent = `Older, scoped snapshots (${legacy.length})`;
-      summary.title = 'Taken before snapshots covered the whole workspace — each restores only the view or column it captured';
+      summary.title = 'Taken before snapshots covered the whole workspace — each restores only the column it captured';
       details.appendChild(summary);
       for (const snap of legacy) {
         details.appendChild(rowFor(
           snap,
-          'Restore this older snapshot — it only covers the view or column it captured (one undoable step)',
+          'Restore this older snapshot — it only covers the column it captured (one undoable step)',
         ));
       }
       panel.appendChild(details);

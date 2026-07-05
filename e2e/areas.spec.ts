@@ -55,16 +55,18 @@ test('density is a separate row-level knob, and you can go back to the grid', as
   await expect(root).toHaveCSS('gap', '16px');
 
   await page.locator('.wb-rowview-bar-btn', { hasText: 'Back to grid' }).click();
-  // the two areas come back as grid columns (other fields wait under "+ column")
-  await expect(page.locator('.wb-grid-header-label')).toHaveText(['Title', 'Status']);
+  // the FLOOR comes back exactly as it was — a real separate document, not
+  // the view's areas relabeled as pseudo-columns (FLOOR-AND-SHEETS Stage 1)
+  await expect(page.locator('.wb-grid-header-label'))
+    .toHaveText(['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
 
-  // …and the way back is VISIBLE: the grid offers ⟳ Reopen, which restores
-  // the row view untouched (the fix for "you can never get back")
-  await page.locator('.wb-grid-returnbar button', { hasText: 'Reopen the row view' }).click();
+  // …and the way back is VISIBLE: the grid offers ⟳ Reopen, which reopens
+  // the named view untouched (the fix for "you can never get back")
+  await page.locator('.wb-grid-returnbar button', { hasText: 'Reopen View 1' }).click();
   await expect(page.locator('.wb-rowview-bar')).toBeVisible();
   await expect(page.locator('.wb-mock-viewrow').first().locator('> [data-sp-path] > [data-sp-path]')).toHaveCount(2);
-  await expect(page.locator('.wb-grid-returnbar')).toHaveCount(0); // back on the layout — no bar
+  await expect(page.locator('.wb-grid-returnbar')).toHaveCount(0); // back on the view — no bar
 });
 
 test('tile is an explicit layout pick from the selection', async ({ page }) => {

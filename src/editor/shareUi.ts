@@ -25,6 +25,7 @@
 import { state, defaultFields, EditorState } from './state';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { importJson } from '../core/serializer';
+import { buildGridRoot } from './gridScaffold';
 import { buildSampleRows } from '../core/schemaImport';
 import { PROJECT_FILE_NAME } from '../branding';
 import {
@@ -168,25 +169,32 @@ export async function openSharedWorkspaceFromHash(opts: ShareUiOptions): Promise
 }
 
 /**
- * A shared payload is normally a project file; a bare formatter JSON (e.g. a
- * raw pnp/List-Formatting sample) is wrapped in a default workspace so the
- * link still opens live. Anything else throws (refuse, don't guess).
+ * A shared payload is normally a workspace file; a bare formatter JSON (e.g.
+ * a raw pnp/List-Formatting sample) is wrapped in a default workspace so the
+ * link still opens live: a row/tile formatter becomes a named view over a
+ * default floor, a column formatter becomes the current field's registered
+ * format rendered on the floor. Anything else throws (refuse, don't guess).
  */
 export function normalizeSharedPayload(json: string): string {
   const parsed = JSON.parse(json);
-  if (parsed && typeof parsed === 'object' && parsed.doc?.root?.elmType) {
-    return json; // already a project file — loadProject validates the rest
+  if (parsed && typeof parsed === 'object' && parsed.floor?.root?.elmType) {
+    return json; // already a workspace file — loadProject validates the rest
   }
   const doc = importJson(json); // throws with its own teaching message
   const fields = fieldsForFormatter(json);
+  const currentFieldName = fields.find((f) => f.name === 'Status')?.name ?? fields[0].name;
+  const columnRefs: Record<string, unknown> = doc.kind === 'column' ? { [currentFieldName]: doc.root } : {};
   return JSON.stringify({
-    version: 1,
-    doc,
+    version: 2,
+    floor: { kind: 'grid', root: buildGridRoot(fields, columnRefs as Parameters<typeof buildGridRoot>[1]) },
+    views: doc.kind === 'row' || doc.kind === 'tile'
+      ? [{ id: 'v1', name: 'Shared formatter', doc }]
+      : [],
+    activeViewId: doc.kind === 'row' || doc.kind === 'tile' ? 'v1' : null,
     fields,
     rows: buildSampleRows(fields, 3),
-    currentFieldName: fields.find((f) => f.name === 'Status')?.name ?? fields[0].name,
-    columnRefs: {},
-    viewName: 'Shared formatter',
+    currentFieldName,
+    columnRefs,
   });
 }
 

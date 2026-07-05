@@ -185,7 +185,15 @@ body {
   box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
 }
 .wb-viewmenu-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
-.wb-viewmenu-row { display: flex; align-items: center; gap: 8px; }
+.wb-viewmenu-row { display: flex; align-items: center; gap: 8px; border-radius: 4px; }
+.wb-viewmenu-row.wb-viewmenu-active { background: var(--wb-bg); outline: 1px solid var(--wb-border); }
+.wb-viewmenu-open {
+  flex: 1; min-width: 0; text-align: left; padding: 5px 6px; cursor: pointer;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text);
+}
+.wb-viewmenu-open:hover { background: var(--wb-bg); color: var(--wb-accent); }
+.wb-viewmenu-floor .wb-viewmenu-open { font-weight: 600; }
+.wb-viewmenu-empty { font-size: 11.5px; color: var(--wb-text-2); padding: 2px 6px 4px; }
 .wb-viewmenu-name { flex: 1; font-size: 12px; font-weight: 600; }
 .wb-viewmenu-rename {
   flex: none; padding: 3px 8px; font-size: 12px; cursor: pointer;
@@ -198,12 +206,14 @@ body {
   border: 1px solid var(--wb-accent); border-radius: 3px;
   background: var(--wb-bg); color: var(--wb-text);
 }
-.wb-viewmenu-newrow {
+.wb-viewmenu-newrow,
+.wb-viewmenu-newtile {
   margin-top: 2px; padding: 6px 8px; font-size: 12px; font-weight: 600; text-align: left;
   cursor: pointer; border: 1px solid var(--wb-border); border-radius: 4px;
   background: var(--wb-bg); color: var(--wb-accent);
 }
-.wb-viewmenu-newrow:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
+.wb-viewmenu-newrow:hover,
+.wb-viewmenu-newtile:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
 
 /* ── Snapshots menu (anchored under the 🕘 button by the document dropdown) ── */
 .wb-snapmenu {

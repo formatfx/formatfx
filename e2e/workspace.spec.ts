@@ -20,7 +20,9 @@ async function loadRowFixture(page: Page): Promise<void> {
       children: [{ elmType: 'span', txtContent: '[$Title]' }],
     },
   }));
-  await page.click('#wb-json-apply');
+  await page.click('#wb-json-apply'); // on the floor: the grid now holds the fixture tree
+  // graduate it into a row-view SHEET so the row surface renders it
+  await page.selectOption('#wb-pane-side #wb-kind', 'row');
 }
 
 test('edit a column formatter, switch back, the view reflects it (CFR round-trip)', async ({ page }) => {
@@ -245,16 +247,20 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
     txtContent: 'probe',
   }));
   await page.click('#wb-json-apply');
+  // a bare column payload on the floor registers to the current field and
+  // drills in — the probe renders in the drilled column preview
   const probe = page.locator('.wb-mock-cell-fmt [data-sp-path]').first();
   await expect(probe).toHaveCSS('background-color', 'rgb(49, 49, 49)'); // dark default #313131
   await page.click('#wb-menu-btn');
   await page.click('#wb-theme');
   await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
   await expect(probe).toHaveCSS('background-color', 'rgb(243, 242, 241)'); // light #f3f2f1
-  // the harness reloads between captures — autosave must restore the choice too
+  // the harness reloads between captures — autosave must restore the choice
+  // too. A reload lands on the FLOOR, where the registered probe formatter
+  // renders inside its grid column via CFR.
   await page.reload();
   await expect(page.locator('body')).not.toHaveClass(/wb-dark/);
-  await expect(page.locator('.wb-mock-cell-fmt [data-sp-path]').first())
+  await expect(page.locator('.wb-grid').getByText('probe').first())
     .toHaveCSS('background-color', 'rgb(243, 242, 241)');
 });
 

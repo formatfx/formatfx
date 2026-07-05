@@ -1,6 +1,27 @@
 /**
- * editor/state.ts — Single store for the editor: formatter document, mock
- * data, selection (by node path), undo/redo, and change notification.
+ * editor/state.ts — Single store for the editor: the workspace (floor grid +
+ * named view sheets + registered column formatters), mock data, selection
+ * (by node path), undo/redo, and change notification.
+ *
+ * FLOOR-AND-SHEETS Stage 1 — the state model:
+ *   · The FLOOR is its own columns-only grid document (`floorDoc`, kind
+ *     'grid'). It never holds a view layout; nothing a view does can change
+ *     it, and nothing on the floor can destroy a view.
+ *   · Each row/tile view is a named SHEET document (`views`). Opening a
+ *     sheet slides it over the floor; minimizing drops back to the floor
+ *     WITHOUT touching the sheet. Leaving/opening is navigation, never a
+ *     document mutation — it pushes nothing onto the undo stack.
+ *   · `doc` stays the live canvas document every consumer reads. While
+ *     `activeDocKey === 'main'` it IS the active surface's slot object
+ *     (floorDoc or a sheet's doc); drilled into a column formatter it is
+ *     that column's tree, kind 'column'.
+ *   · Undo is ONE GLOBAL app-level stack (FLOOR-AND-SHEETS §2.3): every
+ *     snapshot captures the whole workspace plus where the mutation
+ *     happened, so undo/redo also navigate back to the surface they change
+ *     — the spreadsheet-workbook convention. Modal editors keep their own
+ *     local stacks and commit as one app step (template builder,
+ *     batchProjectUpdate, Format cells); the canvas-inline CFR drill-in is
+ *     a surface, so its gestures are app-level steps.
  */
 
 import type {
@@ -26,19 +47,27 @@ export type ChangeReason =
 /** The Left Edit Pane's three interaction lenses (progressive disclosure). */
 export type EditorLens = 'simple' | 'pro' | 'code';
 
+/** One named sheet — a row/tile view document above the floor. */
+export interface SheetDoc {
+  /** Opaque, stable identity ('v1', 'v2', … — monotonic per workspace). */
+  id: string;
+  /** The maker-facing name ("View 1", "Sprint board", …). */
+  name: string;
+  /** The view document — kind 'row' | 'tile' only. */
+  doc: FormatterDocument;
+}
+
 type Listener = (reason: ChangeReason) => void;
 
 const ME: PersonValue = {
   title: 'Sandbox User', email: 'me@contoso.com', jobTitle: 'Maker', department: 'IT',
 };
 
-function defaultDocument(): FormatterDocument {
-  // the grid-first workspace: the preview pane starts as a Microsoft-Lists
-  // style grid — one column per view column, each rendered with its current
+function defaultFloor(): FormatterDocument {
+  // the grid-first workspace: the floor starts as a Microsoft-Lists style
+  // grid — one column per view column, each rendered with its current
   // formatter (Status/Progress arrive formatted; Owner stays registered but
   // unplaced so "+ column" demonstrates adding an already-formatted column).
-  // Dragging one column header onto another generates the row-formatter
-  // scaffolding — the on-ramp from "I know grids" to row formatting.
   return {
     kind: 'grid',
     root: buildGridRoot(defaultFields(), defaultColumnRefs(),
@@ -46,7 +75,7 @@ function defaultDocument(): FormatterDocument {
   };
 }
 
-/** Showcase column formatters — referenced by the default view (Owner is registered but unused, on purpose). */
+/** Showcase column formatters — referenced by the default floor (Owner is registered but unused, on purpose). */
 function defaultColumnRefs(): Record<string, SPElement> {
   return {
     Status: {
@@ -139,22 +168,41 @@ function isoDaysFromNow(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function clone<T>(v: T): T { return JSON.parse(JSON.stringify(v)) as T; }
+
+/** One navigation-trail entry: which doc was up, over which surface. */
+interface NavEntry { key: string; view: string | null }
+
 export class EditorState {
-  doc: FormatterDocument = defaultDocument();
+  /** The FLOOR — the columns-only grid document. Its kind is always 'grid'. */
+  floorDoc: FormatterDocument = defaultFloor();
+  /** The SHEETS — named row/tile view documents (the multi-view list). */
+  views: SheetDoc[] = [];
+  /** Which sheet is up on the canvas; null = standing on the floor. */
+  activeViewId: string | null = null;
+  /** The live canvas document. While `activeDocKey === 'main'` this IS the
+   *  active surface's slot object (write-through); drilled into a column
+   *  formatter it is that column's tree with kind 'column'. */
+  doc: FormatterDocument = this.floorDoc;
   fields: MockField[] = defaultFields();
   rows: MockRow[] = defaultRows();
   /** Field the column formatter targets (@currentField). */
   currentFieldName = 'Status';
-  /** Registered column formatters for columnFormatterReference resolution: field name → tree. */
+  /** Registered column formatters for columnFormatterReference resolution:
+   *  field name → tree. Owned by the WORKSPACE — column formatters render on
+   *  the floor's cells and on sheets via CFR alike, so the registry sits
+   *  above both surfaces. */
   columnRefs: Record<string, SPElement> = defaultColumnRefs();
   /** Views captured by a List Snapshot import (formatters kept as raw text). */
   importedViews: ImportedView[] = [];
   /** Which formatter is on the canvas: 'main' or a columnRefs key. */
   activeDocKey = 'main';
-  /** The view's editable name — project metadata, travels with Save/Open. */
-  viewName = 'View 1';
-  private mainDocStash: FormatterDocument | null = null;
-  private mainFieldStash: string | null = null;
+  /** The sheet last on the canvas — session-local memory for the "⟳ Reopen"
+   *  affordance (Stage 2's tab strip replaces it). Never persisted. */
+  lastOpenViewId: string | null = null;
+  /** The maker's data-tab field pick, stashed while a drill-in overrides
+   *  currentFieldName, restored on the way back out. */
+  private drillFieldStash: string | null = null;
   /**
    * Selection backing store. Figma-style multi-select: the array holds every
    * selected node path; `selection` (below) is the backward-compatible primary
@@ -175,12 +223,11 @@ export class EditorState {
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private saveTimer = 0;
-  private docUndoStash: Record<string, string[]> = {};
-  private docRedoStash: Record<string, string[]> = {};
-  private docSavepointStash: Record<string, string | null> = {};
-  private columnRefVersions: Record<string, number> = {};
-  private docSelectionStash: Record<string, NodePath[]> = {};
-  private inMutateDocument = false;
+  /** Per-surface selection memory (pure view state): 'floor', a view id, or a
+   *  column name → the selection that was live when you navigated away. */
+  private surfaceSelections: Record<string, NodePath[]> = {};
+  /** Monotonic view-id source, seeded past any loaded ids. */
+  private viewIdCounter = 0;
 
   get canUndo(): boolean { return this.undoStack.length > 0; }
   get canRedo(): boolean { return this.redoStack.length > 0; }
@@ -211,12 +258,9 @@ export class EditorState {
 
   emit(reason: ChangeReason): void {
     // keep the registry live while a column formatter is being edited, so
-    // CFRs in the main formatter pick up edits the moment you switch back
+    // CFRs on the floor and sheets pick up edits the moment you switch back
     if (this.activeDocKey !== 'main' && (reason === 'document' || reason === 'load')) {
       this.columnRefs[this.activeDocKey] = this.doc.root;
-    }
-    if (this.activeDocKey !== 'main' && (reason === 'document' || reason === 'kind') && !this.inMutateDocument) {
-      this.incrementColumnVersion(this.activeDocKey);
     }
     for (const fn of this.listeners) fn(reason);
     // 'selection' and 'lens' are pure view state — neither autosaves (the lens
@@ -233,17 +277,19 @@ export class EditorState {
     this.emit('lens');
   }
 
-  /** Mark the live document as the Save checkpoint (the Save button / first load). */
+  /** Mark the live workspace as the Save checkpoint (the Save button / first load). */
   markSavepoint(): void { this._savepoint = this.snapState(); }
 
-  /** Whether there are unsaved mutations since the last Save checkpoint. */
+  /** Whether there are unsaved mutations since the last Save checkpoint.
+   *  Compares CONTENT (floor + sheets + registry + tags) — navigation and
+   *  selection are view state and never count as dirt. */
   get isDirtySinceSave(): boolean {
     if (this._savepoint == null) return false;
     const clean = (snap: string) => {
       const parsed = JSON.parse(snap);
       delete parsed.selections;
-      delete parsed.refs;
-      delete parsed.refVersions;
+      delete parsed.activeViewId;
+      delete parsed.activeDocKey;
       return JSON.stringify(parsed);
     };
     return clean(this._savepoint) !== clean(this.snapState());
@@ -258,162 +304,224 @@ export class EditorState {
     this.pushUndo(before);
     this.restoreSnap(this._savepoint);
     this.clampSelection();
+    this.emit('load');
     this.emit('document');
     this.emit('selection');
   }
 
-  // ─── Workspace: main formatter ⇄ column formatters ─────────────────────────
+  // ─── Workspace: the floor, the sheets, and the drill-in ────────────────────
 
-  /** Write the active document back into its slot. */
+  /** Whether the floor is the active surface (regardless of a column drill). */
+  get onFloor(): boolean { return this.activeViewId === null; }
+
+  /** The active sheet, or null when standing on the floor. */
+  get activeView(): SheetDoc | null {
+    return this.activeViewId ? this.viewById(this.activeViewId) ?? null : null;
+  }
+
+  /** Human name of the active surface — the sheet's name, or the floor's. */
+  get activeViewName(): string { return this.activeView?.name ?? 'Grid'; }
+
+  viewById(id: string): SheetDoc | undefined {
+    return this.views.find((v) => v.id === id);
+  }
+
+  /** The active SURFACE document slot (floor or the open sheet) — what
+   *  `doc` aliases while no column formatter is drilled into. */
+  private surfaceDoc(): FormatterDocument {
+    return this.activeView?.doc ?? this.floorDoc;
+  }
+
+  /** Selection-memory key for the current canvas document. */
+  private surfaceKey(): string {
+    return this.activeDocKey !== 'main' ? this.activeDocKey : (this.activeViewId ?? 'floor');
+  }
+
+  /** Write the live canvas document back into its slot. The surface slots are
+   *  write-through aliases already; this re-asserts the invariant (defensive)
+   *  and syncs a drilled column tree into the registry. */
   private flushActiveDoc(): void {
     if (this.activeDocKey !== 'main') {
       this.columnRefs[this.activeDocKey] = this.doc.root;
+      return;
     }
+    const v = this.activeView;
+    if (v) v.doc = this.doc;
+    else this.floorDoc = this.doc;
+  }
+
+  /** Stash the current selection under its surface key and restore the target's. */
+  private swapSelections(toKey: string): void {
+    this.surfaceSelections[this.surfaceKey()] = this._selections;
+    this._selections = this.surfaceSelections[toKey] ?? [[]];
   }
 
   /**
-   * Navigation history — the "oops, how did I get here" stack. Every doc
-   * switch (openMain/openColumnRef) pushes where you WERE; goBack() retraces.
-   * Pure navigation state: not undo, not persisted, capped small.
+   * Navigation history — the "oops, how did I get here" stack. Every doc or
+   * surface switch pushes where you WERE; goBack() retraces. Pure navigation
+   * state: not undo, not persisted, capped small.
    */
-  private navStack: string[] = [];
+  private navStack: NavEntry[] = [];
 
   private pushNav(): void {
-    if (this.navStack[this.navStack.length - 1] === this.activeDocKey) return;
-    this.navStack.push(this.activeDocKey);
+    const top = this.navStack[this.navStack.length - 1];
+    if (top && top.key === this.activeDocKey && top.view === this.activeViewId) return;
+    this.navStack.push({ key: this.activeDocKey, view: this.activeViewId });
     if (this.navStack.length > 50) this.navStack.shift();
   }
 
+  private navEntryValid(e: NavEntry): boolean {
+    if (e.key === this.activeDocKey && e.view === this.activeViewId) return false;
+    if (e.key !== 'main' && !Object.hasOwn(this.columnRefs, e.key)) return false;
+    if (e.view !== null && !this.viewById(e.view)) return false;
+    return true;
+  }
+
   /** Where goBack() would land ('main' or a column name), or null if nowhere.
-   *  Skips column keys that have since been unregistered. */
+   *  Skips entries whose column/sheet has since been unregistered/removed. */
   get backTarget(): string | null {
     for (let i = this.navStack.length - 1; i >= 0; i--) {
-      const key = this.navStack[i];
-      if (key === this.activeDocKey) continue;
-      if (key === 'main' || Object.hasOwn(this.columnRefs, key)) return key;
+      if (this.navEntryValid(this.navStack[i])) return this.navStack[i].key;
     }
     return null;
   }
 
-  /** Retrace the last doc switch. Returns where it landed, or null. */
+  /** Retrace the last doc/surface switch. Returns where it landed, or null. */
   goBack(): string | null {
-    const target = this.backTarget;
-    if (target === null) return null;
-    // drop everything above (and including) the entry we're landing on, so
-    // repeated Back keeps walking down the trail instead of ping-ponging
+    let entry: NavEntry | null = null;
     for (let i = this.navStack.length - 1; i >= 0; i--) {
-      if (this.navStack[i] === target) { this.navStack.length = i; break; }
+      if (this.navEntryValid(this.navStack[i])) {
+        entry = this.navStack[i];
+        this.navStack.length = i; // drop it and everything above — no ping-pong
+        break;
+      }
     }
+    if (!entry) return null;
     this.inGoBack = true;
     try {
-      if (target === 'main') this.openMain();
-      else this.openColumnRef(target);
+      if (entry.view !== this.activeViewId) {
+        if (entry.view) this.openView(entry.view);
+        else this.minimizeView();
+      }
+      if (entry.key !== this.activeDocKey) {
+        if (entry.key === 'main') this.openMain();
+        else this.openColumnRef(entry.key);
+      }
     } finally {
       this.inGoBack = false;
     }
-    return target;
+    return entry.key;
   }
 
   private inGoBack = false;
 
-  /** Open a registered column formatter for editing. */
-  openColumnRef(name: string): void {
-    // own-key check: `in` would also match prototype members ('toString', …),
-    // and a registry read on such a name must never open a "formatter"
-    if (!Object.hasOwn(this.columnRefs, name) || this.activeDocKey === name) return;
+  /**
+   * Open a sheet over the floor. NAVIGATION: never a document mutation, never
+   * an undo step (FLOOR-AND-SHEETS §2.2). Works while drilled into a column
+   * formatter — the surface underneath switches, the drill stays put.
+   */
+  openView(id: string): void {
+    const v = this.viewById(id);
+    if (!v || this.activeViewId === id) return;
     if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
-    if (this.activeDocKey === 'main') {
-      this.mainDocStash = this.doc;
-      this.mainFieldStash = this.currentFieldName;
-    }
-    // Stash current activeDocKey's stacks, savepoint, and selections
-    this.docUndoStash[this.activeDocKey] = this.undoStack;
-    this.docRedoStash[this.activeDocKey] = this.redoStack;
-    this.docSavepointStash[this.activeDocKey] = this._savepoint;
-    this.docSelectionStash[this.activeDocKey] = this._selections;
-
-    this.doc = { kind: 'column', root: this.columnRefs[name] };
-    this.activeDocKey = name;
-    // @currentField inside a column formatter is that column
-    if (this.fields.some((f) => f.name === name)) this.currentFieldName = name;
-
-    // Restore new activeDocKey's selections, stacks, and savepoint
-    this._selections = this.docSelectionStash[name] ?? [[]];
-    this.undoStack = this.docUndoStash[name] ?? [];
-    this.redoStack = this.docRedoStash[name] ?? [];
-    if (name in this.docSavepointStash) {
-      this._savepoint = this.docSavepointStash[name];
-    } else {
-      this.markSavepoint();
-    }
+    if (this.activeDocKey === 'main') this.swapSelections(id);
+    this.activeViewId = id;
+    this.lastOpenViewId = id;
+    if (this.activeDocKey === 'main') this.doc = v.doc;
     this.emit('load');
     this.emit('data');
   }
 
-  /** Return to the main (row/view/column) formatter. */
-  openMain(): void {
-    if (this.activeDocKey === 'main') return;
+  /** Drop back to the floor. NAVIGATION — the sheet is untouched and waits in
+   *  the view list; nothing lands on the undo stack. */
+  minimizeView(): void {
+    if (this.activeViewId === null) return;
     if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
-
-    // Stash current activeDocKey's stacks, savepoint, and selections
-    this.docUndoStash[this.activeDocKey] = this.undoStack;
-    this.docRedoStash[this.activeDocKey] = this.redoStack;
-    this.docSavepointStash[this.activeDocKey] = this._savepoint;
-    this.docSelectionStash[this.activeDocKey] = this._selections;
-
-    this.doc = this.mainDocStash ?? this.doc;
-    this.mainDocStash = null;
-    this.activeDocKey = 'main';
-    if (this.mainFieldStash) {
-      this.currentFieldName = this.mainFieldStash;
-      this.mainFieldStash = null;
-    }
-
-    // Restore main's selections, stacks, and savepoint
-    this._selections = this.docSelectionStash['main'] ?? [[]];
-    this.undoStack = this.docUndoStash['main'] ?? [];
-    this.redoStack = this.docRedoStash['main'] ?? [];
-    if ('main' in this.docSavepointStash) {
-      this._savepoint = this.docSavepointStash['main'];
-    } else {
-      this.markSavepoint();
-    }
+    this.lastOpenViewId = this.activeViewId;
+    if (this.activeDocKey === 'main') this.swapSelections('floor');
+    this.activeViewId = null;
+    if (this.activeDocKey === 'main') this.doc = this.floorDoc;
     this.emit('load');
+    this.emit('data');
+  }
+
+  /** Next fresh sheet id — monotonic, seeded past loaded ids. */
+  private nextViewId(): string {
+    for (const v of this.views) {
+      const m = /^v(\d+)$/.exec(v.id);
+      if (m) this.viewIdCounter = Math.max(this.viewIdCounter, Number(m[1]));
+    }
+    return `v${++this.viewIdCounter}`;
+  }
+
+  /** Default sheet name — the first "View N" not already taken. */
+  private nextViewName(): string {
+    let n = this.views.length + 1;
+    while (this.views.some((v) => v.name === `View ${n}`)) n++;
+    return `View ${n}`;
+  }
+
+  /**
+   * Register a new named sheet and open it. The registration is ONE undoable
+   * step (undo removes the sheet and lands you back where you stood); the
+   * opening is navigation riding along. Only row/tile documents can be sheets.
+   */
+  createView(doc: FormatterDocument, name?: string): SheetDoc | null {
+    if (doc.kind !== 'row' && doc.kind !== 'tile') return null;
+    if (this.activeDocKey !== 'main') this.openMain(); // navigation, not mutation
+    this.pushNav(); // opening the new sheet is navigation — Back retraces it
+    if (doc.kind === 'tile') {
+      doc.tileWidth = doc.tileWidth ?? 254;
+      doc.tileHeight = doc.tileHeight ?? 220;
+    }
+    this.snapshot();
+    const sheet: SheetDoc = { id: this.nextViewId(), name: name?.trim() || this.nextViewName(), doc };
+    this.views.push(sheet);
+    this.swapSelections(sheet.id);
+    this.activeViewId = sheet.id;
+    this.lastOpenViewId = sheet.id;
+    this.doc = sheet.doc;
+    this.selection = [];
+    // the canvas surface changed — emit 'load' like every other navigation so
+    // load-scoped UI state resets too (e.g. the left pane's library browser)
+    this.emit('load');
+    this.emit('kind');
+    this.emit('data');
+    return sheet;
+  }
+
+  /** Rename a sheet. Project metadata, not a formatter edit — deliberately off
+   *  the undo stack; emits 'data' so the document dropdown + menus refresh and
+   *  the change autosaves. */
+  renameView(id: string, name: string): void {
+    const v = this.viewById(id);
+    if (!v) return;
+    v.name = name.trim() || v.name;
     this.emit('data');
   }
 
   /** The main (view) formatter root, even while drilled into a column style —
-   *  scope/blast-radius calculations need it and mainDocStash is private. */
+   *  scope/blast-radius calculations need the active SURFACE. */
   get mainRootForScope(): SPElement | undefined {
-    return this.activeDocKey === 'main' ? this.doc.root : this.mainDocStash?.root;
+    return this.activeDocKey === 'main' ? this.doc.root : this.surfaceDoc().root;
   }
 
-  /** Rename the view. Project metadata, not a formatter edit — deliberately
-   *  off the undo stack; emits 'data' so the document dropdown + menus refresh and
-   *  the change autosaves. */
-  setViewName(name: string): void {
-    this.viewName = name.trim() || 'View 1';
-    this.emit('data');
-  }
-
-  /** Human label for the main document, e.g. "View formatter (row layout)". */
+  /** Human label for the active surface, e.g. "View formatter (row layout)". */
   mainDocLabel(): string {
-    const d = this.activeDocKey === 'main' ? this.doc : this.mainDocStash ?? this.doc;
-    const field = this.activeDocKey === 'main' ? this.currentFieldName : this.mainFieldStash ?? this.currentFieldName;
+    const d = this.activeDocKey === 'main' ? this.doc : this.surfaceDoc();
     switch (d.kind) {
-      case 'grid': return 'View formatter — grid';
       case 'row': return 'View formatter — row layout';
       case 'tile': return 'View formatter — tile/gallery';
-      default: return `Column formatter on [$${field}]`;
+      default: return 'View formatter — grid';
     }
   }
 
-  /** Column names the main formatter references via columnFormatterReference. */
+  /** Column names the active surface references via columnFormatterReference. */
   referencedColumns(): Set<string> {
     const out = new Set<string>();
-    const root = this.activeDocKey === 'main' ? this.doc.root : this.mainDocStash?.root;
+    const root = this.mainRootForScope;
     const walk = (el: SPElement | undefined): void => {
       if (!el) return;
       if (el.columnFormatterReference) {
@@ -426,6 +534,41 @@ export class EditorState {
     return out;
   }
 
+  // ─── Drill-in: main surface ⇄ column formatters ────────────────────────────
+
+  /** Open a registered column formatter for editing. */
+  openColumnRef(name: string): void {
+    // own-key check: `in` would also match prototype members ('toString', …),
+    // and a registry read on such a name must never open a "formatter"
+    if (!Object.hasOwn(this.columnRefs, name) || this.activeDocKey === name) return;
+    if (!this.inGoBack) this.pushNav();
+    this.flushActiveDoc();
+    this.swapSelections(name);
+    if (this.activeDocKey === 'main') this.drillFieldStash = this.currentFieldName;
+    this.doc = { kind: 'column', root: this.columnRefs[name] };
+    this.activeDocKey = name;
+    // @currentField inside a column formatter is that column
+    if (this.fields.some((f) => f.name === name)) this.currentFieldName = name;
+    this.emit('load');
+    this.emit('data');
+  }
+
+  /** Return to the active surface (the floor or the open sheet). */
+  openMain(): void {
+    if (this.activeDocKey === 'main') return;
+    if (!this.inGoBack) this.pushNav();
+    this.flushActiveDoc();
+    this.swapSelections(this.activeViewId ?? 'floor');
+    this.activeDocKey = 'main';
+    this.doc = this.surfaceDoc();
+    if (this.drillFieldStash) {
+      this.currentFieldName = this.drillFieldStash;
+      this.drillFieldStash = null;
+    }
+    this.emit('load');
+    this.emit('data');
+  }
+
   // ─── Project persistence ───────────────────────────────────────────────────
 
   static readonly STORAGE_KEY = 'list-formatting-sandbox.project.v1';
@@ -433,52 +576,74 @@ export class EditorState {
   serializeProject(): string {
     this.flushActiveDoc();
     return JSON.stringify({
-      version: 1,
-      doc: this.activeDocKey === 'main' ? this.doc : this.mainDocStash ?? this.doc,
+      version: 2,
+      floor: this.floorDoc,
+      views: this.views,
+      activeViewId: this.activeViewId,
       fields: this.fields,
       rows: this.rows,
-      currentFieldName: this.activeDocKey === 'main' ? this.currentFieldName : this.mainFieldStash ?? this.currentFieldName,
+      currentFieldName: (this.activeDocKey !== 'main' && this.drillFieldStash) || this.currentFieldName,
       columnRefs: this.columnRefs,
-      // additive keys — older builds simply ignore them (no version bump)
-      viewName: this.viewName,
       ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
       themeMode: this.themeMode,
       customTheme: this.customTheme,
     }, null, 2);
   }
 
+  /**
+   * Load a project payload. STRICT v2 shape guard: anything else — including
+   * every pre-Stage-1 payload — throws, and restore() falls back to the fresh
+   * default. That is a LOAD GUARD, not a converter: no migration code exists
+   * or is maintained (FLOOR-AND-SHEETS §3 Stage 1, owner call 2026-07-04).
+   */
   loadProject(text: string): void {
     const p = JSON.parse(text);
-    if (!p || typeof p !== 'object' || !p.doc?.root?.elmType || !Array.isArray(p.fields) || !Array.isArray(p.rows)) {
-      throw new Error('Not a sandbox project file (expected doc/fields/rows).');
+    const viewOk = (v: unknown): boolean => {
+      const s = v as SheetDoc;
+      // 'floor' is reserved: it keys the floor surface in selection memory,
+      // so a sheet carrying it would collide with the floor deterministically
+      return Boolean(s && typeof s.id === 'string' && s.id && s.id !== 'floor'
+        && typeof s.name === 'string'
+        && (s.doc?.kind === 'row' || s.doc?.kind === 'tile')
+        && s.doc?.root?.elmType);
+    };
+    const idsUnique = (views: SheetDoc[]): boolean =>
+      new Set(views.map((v) => v.id)).size === views.length;
+    if (!p || typeof p !== 'object'
+      || !p.floor?.root?.elmType
+      || !Array.isArray(p.views) || !p.views.every(viewOk) || !idsUnique(p.views)
+      || !Array.isArray(p.fields) || !Array.isArray(p.rows)) {
+      throw new Error('Not a formatfx workspace file (expected floor/views/fields/rows).');
     }
-    this.doc = p.doc;
+    this.floorDoc = { ...p.floor, kind: 'grid' };
+    this.views = p.views;
+    this.activeViewId = (typeof p.activeViewId === 'string' && p.views.some((v: SheetDoc) => v.id === p.activeViewId))
+      ? p.activeViewId : null;
     this.fields = p.fields;
     this.rows = p.rows;
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
     this.columnRefs = (p.columnRefs && typeof p.columnRefs === 'object') ? p.columnRefs : {};
-    this.viewName = (typeof p.viewName === 'string' && p.viewName.trim()) || 'View 1';
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
     this.activeDocKey = 'main';
-    this.mainDocStash = null;
-    this.mainFieldStash = null;
+    this.doc = this.surfaceDoc();
+    this.lastOpenViewId = this.activeViewId;
     if (p.themeMode === 'light' || p.themeMode === 'dark') this.themeMode = p.themeMode;
     this.customTheme = (p.customTheme && typeof p.customTheme === 'object') ? p.customTheme : null;
+    this.drillFieldStash = null;
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
-    this.docUndoStash = {};
-    this.docRedoStash = {};
-    this.docSavepointStash = {};
-    this.columnRefVersions = {};
-    this.docSelectionStash = {};
+    this.surfaceSelections = {};
     this.navStack = [];
+    this.viewIdCounter = 0;
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
   }
 
-  /** Restore the autosaved project, if any. Returns true when restored. */
+  /** Restore the autosaved project, if any. Returns true when restored.
+   *  An unparseable blob (corrupt, or a pre-Stage-1 format) falls through to
+   *  the fresh default — the caller keeps the default workspace. */
   restore(): boolean {
     try {
       const saved = localStorage.getItem(EditorState.STORAGE_KEY);
@@ -492,26 +657,25 @@ export class EditorState {
 
   resetAll(): void {
     try { localStorage.removeItem(EditorState.STORAGE_KEY); } catch { /* private mode */ }
-    this.doc = defaultDocument();
+    this.floorDoc = defaultFloor();
+    this.views = [];
+    this.activeViewId = null;
+    this.doc = this.floorDoc;
     this.fields = defaultFields();
     this.rows = defaultRows();
     this.currentFieldName = 'Status';
     this.columnRefs = defaultColumnRefs();
-    this.viewName = 'View 1';
     this.importedViews = [];
     this.activeDocKey = 'main';
-    this.mainDocStash = null;
-    this.mainFieldStash = null;
+    this.lastOpenViewId = null;
+    this.drillFieldStash = null;
     this.customTheme = null;
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
-    this.docUndoStash = {};
-    this.docRedoStash = {};
-    this.docSavepointStash = {};
-    this.columnRefVersions = {};
-    this.docSelectionStash = {};
+    this.surfaceSelections = {};
     this.navStack = [];
+    this.viewIdCounter = 0;
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
@@ -587,20 +751,22 @@ export class EditorState {
     this.pushUndo(this.snapState());
   }
 
-  /** The undo snapshot: the document, the per-field subtype tags, AND the
-   *  registered column formatters. Tags ride along so an apply
-   *  (applyColumnSubtype) reverts its field tag on the same undo step; the
-   *  registry rides along so a push-update (pushSubtypeUpdate, US-7) — which
-   *  overwrites columnRefs and changes no document node — is one undoable batch.
-   *  Structural field edits (add/remove/type, via the data panel) deliberately
-   *  live outside undo, so a later field edit is never clobbered by an unrelated
-   *  doc undo. */
+  /** The undo snapshot: the WHOLE workspace — floor, sheets, the registered
+   *  column formatters, the per-field subtype tags — plus where the mutation
+   *  happened (surface + drill) and the selection. One global app-level stack
+   *  (FLOOR-AND-SHEETS §2.3): undo/redo restore content AND navigate back to
+   *  the surface they change. Structural field edits (add/remove/type, via
+   *  the data panel) deliberately live outside undo, so a later field edit is
+   *  never clobbered by an unrelated doc undo. */
   private snapState(): string {
+    this.flushActiveDoc();
     return JSON.stringify({
-      doc: this.doc,
+      floor: this.floorDoc,
+      views: this.views,
+      activeViewId: this.activeViewId,
+      activeDocKey: this.activeDocKey,
       tags: this.subtypeTags(),
       refs: this.columnRefs,
-      refVersions: this.columnRefVersions,
       selections: this._selections,
     });
   }
@@ -613,43 +779,40 @@ export class EditorState {
     return out;
   }
 
-  private incrementColumnVersion(name: string): void {
-    this.columnRefVersions[name] = (this.columnRefVersions[name] ?? 0) + 1;
-  }
-
   private restoreSnap(snap: string): void {
     const parsed = JSON.parse(snap) as {
-      doc: FormatterDocument;
+      floor: FormatterDocument;
+      views: SheetDoc[];
+      activeViewId: string | null;
+      activeDocKey: string;
       tags?: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }>;
-      refs?: Record<string, SPElement>;
-      refVersions?: Record<string, number>;
+      refs: Record<string, SPElement>;
       selections?: NodePath[];
     };
-    this.doc = parsed.doc;
-    if (parsed.refs) {
-      const refVersions = parsed.refVersions ?? {};
-      const nextRefs: Record<string, SPElement> = {};
-      for (const name of Object.keys(parsed.refs)) {
-        const currVer = this.columnRefVersions[name] ?? 0;
-        const snapVer = refVersions[name] ?? 0;
-        if (name === this.activeDocKey || currVer <= snapVer) {
-          nextRefs[name] = parsed.refs[name];
-        } else {
-          if (name in this.columnRefs) {
-            nextRefs[name] = this.columnRefs[name];
-          }
-        }
+    // sheet NAMES are project metadata, off the undo stack (the renameView
+    // rule) — a content restore keeps the live name of any surviving sheet
+    const liveNames = new Map(this.views.map((v) => [v.id, v.name]));
+    this.floorDoc = parsed.floor;
+    this.views = parsed.views;
+    for (const v of this.views) {
+      const live = liveNames.get(v.id);
+      if (live !== undefined) v.name = live;
+    }
+    this.columnRefs = parsed.refs;
+    this.activeViewId = (parsed.activeViewId && this.views.some((v) => v.id === parsed.activeViewId))
+      ? parsed.activeViewId : null;
+    if (this.activeViewId) this.lastOpenViewId = this.activeViewId;
+    this.activeDocKey = (parsed.activeDocKey !== 'main' && Object.hasOwn(this.columnRefs, parsed.activeDocKey))
+      ? parsed.activeDocKey : 'main';
+    if (this.activeDocKey !== 'main') {
+      this.doc = { kind: 'column', root: this.columnRefs[this.activeDocKey] };
+      if (this.fields.some((f) => f.name === this.activeDocKey)) this.currentFieldName = this.activeDocKey;
+    } else {
+      this.doc = this.surfaceDoc();
+      if (this.drillFieldStash) {
+        this.currentFieldName = this.drillFieldStash;
+        this.drillFieldStash = null;
       }
-      for (const name of Object.keys(this.columnRefs)) {
-        if (!(name in nextRefs)) {
-          const currVer = this.columnRefVersions[name] ?? 0;
-          const snapVer = refVersions[name] ?? 0;
-          if (name === this.activeDocKey || currVer > snapVer) {
-            nextRefs[name] = this.columnRefs[name];
-          }
-        }
-      }
-      this.columnRefs = nextRefs;
     }
     if (parsed.selections) this._selections = parsed.selections;
     const tags = parsed.tags ?? {};
@@ -670,18 +833,26 @@ export class EditorState {
     const prev = this.undoStack.pop();
     if (!prev) return;
     this.redoStack.push(this.snapState());
-    this.restoreSnap(prev);
-    this.clampSelection();
-    this.emit('document');
-    this.emit('selection');
+    this.applyRestore(prev);
   }
 
   redo(): void {
     const next = this.redoStack.pop();
     if (!next) return;
     this.undoStack.push(this.snapState());
-    this.restoreSnap(next);
+    this.applyRestore(next);
+  }
+
+  /** Restore a snapshot and notify: emits 'load' too when the restore moved
+   *  the canvas to another surface or drill (undo navigates to its change). */
+  private applyRestore(snap: string): void {
+    const navBefore = `${this.activeDocKey}·${this.activeViewId}`;
+    this.restoreSnap(snap);
     this.clampSelection();
+    if (`${this.activeDocKey}·${this.activeViewId}` !== navBefore) {
+      this.emit('load');
+      this.emit('data');
+    }
     this.emit('document');
     this.emit('selection');
   }
@@ -719,20 +890,11 @@ export class EditorState {
 
   mutateDocument(fn: () => void): void {
     // Snapshot the pre-mutation state, but only commit it if fn actually changed
-    // the document or its subtype tags — a no-op gesture (rename to the same
-    // value, arrow-step that re-commits the current value on blur) must not push
-    // a phantom undo step.
+    // the workspace — a no-op gesture (rename to the same value, arrow-step that
+    // re-commits the current value on blur) must not push a phantom undo step.
     const before = this.snapState();
-    this.inMutateDocument = true;
-    try {
-      fn();
-    } finally {
-      this.inMutateDocument = false;
-    }
+    fn();
     if (this.snapState() === before) return;
-    if (this.activeDocKey !== 'main') {
-      this.incrementColumnVersion(this.activeDocKey);
-    }
     this.pushUndo(before);
     this.emit('document');
   }
@@ -931,21 +1093,28 @@ export class EditorState {
     this.emit('document');
   }
 
-  /** The layout kind the maker last LEFT for the grid ('row'/'tile'), so the
-   *  grid can offer "⟳ Reopen" — setKind('grid') is a relabel, not a
-   *  demolition, and the way back must be visible (FLOOR-AND-SHEETS Stage 0).
-   *  Session-local: never persisted; cleared on arrival at a layout or a
-   *  document load. */
-  lastLayoutKind: 'row' | 'tile' | null = null;
-
+  /**
+   * Switch the ACTIVE document's wrapper kind. Reshaped by Stage 1:
+   *   · on a sheet, 'row' ⇄ 'tile' is a document mutation (one undo step);
+   *     'grid' minimizes back to the floor — NAVIGATION, nothing mutates.
+   *   · on the floor, 'row'/'tile' creates a NEW sheet carrying a copy of the
+   *     floor's tree (the old lossless relabel, into its own document — the
+   *     floor is untouched). 'grid' is a no-op.
+   *   · 'column' main documents no longer exist; drilled docs are read-only
+   *     'column' by construction, so setKind ignores that value.
+   */
   setKind(kind: DocumentKind): void {
+    if (this.activeDocKey !== 'main' || kind === 'column') return;
+    if (this.onFloor) {
+      if (kind === 'grid') return;
+      const doc: FormatterDocument = { kind, root: clone(this.floorDoc.root) };
+      if (this.floorDoc.viewExtras) doc.viewExtras = clone(this.floorDoc.viewExtras);
+      this.createView(doc);
+      return;
+    }
+    if (kind === 'grid') { this.minimizeView(); return; }
     if (this.doc.kind === kind) return; // no-op: don't snapshot an unchanged kind
     this.snapshot();
-    if (kind === 'grid' && (this.doc.kind === 'row' || this.doc.kind === 'tile')) {
-      this.lastLayoutKind = this.doc.kind; // remember the way back
-    } else if (kind === 'row' || kind === 'tile') {
-      this.lastLayoutKind = null; // arrived — nothing to reopen
-    }
     this.doc.kind = kind;
     if (kind === 'tile') {
       this.doc.tileWidth = this.doc.tileWidth ?? 254;
@@ -955,32 +1124,33 @@ export class EditorState {
   }
 
   // ─── Stage 3: areas / row-view builder ─────────────────────────────────────
-  // A grid is a row formatter in embryo; "make a row view" graduates it to an
-  // explicit row layout whose columns are weighted areas. Each call is ONE
-  // undoable document mutation, like every other grid gesture.
+  // The floor's columns graduate into a NEW sheet whose columns are weighted
+  // areas. Each call is ONE undoable document mutation (the sheet's creation);
+  // the floor itself is never touched.
 
-  /** Graduate the grid to a row view. `indices` curates which columns become
-   *  areas (in the given order); omit for all. The chosen kind is 'row' or
-   *  'tile' — tile is an explicit pick (it can never emerge from structure). */
+  /** Graduate floor columns into a new row-view sheet. `indices` curates which
+   *  columns become areas (in the given order); omit for all. The chosen kind
+   *  is 'row' or 'tile' — tile is an explicit pick (it can never emerge from
+   *  structure). A floor-only gesture; no-op while a sheet is up. */
   makeRowView(indices?: number[], kind: 'row' | 'tile' = 'row'): void {
-    if (this.doc.kind !== 'grid') { this.setKind(kind); return; }
-    this.snapshot();
-    this.doc.root = buildRowView(this.doc.root, indices, rowDensityOf(this.doc.root), kind);
-    this.doc.kind = kind;
-    this.lastLayoutKind = null;
-    if (kind === 'tile') {
-      this.doc.tileWidth = this.doc.tileWidth ?? 254;
-      this.doc.tileHeight = this.doc.tileHeight ?? 220;
-    }
-    this.selection = [];
-    this.emit('kind');
+    if (this.activeDocKey !== 'main' || !this.onFloor || this.floorDoc.kind !== 'grid') return;
+    const root = buildRowView(clone(this.floorDoc.root), indices, rowDensityOf(this.floorDoc.root), kind);
+    this.createView({ kind, root });
   }
 
-  /** Apply a pre-built row template: replace the row formatter body, switch to
-   *  'row', and set/clear the zebra wrapper class — as ONE undoable mutation
-   *  (snapState captures the whole doc), mirroring makeRowView. Other viewExtras
-   *  (footerFormatter, commandBarProps, groupProps, …) are preserved. */
+  /** Apply a pre-built row template. On a sheet: replace its body, switch it
+   *  to 'row', and set/clear the zebra wrapper class — ONE undoable mutation;
+   *  other viewExtras (footerFormatter, commandBarProps, groupProps, …) are
+   *  preserved. From the floor: register a NEW sheet carrying the template
+   *  (nothing is overwritten — the floor never holds a layout). */
   applyRowTemplate(root: SPElement, additionalRowClass?: string): void {
+    if (this.activeDocKey !== 'main') this.openMain();
+    if (this.onFloor) {
+      const doc: FormatterDocument = { kind: 'row', root };
+      if (additionalRowClass) doc.viewExtras = { additionalRowClass };
+      this.createView(doc);
+      return;
+    }
     // Snapshot BEFORE mutating and push undo only if the doc actually changed —
     // an Apply that reproduces the current layout must not push a phantom undo
     // step (the no-op-snapshot invariant from 5df1f99 / mutateDocument). Touch
@@ -996,24 +1166,26 @@ export class EditorState {
       delete this.doc.viewExtras.additionalRowClass;
     }
     if (this.snapState() !== before) this.pushUndo(before);
-    this.lastLayoutKind = null;
     this.selection = [];
     this.emit('kind');
   }
 
-  /** Apply a pre-built TILE template: replace the formatter body, switch to
-   *  'tile', and set the tile box size — ONE undoable mutation with the same
-   *  snapshot-before + no-op guard as applyRowTemplate. viewExtras stay
-   *  untouched: the tile wrapper doesn't export them, but switching back to a
-   *  row view must not have lost them. */
+  /** Apply a pre-built TILE template — same routing and no-op guard as
+   *  applyRowTemplate. On a sheet, viewExtras stay untouched: the tile wrapper
+   *  doesn't export them, but switching back to a row view must not have lost
+   *  them. */
   applyTileTemplate(root: SPElement, size?: { width?: number; height?: number }): void {
+    if (this.activeDocKey !== 'main') this.openMain();
+    if (this.onFloor) {
+      this.createView({ kind: 'tile', root, tileWidth: size?.width ?? 254, tileHeight: size?.height ?? 220 });
+      return;
+    }
     const before = this.snapState();
     this.doc.root = root;
     this.doc.kind = 'tile';
     this.doc.tileWidth = size?.width ?? this.doc.tileWidth ?? 254;
     this.doc.tileHeight = size?.height ?? this.doc.tileHeight ?? 220;
     if (this.snapState() !== before) this.pushUndo(before);
-    this.lastLayoutKind = null;
     this.selection = [];
     this.emit('kind');
   }
@@ -1057,7 +1229,6 @@ export class EditorState {
     if (!el || el.columnFormatterReference) return null;
     const field = gridColumnField(el);
     if (!field) return null;
-    this.incrementColumnVersion(field);
     this.mutateDocument(() => {
       this.columnRefs[field] = toColumnFormatter(el, field);
       const cell = gridCellForField(
@@ -1077,29 +1248,18 @@ export class EditorState {
   // The store itself (localStorage, caps, scope keys) lives in snapshots.ts +
   // the snapshot menu; state only knows how to CAPTURE the live payload and
   // APPLY one back. Every apply is ONE undoable step (snapState carries the
-  // doc AND the registry, so even "restore everything" is a single Ctrl+Z).
-
-  /** The main (view) document, stash-aware — whole doc, not just the root. */
-  private mainDocForScope(): FormatterDocument {
-    return this.activeDocKey === 'main' ? this.doc : this.mainDocStash ?? this.doc;
-  }
+  // whole workspace, so even "restore everything" is a single Ctrl+Z).
 
   /** Capture what `scope` describes right now, or null if there's nothing to
    *  capture (e.g. a column scope naming an unregistered, un-open column). */
   captureSnapshot(scope: SnapshotScope, now: Date = new Date()): Snapshot | null {
-    const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
     let payload: Snapshot['payload'] | null = null;
-    if (scope.kind === 'view') {
-      payload = { doc: clone(this.mainDocForScope()) };
-    } else if (scope.kind === 'column') {
+    if (scope.kind === 'column') {
       // the open column's live tree wins; then the registry (own keys only —
-      // 'toString' etc. must not read as a formatter); then the
-      // main-document-is-a-column edge (e.g. a loaded column example)
+      // 'toString' etc. must not read as a formatter)
       const root = this.activeDocKey === scope.field
         ? this.doc.root
-        : (Object.hasOwn(this.columnRefs, scope.field) ? this.columnRefs[scope.field] : undefined)
-          ?? (this.activeDocKey === 'main' && this.doc.kind === 'column' && this.currentFieldName === scope.field
-            ? this.doc.root : undefined);
+        : (Object.hasOwn(this.columnRefs, scope.field) ? this.columnRefs[scope.field] : undefined);
       if (!root) return null;
       payload = { root: clone(root) };
     } else {
@@ -1108,13 +1268,13 @@ export class EditorState {
       const refs = clone(this.columnRefs);
       if (this.activeDocKey !== 'main') refs[this.activeDocKey] = clone(this.doc.root);
       payload = {
-        all: { doc: clone(this.mainDocForScope()), columnRefs: refs, viewName: this.viewName },
+        all: { floor: clone(this.floorDoc), views: clone(this.views), columnRefs: refs },
       };
     }
     return {
       id: snapshotId(now),
       takenAt: now.toISOString(),
-      label: defaultLabel(scope, this.viewName, this.mainDocForScope().kind),
+      label: defaultLabel(scope, this.views.length),
       scope,
       payload,
     };
@@ -1123,7 +1283,6 @@ export class EditorState {
   /** Restore a snapshot as ONE undoable step. Returns false if the payload
    *  doesn't match its scope (corrupt store) — nothing is touched then. */
   applySnapshot(snap: Snapshot): boolean {
-    const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
     if (snap.scope.kind === 'column') {
       const root = snap.payload.root;
       if (!root) return false;
@@ -1132,46 +1291,28 @@ export class EditorState {
       if (this.activeDocKey === field) {
         // open on the canvas — emit('document') live-syncs the registry
         this.mutateDocument(() => { this.doc.root = restored; });
-      } else if (Object.hasOwn(this.columnRefs, field)) {
-        this.incrementColumnVersion(field);
-        this.mutateDocument(() => { this.columnRefs[field] = restored; });
-      } else if (this.activeDocKey === 'main' && this.doc.kind === 'column' && this.currentFieldName === field) {
-        this.mutateDocument(() => { this.doc.root = restored; });
       } else {
-        // unregistered and not open: register it (the snapshot is the format)
-        this.incrementColumnVersion(field);
+        // registered, or unregistered-and-not-open: the snapshot IS the format
         this.mutateDocument(() => { this.columnRefs[field] = restored; });
       }
       this.selection = [];
       this.emit('data'); // tree/gallery/grid pick up the registry change
       return true;
     }
-    // view / all replace the MAIN document — leave a drilled column first
-    // (navigation, not a mutation; it also feeds the Back trail)
-    if (snap.scope.kind === 'view') {
-      if (!snap.payload.doc) return false;
-      if (this.activeDocKey !== 'main') this.openMain();
-      const restored = clone(snap.payload.doc);
-      const before = this.snapState();
-      this.doc = restored;
-      if (this.snapState() !== before) this.pushUndo(before);
-      this.selection = [];
-      this.emit('kind'); // kind may have changed; canvas + kind select follow
-      return true;
-    }
     const all = snap.payload.all;
-    if (!all) return false;
+    if (!all?.floor?.root || !Array.isArray(all.views)) return false;
+    // restoring everything replaces the surfaces — leave a drilled column
+    // first (navigation, not a mutation; it also feeds the Back trail)
     if (this.activeDocKey !== 'main') this.openMain();
-    for (const name of new Set([...Object.keys(this.columnRefs), ...Object.keys(all.columnRefs)])) {
-      this.incrementColumnVersion(name);
-    }
     const before = this.snapState();
-    this.doc = clone(all.doc);
+    this.floorDoc = { ...clone(all.floor), kind: 'grid' };
+    this.views = clone(all.views);
     this.columnRefs = clone(all.columnRefs);
+    if (this.activeViewId && !this.views.some((v) => v.id === this.activeViewId)) {
+      this.activeViewId = null; // the sheet you stood on isn't in this capture
+    }
+    this.doc = this.surfaceDoc();
     if (this.snapState() !== before) this.pushUndo(before);
-    // the view name is project metadata — restored, but off the undo stack
-    // (same rule as setViewName)
-    this.viewName = all.viewName;
     this.selection = [];
     this.emit('kind');
     this.emit('data');
@@ -1183,11 +1324,11 @@ export class EditorState {
   /** Apply a subtype to a column as ONE undoable mutation: register the
    *  already-baked formatter, tag the field (subtype id + baked args), and
    *  CFR-wire the grid cell so the grid renders it — ALL inside the snapshot
-   *  (snapState captures the registry + tags + doc), so a single undo reverts
+   *  (snapState captures the registry + tags + docs), so a single undo reverts
    *  the render, the tag, AND the registry entry. This makes even a re-apply
    *  over an already-CFR cell fully reversible (no lingering/mismatched entry).
-   *  Stays on the grid (no doc switch — that would clear the undo stack and
-   *  defeat Ctrl+Z). */
+   *  Stays on the grid (no doc switch — that would move the canvas away and
+   *  defeat the gesture). */
   applyColumnSubtype(
     fieldName: string,
     baked: SPElement,
@@ -1197,7 +1338,6 @@ export class EditorState {
   ): void {
     const field = this.fields.find((f) => f.name === fieldName);
     if (!field) return;
-    this.incrementColumnVersion(fieldName);
     this.mutateDocument(() => {
       this.columnRefs[fieldName] = baked; // captured by snapState → reverts on undo
       field.subtype = subtypeId;
@@ -1233,9 +1373,6 @@ export class EditorState {
   ): number {
     const targets = this.columnsUsingSubtype(subtypeId);
     if (targets.length === 0) return 0;
-    for (const f of targets) {
-      this.incrementColumnVersion(f.name);
-    }
     this.mutateDocument(() => {
       for (const f of targets) {
         this.columnRefs[f.name] = rebake(f.subtypeArgs ?? {});
@@ -1248,48 +1385,88 @@ export class EditorState {
    * Batched cross-cutting apply (the component editor's Save-and-apply): view
    * subtree replacements, registry re-bakes and field-tag restamps together as
    * ONE undoable step. Leaves a drilled column first (navigation, not a
-   * mutation — the applySnapshot precedent) so the MAIN doc is live and inside
-   * snapState. A single Ctrl+Z reverts everything `fn` touched (doc +
+   * mutation — the applySnapshot precedent) so the active SURFACE is live and
+   * inside snapState. A single Ctrl+Z reverts everything `fn` touched (docs +
    * columnRefs + subtype tags); a no-op `fn` leaves ZERO trace.
-   *
-   * Version-bump ordering is load-bearing: `touchedColumns`' versions bump
-   * BEFORE the undo snapshot so the snapshot carries them — restoreSnap only
-   * restores a registry entry when currVer <= snapVer, so a post-snapshot
-   * bump would make undo skip the very re-bakes this step performed. The
-   * trade-off is that a no-op run would leak the bumps (silently changing
-   * how later undos merge the registry), so when `fn` changes nothing the
-   * saved versions are rolled back wholesale.
    */
-  batchProjectUpdate(touchedColumns: string[], fn: () => void): void {
+  batchProjectUpdate(_touchedColumns: string[], fn: () => void): void {
     if (this.activeDocKey !== 'main') this.openMain();
-    const savedVersions = { ...this.columnRefVersions };
-    for (const name of touchedColumns) this.incrementColumnVersion(name);
-    const before = this.snapState(); // bumped versions ride the snapshot
-    this.inMutateDocument = true;
-    try {
-      fn();
-    } finally {
-      this.inMutateDocument = false;
-    }
-    if (this.snapState() === before) {
-      this.columnRefVersions = savedVersions; // no-op: zero trace
-      return;
-    }
+    const before = this.snapState();
+    fn();
+    if (this.snapState() === before) return; // no-op: zero trace
     this.pushUndo(before);
     this.emit('document');
     this.emit('data'); // registry/tag changes show up in pickers/tree/gallery
   }
 
+  /** Register a column formatter for `field` (default: the current field) and
+   *  open its drill-in — how a standalone column-formatter document (example,
+   *  pasted JSON) enters the workspace now that the main surface is always the
+   *  floor or a sheet. Registration is ONE undoable step; the drill rides along. */
+  loadColumnDocument(root: SPElement, field?: string): void {
+    const name = field ?? this.currentFieldName;
+    if (this.activeDocKey !== 'main' && this.activeDocKey !== name) this.openMain();
+    if (this.activeDocKey === name) {
+      this.mutateDocument(() => { this.doc.root = root; });
+      this.selection = [];
+      this.emit('data');
+      return;
+    }
+    this.mutateDocument(() => { this.columnRefs[name] = root; });
+    this.openColumnRef(name);
+    this.selection = [];
+    this.emit('data');
+  }
+
+  /** Register a row/tile document as a NEW named sheet and open it — how
+   *  examples and imported view formatters enter the workspace. */
+  loadViewDocument(doc: FormatterDocument, name?: string): SheetDoc | null {
+    return this.createView(doc, name);
+  }
+
+  /**
+   * "Apply to canvas": replace whatever is being edited with `doc` — the JSON
+   * tab's contract. Routing per surface:
+   *   · drilled into a column → that column's tree (any payload kind);
+   *   · a sheet up → the sheet's document (kind follows the payload);
+   *   · on the floor → a row payload replaces the FLOOR ROOT (kind stays
+   *     'grid' — the floor's own export round-trips losslessly), a tile
+   *     payload becomes a NEW sheet (a tile can never be a floor), a column
+   *     payload registers to the current field and drills in.
+   */
   loadDocument(doc: FormatterDocument): void {
-    // NOTE: when a column formatter is open, this intentionally applies to that
-    // open doc — the JSON tab's "Apply to canvas" edits whichever formatter is
-    // on the canvas, and emit('load') live-syncs it back into columnRefs. That
-    // is the JSON-edit-a-column path (see e2e workspace.spec "CFR round-trip" /
-    // grid.spec "header menu formats an unformatted column"). Callers that mean
-    // "replace the MAIN doc" (e.g. schema import) call openMain() first.
+    if (this.activeDocKey !== 'main') {
+      // the JSON tab edits whichever formatter is on the canvas — a drilled
+      // column; emit('load') live-syncs it back into columnRefs (see e2e
+      // workspace.spec "CFR round-trip" / grid.spec "header menu formats an
+      // unformatted column").
+      this.snapshot();
+      this.doc = { kind: 'column', root: doc.root };
+      this.selection = [];
+      this.emit('load');
+      return;
+    }
+    if (this.onFloor) {
+      if (doc.kind === 'column') { this.loadColumnDocument(doc.root); return; }
+      if (doc.kind === 'tile') { this.createView(doc); return; }
+      this.snapshot();
+      this.floorDoc.root = doc.root; // 'row'/'grid' payloads: the floor's tree
+      if (doc.viewExtras) this.floorDoc.viewExtras = doc.viewExtras;
+      else delete this.floorDoc.viewExtras;
+      this.selection = [];
+      this.emit('load');
+      return;
+    }
+    if (doc.kind === 'column') { this.loadColumnDocument(doc.root); return; }
     this.snapshot();
-    this.doc = doc;
-    this.lastLayoutKind = null; // a fresh document owes nothing to the old one
+    const v = this.activeView!;
+    const next: FormatterDocument = { ...doc, kind: doc.kind === 'tile' ? 'tile' : 'row' };
+    if (next.kind === 'tile') {
+      next.tileWidth = next.tileWidth ?? 254;
+      next.tileHeight = next.tileHeight ?? 220;
+    }
+    v.doc = next;
+    this.doc = v.doc;
     this.selection = [];
     this.emit('load');
   }

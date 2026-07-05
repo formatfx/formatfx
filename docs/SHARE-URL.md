@@ -49,18 +49,22 @@ Exactly the FormatFX project format (`formatfx-project.json`, the same JSON
 
 ```json
 {
-  "version": 1,
-  "doc":    { "kind": "column | row | tile | grid", "root": { "elmType": "…" } },
+  "version": 2,
+  "floor":  { "kind": "grid", "root": { "elmType": "…" } },
+  "views":  [ { "id": "v1", "name": "View 1",
+                "doc": { "kind": "row | tile", "root": { "elmType": "…" } } } ],
+  "activeViewId": "v1",
   "fields": [ { "name": "Status", "type": "choice", "choices": ["…"] } ],
   "rows":   [ { "Status": "Done" } ],
   "currentFieldName": "Status",
-  "columnRefs": { "Status": { "elmType": "…" } },
-  "viewName": "View 1"
+  "columnRefs": { "Status": { "elmType": "…" } }
 }
 ```
 
-`doc`, `fields` and `rows` are required; everything else is optional and
-additive. Whitespace is irrelevant — minify for shorter links.
+`floor`, `views`, `fields` and `rows` are required (views may be `[]`);
+everything else is optional and additive. Whitespace is irrelevant — minify
+for shorter links. (Format v2, FLOOR-AND-SHEETS Stage 1 — pre-Stage-1
+payloads carrying a single `doc` are refused by the load guard.)
 
 ### 2. A bare formatter JSON (the docs-runtime bridge)
 

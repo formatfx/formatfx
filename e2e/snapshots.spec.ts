@@ -157,7 +157,7 @@ test('the ← button retraces doc switches — not undo', async ({ page }) => {
   await back.click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   await back.click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
   await expect(back).toBeDisabled();
 });

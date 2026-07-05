@@ -6,6 +6,7 @@ import { dropPos } from './templateUi';
 beforeEach(() => {
   document.body.innerHTML = '';
   localStorage.clear();
+  state.resetAll(); // every test starts standing on the FLOOR
   state.fields = [{ name: 'Title', type: 'text' }, { name: 'Status', type: 'choice' }, { name: 'Due', type: 'date' }];
   state.loadDocument({ kind: 'grid', root: { elmType: 'div', children: [] } });
 });
@@ -292,12 +293,14 @@ describe('row view builder — always-live preview, squeeze & save', () => {
     expect((document.querySelector('.wb-template-stage') as HTMLElement).style.width).toBe('');
   });
 
-  it('Apply calls state.applyRowTemplate once and switches to a row view', () => {
-    const spy = vi.spyOn(state, 'applyRowTemplate');
+  it('Save from the floor calls state.createView once — a NEW named row view opens', () => {
+    const spy = vi.spyOn(state, 'createView');
     enterEditor();
     (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
     expect(spy).toHaveBeenCalledTimes(1);
     expect(state.doc.kind).toBe('row');
+    expect(state.views).toHaveLength(1);
+    expect(state.onFloor).toBe(false);
     spy.mockRestore();
   });
 
@@ -335,18 +338,20 @@ describe('row view builder — reopen as zones (the round trip)', () => {
     expect((document.querySelector('[data-edit-item="0:0"]') as HTMLElement).dataset.fieldName).toBe('Title');
   });
 
-  it('Save over a relabeled layout (kind grid, non-pure root) asks the overwrite confirm', () => {
+  it('Save from the floor NEVER asks an overwrite confirm — it creates a second view instead', () => {
     enterEditor();
-    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // builder row applied
-    state.setKind('grid'); // "Back to grid" relabels the same root — the layout is still there
-    const rootBefore = JSON.stringify(state.doc.root);
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // view 1 created
+    const firstId = state.activeViewId!;
+    const firstJson = JSON.stringify(state.viewById(firstId)!.doc);
+    state.minimizeView(); // "Back to grid" is navigation — the view waits intact
     openTemplateModal(() => {});
     (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
-    const confirmSpy = vi.fn(() => false); // maker says no — the layout survives
+    const confirmSpy = vi.fn(() => false);
     vi.stubGlobal('confirm', confirmSpy);
     (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(state.doc.root)).toBe(rootBefore);
+    expect(confirmSpy).not.toHaveBeenCalled(); // nothing is overwritten, nothing to confirm
+    expect(state.views).toHaveLength(2);
+    expect(JSON.stringify(state.viewById(firstId)!.doc)).toBe(firstJson); // view 1 untouched
     vi.unstubAllGlobals();
   });
 
@@ -386,7 +391,7 @@ describe('row view builder — reopen as zones (the round trip)', () => {
   });
 
   it('a hand-built row view falls back to the gallery with an honest note', () => {
-    state.loadDocument({ kind: 'row', root: { elmType: 'div', style: { 'display': 'flex' },
+    state.createView({ kind: 'row', root: { elmType: 'div', style: { 'display': 'flex' },
       children: [{ elmType: 'div', txtContent: '=[$Title]+[$Status]' }] } });
     openTemplateModal(() => {});
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
@@ -495,8 +500,8 @@ describe('tile target — the builder works for tiles too', () => {
     expect(w2.value).toBe('320'); // refused, snapped back
   });
 
-  it('Save calls state.applyTileTemplate once — kind, root and tile box land together', () => {
-    const spy = vi.spyOn(state, 'applyTileTemplate');
+  it('Save from the floor creates a TILE view — kind, root and tile box land together', () => {
+    const spy = vi.spyOn(state, 'createView');
     enterEditor('tile-headline');
     (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
     expect(spy).toHaveBeenCalledTimes(1);
@@ -537,7 +542,7 @@ describe('tile target — the builder works for tiles too', () => {
   });
 
   it('a hand-built tile falls back to the gallery, tiles first, with the honest note', () => {
-    state.loadDocument({ kind: 'tile', root: { elmType: 'div', style: { 'display': 'flex' },
+    state.createView({ kind: 'tile', root: { elmType: 'div', style: { 'display': 'flex' },
       children: [{ elmType: 'div', txtContent: '=[$Title]+[$Status]' }] }, tileWidth: 254, tileHeight: 220 });
     openTemplateModal(() => {});
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');

@@ -118,25 +118,26 @@ test('list snapshot import: fields + views land; the default view\'s row formatt
   await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
   await expect(page.locator('#wb-toast')).toContainText('2 views');
-  await expect(page.locator('#wb-toast')).toContainText('"All Items" row formatting loaded');
-  // the captured view formatter IS the main document now (row kind renders per-row)
+  await expect(page.locator('#wb-toast')).toContainText('"All Items" opened as its own view');
+  // the captured view formatter opened as its OWN named sheet (renders per-row)
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('»Ship the bridge«');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('All Items');
   // …and the views section lists both captured views
   await expect(page.locator('.wb-schema-form', { hasText: 'Views from your list' })).toContainText('Board');
-  // one undo restores the previous (grid) document
+  // one undo removes the imported sheet again — back on the (rebuilt) grid
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid')).toBeVisible();
 });
 
-test('list snapshot without a default-view formatter rebuilds the grid; Load-as-main works from the views section', async ({ page }) => {
+test('list snapshot without a default-view formatter rebuilds the grid; the views section lists them', async ({ page }) => {
   await importPastedText(page, listSnapshot());
   await page.click('#wb-fmt-review-import'); // Phase carries a column formatter → confirm the review
   // grid rebuilt around the snapshot (display names as headers)
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
-  // no view had a formatter — the views section still lists them, without Load buttons
+  // no view had a formatter — the views section still lists them, without Open buttons
   const views = page.locator('.wb-schema-form', { hasText: 'Views from your list' });
   await expect(views).toContainText('All Items · default · no row formatting');
-  await expect(views.locator('button', { hasText: 'Load as main document' })).toHaveCount(0);
+  await expect(views.locator('button', { hasText: 'Open as a view' })).toHaveCount(0);
 });
 
 test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ page, context }) => {

@@ -10,27 +10,35 @@ import { freshApp, header } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
-test('the grid view lands on the VIEW FORMATTERS tab with the view named in the dropdown', async ({ page }) => {
+test('the floor lands on the VIEW FORMATTERS tab with the grid named in the dropdown', async ({ page }) => {
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
   await expect(page.locator('.wb-fmt-tab-cols')).not.toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   // the subtle schema tag names which view schema this compiles to
   await expect(page.locator('.wb-doc-pill-type')).toHaveText('list row schema');
   await expect(page.locator('.wb-doc-pill')).not.toHaveClass(/wb-doc-pill-col/);
 });
 
-test('the document dropdown opens the View Formatters menu', async ({ page }) => {
+test('the document dropdown opens the View Formatters menu — the multi-view list', async ({ page }) => {
   await page.locator('#wb-doc-pill').click();
   const menu = page.locator('.wb-viewmenu');
   await expect(menu).toBeVisible();
-  await expect(menu.locator('.wb-viewmenu-name')).toHaveText('View 1');
-  await expect(menu.locator('.wb-viewmenu-rename')).toBeVisible();
-  // "+ New rowview" lives in this dropdown
+  // a fresh workspace: the grid floor entry, no views yet, the template on-ramps
+  await expect(menu.locator('.wb-viewmenu-floor')).toBeVisible();
+  await expect(menu.locator('.wb-viewmenu-empty')).toBeVisible();
   await expect(menu.locator('.wb-viewmenu-newrow')).toBeVisible();
+  await expect(menu.locator('.wb-viewmenu-newtile')).toBeVisible();
 });
 
-test('Rename round-trips through the dropdown and persists across reload', async ({ page }) => {
+test('a created view is listed, renames inline, and both persist across reload', async ({ page }) => {
+  // graduate two columns into a named row view
+  await header(page, 'Title').click({ modifiers: ['Control'] });
+  await header(page, 'Status').click({ modifiers: ['Control'] });
+  await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+
   await page.locator('#wb-doc-pill').click();
+  await expect(page.locator('.wb-viewmenu-name')).toHaveText('View 1');
   await page.locator('.wb-viewmenu-rename').click();
   const input = page.locator('.wb-viewmenu-input');
   await expect(input).toHaveValue('View 1');
@@ -38,9 +46,24 @@ test('Rename round-trips through the dropdown and persists across reload', async
   await input.press('Enter');
   // the dropdown updates immediately
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Sprint board');
-  // and survives a reload (it's project data, autosaved)
+  // and survives a reload (views + position are project data, autosaved)
   await page.reload();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Sprint board');
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3); // still on the view
+});
+
+test('the view menu navigates: floor entry minimizes, view row reopens', async ({ page }) => {
+  await header(page, 'Title').click({ modifiers: ['Control'] });
+  await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await page.locator('#wb-doc-pill').click();
+  await page.locator('.wb-viewmenu-floor .wb-viewmenu-open').click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
+  await expect(page.locator('.wb-grid')).toBeVisible();
+  await page.locator('#wb-doc-pill').click();
+  await page.locator('.wb-viewmenu-name', { hasText: 'View 1' }).click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
 });
 
 test('on a column doc the dropdown opens the gallery (Formatted + Not yet formatted)', async ({ page }) => {
@@ -72,19 +95,14 @@ test('the Not-yet-formatted group starts a formatter for an unplaced column', as
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Tags');
 });
 
-test('the VIEW FORMATTERS tab returns to the named view', async ({ page }) => {
-  // rename the view first so the return proves it uses the live name
-  await page.locator('#wb-doc-pill').click();
-  await page.locator('.wb-viewmenu-rename').click();
-  await page.locator('.wb-viewmenu-input').fill('Roadmap');
-  await page.locator('.wb-viewmenu-input').press('Enter');
-  // drill into a column
+test('the VIEW FORMATTERS tab returns to the surface that is up', async ({ page }) => {
+  // drill into a column from the floor — Done/tab lands back on the grid
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await page.locator('.wb-fmt-tab-view').click();
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Roadmap');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
 });
 
 test('the COLUMN FORMATTERS tab opens a registered column formatter', async ({ page }) => {
@@ -98,7 +116,7 @@ test('the COLUMN FORMATTERS tab opens a registered column formatter', async ({ p
   await page.locator('.wb-colgal-card', { has: page.locator('.wb-colgal-label', { hasText: 'Owner' }) }).click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Owner');
   await page.locator('.wb-fmt-tab-view').click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await page.locator('.wb-fmt-tab-cols').click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Owner');
 });

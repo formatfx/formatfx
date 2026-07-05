@@ -142,10 +142,21 @@ Key structural invariants:
   cell for a CFR cell (one doc mutation), then `openColumnRef`s it. Schema
   import rebuilds the grid root **only while `isPureGrid`** (every column
   still single-field) — never clobber a layout someone has started.
-- **Workspace model**: one "main" document (column/row/tile/grid) + N registered
-  column formatters (`state.columnRefs`, keyed by field internal name).
-  CFRs resolve against the registry; editing an open column formatter
-  updates the registry live (see `EditorState.emit`).
+- **Workspace model (FLOOR-AND-SHEETS Stage 1, 2026-07-05)**: the FLOOR
+  (`state.floorDoc`, a columns-only grid document, kind always 'grid') +
+  N named view SHEETS (`state.views: SheetDoc[]`, each row/tile;
+  `activeViewId` is the open sheet or null for the floor) + N registered
+  column formatters (`state.columnRefs`, keyed by field internal name,
+  workspace-owned — they render on the floor's cells and on sheets alike).
+  `state.doc` is the live canvas document: the active surface's slot
+  object, or a kind-'column' tree while drilled. `openView`/`minimizeView`
+  are NAVIGATION (never a mutation, never an undo step) and work under a
+  drill. Undo is ONE global app-level stack whose snapshots capture the
+  whole workspace + where the change happened — undo/redo navigate back to
+  the surface they change. CFRs resolve against the registry; editing an
+  open column formatter updates the registry live (see `EditorState.emit`).
+  A main document of kind 'column' no longer exists: column examples/JSON
+  register to the current field and open the drill-in.
 - **Node addressing**: selection/lint paths are arrays of child indices;
   the sentinel **`CARD_SEGMENT = -1` descends into
   `customCardProps.formatter`** — that's how card content is fully
@@ -155,7 +166,11 @@ Key structural invariants:
   what makes box-model ↑/↓ stepping possible. Don't "simplify" it away.
 - **Autosave**: debounced 400ms to localStorage + `flushAutosave()` on
   `beforeunload` (a real bug once: a theme toggle right before reload was
-  lost to the debounce).
+  lost to the debounce). Format v2 since Stage 1 (`floor`/`views`/
+  `activeViewId` replace the old `doc`/`viewName`) under the SAME frozen
+  key; `loadProject` is a strict load guard — an old or garbled blob
+  throws and `restore()` falls back to the fresh default (no migration
+  code, per FLOOR-AND-SHEETS §3/§4).
 - **Element names**: `SPElement._elmName` (a pre-existing TwFw provenance
   field) is the user-facing naming mechanism — tree shows it as the primary
   label (dblclick / ✎ renames), `instantiate()` stamps the palette label on

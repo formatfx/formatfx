@@ -1,11 +1,19 @@
 /**
- * Editor state: customCardProps content is addressable via the CARD_SEGMENT
- * path segment, so the tree/inspector/palette can edit card formatters.
+ * Editor state contracts (FLOOR-AND-SHEETS Stage 1):
+ *   · the workspace is a FLOOR (columns-only grid document) plus named
+ *     SHEETS (row/tile view documents) — separate documents, no relabeling;
+ *   · leaving/opening a view is NAVIGATION — it never mutates and never
+ *     pushes an undo step;
+ *   · undo is ONE GLOBAL app-level stack across the floor, every sheet, and
+ *     the column drill-in — and it navigates back to the surface it changes;
+ *   · autosave format v2 (same frozen key) with a strict load guard: an old
+ *     or garbled blob falls back to a fresh default — no migration code.
+ * Plus: customCardProps content stays addressable via CARD_SEGMENT paths.
  */
 import { describe, it, expect } from 'vitest';
 import { EditorState, CARD_SEGMENT } from './state';
 import { gridColumnField } from './gridScaffold';
-import type { SPElement } from '../core/types';
+import type { SPElement, FormatterDocument } from '../core/types';
 
 function withCard(): EditorState {
   const s = new EditorState();
@@ -19,6 +27,9 @@ function withCard(): EditorState {
   }];
   return s;
 }
+
+const rowDoc = (children: SPElement[] = []): FormatterDocument =>
+  ({ kind: 'row', root: { elmType: 'div', children } });
 
 describe('card-segment paths', () => {
   it('nodeAt descends into customCardProps.formatter', () => {
@@ -42,17 +53,6 @@ describe('card-segment paths', () => {
     expect(s.nodeAt([0, CARD_SEGMENT])).not.toBeNull();
   });
 
-  it('mainDocLabel describes the document, even while a ref is open', () => {
-    const s = withCard();
-    expect(s.mainDocLabel()).toBe('View formatter — grid'); // grid-first showcase default
-    s.doc.kind = 'column';
-    expect(s.mainDocLabel()).toContain('Column formatter on [$Status]');
-    s.doc.kind = 'row';
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
-    s.openColumnRef('StatusUI');
-    expect(s.mainDocLabel()).toBe('View formatter — row layout'); // still describes MAIN
-  });
-
   it('referencedColumns finds CFRs in children and inside customCardProps', () => {
     const s = withCard();
     s.doc.root.children!.push({ elmType: 'div', columnFormatterReference: '[$StatusUI]' });
@@ -62,13 +62,240 @@ describe('card-segment paths', () => {
     const refs = s.referencedColumns();
     expect(refs.has('StatusUI')).toBe(true);
     expect(refs.has('ProgressUI')).toBe(true);
-    // scans the MAIN doc even while a column formatter is open
+    // scans the active SURFACE even while a column formatter is drilled open
     s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'x' };
     s.openColumnRef('StatusUI');
     expect(s.referencedColumns().has('StatusUI')).toBe(true);
   });
 
-  it('workspace switching: edit a column formatter, CFR registry updates live, main is restored', () => {
+  it('wrapNode adds a parent — including around the root and card roots', () => {
+    const s = withCard();
+    const oldRoot = s.doc.root;
+    s.wrapNode([]);
+    expect(s.doc.root.children?.[0]).toBe(oldRoot);
+    expect(s.doc.root.style?.display).toBe('flex');
+    // wrap a card formatter root
+    const cardRoot = s.nodeAt([0, 0, CARD_SEGMENT]);
+    s.wrapNode([0, 0, CARD_SEGMENT]);
+    expect(s.nodeAt([0, 0, CARD_SEGMENT])?.children?.[0]).toBe(cardRoot);
+  });
+});
+
+describe('the workspace: floor + named sheets', () => {
+  it('a fresh workspace is the floor grid with no sheets', () => {
+    const s = new EditorState();
+    expect(s.onFloor).toBe(true);
+    expect(s.activeViewId).toBeNull();
+    expect(s.views).toEqual([]);
+    expect(s.doc).toBe(s.floorDoc);
+    expect(s.doc.kind).toBe('grid');
+    expect(s.mainDocLabel()).toBe('View formatter — grid');
+  });
+
+  it('createView registers a named sheet, opens it, and is ONE undo step', () => {
+    const s = new EditorState();
+    const floorBefore = JSON.stringify(s.floorDoc);
+    const sheet = s.createView(rowDoc())!;
+    expect(sheet.name).toBe('View 1');
+    expect(s.views).toHaveLength(1);
+    expect(s.activeViewId).toBe(sheet.id);
+    expect(s.onFloor).toBe(false);
+    expect(s.doc).toBe(sheet.doc);
+    expect(JSON.stringify(s.floorDoc)).toBe(floorBefore); // the floor is untouched
+
+    s.undo(); // ONE Ctrl+Z removes the sheet and lands back on the floor
+    expect(s.views).toEqual([]);
+    expect(s.onFloor).toBe(true);
+    expect(s.doc).toBe(s.floorDoc);
+    expect(JSON.stringify(s.floorDoc)).toBe(floorBefore);
+
+    s.redo(); // and redo brings the sheet back, reopened
+    expect(s.views).toHaveLength(1);
+    expect(s.activeViewId).toBe(s.views[0].id);
+  });
+
+  it('createView emits \'load\' — it navigates onto the new sheet like any doc switch', () => {
+    const s = new EditorState();
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    s.createView(rowDoc());
+    // load-scoped UI state (e.g. the left pane's library browser) resets on
+    // 'load' only, and the canvas surface really did change
+    expect(reasons).toContain('load');
+  });
+
+  it('createView refuses non-view kinds and defaults tile dimensions', () => {
+    const s = new EditorState();
+    expect(s.createView({ kind: 'grid', root: { elmType: 'div' } })).toBeNull();
+    expect(s.createView({ kind: 'column', root: { elmType: 'div' } })).toBeNull();
+    const tile = s.createView({ kind: 'tile', root: { elmType: 'div' } })!;
+    expect(tile.doc.tileWidth).toBe(254);
+    expect(tile.doc.tileHeight).toBe(220);
+  });
+
+  it('default names count up and skip taken ones; ids stay unique', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    const b = s.createView(rowDoc())!;
+    expect(a.name).toBe('View 1');
+    expect(b.name).toBe('View 2');
+    expect(a.id).not.toBe(b.id);
+    s.renameView(b.id, 'View 3');
+    const c = s.createView(rowDoc())!;
+    expect(c.name).toBe('View 4'); // 'View 3' is taken
+  });
+
+  it('renameView is project metadata: trims, keeps the old name on blank, off the undo stack', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.mutateDocument(() => { s.doc.root._elmName = 'Probe'; }); // one real doc step
+    s.renameView(sheet.id, '  Sprint board  ');
+    expect(s.viewById(sheet.id)?.name).toBe('Sprint board');
+    s.renameView(sheet.id, '   ');
+    expect(s.viewById(sheet.id)?.name).toBe('Sprint board');
+    s.undo(); // reverts the doc step, not the rename
+    expect(s.doc.root._elmName).toBeUndefined();
+    expect(s.viewById(sheet.id)?.name).toBe('Sprint board');
+  });
+});
+
+describe('navigation is never a mutation', () => {
+  it('openView / minimizeView push nothing onto the undo stack and touch no document', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc([{ elmType: 'span', txtContent: 'x' }]))!;
+    const sheetJson = JSON.stringify(sheet.doc);
+    const floorJson = JSON.stringify(s.floorDoc);
+    expect(s.canUndo).toBe(true); // the creation itself
+    s.undo(); // clear the stack down to nothing
+    s.redo(); // sheet back, open
+    const undoDepth = 1;
+
+    s.minimizeView();
+    expect(s.onFloor).toBe(true);
+    s.openView(sheet.id);
+    expect(s.activeViewId).toBe(sheet.id);
+    s.minimizeView();
+
+    expect(JSON.stringify(s.viewById(sheet.id)!.doc)).toBe(sheetJson);
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson);
+    expect((s as unknown as { undoStack: string[] }).undoStack).toHaveLength(undoDepth);
+  });
+
+  it('minimize remembers the way back (lastOpenViewId feeds the ⟳ Reopen bar)', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.minimizeView();
+    expect(s.lastOpenViewId).toBe(sheet.id);
+    expect(s.onFloor).toBe(true);
+    s.openView(sheet.id);
+    expect(s.activeViewId).toBe(sheet.id);
+  });
+
+  it('openView on an unknown id and minimize on the floor are no-ops', () => {
+    const s = new EditorState();
+    s.openView('nope');
+    expect(s.onFloor).toBe(true);
+    s.minimizeView(); // already on the floor
+    expect(s.onFloor).toBe(true);
+  });
+
+  it('surface flips stay available while drilled into a column formatter', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.openColumnRef('Status');
+    expect(s.activeDocKey).toBe('Status');
+    s.minimizeView(); // the surface under the drill switches to the floor
+    expect(s.onFloor).toBe(true);
+    expect(s.activeDocKey).toBe('Status'); // the drill stays put
+    expect(s.doc.kind).toBe('column');
+    s.openView(sheet.id);
+    expect(s.activeViewId).toBe(sheet.id);
+    expect(s.activeDocKey).toBe('Status');
+    s.openMain(); // Done lands on the surface that's up: the sheet
+    expect(s.doc).toBe(s.viewById(sheet.id)!.doc);
+  });
+
+  it('goBack retraces surface and drill switches', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!; // now on the sheet
+    s.openColumnRef('Status');
+    expect(s.backTarget).toBe('main');
+    s.goBack();
+    expect(s.activeDocKey).toBe('main');
+    expect(s.activeViewId).toBe(sheet.id);
+    s.goBack(); // back to the floor (where createView started from)
+    expect(s.onFloor).toBe(true);
+  });
+});
+
+describe('global undo across floor + sheets (§2.3)', () => {
+  it('one chronological stack: undo reverts the LAST change wherever it happened, navigating there', () => {
+    const s = new EditorState();
+    const floorLen = s.floorDoc.root.children!.length;
+    s.insertNode({ elmType: 'span', txtContent: 'floor-edit' }); // step 1 (floor)
+    const sheet = s.createView(rowDoc())!;                       // step 2 (create)
+    s.insertNode({ elmType: 'span', txtContent: 'sheet-edit' }); // step 3 (sheet)
+    s.minimizeView();                                            // navigation
+
+    s.undo(); // step 3 reverts — and the canvas navigates back onto the sheet
+    expect(s.activeViewId).toBe(sheet.id);
+    expect(s.viewById(sheet.id)!.doc.root.children ?? []).toHaveLength(0);
+
+    s.undo(); // step 2 reverts — the sheet disappears, we land on the floor
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toEqual([]);
+    expect(s.floorDoc.root.children).toHaveLength(floorLen + 1); // floor edit still live
+
+    s.undo(); // step 1 reverts
+    expect(s.floorDoc.root.children).toHaveLength(floorLen);
+
+    s.redo(); s.redo(); s.redo(); // the whole chain replays
+    expect(s.views).toHaveLength(1);
+    expect(s.views[0].doc.root.children).toHaveLength(1);
+    // redo lands where you STOOD when you undid — on the floor, post-minimize
+    expect(s.onFloor).toBe(true);
+  });
+
+  it('column drill-in edits are app-level steps on the same stack', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
+    const floorLen = s.floorDoc.root.children!.length;
+    s.insertNode({ elmType: 'span', txtContent: 'floor-edit' }); // step 1 (floor)
+    s.openColumnRef('StatusUI');                                 // navigation
+    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });   // step 2 (column)
+    s.openMain();                                                // navigation
+    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit');
+
+    s.undo(); // step 2 reverts — undo re-drills into the column it changes
+    expect(s.activeDocKey).toBe('StatusUI');
+    expect(s.columnRefs['StatusUI'].children).toBeUndefined();
+
+    s.undo(); // step 1 reverts — back out to the floor
+    expect(s.activeDocKey).toBe('main');
+    expect(s.onFloor).toBe(true);
+    expect(s.floorDoc.root.children).toHaveLength(floorLen);
+  });
+
+  it('two drill-ins interleave chronologically without clobbering each other', () => {
+    const s = new EditorState();
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'StatusOriginal' };
+    s.columnRefs['OwnerUI'] = { elmType: 'span', txtContent: 'OwnerOriginal' };
+    s.openColumnRef('StatusUI');
+    s.insertNode({ elmType: 'span', txtContent: 'status-edited' });
+    s.openColumnRef('OwnerUI');
+    s.insertNode({ elmType: 'span', txtContent: 'owner-edited' });
+
+    s.undo(); // last change first: the OwnerUI edit
+    expect(s.columnRefs['OwnerUI'].children).toBeUndefined();
+    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('status-edited');
+
+    s.undo(); // then the StatusUI edit — and the canvas re-drills there
+    expect(s.activeDocKey).toBe('StatusUI');
+    expect(s.columnRefs['StatusUI'].children).toBeUndefined();
+    expect(s.columnRefs['OwnerUI'].children).toBeUndefined();
+  });
+
+  it('editing while drilled live-syncs the registry; the surface object survives the trip', () => {
     const s = withCard();
     s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
     const mainRoot = s.doc.root;
@@ -88,38 +315,6 @@ describe('card-segment paths', () => {
     expect(s.columnRefs['StatusUI'].txtContent).toBe('=toUpperCase([$Status])');
   });
 
-  it('serializeProject stores the MAIN doc even while a column formatter is open', () => {
-    const s = withCard();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
-    s.openColumnRef('StatusUI');
-    const p = JSON.parse(s.serializeProject());
-    expect(p.doc.root.children[0].elmType).toBe('button'); // main tree, not the ref
-    expect(p.columnRefs.StatusUI.txtContent).toBe('[$Status]');
-  });
-
-  it('wrapNode adds a parent — including around the root and card roots', () => {
-    const s = withCard();
-    const oldRoot = s.doc.root;
-    s.wrapNode([]);
-    expect(s.doc.root.children?.[0]).toBe(oldRoot);
-    expect(s.doc.root.style?.display).toBe('flex');
-    // wrap a card formatter root
-    const cardRoot = s.nodeAt([0, 0, CARD_SEGMENT]);
-    s.wrapNode([0, 0, CARD_SEGMENT]);
-    expect(s.nodeAt([0, 0, CARD_SEGMENT])?.children?.[0]).toBe(cardRoot);
-  });
-
-  it('project save/load round-trips columnRefs', () => {
-    const s = withCard();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
-    const text = s.serializeProject();
-    const s2 = new EditorState();
-    s2.loadProject(text);
-    expect(s2.columnRefs['StatusUI'].txtContent).toBe('[$Status]');
-  });
-});
-
-describe('undo/redo', () => {
   it('redo restores an undone mutation; a fresh mutation invalidates the redo', () => {
     const s = new EditorState();
     const before = JSON.stringify(s.doc);
@@ -167,22 +362,40 @@ describe('undo/redo', () => {
     expect(s.canUndo).toBe(true);
     expect(s.canRedo).toBe(false);
   });
+
+  it('subscribe returns an unsubscribe function that removes the listener', () => {
+    const s = new EditorState();
+    let count = 0;
+    const listener = () => { count++; };
+
+    const unsub = s.subscribe(listener);
+    s.emit('document');
+    expect(count).toBe(1);
+
+    unsub();
+    s.emit('document');
+    expect(count).toBe(1);
+  });
 });
 
 describe('reparentNode', () => {
+  const seedColumnDrill = (s: EditorState, root: SPElement): void => {
+    // structural tests want an arbitrary tree on the canvas — a drilled
+    // column doc is the simplest host for one under the new model
+    s.columnRefs['Probe'] = root;
+    s.openColumnRef('Probe');
+  };
+
   it('adjusts the destination index after the source removal shifts it', () => {
     const s = new EditorState();
-    s.doc = {
-      kind: 'column',
-      root: {
-        elmType: 'div',
-        children: [
-          { elmType: 'span', _elmName: 'A' },
-          { elmType: 'div', _elmName: 'B', children: [] },
-          { elmType: 'div', _elmName: 'C', children: [] },
-        ],
-      },
-    };
+    seedColumnDrill(s, {
+      elmType: 'div',
+      children: [
+        { elmType: 'span', _elmName: 'A' },
+        { elmType: 'div', _elmName: 'B', children: [] },
+        { elmType: 'div', _elmName: 'C', children: [] },
+      ],
+    });
     // move A (index 0) into C (index 2). Removing A shifts C to index 1, so the
     // destination path must be decremented or A lands in the wrong container.
     s.reparentNode([0], [2]);
@@ -194,15 +407,12 @@ describe('reparentNode', () => {
 
   it('refuses to drop a node into its own subtree (no-op)', () => {
     const s = new EditorState();
-    s.doc = {
-      kind: 'column',
-      root: {
-        elmType: 'div',
-        children: [
-          { elmType: 'div', _elmName: 'A', children: [{ elmType: 'span', _elmName: 'B' }] },
-        ],
-      },
-    };
+    seedColumnDrill(s, {
+      elmType: 'div',
+      children: [
+        { elmType: 'div', _elmName: 'A', children: [{ elmType: 'span', _elmName: 'B' }] },
+      ],
+    });
     const before = JSON.stringify(s.doc);
     s.reparentNode([0], [0, 0]); // try to move A into its own child B
     expect(JSON.stringify(s.doc)).toBe(before);
@@ -210,25 +420,19 @@ describe('reparentNode', () => {
 
   it('dropping onto a solo-CFR host splits the reference into its own child (no absorption)', () => {
     const s = new EditorState();
-    s.doc = {
-      kind: 'row',
-      root: {
+    const sheet = s.createView(rowDoc([
+      { elmType: 'span', _elmName: 'Extra', txtContent: '[$Title]' },
+      {
         elmType: 'div',
-        children: [
-          { elmType: 'span', _elmName: 'Extra', txtContent: '[$Title]' },
-          {
-            elmType: 'div',
-            _elmName: 'Status',
-            columnFormatterReference: '[$Status]',
-            style: { 'flex': '1', 'min-width': '0' },
-          },
-        ],
+        _elmName: 'Status',
+        columnFormatterReference: '[$Status]',
+        style: { 'flex': '1', 'min-width': '0' },
       },
-    };
+    ]))!;
     // drop Extra (index 0) onto the Status CFR host (index 1)
     s.reparentNode([0], [1]);
     // removing Extra shifts the host to index 0; it is now a plain container
-    const host = s.doc.root.children![0];
+    const host = sheet.doc.root.children![0];
     expect(host.columnFormatterReference).toBeUndefined(); // no longer absorbs
     expect(host._elmName).toBeUndefined(); // the column name went down with the ref
     expect(host.style).toEqual({ 'flex': '1', 'min-width': '0' }); // slot styles stay put
@@ -244,15 +448,9 @@ describe('reparentNode', () => {
 
   it('inserting into a solo-CFR host splits the reference out too', () => {
     const s = new EditorState();
-    s.doc = {
-      kind: 'row',
-      root: {
-        elmType: 'div',
-        children: [
-          { elmType: 'div', _elmName: 'Status', columnFormatterReference: '[$Status]' },
-        ],
-      },
-    };
+    s.createView(rowDoc([
+      { elmType: 'div', _elmName: 'Status', columnFormatterReference: '[$Status]' },
+    ]));
     const path = s.insertNode({ elmType: 'span', txtContent: 'new' }, [0]);
     expect(path).toEqual([0, 1]); // beside the extracted ref, not swallowed
     const host = s.doc.root.children![0];
@@ -269,7 +467,7 @@ describe('applyColumnSubtype: snapshot apply as ONE undoable mutation (US-3)', (
   }
 
   it('registers the formatter, CFR-wires the cell, tags the field — and one undo reverts all three', () => {
-    const s = new EditorState(); // grid-first default doc
+    const s = new EditorState(); // the floor grid
     const field = s.fields.find((f) => f.name === 'DueDate')!; // an unformatted column
     const path = colPath(s, 'DueDate');
     const baked: SPElement = { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' };
@@ -405,7 +603,7 @@ describe('batchProjectUpdate: the component editor\'s one-step apply', () => {
     expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x-variant');
   });
 
-  it('leaves a drilled column first, so the MAIN doc is live inside the snapshot', () => {
+  it('leaves a drilled column first, so the SURFACE is live inside the snapshot', () => {
     const s = new EditorState();
     s.openColumnRef('Status');
     expect(s.activeDocKey).toBe('Status');
@@ -418,94 +616,114 @@ describe('batchProjectUpdate: the component editor\'s one-step apply', () => {
     expect(s.doc.root.children![0]._elmName).not.toBe('Renamed by the apply');
   });
 
-  // restoreSnap consults columnRefVersions for its registry restore/merge
-  // decisions, so these tests read the private counters directly
-  const versions = (s: EditorState): Record<string, number> =>
-    (s as unknown as { columnRefVersions: Record<string, number> }).columnRefVersions;
-
-  it('a no-op fn leaves ZERO trace — no undo step AND no leaked version bumps', () => {
+  it('a no-op fn leaves ZERO trace — no undo step', () => {
     const s = new EditorState();
     s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
     expect(s.canUndo).toBe(false);
     s.batchProjectUpdate(['DueDate'], () => { /* nothing */ });
     expect(s.canUndo).toBe(false);
-    // the bump rolled back: a leaked version would silently change how a
-    // LATER undo of an older snapshot merges this column's registry entry
-    expect(versions(s)['DueDate']).toBeUndefined();
     expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
-  });
-
-  it('a REAL apply keeps its bump INSIDE the undo snapshot, so undo restores the re-bake', () => {
-    const s = new EditorState();
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
-    s.batchProjectUpdate(['DueDate'], () => {
-      s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'NEW' };
-    });
-    expect(versions(s)['DueDate']).toBe(1); // the bump stays on a real apply
-    s.undo();
-    // currVer (1) <= snapVer (1): the snapshot's registry wins the merge —
-    // bumping AFTER the snapshot would make undo skip this restore
-    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
-    s.redo();
-    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
   });
 });
 
-describe('view name (project metadata)', () => {
-  it('defaults to "View 1"', () => {
-    expect(new EditorState().viewName).toBe('View 1');
+describe('autosave format v2 (same frozen key, strict load guard)', () => {
+  it('serializeProject emits the workspace: floor, views, activeViewId', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc([{ elmType: 'span', txtContent: 'x' }]), 'Sprint board')!;
+    const p = JSON.parse(s.serializeProject());
+    expect(p.version).toBe(2);
+    expect(p.floor.kind).toBe('grid');
+    expect(p.floor.root.elmType).toBe('div');
+    expect(p.views).toHaveLength(1);
+    expect(p.views[0]).toMatchObject({ id: sheet.id, name: 'Sprint board' });
+    expect(p.views[0].doc.kind).toBe('row');
+    expect(p.activeViewId).toBe(sheet.id);
+    expect(p.doc).toBeUndefined(); // the old single-document key is GONE
   });
 
-  it('setViewName assigns and is NOT an undoable document mutation', () => {
+  it('round-trips the whole workspace, including where you stood', () => {
+    const s = new EditorState();
+    s.createView(rowDoc(), 'A');
+    const b = s.createView({ kind: 'tile', root: { elmType: 'div' } }, 'B')!;
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
+    const text = s.serializeProject();
+
+    const s2 = new EditorState();
+    s2.loadProject(text);
+    expect(s2.views.map((v) => v.name)).toEqual(['A', 'B']);
+    expect(s2.activeViewId).toBe(b.id);
+    expect(s2.doc).toBe(s2.viewById(b.id)!.doc); // reload lands where you left off
+    expect(s2.doc.tileWidth).toBe(254);
+    expect(s2.columnRefs['StatusUI'].txtContent).toBe('[$Status]');
+    expect(s2.serializeProject()).toBe(text);
+  });
+
+  it('serializeProject stores the drilled column\'s live tree in the registry', () => {
     const s = withCard();
-    const original = JSON.stringify(s.doc);
-    s.mutateDocument(() => { s.doc.root._elmName = 'Probe'; }); // one real doc step
-    s.setViewName('Sprint board');
-    expect(s.viewName).toBe('Sprint board');
-    s.undo(); // the single undo reverts the doc step, untouched by setViewName
-    expect(JSON.stringify(s.doc)).toBe(original);
-    expect(s.viewName).toBe('Sprint board'); // name survives undo — it's metadata
+    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
+    s.openColumnRef('StatusUI');
+    s.mutateDocument(() => { s.doc.root.txtContent = 'edited'; });
+    const p = JSON.parse(s.serializeProject());
+    expect(p.floor.root.children[0].elmType).toBe('button'); // the floor, not the drill
+    expect(p.columnRefs.StatusUI.txtContent).toBe('edited');
   });
 
-  it('blank/whitespace names fall back to "View 1"', () => {
+  it('REFUSES pre-Stage-1 payloads — the guard throws, restore() falls back to the default', () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      doc: { kind: 'grid', root: { elmType: 'div' } },
+      fields: [], rows: [], columnRefs: {}, viewName: 'View 1',
+    });
     const s = new EditorState();
-    s.setViewName('   ');
-    expect(s.viewName).toBe('View 1');
-  });
+    expect(() => s.loadProject(legacy)).toThrow(/workspace file/);
 
-  it('serialize/load round-trips the name; a payload without it loads as "View 1"', () => {
-    const s = new EditorState();
-    s.setViewName('Roadmap');
+    localStorage.setItem(EditorState.STORAGE_KEY, legacy);
     const s2 = new EditorState();
-    s2.loadProject(s.serializeProject());
-    expect(s2.viewName).toBe('Roadmap');
-
-    // an older payload (no viewName field) defaults rather than throwing
-    const legacy = JSON.parse(s.serializeProject());
-    delete legacy.viewName;
-    const s3 = new EditorState();
-    s3.loadProject(JSON.stringify(legacy));
-    expect(s3.viewName).toBe('View 1');
+    expect(s2.restore()).toBe(false); // no migration: unparseable → fresh default
+    expect(s2.onFloor).toBe(true);
+    expect(s2.views).toEqual([]);
+    localStorage.removeItem(EditorState.STORAGE_KEY);
   });
 
-  it('loadProject normalizes a blank/whitespace stored name to "View 1"', () => {
-    const legacy = JSON.parse(new EditorState().serializeProject());
-    legacy.viewName = '   ';
+  it('rejects malformed views (wrong kind, missing id) rather than guessing', () => {
     const s = new EditorState();
-    s.loadProject(JSON.stringify(legacy));
-    expect(s.viewName).toBe('View 1');
-    // and trims a padded name on load, like setViewName does
-    legacy.viewName = '  Roadmap  ';
+    const good = JSON.parse(s.serializeProject());
+    good.views = [{ id: 'v1', name: 'X', doc: { kind: 'grid', root: { elmType: 'div' } } }];
+    expect(() => new EditorState().loadProject(JSON.stringify(good))).toThrow(/workspace file/);
+    good.views = [{ name: 'X', doc: { kind: 'row', root: { elmType: 'div' } } }];
+    expect(() => new EditorState().loadProject(JSON.stringify(good))).toThrow(/workspace file/);
+  });
+
+  it('rejects the reserved sheet id "floor" and duplicate ids (selection keys must be unambiguous)', () => {
+    const template = JSON.parse(new EditorState().serializeProject());
+    const row = (id: string) => ({ id, name: id, doc: { kind: 'row', root: { elmType: 'div' } } });
+    template.views = [row('floor')]; // would collide with the floor's selection-memory key
+    expect(() => new EditorState().loadProject(JSON.stringify(template))).toThrow(/workspace file/);
+    template.views = [row('v1'), row('v1')]; // would make viewById/openView ambiguous
+    expect(() => new EditorState().loadProject(JSON.stringify(template))).toThrow(/workspace file/);
+    template.views = [row('v1'), row('v2')]; // distinct ids stay fine
+    const s = new EditorState();
+    s.loadProject(JSON.stringify(template));
+    expect(s.views).toHaveLength(2);
+  });
+
+  it('an unknown activeViewId degrades to the floor instead of crashing', () => {
+    const s = new EditorState();
+    const p = JSON.parse(s.serializeProject());
+    p.activeViewId = 'ghost';
     const s2 = new EditorState();
-    s2.loadProject(JSON.stringify(legacy));
-    expect(s2.viewName).toBe('Roadmap');
+    s2.loadProject(JSON.stringify(p));
+    expect(s2.onFloor).toBe(true);
+    expect(s2.doc).toBe(s2.floorDoc);
   });
 
-  it('resetAll restores "View 1"', () => {
+  it('resetAll returns to the fresh floor-only workspace', () => {
     const s = new EditorState();
-    s.setViewName('Whatever');
+    s.createView(rowDoc(), 'Whatever');
     s.resetAll();
-    expect(s.viewName).toBe('View 1');
+    expect(s.views).toEqual([]);
+    expect(s.onFloor).toBe(true);
+    expect(s.doc).toBe(s.floorDoc);
   });
 });
 
@@ -513,6 +731,7 @@ describe('STORAGE_KEY is frozen', () => {
   it('matches the literal that protects existing autosaved work', () => {
     // HANDOFF §1: these keys deliberately never change on rename — a rename
     // here would orphan every user's autosaved project. This test must fail.
+    // (Frozen NAMES, not frozen formats — the payload is v2 now.)
     expect(EditorState.STORAGE_KEY).toBe('list-formatting-sandbox.project.v1');
   });
 });
@@ -527,84 +746,160 @@ describe('undo integrity', () => {
     expect(JSON.stringify(s.doc)).toBe(original);
   });
 
-  it('setKind does not push an undo step when the kind is unchanged', () => {
-    const s = withCard();
-    const original = JSON.stringify(s.doc);
-    s.mutateDocument(() => { s.doc.root._elmName = 'NoOpProbe'; }); // real change
-    s.setKind(s.doc.kind); // same kind → no-op
-    s.undo(); // a single undo should restore the original
-    expect(JSON.stringify(s.doc)).toBe(original);
-  });
-
-  it('setKind still snapshots a real kind change so undo reverts it', () => {
-    const s = withCard();
-    const k0 = s.doc.kind;
+  it('setKind on a sheet: row ⇄ tile is one undoable step; repeating the kind is a no-op', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    s.mutateDocument(() => { s.doc.root._elmName = 'Probe'; }); // a real step to guard against phantoms
+    s.setKind('row'); // unchanged kind → no-op
     s.setKind('tile');
     expect(s.doc.kind).toBe('tile');
-    s.undo();
-    expect(s.doc.kind).toBe(k0);
+    expect(s.doc.tileWidth).toBe(254);
+    s.undo(); // reverts the kind flip only
+    expect(s.doc.kind).toBe('row');
+    s.undo(); // then the probe rename
+    expect(s.doc.root._elmName).toBeUndefined();
+  });
+
+  it('setKind("grid") on a sheet MINIMIZES — navigation, not a mutation', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const undoDepth = (s as unknown as { undoStack: string[] }).undoStack.length;
+    s.setKind('grid');
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toHaveLength(1); // the sheet survives, untouched
+    expect(s.viewById(sheet.id)!.doc.kind).toBe('row');
+    expect((s as unknown as { undoStack: string[] }).undoStack).toHaveLength(undoDepth);
+  });
+
+  it('setKind("row") on the floor starts a NEW sheet carrying a copy of the floor tree', () => {
+    const s = new EditorState();
+    const floorJson = JSON.stringify(s.floorDoc);
+    const floorChildren = s.floorDoc.root.children!.length;
+    s.setKind('row');
+    expect(s.onFloor).toBe(false);
+    expect(s.doc.kind).toBe('row');
+    expect(s.doc.root.children).toHaveLength(floorChildren); // the lossless relabel…
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson);      // …into its OWN document
+    s.doc.root.children!.pop(); // shaping the sheet…
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson);      // …can never corrupt the floor
+    expect(s.floorDoc.kind).toBe('grid');
   });
 });
 
-describe('applyRowTemplate', () => {
-  it('is one undo step that reverts root + kind together', () => {
+describe('applyRowTemplate / applyTileTemplate', () => {
+  it('on a sheet: one undo step that reverts root + kind together, preserving unrelated viewExtras', () => {
     const s = new EditorState();
-    s.loadDocument({ kind: 'grid', root: { elmType: 'div', _elmName: 'grid', children: [] } });
-    const newRoot: SPElement = { elmType: 'div', _elmName: 'Row layout', children: [] };
-    s.applyRowTemplate(newRoot, "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
+    s.createView({
+      kind: 'row',
+      root: { elmType: 'div', _elmName: 'seed' },
+      viewExtras: { footerFormatter: { elmType: 'div' } },
+    });
+    s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' }, "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
     expect(s.doc.kind).toBe('row');
     expect(s.doc.viewExtras!.additionalRowClass as string).toContain('@rowIndex');
-    s.undo();                                   // a single undo reverts BOTH
-    expect(s.doc.kind).toBe('grid');
-    expect(s.doc.root._elmName).toBe('grid');
-  });
-
-  it('preserves unrelated viewExtras (footerFormatter etc.)', () => {
-    const s = new EditorState();
-    s.loadDocument({ kind: 'row', root: { elmType: 'div' }, viewExtras: { footerFormatter: { elmType: 'div' } } });
-    s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' });
     expect(s.doc.viewExtras!.footerFormatter).toBeDefined();
+    s.undo(); // a single undo reverts the whole apply
+    expect(s.doc.root._elmName).toBe('seed');
+    expect(s.doc.viewExtras!.additionalRowClass).toBeUndefined();
   });
 
-  it('does not push a phantom undo step when Apply reproduces the current doc', () => {
+  it('does not push a phantom undo step when Apply reproduces the current sheet', () => {
     const s = new EditorState();
-    s.loadDocument({ kind: 'row', root: { elmType: 'div', _elmName: 'A', children: [] } });
+    s.createView({ kind: 'row', root: { elmType: 'div', _elmName: 'A', children: [] } });
     s.applyRowTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // real change A→B (one undo)
     s.applyRowTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // identical B→B (no undo)
     s.undo();                                                            // one undo must land on A, not a phantom B
     expect(s.doc.root._elmName).toBe('A');
   });
-});
 
-describe('applyTileTemplate', () => {
-  it('is one undo step that reverts root + kind + tile box together', () => {
+  it('from the floor: CREATES a new named sheet — the floor is never overwritten', () => {
     const s = new EditorState();
-    s.loadDocument({ kind: 'grid', root: { elmType: 'div', _elmName: 'grid', children: [] } });
-    s.applyTileTemplate({ elmType: 'div', _elmName: 'Tile layout', children: [] }, { width: 300, height: 240 });
+    const floorJson = JSON.stringify(s.floorDoc);
+    s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' }, 'zebra');
+    expect(s.views).toHaveLength(1);
+    expect(s.doc.kind).toBe('row');
+    expect(s.doc.viewExtras!.additionalRowClass).toBe('zebra');
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson);
+    s.undo(); // removes the sheet, back on the intact floor
+    expect(s.views).toEqual([]);
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson);
+  });
+
+  it('applyTileTemplate on a sheet flips kind + tile box in one step; from the floor it creates', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    s.applyTileTemplate({ elmType: 'div', _elmName: 'Tile layout' }, { width: 300, height: 240 });
     expect(s.doc.kind).toBe('tile');
     expect(s.doc.tileWidth).toBe(300);
     expect(s.doc.tileHeight).toBe(240);
-    s.undo();                                   // a single undo reverts ALL of it
-    expect(s.doc.kind).toBe('grid');
-    expect(s.doc.root._elmName).toBe('grid');
+    s.undo();
+    expect(s.doc.kind).toBe('row');
     expect(s.doc.tileWidth).toBeUndefined();
-  });
 
-  it('defaults the tile box to the SP stock 254×220 when no size is passed', () => {
-    const s = new EditorState();
-    s.loadDocument({ kind: 'grid', root: { elmType: 'div', children: [] } });
-    s.applyTileTemplate({ elmType: 'div', _elmName: 'Tile layout' });
-    expect(s.doc.tileWidth).toBe(254);
+    s.minimizeView();
+    s.applyTileTemplate({ elmType: 'div', _elmName: 'T' });
+    expect(s.views).toHaveLength(2);
+    expect(s.doc.kind).toBe('tile');
+    expect(s.doc.tileWidth).toBe(254); // the SP stock 254×220 default
     expect(s.doc.tileHeight).toBe(220);
   });
+});
 
-  it('does not push a phantom undo step when Apply reproduces the current tile', () => {
+describe('loadDocument: the Apply-to-canvas routing', () => {
+  it('on the floor, a row payload replaces the FLOOR ROOT — kind stays grid (lossless round-trip)', () => {
     const s = new EditorState();
-    s.loadDocument({ kind: 'tile', root: { elmType: 'div', _elmName: 'A', children: [] }, tileWidth: 254, tileHeight: 220 });
-    s.applyTileTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // real change (one undo)
-    s.applyTileTemplate({ elmType: 'div', _elmName: 'B', children: [] }); // identical (no undo)
+    s.loadDocument({ kind: 'row', root: { elmType: 'div', _elmName: 'pasted', children: [] } });
+    expect(s.onFloor).toBe(true);
+    expect(s.doc.kind).toBe('grid');
+    expect(s.doc.root._elmName).toBe('pasted');
     s.undo();
-    expect(s.doc.root._elmName).toBe('A');
+    expect(s.doc.root._elmName).toBe('Row layout'); // the default floor scaffold
+  });
+
+  it('on the floor, a tile payload becomes a NEW sheet (a tile can never be a floor)', () => {
+    const s = new EditorState();
+    s.loadDocument({ kind: 'tile', root: { elmType: 'div', _elmName: 'tile' } });
+    expect(s.views).toHaveLength(1);
+    expect(s.doc.kind).toBe('tile');
+  });
+
+  it('on the floor, a column payload registers to the current field and drills in', () => {
+    const s = new EditorState();
+    s.currentFieldName = 'DueDate';
+    s.loadDocument({ kind: 'column', root: { elmType: 'div', txtContent: '@currentField' } });
+    expect(s.activeDocKey).toBe('DueDate');
+    expect(s.doc.kind).toBe('column');
+    expect(s.columnRefs['DueDate'].txtContent).toBe('@currentField');
+  });
+
+  it('on a sheet, the payload replaces the sheet document (kind follows the payload)', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.loadDocument({ kind: 'tile', root: { elmType: 'div', _elmName: 'T' } });
+    expect(s.activeViewId).toBe(sheet.id);
+    expect(s.viewById(sheet.id)!.doc.kind).toBe('tile');
+    expect(s.viewById(sheet.id)!.doc.root._elmName).toBe('T');
+    expect(s.doc).toBe(s.viewById(sheet.id)!.doc);
+  });
+
+  it('while drilled, the payload replaces the column tree and live-syncs the registry', () => {
+    const s = new EditorState();
+    s.openColumnRef('Status');
+    s.loadDocument({ kind: 'column', root: { elmType: 'div', txtContent: 'replaced' } });
+    expect(s.activeDocKey).toBe('Status');
+    expect(s.columnRefs['Status'].txtContent).toBe('replaced');
+    s.undo();
+    expect(s.columnRefs['Status'].txtContent).not.toBe('replaced');
+  });
+
+  it('loadColumnDocument is one undoable step; undo unregisters the format', () => {
+    const s = new EditorState();
+    expect('Tags' in s.columnRefs).toBe(false);
+    s.loadColumnDocument({ elmType: 'div', txtContent: '@currentField' }, 'Tags');
+    expect(s.activeDocKey).toBe('Tags');
+    s.undo();
+    expect('Tags' in s.columnRefs).toBe(false);
+    expect(s.activeDocKey).toBe('main');
   });
 });
 
@@ -661,6 +956,17 @@ describe('multi-select', () => {
     s.removeNode([1]);
     expect(s.selections).toEqual([[]]); // removeNode sets selection to the parent
   });
+
+  it('each surface remembers its own selection across navigation', () => {
+    const s = threeChildren();
+    s.select([1]);
+    const sheet = s.createView(rowDoc([{ elmType: 'span' }]))!;
+    s.select([0]);
+    s.minimizeView();
+    expect(s.selection).toEqual([1]); // the floor's selection came back
+    s.openView(sheet.id);
+    expect(s.selection).toEqual([0]); // and the sheet's
+  });
 });
 
 describe('lens + save checkpoint', () => {
@@ -705,42 +1011,20 @@ describe('lens + save checkpoint', () => {
     s.discardToSavepoint(); // _savepoint null → nothing happens
     expect(JSON.stringify(s.doc)).toBe(snap);
   });
-});
 
-describe('view switching stashes and selection recovery', () => {
-  it('transitioning between views preserves undo/redo stacks, savepoint, and dirty state', () => {
+  it('the savepoint is workspace-wide: a column edit counts as dirt, navigation does not', () => {
     const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
+    const sheet = s.createView(rowDoc())!;
     s.markSavepoint();
-    expect(s.isDirtySinceSave).toBe(false);
-
-    // Make an edit in main
-    s.insertNode({ elmType: 'span', txtContent: 'main-edit' });
-    expect(s.isDirtySinceSave).toBe(true);
-    expect(s.canUndo).toBe(true);
-
-    // Switch to column ref
-    s.openColumnRef('StatusUI');
-    expect(s.activeDocKey).toBe('StatusUI');
-    // Column ref has a fresh/empty undo stack & savepoint when opened
-    expect(s.canUndo).toBe(false);
-    expect(s.isDirtySinceSave).toBe(false);
-
-    // Make an edit in column ref
+    s.minimizeView();
+    s.openView(sheet.id);
+    expect(s.isDirtySinceSave).toBe(false); // pure navigation — not dirt
+    s.openColumnRef('Status');
     s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
-    expect(s.isDirtySinceSave).toBe(true);
-    expect(s.canUndo).toBe(true);
-
-    // Switch back to main
-    s.openMain();
-    expect(s.activeDocKey).toBe('main');
-    // Main's undo stack, savepoint, and dirty state are stashed and restored!
-    expect(s.canUndo).toBe(true);
-    expect(s.isDirtySinceSave).toBe(true);
-
-    // Undo should work and revert the main edit
-    s.undo();
+    expect(s.isDirtySinceSave).toBe(true); // the registry changed
+    s.discardToSavepoint();
     expect(s.isDirtySinceSave).toBe(false);
+    expect(s.columnRefs['Status'].children).toBeUndefined();
   });
 
   it('undo/redo/discard restore the selection focus state', () => {
@@ -767,162 +1051,22 @@ describe('view switching stashes and selection recovery', () => {
   });
 });
 
-describe('adversarial state robustness challenges', () => {
-  it('challenge: main view undo clobbers column formatter edits due to shared columnRefs stashing', () => {
-    const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
-    
-    // 1. Edit main view. This pushes a snapshot to main's undo stack capturing columnRefs.StatusUI as 'original'
-    s.insertNode({ elmType: 'span', txtContent: 'main-edit' });
-    
-    // 2. Switch to column ref StatusUI
-    s.openColumnRef('StatusUI');
-    
-    // 3. Edit StatusUI. This updates columnRefs.StatusUI to 'col-edit'
-    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
-    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit');
-    
-    // 4. Return to main view
-    s.openMain();
-    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit');
-    
-    // 5. Undo in main view. This pops the snapshot from step 1, restoring its columnRefs
-    s.undo();
-    
-    // 6. Check if StatusUI edit survived the main view undo
-    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit'); // Should fail if clobbered!
-  });
-
-  it('challenge: editing a column ref makes the main view dirty since save', () => {
-    const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
-    s.markSavepoint();
-    expect(s.isDirtySinceSave).toBe(false);
-
-    // 1. Switch to StatusUI
-    s.openColumnRef('StatusUI');
-    
-    // 2. Edit StatusUI
-    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
-    
-    // 3. Switch back to main
-    s.openMain();
-    
-    // 4. Main document was never mutated, but is it dirty since save?
-    // Expect: false (main view itself should be clean because we only edited StatusUI, which has its own savepoint/history)
-    expect(s.isDirtySinceSave).toBe(false); // Should fail if main is considered dirty!
-  });
-
-  it('challenge: multi-view selection stashing and restore', () => {
-    const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
-    s.select([0]); // select in main
-    expect(s.selection).toEqual([0]);
-
-    s.openColumnRef('StatusUI');
-    // expect column selection to start empty/root
-    expect(s.selection).toEqual([]);
-    
-    // select in StatusUI
-    s.select([0, 0]);
-    expect(s.selection).toEqual([0, 0]);
-
-    s.openMain();
-    // Challenge: does it restore main's selection?
-    expect(s.selection).toEqual([0]); // Should fail if lost/reset to []!
-  });
-
-  it('challenge: mixed gestures and heavy switching stress test', () => {
-    const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'StatusOriginal' };
-    s.columnRefs['OwnerUI'] = { elmType: 'span', txtContent: 'OwnerOriginal' };
-    
-    // Edit main
-    s.insertNode({ elmType: 'span', txtContent: 'main-1' });
-    
-    // Switch to StatusUI and edit
-    s.openColumnRef('StatusUI');
-    s.insertNode({ elmType: 'span', txtContent: 'status-1' });
-    
-    // Switch to OwnerUI and edit
-    s.openColumnRef('OwnerUI');
-    s.insertNode({ elmType: 'span', txtContent: 'owner-1' });
-    
-    // Undo in OwnerUI
-    s.undo();
-    expect(s.doc.root.children).toBeUndefined(); // reverted to original (no children)
-    
-    // Switch to StatusUI
-    s.openColumnRef('StatusUI');
-    // StatusUI should still have status-1
-    expect(s.doc.root.children?.[0]?.txtContent).toBe('status-1');
-    
-    // Redo in StatusUI? There is no redo left because we didn't undo in StatusUI
-    expect(s.canRedo).toBe(false);
-    
-    // Switch to main
-    s.openMain();
-    expect(s.doc.root.children?.[s.doc.root.children.length - 1]?.txtContent).toBe('main-1');
-  });
-
-  it('subscribe returns an unsubscribe function that removes the listener', () => {
-    const s = new EditorState();
-    let count = 0;
-    const listener = () => { count++; };
-
-    const unsub = s.subscribe(listener);
-    s.emit('document');
-    expect(count).toBe(1);
-
-    // Calling the returned unsubscribe stops further notifications: emitting
-    // again must not increase the count, and the listener is gone from the list.
-    unsub();
-    s.emit('document');
-    expect(count).toBe(1);
-    expect((s as any).listeners).not.toContain(listener);
-  });
-
-  it('challenge: undoing in one column ref view clobbers edits made in another column ref view', () => {
-    const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'StatusOriginal' };
-    s.columnRefs['OwnerUI'] = { elmType: 'span', txtContent: 'OwnerOriginal' };
-
-    // 1. Open StatusUI and edit it.
-    s.openColumnRef('StatusUI');
-    s.insertNode({ elmType: 'span', txtContent: 'status-edited' });
-    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('status-edited');
-
-    // 2. Open OwnerUI and edit it.
-    s.openColumnRef('OwnerUI');
-    s.insertNode({ elmType: 'span', txtContent: 'owner-edited' });
-    expect(s.columnRefs['OwnerUI'].children?.[0]?.txtContent).toBe('owner-edited');
-
-    // 3. Switch back to StatusUI
-    s.openColumnRef('StatusUI');
-
-    // 4. Undo in StatusUI.
-    s.undo();
-
-    // 5. Verify StatusUI was reverted
-    expect(s.doc.root.children).toBeUndefined();
-
-    // 6. Verify OwnerUI still has 'owner-edited'
-    expect(s.columnRefs['OwnerUI'].children?.[0]?.txtContent).toBe('owner-edited');
-  });
-});
-
 describe('mainRootForScope', () => {
-  it('returns the live root on main, and the stashed main root while drilled', () => {
+  it('returns the live root on the surface, and the surface root while drilled', () => {
     const s = new EditorState();
-    const mainRoot = s.doc.root;
+    const floorRoot = s.doc.root;
     s.columnRefs['Status'] = { elmType: 'div', txtContent: '@currentField' };
     s.openColumnRef('Status');
     expect(s.activeDocKey).toBe('Status');
-    expect(s.mainRootForScope).toBe(mainRoot);
+    expect(s.mainRootForScope).toBe(floorRoot);
     s.openMain();
     expect(s.mainRootForScope).toBe(s.doc.root);
   });
+
+  it('tracks the sheet when one is up', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.openColumnRef('Status');
+    expect(s.mainRootForScope).toBe(sheet.doc.root);
+  });
 });
-
-
-

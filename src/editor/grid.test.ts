@@ -128,10 +128,12 @@ describe('grid scaffolding', () => {
 describe('grid document mutations (one undo step each)', () => {
   function gridState(): EditorState {
     const s = new EditorState();
-    s.doc = {
+    // seed the FLOOR: a row-shaped payload applied on the floor replaces the
+    // floor's tree (kind stays 'grid') — the Apply-to-canvas contract
+    s.loadDocument({
       kind: 'grid',
       root: buildGridRoot(FIELDS, REFS, ['Title', 'Status', 'DueDate', 'Project']),
-    };
+    });
     return s;
   }
 
@@ -175,8 +177,9 @@ describe('grid document mutations (one undo step each)', () => {
     s.undo();
     s.undo();
     expect(s.doc.root.children!.map((c) => c._elmName)).toEqual(['Title', 'Status', 'DueDate', 'Project']);
-    s.undo(); // stack exhausted — still the original order
-    expect(s.doc.root.children!.map((c) => c._elmName)).toEqual(['Title', 'Status', 'DueDate', 'Project']);
+    s.undo(); // the next undo reverts the SEEDING, not a phantom move step
+    expect(s.doc.root.children!.map((c) => c._elmName))
+      .toEqual(['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']); // the default floor
   });
 
   it('unwrapNode dissolves a group back into grid columns', () => {
@@ -201,24 +204,30 @@ describe('grid document mutations (one undo step each)', () => {
   });
 });
 
-describe('row-view builder (stage 3, one undo step each)', () => {
+describe('row-view builder (graduation creates a SHEET — FLOOR-AND-SHEETS Stage 1)', () => {
   function gridState(): EditorState {
     const s = new EditorState();
-    s.doc = {
+    s.loadDocument({
       kind: 'grid',
       root: buildGridRoot(FIELDS, REFS, ['Title', 'Status', 'DueDate', 'Project']),
-    };
+    });
     return s;
   }
 
-  it('makeRowView graduates the grid to a row layout in one undo step', () => {
+  it('makeRowView creates a NEW row-view sheet in one undo step — the floor is untouched', () => {
     const s = gridState();
+    const floorJson = JSON.stringify(s.floorDoc);
     s.makeRowView();
     expect(s.doc.kind).toBe('row');
+    expect(s.views).toHaveLength(1);
+    expect(s.onFloor).toBe(false);
     expect(s.doc.root.children).toHaveLength(4);
     expect(s.doc.root.children!.every((c) => c.style?.['flex'] !== undefined)).toBe(true);
-    s.undo();
-    expect(s.doc.kind).toBe('grid');
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson); // nothing on the floor moved
+    s.undo(); // ONE step removes the sheet and lands back on the intact floor
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toEqual([]);
+    expect(JSON.stringify(s.floorDoc)).toBe(floorJson);
   });
 
   it('makeRowView curates a column subset, in selection order', () => {
@@ -239,6 +248,22 @@ describe('row-view builder (stage 3, one undo step each)', () => {
     expect(s.doc.root.style?.['height']).toBe('100%');
   });
 
+  it('the sheet and the floor share NO nodes — shaping one can never corrupt the other', () => {
+    const s = gridState();
+    s.makeRowView();
+    const sheet = s.activeView!;
+    sheet.doc.root.children![0]._elmName = 'mutated on the sheet';
+    expect(s.floorDoc.root.children![0]._elmName).toBe('Title');
+  });
+
+  it('makeRowView is a floor-only gesture — a no-op while a sheet is up', () => {
+    const s = gridState();
+    s.makeRowView();
+    const count = s.views.length;
+    s.makeRowView(); // already on a sheet
+    expect(s.views).toHaveLength(count);
+  });
+
   it('setRowDensity is one undo step', () => {
     const s = gridState();
     s.makeRowView();
@@ -248,20 +273,18 @@ describe('row-view builder (stage 3, one undo step each)', () => {
     expect(s.doc.root.style?.['gap']).not.toBe('8px');
   });
 
-  it('leaving a row/tile view for the grid remembers the way back', () => {
+  it('leaving a sheet for the grid is NAVIGATION and remembers the way back', () => {
     const s = gridState();
-    expect(s.lastLayoutKind).toBeNull();
     s.makeRowView();
-    expect(s.lastLayoutKind).toBeNull();
-    s.setKind('grid'); // "Back to grid" relabels — the layout kind is remembered
-    expect(s.lastLayoutKind).toBe('row');
-    s.setKind('row'); // ⟳ Reopen — arriving at a layout clears the memory
-    expect(s.lastLayoutKind).toBeNull();
-    s.setKind('tile');
-    s.setKind('grid');
-    expect(s.lastLayoutKind).toBe('tile');
-    s.loadDocument({ kind: 'grid', root: buildGridRoot(FIELDS, REFS, ['Title']) });
-    expect(s.lastLayoutKind).toBeNull(); // a fresh document owes nothing to the old one
+    const sheet = s.activeView!;
+    const sheetJson = JSON.stringify(sheet.doc);
+    s.minimizeView(); // "Back to grid"
+    expect(s.onFloor).toBe(true);
+    expect(s.lastOpenViewId).toBe(sheet.id); // feeds the ⟳ Reopen bar
+    expect(JSON.stringify(s.viewById(sheet.id)!.doc)).toBe(sheetJson); // untouched
+    s.openView(sheet.id); // ⟳ Reopen
+    expect(s.doc.kind).toBe('row');
+    expect(JSON.stringify(s.doc)).toBe(sheetJson); // same document, nothing rebuilt
   });
 });
 
@@ -269,10 +292,10 @@ describe('CFR linked instances (stage 4, one undo step each)', () => {
   function gridState(): EditorState {
     const s = new EditorState();
     s.columnRefs = { Status: { elmType: 'div', _elmName: 'Status pill', txtContent: '@currentField' } };
-    s.doc = {
+    s.loadDocument({
       kind: 'grid',
       root: buildGridRoot(FIELDS, s.columnRefs, ['Title', 'Status', 'DueDate']),
-    };
+    });
     return s;
   }
 

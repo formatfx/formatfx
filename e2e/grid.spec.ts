@@ -65,9 +65,9 @@ test('drilling into a column formatter lights the COLUMN tab; the VIEW tab retur
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
   // the VIEW FORMATTERS tab is the way back to the view you drilled from
   await page.locator('.wb-fmt-tab-view').click();
-  // back on the view: the dropdown names the view again
+  // back on the floor: the dropdown names the grid again
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(page.locator('.wb-grid-header-label').first()).toBeVisible();
 });
 
@@ -127,16 +127,19 @@ test('header menu copies a registered column formatter as column JSON', async ({
   expect(JSON.stringify(parsed)).toContain('[$Status]');
 });
 
-test('the same tree graduates: switch Type to row layout and back to grid', async ({ page }) => {
+test('the tree graduates: Type→row starts a NEW view carrying the grid; grid minimizes back', async ({ page }) => {
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
   await openJson(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
-  // free row layout now — same tree, root renders once per mock row
+  // a new SHEET carrying a copy of the grid's tree — renders once per mock row
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('In Progress');
+  // picking grid MINIMIZES — the floor is its own document, groups intact
   await page.selectOption('#wb-pane-side #wb-kind', 'grid');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status + DueDate group', 'Progress', 'AssignedTo', 'Project']);
+  // …and the view waits in the reopen bar (Stage 2 replaces this with the strip)
+  await expect(page.locator('.wb-grid-returnbar')).toBeVisible();
 });
 
 test('right-click: column menu on headers, element menu on cell content, remove + undo', async ({ page }) => {

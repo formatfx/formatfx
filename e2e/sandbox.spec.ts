@@ -22,7 +22,7 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   // formatter navigation: the VIEW FORMATTERS tab is active, the document
   // dropdown names the view, and the tree shows the view's structure
   await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
   await expect(page.locator('.wb-doc-pill-type')).toHaveText('list row schema');
   // the registered column formatters live behind the COLUMN FORMATTERS tab's
   // gallery — Owner is registered but unplaced, so "+ column" can add it, formatted

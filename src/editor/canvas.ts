@@ -58,14 +58,20 @@ function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   const back = document.createElement('button');
   back.className = 'wb-rowview-bar-btn wb-rowview-back';
   back.textContent = '◧ Back to grid';
-  back.title = 'Return to the column grid — the same elements, shown column by column. "⟳ Reopen" above the grid brings this layout back.';
+  back.title = 'Drop back to the grid floor. This view is untouched — "⟳ Reopen" above the grid (or the view menu) brings it back.';
   back.addEventListener('click', () => {
-    const noun = state.doc.kind === 'tile' ? 'tile layout' : 'row view';
-    state.setKind('grid');
-    onToast(`Back to the grid — "⟳ Reopen the ${noun}" above the grid takes you back`);
+    const name = state.activeViewName;
+    // navigation, never a mutation: the sheet waits intact in the view list
+    state.minimizeView();
+    onToast(`Back to the grid — "⟳ Reopen ${name}" above the grid takes you back`);
   });
   bar.appendChild(back);
   return bar;
+}
+
+/** Where "Done"/Escape lands from a drilled column: the active surface. */
+function surfaceLabel(): string {
+  return state.onFloor ? 'the grid' : `the ${state.activeViewName} view formatter`;
 }
 
 export interface CanvasApi {
@@ -137,8 +143,8 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
         done.type = 'button';
         done.className = 'wb-style-done';
         done.textContent = 'Done';
-        done.title = `Back to the ${state.viewName} view formatter`;
-        done.addEventListener('click', () => { state.openMain(); onToast(`Back to the ${state.viewName} view formatter`); });
+        done.title = `Back to ${surfaceLabel()}`;
+        done.addEventListener('click', () => { state.openMain(); onToast(`Back to ${surfaceLabel()}`); });
         banner.append(mark, text, done);
         host.appendChild(banner);
       }
@@ -258,7 +264,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     // inspector's doc cards) must stop owning Escape once dismissed.
     if (document.querySelector('.wb-esc-owner:not([hidden])')) return;
     state.openMain();
-    onToast(`Back to the ${state.viewName} view formatter`);
+    onToast(`Back to ${surfaceLabel()}`);
   };
   document.addEventListener('keydown', onDocKeydown);
 
