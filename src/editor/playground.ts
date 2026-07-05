@@ -75,8 +75,10 @@ const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
  * Quick looks — the style bundles people actually reach for, distilled from
  * the community samples the palette presets came from. One click applies
  * the whole combination as picks (click again to take it off).
+ * Exported: the universal search overlay offers these behind an explicit
+ * Apply button (searchUi.ts).
  */
-const QUICK_LOOKS: Array<{
+export const QUICK_LOOKS: Array<{
   label: string; hint: string; props: Record<string, string>;
   /** Extra styles for the preview chip only (e.g. a width so … shows). */
   demo?: Record<string, string>;

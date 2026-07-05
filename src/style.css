@@ -3247,3 +3247,92 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 /* unregistered reference: teaching tooltip only — nothing to open */
 .wb-tree-cfr-missing { cursor: help; opacity: .55; }
 .wb-tree-cfr-missing:hover { opacity: .55; text-decoration: none; }
+
+/* ── universal search (Ctrl+F / topbar 🔎) ───────────────────── */
+/* command-palette box: query on top, grouped results left, preview card
+   right. Activating a result navigates; only the card's explicit button
+   ever writes (one undoable step) — see searchUi.ts. */
+.wb-search-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, .32);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 9vh 16px 16px;
+}
+.wb-search-panel {
+  width: min(760px, 100%); max-height: 72vh;
+  display: flex; flex-direction: column;
+  background: var(--wb-bg); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+  overflow: hidden;
+}
+.wb-search-input {
+  flex-shrink: 0; margin: 12px 12px 8px; padding: 8px 12px;
+  font-size: 14px; border: 1px solid var(--wb-border); border-radius: 5px;
+  background: var(--wb-surface); color: var(--wb-text);
+}
+.wb-search-input:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -1px; }
+.wb-search-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) 250px;
+  min-height: 0; flex: 1;
+}
+.wb-search-body:has(.wb-search-card[hidden]) { grid-template-columns: 1fr; }
+.wb-search-list { overflow-y: auto; padding: 0 6px 10px; }
+.wb-search-group {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--wb-text-2); margin: 12px 8px 3px;
+}
+.wb-search-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text);
+  padding: 5px 8px; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.wb-search-row:hover { background: var(--wb-surface); }
+.wb-search-row.active { background: rgba(0, 120, 212, .1); color: var(--wb-accent); }
+.wb-search-icon { flex: 0 0 16px; text-align: center; font-size: 11px; color: var(--wb-text-2); }
+.wb-search-label { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-search-label mark { background: transparent; color: inherit; font-weight: 700; text-decoration: underline; }
+.wb-search-trail {
+  flex: 1 1 auto; min-width: 0; margin-left: auto;
+  font-size: 10.5px; color: var(--wb-text-2); text-align: right;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-search-hint, .wb-search-none {
+  font-size: 12px; color: var(--wb-text-2); padding: 14px 10px; line-height: 1.5;
+}
+.wb-search-recent { color: var(--wb-text-2); font-style: italic; }
+
+/* right: the preview card (insertables + reference docs) */
+.wb-search-card {
+  overflow-y: auto; padding: 12px;
+  background: var(--wb-surface); border-left: 1px solid var(--wb-border);
+}
+.wb-search-card-title { font-size: 13px; font-weight: 600; }
+.wb-search-card-kind { font-size: 10.5px; color: var(--wb-text-2); margin-top: 2px; }
+.wb-search-card-detail { font-size: 12px; line-height: 1.5; margin: 10px 0 0; }
+.wb-search-card-example {
+  display: block; margin-top: 10px; padding: 6px 8px; overflow-x: auto;
+  font: 11px Consolas, monospace;
+  background: var(--wb-bg); border: 1px solid var(--wb-border); border-radius: 4px;
+}
+.wb-search-card-actions { margin-top: 12px; }
+.wb-search-card-btn {
+  padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  background: var(--wb-accent); color: var(--wb-accent-text); border: 1px solid var(--wb-accent);
+}
+.wb-search-card-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.wb-search-card-btn:disabled {
+  background: var(--wb-surface); color: var(--wb-text-2); border-color: var(--wb-border);
+  cursor: default;
+}
+@media (max-width: 720px) {
+  .wb-search-body { grid-template-columns: 1fr; }
+  .wb-search-card { border-left: none; border-top: 1px solid var(--wb-border); }
+}
+
+/* the "here it is" pulse after a jump — on canvas nodes, tree rows, headers */
+.wb-search-flash { animation: wb-search-flash 1.2s ease-out; }
+@keyframes wb-search-flash {
+  0% { box-shadow: 0 0 0 3px var(--wb-accent); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
