@@ -4,19 +4,29 @@
  * of the current project, then the add-a-component browser, plus the dialogs
  * around them:
  *
- *   · "In this project" — one card per component in use (built-in or custom):
- *     usage count, live preview, "Show usages" (one jump row per place — a
- *     view instance selects it on the canvas, a column usage opens that
- *     column formatter) and "Add another…". Usage data comes from the pure
- *     componentUsage.ts scan over the instance stamps + field subtype tags.
- *   · "Add components" — Built-in / Yours / Whole rows / Bring your own,
- *     each card a live preview rendered with a best-guess binding against
- *     the CURRENT schema
+ *   The pane speaks the same INVENTORY language as the Columns and Views
+ *   surfaces (owner redesign, 2026-07-05 — "why do we have such a different
+ *   looking card list"): compact ⬡ rows in the tree idiom (wb-tree-row), one
+ *   per component, with hover actions and a click-to-expand details drawer
+ *   (description, slot chips, live preview, usage jump rows, Add). No cards.
+ *
+ *   · "In this project" — one row per component in use (built-in or custom):
+ *     usage-count chip; the drawer lists one jump row per place — a view
+ *     instance selects it on the canvas, a column usage opens that column
+ *     formatter. Usage data comes from the pure componentUsage.ts scan over
+ *     the instance stamps + field subtype tags.
+ *   · "Add components" — Built-in / From the palette / Yours / Whole rows /
+ *     Bring your own, same rows; previews render in the drawer with a
+ *     best-guess binding against the CURRENT schema
  *   · the typed mapping dialog — one type-filtered column picker per slot,
- *     prefilled with the best guess; Insert binds + STAMPS the instance
- *     (bindComponentInstance) and lands it as ONE undoable step wherever the
- *     canvas points: the OPEN column formatter when one is active
- *     (componentInsertTarget), else the view (a new root column on the grid)
+ *     prefilled with the best guess, PLUS the trigger picker ("Where should
+ *     this appear?" — issue #204, docs/specs/TRIGGER-MODEL.md §3): inline in
+ *     the layout (default), or as a hover/click card opening from a candidate
+ *     division (triggerBind.ts generates the robust pattern). Insert binds +
+ *     STAMPS the instance (bindComponentInstance) and lands it as ONE
+ *     undoable step wherever the canvas points: the OPEN column formatter
+ *     when one is active (componentInsertTarget), else the view (a new root
+ *     column on the grid)
  *   · "Save as component…" (reached from the element context menu) — derives
  *     typed slots from the fields a subtree references; refuses subtrees
  *     carrying a columnFormatterReference (components are self-contained —
@@ -46,6 +56,8 @@ import {
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
 import { paletteComponents } from './paletteComponents';
 import { openComponentEditor } from './componentEditor';
+import { candidateHostPaths, hostLabel, applyTriggerAt } from './triggerBind';
+import { DIRECTIONAL_HINTS } from '../core/schema';
 
 function readCustom(): ComponentDef[] {
   try {
@@ -206,91 +218,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       if (empty) emptyNote(empty);
       return;
     }
-    for (const def of defs) host.appendChild(card(def));
-  };
-
-  /** Shared card head: ⬡ + name (+ delete on customs, + count on inventory). */
-  const cardTitle = (def: ComponentDef, el: HTMLElement, opts: { del: boolean; count?: number }): void => {
-    const title = document.createElement('div');
-    title.className = 'wb-comp-title';
-    const mark = document.createElement('span');
-    mark.className = 'wb-comp-mark';
-    mark.textContent = '⬡';
-    mark.setAttribute('aria-hidden', 'true');
-    const nm = document.createElement('span');
-    nm.className = 'wb-comp-name';
-    nm.textContent = def.name;
-    title.append(mark, nm);
-    if (def.variantOf) {
-      const vt = document.createElement('span');
-      vt.className = 'wb-comp-vtag';
-      vt.textContent = 'as-found one-off';
-      vt.title = 'A one-off frozen from an older recipe when its usages were pinned "keep as-found"';
-      title.appendChild(vt);
-    }
-    if (opts.count !== undefined) {
-      const chip = document.createElement('span');
-      chip.className = 'wb-comp-count';
-      chip.textContent = `used in ${opts.count} place${opts.count === 1 ? '' : 's'}`;
-      title.appendChild(chip);
-    }
-    if (opts.del && !def.builtin) {
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'wb-comp-del';
-      del.textContent = '✕';
-      del.title = `Delete the ${def.name} component`;
-      del.setAttribute('aria-label', del.title);
-      del.addEventListener('click', () => {
-        if (!writeCustom(removeComponent(readCustom(), def.id))) {
-          onToast('Could not delete the component — browser storage is blocked, so it would just come back');
-          return; // don't rerender a deletion that didn't persist
-        }
-        rerender();
-      });
-      title.appendChild(del);
-    }
-    el.appendChild(title);
-  };
-
-  /** The variant lineage line — "a variant card shows its lineage" (guarding
-   *  a dangling variantOf: the parent may have been deleted). */
-  const lineage = (def: ComponentDef, el: HTMLElement): void => {
-    if (!def.variantOf) return;
-    const parent = allDefs.find((d) => d.id === def.variantOf);
-    const line = document.createElement('div');
-    line.className = 'wb-comp-lineage';
-    line.textContent = parent
-      ? `Kept as-found from “${parent.name}”`
-      : 'Kept as-found from a component since deleted';
-    el.appendChild(line);
-  };
-
-  /** The Edit… action every card gets — opens the component editor over the
-   *  canvas pane. Editing a built-in can only ever save as a NEW component. */
-  const editButton = (def: ComponentDef): HTMLElement => {
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'wb-comp-edit';
-    edit.textContent = 'Edit…';
-    edit.title = def.builtin
-      ? `Open ${def.name} in the component editor — built-ins can't be overwritten, saving creates your own copy`
-      : `Edit ${def.name} — name, slot labels and elements; nothing changes until you save`;
-    edit.addEventListener('click', () => openComponentEditor(def, onToast, rerender));
-    return edit;
-  };
-
-  /** Live preview with the best-guess binding against the current schema. */
-  const cardPreview = (def: ComponentDef, el: HTMLElement): void => {
-    const guess = bestGuessMapping(def, state.fields);
-    if (mappingComplete(def, guess)) {
-      el.appendChild(previewBox(bindComponent(def, guess), 'wb-comp-preview'));
-    } else {
-      const miss = document.createElement('div');
-      miss.className = 'wb-complib-empty';
-      miss.textContent = 'No preview — your schema has no column of the needed type yet.';
-      el.appendChild(miss);
-    }
+    for (const def of defs) host.appendChild(componentRow(def));
   };
 
   const addLabel = (def: ComponentDef): string =>
@@ -304,121 +232,231 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
         ? `Map your columns into this component and add it to the open ${fieldLabel(target.field)} column formatter`
         : 'Map your columns into this component and add it to the canvas';
 
-  /** A browse card (the "Add components" sections). */
-  const card = (def: ComponentDef): HTMLElement => {
-    const el = document.createElement('div');
-    el.className = 'wb-comp-card';
+  /** Dim hint after the name, tree-style: what the component asks a schema
+   *  for ("date · person"), or its scope for row kinds. */
+  const rowHint = (def: ComponentDef): string => {
+    if (componentKind(def) === 'row') return 'row layout';
+    if (!def.slots.length) return '';
+    return def.slots.map((s) => slotTypesLabel([s.types[0] ?? 'text'])).join(' · ');
+  };
+
+  /**
+   * ONE component = ONE row, in the structure tree's language (wb-tree-row:
+   * same hover, same reveal-on-hover actions), plus a click-to-expand details
+   * drawer (description, slot chips, live preview, usage jump rows, Add).
+   * Replaces both old card shapes — cards were the one surface speaking a
+   * different visual language than the Columns/Views inventories.
+   */
+  const componentRow = (def: ComponentDef, inUse?: ComponentUsage[]): HTMLElement => {
+    const node = document.createElement('div');
+    node.className = 'wb-comp-node';
+
+    const row = document.createElement('div');
+    row.className = 'wb-tree-row wb-comp-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-expanded', 'false');
+    row.title = `${def.description} — click for details`;
+
+    const label = document.createElement('span');
+    label.className = 'wb-tree-label';
+    const mark = document.createElement('span');
+    mark.className = 'wb-comp-mark';
+    mark.textContent = '⬡';
+    mark.setAttribute('aria-hidden', 'true');
+    const nm = document.createElement('span');
+    nm.className = 'wb-tree-name wb-comp-rowname';
+    nm.textContent = def.name;
+    label.append(mark, nm);
+    if (def.variantOf) {
+      const vt = document.createElement('span');
+      vt.className = 'wb-comp-vtag';
+      vt.textContent = 'as-found';
+      vt.title = 'A one-off frozen from an older recipe when its usages were pinned "keep as-found"';
+      label.appendChild(vt);
+    }
+    const hint = rowHint(def);
+    if (hint) {
+      const h = document.createElement('span');
+      h.className = 'wb-tree-elmtype-dim';
+      h.textContent = hint;
+      label.appendChild(h);
+    }
+    row.appendChild(label);
+
+    if (inUse !== undefined) {
+      const chip = document.createElement('span');
+      chip.className = 'wb-comp-count';
+      chip.textContent = String(inUse.length);
+      chip.title = `Used in ${inUse.length} place${inUse.length === 1 ? '' : 's'} — expand to jump to each`;
+      chip.setAttribute('aria-label', chip.title);
+      row.appendChild(chip);
+    }
+
+    // hover actions, exactly the tree's idiom: quick-add, edit, delete
+    const actions = document.createElement('span');
+    actions.className = 'wb-tree-actions';
+    const act = (cls: string, text: string, title: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = cls;
+      b.textContent = text;
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.addEventListener('click', (e) => {
+        e.stopPropagation(); // never toggle the drawer
+        fn();
+      });
+      actions.appendChild(b);
+      return b;
+    };
+    act('wb-comp-rowadd', '＋', addTitle(def), () => openMappingDialog(def, onToast, rerender));
+    act('wb-comp-rowedit', '✎', def.builtin
+      ? `Open ${def.name} in the component editor — built-ins can't be overwritten, saving creates your own copy`
+      : `Edit ${def.name} — name, slot labels and elements; nothing changes until you save`,
+    () => openComponentEditor(def, onToast, rerender));
+    if (!def.builtin) {
+      act('wb-comp-rowdel', '✕', `Delete the ${def.name} component`, () => {
+        if (!writeCustom(removeComponent(readCustom(), def.id))) {
+          onToast('Could not delete the component — browser storage is blocked, so it would just come back');
+          return; // don't rerender a deletion that didn't persist
+        }
+        rerender();
+      });
+    }
+    row.appendChild(actions);
+
     // element components are DRAG SOURCES onto the canvas — the palette's
     // signature gesture, generalized to every component (owner, 2026-07-05).
     // Row components stay click-only: replacing the whole view is never a
     // gesture a stray drop should perform.
     if (componentKind(def) === 'element') {
-      el.draggable = true;
-      el.addEventListener('dragstart', (e) => {
+      row.draggable = true;
+      row.addEventListener('dragstart', (e) => {
         if (!e.dataTransfer) return;
         e.dataTransfer.setData(COMPONENT_MIME, def.id);
         e.dataTransfer.effectAllowed = 'copy';
       });
     }
-    cardTitle(def, el, { del: true });
-    lineage(def, el);
+
+    const drawer = detailsDrawer(def, inUse);
+    drawer.hidden = true;
+    const toggle = (): void => {
+      drawer.hidden = !drawer.hidden;
+      row.setAttribute('aria-expanded', String(!drawer.hidden));
+      row.classList.toggle('wb-comp-row-open', !drawer.hidden);
+    };
+    row.addEventListener('click', toggle);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+
+    node.append(row, drawer);
+    return node;
+  };
+
+  /** The expanded row: everything the old card showed, on demand. */
+  const detailsDrawer = (def: ComponentDef, inUse?: ComponentUsage[]): HTMLElement => {
+    const box = document.createElement('div');
+    box.className = 'wb-comp-details';
+
+    if (def.variantOf) {
+      const parent = allDefs.find((d) => d.id === def.variantOf);
+      const line = document.createElement('div');
+      line.className = 'wb-comp-lineage';
+      line.textContent = parent
+        ? `Kept as-found from “${parent.name}”`
+        : 'Kept as-found from a component since deleted';
+      box.appendChild(line);
+    }
 
     const desc = document.createElement('div');
     desc.className = 'wb-comp-desc';
     desc.textContent = def.description;
-    el.appendChild(desc);
+    box.appendChild(desc);
 
-    // slot chips: what this component needs from a schema
-    const slots = document.createElement('div');
-    slots.className = 'wb-comp-slots';
-    for (const slot of def.slots) {
-      const chip = document.createElement('span');
-      chip.className = 'wb-comp-slot';
-      chip.textContent = `${slot.label} · ${slotTypesLabel(slot.types)}`;
-      chip.title = slot.description ?? `Needs a ${slotTypesLabel(slot.types)} column`;
-      slots.appendChild(chip);
-    }
-    el.appendChild(slots);
-    cardPreview(def, el);
-
-    const actions = document.createElement('div');
-    actions.className = 'wb-comp-actions';
-    const add = document.createElement('button');
-    add.type = 'button';
-    add.className = 'wb-comp-add';
-    add.textContent = addLabel(def);
-    add.title = addTitle(def);
-    add.addEventListener('click', () => openMappingDialog(def, onToast, rerender));
-    actions.append(add, editButton(def));
-    el.appendChild(actions);
-
-    return el;
-  };
-
-  /** An inventory card ("In this project"): count, preview, usages, add.
-   *  Deliberately NOT .wb-comp-card — that class stays "a browse card", so a
-   *  used component never doubles selectors pointed at its browse entry. */
-  const inventoryCard = (def: ComponentDef, inUse: ComponentUsage[]): HTMLElement => {
-    const el = document.createElement('div');
-    el.className = 'wb-comp-used';
-    cardTitle(def, el, { del: false, count: inUse.length });
-    lineage(def, el);
-    cardPreview(def, el);
-
-    // the usage list: one jump row per place, toggled by "Show usages"
-    const list = document.createElement('div');
-    list.className = 'wb-comp-usages';
-    list.id = `wb-comp-uses-${def.id}`; // aria-controls target for the toggle
-    list.hidden = true;
-    // main-doc usages normally read "View — X", but the MAIN doc can itself
-    // be a column formatter (a JSON-tab import) — then the rows must speak
-    // the same column-formatter noun the insert copy does
-    const mainIsColumn = state.activeDocKey === 'main' && state.doc.kind === 'column';
-    const mainField = fieldLabel(state.currentFieldName);
-    for (const u of inUse) {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'wb-comp-usage';
-      if (u.kind === 'view') {
-        row.textContent = mainUsageLabel(u, mainIsColumn, mainField);
-        row.title = mainIsColumn
-          ? `Jump to this instance in the ${mainField} column formatter`
-          : 'Jump to this instance in the view formatter';
-        row.addEventListener('click', () => {
-          state.openMain(); // no-op when the main doc is already on the canvas
-          state.select(u.path);
-        });
-      } else {
-        row.textContent = `${fieldLabel(u.field)} — column formatter`;
-        row.title = `Open the ${fieldLabel(u.field)} column formatter`;
-        row.addEventListener('click', () => state.openColumnRef(u.field));
+    if (def.slots.length) {
+      const slots = document.createElement('div');
+      slots.className = 'wb-comp-slots';
+      for (const slot of def.slots) {
+        const chip = document.createElement('span');
+        chip.className = 'wb-comp-slot';
+        chip.textContent = `${slot.label} · ${slotTypesLabel(slot.types)}`;
+        chip.title = slot.description ?? `Needs a ${slotTypesLabel(slot.types)} column`;
+        slots.appendChild(chip);
       }
-      list.appendChild(row);
+      box.appendChild(slots);
+    }
+
+    // live preview with the best-guess binding against the current schema
+    const guess = bestGuessMapping(def, state.fields);
+    if (mappingComplete(def, guess)) {
+      box.appendChild(previewBox(bindComponent(def, guess), 'wb-comp-preview'));
+    } else {
+      const miss = document.createElement('div');
+      miss.className = 'wb-complib-empty';
+      miss.textContent = 'No preview — your schema has no column of the needed type yet.';
+      box.appendChild(miss);
+    }
+
+    // usage jump rows (inventory rows only) — the drawer IS the toggle now
+    if (inUse?.length) {
+      const usesHead = document.createElement('div');
+      usesHead.className = 'wb-complib-group';
+      usesHead.textContent = 'Where it\'s used';
+      box.appendChild(usesHead);
+      const list = document.createElement('div');
+      list.className = 'wb-comp-usages';
+      // main-doc usages normally read "View — X", but the MAIN doc can itself
+      // be a column formatter (a JSON-tab import) — then the rows must speak
+      // the same column-formatter noun the insert copy does
+      const mainIsColumn = state.activeDocKey === 'main' && state.doc.kind === 'column';
+      const mainField = fieldLabel(state.currentFieldName);
+      for (const u of inUse) {
+        const jump = document.createElement('button');
+        jump.type = 'button';
+        jump.className = 'wb-comp-usage';
+        if (u.kind === 'view') {
+          jump.textContent = mainUsageLabel(u, mainIsColumn, mainField);
+          jump.title = mainIsColumn
+            ? `Jump to this instance in the ${mainField} column formatter`
+            : 'Jump to this instance in the view formatter';
+          jump.addEventListener('click', () => {
+            state.openMain(); // no-op when the main doc is already on the canvas
+            state.select(u.path);
+          });
+        } else {
+          jump.textContent = `${fieldLabel(u.field)} — column formatter`;
+          jump.title = `Open the ${fieldLabel(u.field)} column formatter`;
+          jump.addEventListener('click', () => state.openColumnRef(u.field));
+        }
+        list.appendChild(jump);
+      }
+      box.appendChild(list);
     }
 
     const actions = document.createElement('div');
     actions.className = 'wb-comp-actions';
-    const show = document.createElement('button');
-    show.type = 'button';
-    show.className = 'wb-comp-showuses';
-    show.textContent = 'Show usages';
-    show.title = 'List every place this component is used — click one to jump there';
-    show.setAttribute('aria-expanded', 'false');
-    show.setAttribute('aria-controls', list.id);
-    show.addEventListener('click', () => {
-      list.hidden = !list.hidden;
-      show.textContent = list.hidden ? 'Show usages' : 'Hide usages';
-      show.setAttribute('aria-expanded', String(!list.hidden));
-    });
     const add = document.createElement('button');
     add.type = 'button';
-    add.className = 'wb-comp-addmore';
-    add.textContent = 'Add another…';
+    add.className = inUse !== undefined ? 'wb-comp-addmore' : 'wb-comp-add';
+    add.textContent = inUse !== undefined ? 'Add another…' : addLabel(def);
     add.title = addTitle(def);
     add.addEventListener('click', () => openMappingDialog(def, onToast, rerender));
-    actions.append(show, add, editButton(def));
-    el.append(actions, list);
-    return el;
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'wb-comp-edit';
+    edit.textContent = 'Edit…';
+    edit.title = def.builtin
+      ? `Open ${def.name} in the component editor — built-ins can't be overwritten, saving creates your own copy`
+      : `Edit ${def.name} — name, slot labels and elements; nothing changes until you save`;
+    edit.addEventListener('click', () => openComponentEditor(def, onToast, rerender));
+    actions.append(add, edit);
+    box.appendChild(actions);
+    return box;
   };
 
   // ── the inventory: what this project already uses ─────────────────────────
@@ -450,10 +488,10 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     };
     for (const def of used) {
       if (parentOf(def)) continue; // rendered nested under its parent below
-      host.appendChild(inventoryCard(def, usages.get(def.id)!));
+      host.appendChild(componentRow(def, usages.get(def.id)!));
       for (const v of used.filter((x) => parentOf(x)?.id === def.id)) {
-        const nested = inventoryCard(v, usages.get(v.id)!);
-        nested.classList.add('wb-comp-variantcard');
+        const nested = componentRow(v, usages.get(v.id)!);
+        nested.classList.add('wb-comp-variantnode');
         host.appendChild(nested);
       }
     }
@@ -471,8 +509,8 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   const rowCard = document.createElement('button');
   rowCard.type = 'button';
   rowCard.className = 'wb-comp-rowlink';
-  rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New rowview…</span><span class="wb-comp-rowlink-desc">Start the whole row from a pre-built layout; save a row you like as a component (right-click its root) to see it here.</span>';
-  rowCard.title = 'Start the whole row from a pre-built layout (the same templates as the View dropdown)';
+  rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New rowview…</span>';
+  rowCard.title = 'Start the whole row from a pre-built layout (the same templates as the View dropdown); save a row you like as a component (right-click its root) to see it here.';
   rowCard.addEventListener('click', () => openTemplateModal(onToast));
   host.appendChild(rowCard);
 
@@ -484,8 +522,8 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   const importCard = document.createElement('button');
   importCard.type = 'button';
   importCard.className = 'wb-comp-rowlink';
-  importCard.innerHTML = '<span class="wb-comp-rowlink-name">⤓ Import from formatter JSON…</span><span class="wb-comp-rowlink-desc">Paste any column or view formatter — a pnp/List-Formatting sample, a teammate’s copy — and it becomes a mappable component.</span>';
-  importCard.title = 'Convert formatter JSON into a component with typed slots';
+  importCard.innerHTML = '<span class="wb-comp-rowlink-name">⤓ Import from formatter JSON…</span>';
+  importCard.title = 'Paste any column or view formatter — a pnp/List-Formatting sample, a teammate’s copy — and it becomes a mappable component with typed slots.';
   importCard.addEventListener('click', () => openImportComponentDialog(() => renderComponentLibrary(host, onToast), onToast));
   host.appendChild(importCard);
 }
@@ -577,18 +615,121 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     panel.appendChild(row);
   }
 
+  // ── "Where should this appear?" — the trigger picker (issue #204) ─────────
+  // A component stays trigger-agnostic content; applying binds it to a host
+  // division + event (TRIGGER-MODEL §2-3). Default = the plain inline insert,
+  // so a no-trigger apply stays exactly one click. Element components only:
+  // a row component IS the row layout, there is nothing to trigger.
+  const isRow = componentKind(def) === 'row';
+  // candidates come from whatever is on the canvas — the same doc the inline
+  // branches write to, so the two paths can never disagree about the target
+  const hosts = isRow ? [] : candidateHostPaths(state.doc.root);
+  type AppearMode = 'inline' | 'hover-card' | 'click-card';
+  let appear: AppearMode = 'inline';
+  let hostIdx = 0;
+  let cardHint = 'bottomCenter';
+
+  const inlineLabel = target.kind === 'column'
+    ? `In the layout — add to the ${targetLabel} column formatter`
+    : 'In the layout — add to the view';
+
+  const whereRow = document.createElement('label');
+  whereRow.className = 'wb-compmap-row';
+  const whereLab = document.createElement('span');
+  whereLab.className = 'wb-compmap-label';
+  whereLab.textContent = 'Where should this appear?';
+  const whereSel = document.createElement('select');
+  whereSel.className = 'wb-compmap-select';
+  whereSel.dataset.role = 'appear';
+  const whereOpt = (value: AppearMode, text: string, disabled = false): void => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    o.disabled = disabled;
+    whereSel.appendChild(o);
+  };
+  whereOpt('inline', inlineLabel);
+  whereOpt('hover-card', 'As a hover card — opens from an element you pick', !hosts.length);
+  whereOpt('click-card', 'As a click card — opens from an element you pick', !hosts.length);
+  whereRow.append(whereLab, whereSel);
+
+  // host + placement rows, shown only in card modes
+  const hostRow = document.createElement('label');
+  hostRow.className = 'wb-compmap-row';
+  hostRow.hidden = true;
+  const hostLab = document.createElement('span');
+  hostLab.className = 'wb-compmap-label';
+  hostLab.textContent = 'Opens from';
+  const hostSel = document.createElement('select');
+  hostSel.className = 'wb-compmap-select';
+  hostSel.dataset.role = 'host';
+  hosts.forEach((p, i) => {
+    const o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = hostLabel(state.doc.root, p);
+    hostSel.appendChild(o);
+  });
+  hostSel.addEventListener('change', () => { hostIdx = Number(hostSel.value) || 0; });
+  hostRow.append(hostLab, hostSel);
+
+  const hintRow = document.createElement('label');
+  hintRow.className = 'wb-compmap-row';
+  hintRow.hidden = true;
+  const hintLab = document.createElement('span');
+  hintLab.className = 'wb-compmap-label';
+  hintLab.textContent = 'Card position';
+  const hintSel = document.createElement('select');
+  hintSel.className = 'wb-compmap-select';
+  hintSel.dataset.role = 'hint';
+  for (const h of DIRECTIONAL_HINTS) {
+    const o = document.createElement('option');
+    o.value = h;
+    o.textContent = h;
+    hintSel.appendChild(o);
+  }
+  hintSel.value = cardHint;
+  hintSel.addEventListener('change', () => { cardHint = hintSel.value; });
+  hintRow.append(hintLab, hintSel);
+
+  const fine = document.createElement('div');
+  fine.className = 'wb-compmap-note wb-compmap-fine';
+  fine.hidden = true;
+  fine.textContent = 'Only elements without another card or action anywhere inside them are offered — '
+    + 'triggers never collide. Click cards get a full-surface overlay button, so child elements '
+    + 'can\'t swallow the click; hover-reveal classes on the same element compose fine.';
+
+  if (!isRow) {
+    panel.append(whereRow, hostRow, hintRow, fine);
+    if (!hosts.length) {
+      whereSel.disabled = true;
+      whereRow.title = 'No element on the canvas can host a card yet — it needs a container with children and no existing card or action inside.';
+    }
+  }
+
   panel.appendChild(preview);
   refreshPreview();
 
   const foot = document.createElement('div');
   foot.className = 'wb-compmap-foot';
-  const isRow = componentKind(def) === 'row';
   const insert = document.createElement('button');
   insert.type = 'button';
   insert.className = 'wb-compmap-insert';
-  insert.textContent = isRow ? 'Use as the row layout'
+  const inlineButtonText = isRow ? 'Use as the row layout'
     : target.kind === 'column' ? `Add to the ${targetLabel} column formatter`
       : 'Add to the view';
+  const refreshAppear = (): void => {
+    const card = appear !== 'inline';
+    hostRow.hidden = !card;
+    hintRow.hidden = !card;
+    fine.hidden = !card;
+    insert.textContent = !card ? inlineButtonText
+      : appear === 'hover-card' ? 'Attach as a hover card' : 'Attach as a click card';
+  };
+  whereSel.addEventListener('change', () => {
+    appear = whereSel.value as AppearMode;
+    refreshAppear();
+  });
+  refreshAppear();
   insert.disabled = !mappingComplete(def, mapping);
   insert.title = isRow
     ? (target.kind === 'column'
@@ -609,6 +750,32 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
       close();
       onInserted?.();
       onToast(`${def.name} is now this view's row layout — Ctrl+Z restores what you had`);
+      return;
+    }
+    if (appear !== 'inline') {
+      // content meets trigger (issue #204): overlay + card props + component
+      // land together as ONE undoable mutation, and the trigger carrier gets
+      // selected so the inspector opens on it
+      const hostPath = hosts[hostIdx];
+      const where = hostLabel(state.doc.root, hostPath);
+      let at: NodePath | null = null;
+      state.mutateDocument(() => {
+        at = applyTriggerAt(state.doc.root, hostPath, {
+          action: 'card',
+          event: appear === 'hover-card' ? 'hover' : 'click',
+          directionalHint: cardHint,
+          cursor: 'pointer',
+          label: `Open the ${def.name} card`,
+        }, bound);
+      });
+      if (!at) {
+        onToast('Could not attach the card there — the element seems to have changed. Reopen the dialog and pick again.');
+        return;
+      }
+      state.select(at);
+      close();
+      onInserted?.();
+      onToast(`${def.name} now opens as a ${appear === 'hover-card' ? 'hover' : 'click'} card from ${where} — Ctrl+Z undoes it`);
       return;
     }
     if (target.kind === 'column') {

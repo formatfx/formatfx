@@ -376,6 +376,27 @@ Key structural invariants:
   skips the re-bakes; a no-op rolls them back wholesale — see the doc
   comment). The pnp/List-Formatting live sample browser is a parked note:
   issue #155.
+- **⬡ pane rows + the one trigger model (2026-07-05, owner brief — "why do
+  we have such a different looking card list"; issues #203/#204 executed)**:
+  the components pane now speaks the SAME inventory language as Columns and
+  Views — one `wb-tree-row`-idiom ROW per component (⬡ teal ink, dim
+  slot-type hint, usage-count chip, hover actions ＋/✎/✕, drag source for
+  element kinds) with a click-to-expand details drawer (description, slot
+  chips, live preview, usage jump rows, Add). Both card shapes
+  (`.wb-comp-card`/`.wb-comp-used`) are gone from the DOM; their CSS blocks
+  remain (frozen prefix — harmless). DOM contract:
+  `componentLibrary.test.ts`. TRIGGERS bind at APPLY time
+  (docs/specs/TRIGGER-MODEL.md, decisions §8 owner-delegated): the mapper
+  gained "Where should this appear?" — inline (default) or hover/click card
+  on a candidate division (`triggerBind.ts` pure: candidate scan = div +
+  children + no card/action in subtree, never inside a card; the generator
+  emits the robust `sp-card-defaultClickButton` overlay for click so
+  children can't swallow it — generate, don't lint). One pick = ONE
+  `mutateDocument` (overlay + props + stamped component); the trigger
+  carrier gets selected. The inspector's Row action section gained
+  "⚡ Make this a click surface" for the action kinds. Nested/overlapping
+  triggers stay parked (#205); drag-onto-highlighted-division stays the
+  aspirational upgrade.
 
 - **The row view builder (2026-07-03, owner brief — supersedes the 06-24
   template modal's interaction layer)**: "+ New rowview" / the row-view
