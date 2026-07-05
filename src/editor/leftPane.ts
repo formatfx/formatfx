@@ -77,9 +77,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
           <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
         </div>
         <div class="wb-fmt-tablist" role="tablist" aria-label="Formatters">
-          <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="The view formatter — the whole row's layout">${ICONS.view}<span>Views</span></button>
-          <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="The shared column formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
+          <!-- Columns | Components | Views (owner, 2026-07-05): the mental
+               model reads left to right — views are made up of columns and
+               components, so the ingredients lead and the composition ends. -->
+          <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="Your columns on the grid, and their shared formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
           <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
+          <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="Views — whole-row layouts built from your columns and components">${ICONS.view}<span>Views</span></button>
         </div>
       </div>
     </div>
@@ -173,7 +176,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     } else {
       pillName.textContent = state.onFloor ? 'Grid' : state.activeViewName;
       pillType.textContent = viewSchemaLabel();
-      pill.title = 'The grid floor and your named views — open one, rename it, or start a new row view';
+      pill.title = state.onFloor
+        ? 'Browse the columns that have a formatter, or start one'
+        : 'Your named views — open one, rename it, or start a new row/tile view';
     }
   };
 
@@ -227,7 +232,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   });
   pill.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (isColumnDoc()) openColumnGallery(pill, toast);
+    // the grid is columns mode, so its pill browses the column gallery; the
+    // view menu is the pill's job only while a sheet is up
+    if (isColumnDoc() || state.onFloor) openColumnGallery(pill, toast);
     else openViewMenu(pill, toast);
   });
 

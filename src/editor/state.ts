@@ -219,6 +219,12 @@ export class EditorState {
   private _selections: NodePath[] = [[]];
   /** The Left Edit Pane lens — UI view state, NOT part of the project file. */
   activeLens: EditorLens = 'pro';
+  /** FLOOR-AND-SHEETS Stage 3: the shared canvas mode. 'select' = clicks
+   *  select elements for editing (the default — click-safety); 'live' =
+   *  clicks route through the real behaviors (customRowAction fires, nothing
+   *  selects), like real SharePoint. UI view state: session-only, never
+   *  persisted — a reload always lands back in Select. */
+  canvasMode: 'select' | 'live' = 'select';
   /** The "last Save" checkpoint Discard reverts to (a snapState string). */
   private _savepoint: string | null = null;
   themeMode: 'light' | 'dark' = 'dark';
@@ -281,6 +287,15 @@ export class EditorState {
   setLens(lens: EditorLens): void {
     if (this.activeLens === lens) return;
     this.activeLens = lens;
+    this.emit('lens');
+  }
+
+  /** Flip the canvas between Select and Live (Stage 3). UI-only, like the
+   *  lens: off the undo stack, no autosave; 'lens' re-renders the canvas so
+   *  the behavior handlers rebind. */
+  setCanvasMode(mode: 'select' | 'live'): void {
+    if (this.canvasMode === mode) return;
+    this.canvasMode = mode;
     this.emit('lens');
   }
 

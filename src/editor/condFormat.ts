@@ -28,18 +28,18 @@ import {
   type CondOption, type CondRule, type EffectId,
 } from './condRules';
 import { elementRefChip } from './elmRef';
+import { createOverlay } from './overlay';
 
 export type CondTarget =
   | { kind: 'element'; path: NodePath }
   | { kind: 'column'; fieldName: string; cellPath?: NodePath };
 
-let overlay: HTMLElement | null = null;
-let escHandler: ((e: KeyboardEvent) => void) | null = null;
+let activeClose: (() => void) | null = null;
 
 export function closeCondFormat(): void {
-  overlay?.remove();
-  overlay = null;
-  if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null; }
+  const close = activeClose;
+  activeClose = null;
+  close?.();
 }
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
@@ -103,13 +103,11 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       ? state.nodeAt(target.path)?.style
       : state.columnRefs[paintField!.name]?.style;
 
-  overlay = document.createElement('div');
-  // wb-esc-owner: this overlay closes itself on Escape (escHandler below) —
-  // see the convention comment in editor/overlay.ts.
-  overlay.className = 'wb-cf-overlay wb-esc-owner';
-  overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) closeCondFormat(); });
-  escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeCondFormat(); };
-  document.addEventListener('keydown', escHandler);
+  // the shared modal chokepoint (Stage 4): backdrop, Esc-to-close and the
+  // wb-esc-owner marker all come from createOverlay — this dialog used to
+  // duplicate that machinery by hand
+  const { overlay, close } = createOverlay('wb-cf-overlay', () => closeCondFormat());
+  activeClose = close;
 
   const panel = document.createElement('div');
   panel.className = 'wb-cf';

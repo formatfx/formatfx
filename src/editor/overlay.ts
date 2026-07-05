@@ -24,11 +24,12 @@ export function createOverlay(className: string, onClose: () => void): OverlayHa
   // keydown carries this marker (see canvas.ts's drilled-style Esc guard,
   // which checks for it before treating Esc as "exit the style"). Every
   // overlay through this chokepoint self-closes on Escape, so it always
-  // gets the marker; a handful of popovers that don't go through
-  // createOverlay (grid menu, fx float, column gallery, cond-format
-  // overlay, icon picker) add it by hand at their own root for the same
-  // reason. `.wb-flyout` does NOT get it — it has no Escape handler of its
-  // own, so it never races with the guard.
+  // gets the marker; a popover that builds its own root and wires its own
+  // Escape handler adds it BY HAND at the point it sets className — the
+  // marker is the whole convention, so no list of such popovers is
+  // maintained here (a stale enumeration once lived in this comment).
+  // `.wb-flyout` does NOT get it — it has no Escape handler of its own, so
+  // it never races with the guard.
   overlay.className = `${className} wb-esc-owner`;
   // backdrop click — only when the press lands on the backdrop itself, not a child
   overlay.addEventListener('pointerdown', (e) => { if (e.target === overlay) onClose(); });

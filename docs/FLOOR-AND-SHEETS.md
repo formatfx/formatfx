@@ -195,10 +195,52 @@ that precedent to every canvas (floor, sheets, builder).
   floor). Column TAB GROUPS (§2.2c) shipped with the same brief:
   `colGroups.ts` (pure, node-tested) + `state.floorGroups`, rendered by
   the grid as a pill ribbon, header bands and collapsible slim tracks.
-- **Stage 3 — Select/Live canvas toggle**, shared across floor, sheets,
-  and the builder preview.
-- **Stage 4 — editor-chrome unification** (the three tiers), migrating
-  the hand-rolled popover roots onto the shared conventions.
+- **Stage 2 follow-ups (owner, 2026-07-05, second brief).** The formatter
+  tabs read **Columns | Components | Views** — the mental model left to
+  right: *views are made up of columns and components*. The View
+  Formatters menu is views-only (its "◧ Grid" floor row is gone; the grid
+  pill opens the column gallery instead — the grid IS columns mode); the
+  strip's ＋ is the landing-screen on-ramp. **Components are offered from
+  the palette** (`paletteComponents.ts`, pure + memoized): every
+  field-bound preset becomes an element component over its CANONICAL tree,
+  slots typed by AUTHORED intent (`presetRefTypes` — a due-date badge asks
+  for a date column regardless of the open schema), shown under "From the
+  palette" beside the built-ins and held to the same definitely-renders
+  unit bar. Element component cards are DRAG SOURCES onto the canvas
+  (the palette gesture, generalized): a complete best-guess binds and
+  inserts at the drop point (ONE undoable step, provenance-stamped so the
+  ⬡ inventory counts it); an incomplete guess opens the typed mapper —
+  never a wrong-typed bind. Primitives stay on the draw toolbar; Layout
+  Shells stay with the builder gallery.
+- **Stage 3 — Select/Live canvas toggle. SHIPPED 2026-07-05.** A
+  segmented toggle on the shared canvas chrome (`state.canvasMode`,
+  session-only UI state — a reload lands back in Select). **Select** (the
+  default): clicks select — including customRowAction buttons, which the
+  renderer no longer intercepts (`RenderOptions.interactive: false` skips
+  the behavior handler so the click bubbles to click-to-select).
+  **Live**: clicks route through the real behaviors (actions fire via
+  `onAction`, nothing selects, selection outlines stand down). Card
+  flyouts open in BOTH modes — the flyout is also the editing door into
+  customCardProps. The template builder already ships the always-live-rows
+  version of this idea and is unchanged. ⚠ visual-compare watch spot: the
+  harness drives customRowAction/inlineEdit clicks — it must flip the
+  canvas to Live before interaction captures or the sandbox side reads
+  `click-no-effect`.
+- **Stage 4 — editor-chrome unification: the structural half SHIPPED
+  2026-07-05; the local-undo half is OPEN.** Audit result: the
+  hand-maintained Escape exception list §1 complained about was already
+  collapsed onto the one `wb-esc-owner` marker check in canvas.ts — what
+  remained was stale prose enumerations in comments (removed; the marker
+  IS the convention) and two stragglers, both fixed: the conditional
+  formatting dialog hand-rolled its backdrop/Esc machinery (now on the
+  `createOverlay` chokepoint) and the view menu self-closed on Escape
+  without carrying the marker. STILL OPEN (the honest gap): §2.3's
+  modal-local ↶↷ undo exists only in the template builder; the component
+  editor and every tier-2 dialog (Format cells, conditional formatting,
+  the knob form, the component-map dialogs) already commit as exactly ONE
+  app-level mutation but keep no local stack yet. The playground is a
+  deliberate outlier — it applies per-action (each one undoable), not
+  Save-committed.
 
 ## 4. Invariants that survive every stage
 

@@ -28,7 +28,10 @@ test('the COMPONENTS tab opens the inventory + browser: empty "In this project",
   // the inventory comes first — empty until something is actually in use
   await expect(lib.locator('.wb-complib-h1').first()).toHaveText('In this project');
   await expect(lib.locator('.wb-complib-empty').first()).toContainText('Nothing in use yet');
-  await expect(lib.locator('.wb-comp-card')).toHaveCount(3); // the built-ins
+  // the hand-written built-ins lead; the palette-derived offering follows
+  await expect(lib.locator('.wb-complib-group', { hasText: 'Built-in' })).toBeVisible();
+  await expect(lib.locator('.wb-complib-group', { hasText: 'From the palette' })).toBeVisible();
+  await expect(lib.locator('.wb-comp-card')).not.toHaveCount(0);
   const deadline = lib.locator('.wb-comp-card', { hasText: 'Deadline chip' });
   await expect(deadline.locator('.wb-comp-slot')).toContainText(['The deadline to track · date']);
   // best-guess preview renders against the mock rows (row 1 has a future date)
@@ -310,4 +313,32 @@ test('a CFR-carrying subtree is refused with teaching, not silently broken', asy
   await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
   await expect(page.locator('.wb-compmap')).toHaveCount(0); // no dialog
   await expect(page.locator('#wb-toast')).toContainText('must be self-contained');
+});
+
+test('palette components: offered in the library, draggable straight onto the canvas', async ({ page }) => {
+  await page.locator('.wb-fmt-tab-comp').click();
+  const lib = page.locator('#wb-lp-library');
+  // the palette-derived offering sits beside the built-ins, live-previewed
+  await expect(lib.locator('.wb-complib-group', { hasText: 'From the palette' })).toBeVisible();
+  const faces = lib.locator('.wb-comp-card', { has: page.locator('.wb-comp-name', { hasText: 'Facepile' }) });
+  await expect(faces).toBeVisible();
+  await expect(faces.locator('.wb-comp-slot')).toContainText(['AssignedTo · multi-person / person']);
+  await expect(faces.locator('.wb-comp-preview img').first()).toBeVisible(); // best-guess preview renders avatars
+
+  // the palette gesture, generalized: drag the card onto a grid cell — the
+  // best guess completes against the default schema, so it lands right there
+  await faces.dragTo(page.locator('.wb-grid-cell[data-col="0"]').first());
+  await expect(page.locator('#wb-toast')).toContainText('Added "Facepile"');
+
+  // provenance-stamped on drop → the ⬡ inventory counts the usage
+  await page.locator('.wb-fmt-tab-cols').click(); // leave the library (re-enter re-scans)
+  await page.locator('.wb-fmt-tab-comp').click();
+  const used = page.locator('.wb-comp-used', { has: page.locator('.wb-comp-name', { hasText: 'Facepile' }) });
+  await expect(used.locator('.wb-comp-count')).toHaveText('used in 1 place');
+
+  // back on the grid the instance sits in the tree; one Ctrl+Z reverts the drop
+  await page.locator('.wb-fmt-tab-cols').click();
+  await expect(treeRow(page, 'Facepile')).toBeVisible();
+  await page.keyboard.press('Control+z');
+  await expect(treeRow(page, 'Facepile')).toHaveCount(0);
 });

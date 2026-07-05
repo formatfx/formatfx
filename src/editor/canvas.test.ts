@@ -37,3 +37,39 @@ describe('row-view toolbar', () => {
     expect(document.querySelector('.wb-template-modal')).toBeTruthy();
   });
 });
+
+describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
+  it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
+    state.resetAll();
+    const toasts: string[] = [];
+    state.createView({
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [{ elmType: 'button', txtContent: 'Go', customRowAction: { action: 'executeFlow', actionParams: '{"id":"x"}' } }],
+      },
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, (m) => toasts.push(m));
+
+    // the shared chrome renders the segmented toggle, Select active by default
+    expect(host.querySelector('.wb-canvas-mode.active')?.textContent).toBe('Select');
+
+    const clickButton = (): void => {
+      (host.querySelector('.wb-mock-viewrow [data-sp-path="0"]') as HTMLElement)
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    };
+    clickButton();
+    expect(state.selection).toEqual([0]); // selected…
+    expect(toasts.some((t) => t.includes('customRowAction'))).toBe(false); // …not fired
+
+    state.setCanvasMode('live');
+    clickButton();
+    expect(toasts.some((t) => t.includes('customRowAction: executeFlow'))).toBe(true);
+    expect(state.selection).toEqual([0]); // live clicks never change the selection
+
+    state.setCanvasMode('select'); // leave the singleton the way we found it
+    state.resetAll();
+  });
+});

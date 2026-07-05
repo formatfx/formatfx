@@ -141,12 +141,12 @@ test('zones nest: drop a zone onto a zone, and the nest survives Apply → reope
   await expect(page.locator('[data-edit-item="0:1:0"]')).toBeVisible(); // its item came along
 });
 
-test('New rowview is reachable from the document dropdown on the landing screen', async ({ page }) => {
+test('New rowview is reachable from the view strip\'s ＋ on the landing screen', async ({ page }) => {
   await page.goto('/');
-  // straight from the grid landing — no need to enter Row View first
-  await page.locator('#wb-doc-pill').click();
-  await expect(page.locator('.wb-viewmenu')).toBeVisible();
-  await page.locator('.wb-viewmenu-newrow').click();
+  // straight from the grid landing — the strip's ＋ is the on-ramp (the pill
+  // browses columns there; the view menu belongs to sheets)
+  await page.locator('#wb-viewstrip .wb-viewstrip-add').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'New rowview…' }).click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   // pick a layout, apply — the grid graduates into a row view
   await page.locator('[data-wireframe="avatar-card"]').click();
@@ -156,8 +156,8 @@ test('New rowview is reachable from the document dropdown on the landing screen'
 
 test('the builder makes a TILE view: tile gallery → tile editor → Save → the tile deck, then reopen', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#wb-doc-pill').click();
-  await page.locator('.wb-viewmenu-newtile').click();
+  await page.locator('#wb-viewstrip .wb-viewstrip-add').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'New tileview…' }).click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   // the tile ask leads the gallery with the tile layouts
   await expect(page.locator('.wb-template-gallery-head').first()).toHaveText('Tile layouts');

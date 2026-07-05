@@ -24,15 +24,12 @@ test('the floor lands on the COLUMNS tab — the grid IS columns mode (Stage 2)'
   await expect(page.locator('#wb-viewstrip .wb-viewstrip-add')).toBeVisible();
 });
 
-test('the document dropdown opens the View Formatters menu — the multi-view list', async ({ page }) => {
+test('on the grid the document dropdown browses the column gallery (grid = columns mode)', async ({ page }) => {
   await page.locator('#wb-doc-pill').click();
-  const menu = page.locator('.wb-viewmenu');
-  await expect(menu).toBeVisible();
-  // a fresh workspace: the grid floor entry, no views yet, the template on-ramps
-  await expect(menu.locator('.wb-viewmenu-floor')).toBeVisible();
-  await expect(menu.locator('.wb-viewmenu-empty')).toBeVisible();
-  await expect(menu.locator('.wb-viewmenu-newrow')).toBeVisible();
-  await expect(menu.locator('.wb-viewmenu-newtile')).toBeVisible();
+  const gal = page.locator('.wb-colgal');
+  await expect(gal).toBeVisible();
+  await expect(gal.locator('.wb-colgal-card')).not.toHaveCount(0); // Formatted group
+  await expect(page.locator('.wb-viewmenu')).toHaveCount(0); // the view menu is the sheets' pill
 });
 
 test('a created view is listed, renames inline, and both persist across reload', async ({ page }) => {
@@ -57,18 +54,17 @@ test('a created view is listed, renames inline, and both persist across reload',
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3); // still on the view
 });
 
-test('the view menu navigates: floor entry minimizes, view row reopens', async ({ page }) => {
+test('the view menu (on a sheet) is views-only — no floor row; it switches between sheets', async ({ page }) => {
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
   await page.locator('#wb-doc-pill').click();
-  await page.locator('.wb-viewmenu-floor .wb-viewmenu-open').click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  await expect(page.locator('.wb-grid')).toBeVisible();
-  await page.locator('#wb-doc-pill').click();
-  await page.locator('.wb-viewmenu-name', { hasText: 'View 1' }).click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
-  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+  const menu = page.locator('.wb-viewmenu');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('.wb-viewmenu-floor')).toHaveCount(0); // the grid lives on COLUMNS
+  await expect(menu.locator('.wb-viewmenu-name')).toHaveText('View 1');
+  await expect(menu.locator('.wb-viewmenu-newrow')).toBeVisible();
+  await page.keyboard.press('Escape');
 });
 
 test('on a column doc the dropdown opens the gallery (Formatted + Not yet formatted)', async ({ page }) => {

@@ -172,6 +172,23 @@ Key structural invariants:
   header bands + collapsible slim tracks; group gestures are project
   metadata off the undo stack (the renameView rule), and the exported
   floor is byte-identical with or without them.
+  **Stage-2 follow-ups + Stages 3–4 (2026-07-05, second owner brief)**:
+  tabs read **Columns | Components | Views** ("views are made up of
+  columns and components"); the view menu is views-only and the grid's
+  pill opens the column gallery; components are OFFERED FROM THE PALETTE
+  (`paletteComponents.ts` — canonical trees, authored-intent slot types
+  via `presetRefTypes`, same definitely-renders unit bar) and element
+  component cards drag onto the canvas (complete best-guess → insert at
+  the drop point, provenance-stamped; incomplete → the typed mapper).
+  Stage 3: the **Select/Live** toggle on the canvas chrome
+  (`state.canvasMode`, session-only; `RenderOptions.interactive: false`
+  makes Select-mode clicks select customRowAction buttons instead of
+  firing them; Live fires behaviors and never selects; card flyouts open
+  in both modes). Stage 4 structural half: condFormat now rides
+  `createOverlay`, viewMenu carries `wb-esc-owner`, and the marker is the
+  whole Escape convention (no owner lists — the old prose enumerations
+  were stale and are gone). Open: modal-local ↶↷ undo beyond the template
+  builder (see FLOOR-AND-SHEETS §3 Stage 4).
 - **Node addressing**: selection/lint paths are arrays of child indices;
   the sentinel **`CARD_SEGMENT = -1` descends into
   `customCardProps.formatter`** — that's how card content is fully
@@ -769,7 +786,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 825 vitest unit tests across 45 files (engine semantics incl.
+- `npm test` — 860 vitest unit tests across 47 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -779,11 +796,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   codec byte-exact round trips, the stress-test variant catalog incl.
   threshold mining, the Explain visitor over both expression syntaxes, and
   the autosave-pause never-clobber guarantee, the Stage-2 chrome: the view
-  strip, the column tab-groups brain, and the pure-grid Apply-to-canvas
-  guard). Run headlessly anywhere.
+  strip, the column tab-groups brain, the pure-grid Apply-to-canvas
+  guard, the palette-derived components' definitely-renders contract, and
+  the Select/Live canvas mode). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 135 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 137 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

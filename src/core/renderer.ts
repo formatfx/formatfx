@@ -21,6 +21,13 @@ export interface RenderIssue {
 export interface RenderOptions {
   /** Called when the user triggers a customRowAction in preview. */
   onAction?: (el: SPElement, summary: string) => void;
+  /** FLOOR-AND-SHEETS Stage 3 (the Select/Live canvas): when false, the
+   *  customRowAction click handler is NOT attached, so a click on an action
+   *  button bubbles up to the editor's click-to-select instead of firing the
+   *  behavior. Defaults to true (live) — headless/preview consumers keep the
+   *  real behaviors without opting in. Card flyouts stay attached in BOTH
+   *  modes: the flyout is also the editing door into customCardProps. */
+  interactive?: boolean;
   /** Collects runtime evaluation problems (SP would fail silently). */
   issues?: RenderIssue[];
   /** Stamp data-sp-path attributes for editor selection. */
@@ -168,8 +175,9 @@ export function renderElement(
     }
   }
 
-  // customRowAction — stub with toast
-  if (el.customRowAction) {
+  // customRowAction — stub with toast (Select mode skips the handler so the
+  // click can select the button instead of firing it — Stage 3)
+  if (el.customRowAction && opts.interactive !== false) {
     node.classList.add('wb-clickable');
     const action = el.customRowAction;
     node.addEventListener('click', (e) => {
