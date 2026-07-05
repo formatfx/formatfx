@@ -1,10 +1,12 @@
 /**
  * editor/viewMenu.ts — the View Formatters menu, anchored under the Left Edit
  * Pane's document dropdown. FLOOR-AND-SHEETS Stage 1 made this the real
- * multi-view list: the floor (grid) on top, then every named sheet — click
- * one to open it (NAVIGATION, never a mutation), Rename it inline, or start
- * a new row/tile view from a template. One Rename = one `state.renameView`
- * (project metadata, off the undo stack).
+ * multi-view list: every named sheet — click one to open it (NAVIGATION,
+ * never a mutation), Rename it inline, or start a new row/tile view from a
+ * template. One Rename = one `state.renameView` (project metadata, off the
+ * undo stack). The old "◧ Grid" floor row is gone (Stage 2 follow-up): the
+ * grid is the COLUMNS tab's canvas, so this menu is views-only — matching
+ * the strip.
  */
 
 import { state } from './state';
@@ -24,32 +26,17 @@ export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void):
   closeViewMenu();
 
   const panel = document.createElement('div');
-  panel.className = 'wb-viewmenu';
+  // wb-esc-owner: this menu closes itself on a document-level Escape (onKey
+  // below) — see the convention comment in editor/overlay.ts. It was the one
+  // self-closing popover missing the marker (found by the Stage-4 audit).
+  panel.className = 'wb-viewmenu wb-esc-owner';
 
   const head = document.createElement('div');
   head.className = 'wb-viewmenu-head';
   head.textContent = 'View Formatters';
   panel.appendChild(head);
 
-  // ── the floor: always first, always reachable ─────────────────────────────
-  const floorRow = document.createElement('div');
-  floorRow.className = 'wb-viewmenu-row wb-viewmenu-floor' + (state.onFloor ? ' wb-viewmenu-active' : '');
-  const floorBtn = document.createElement('button');
-  floorBtn.type = 'button';
-  floorBtn.className = 'wb-viewmenu-open';
-  floorBtn.textContent = '◧ Grid';
-  floorBtn.title = 'The grid floor — your columns and their formatters. Views stay intact when you drop back here.';
-  floorBtn.addEventListener('click', () => {
-    closeViewMenu();
-    if (!state.onFloor) {
-      state.minimizeView();
-      onToast('Back to the grid — your views are one click away in this menu');
-    }
-  });
-  floorRow.appendChild(floorBtn);
-  panel.appendChild(floorRow);
-
-  // ── the sheets: one row per named view ────────────────────────────────────
+  // ── the sheets: one row per named view (the grid lives on COLUMNS) ───────
   for (const view of state.views) {
     const row = document.createElement('div');
     row.className = 'wb-viewmenu-row' + (state.activeViewId === view.id ? ' wb-viewmenu-active' : '');
@@ -111,7 +98,7 @@ export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void):
   if (!state.views.length) {
     const none = document.createElement('div');
     none.className = 'wb-viewmenu-empty';
-    none.textContent = 'No views yet — select columns on the grid or start from a template below.';
+    none.textContent = 'No views yet — a view is a whole-row layout built from your columns and components. Select columns on the grid or start from a template below.';
     panel.appendChild(none);
   }
 

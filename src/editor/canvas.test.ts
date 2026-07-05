@@ -3,9 +3,23 @@
  * (an imported internal name) as text, never as HTML — see the matching
  * textContent treatment of the body cells right below it.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mountCanvas } from './canvas';
 import { state } from './state';
+
+// Each test mounts a canvas onto a fresh body-level host, and mountCanvas
+// installs document-level listeners (click, keydown) — tear every host down
+// via its _unsub hook so no listener leaks into later tests. The Escape
+// dispatch first closes any overlay a test left open via its own real path,
+// so createOverlay detaches its document listener too (the viewMenu.test
+// precedent) — a bare .remove() would leak it.
+afterEach(() => {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  document.querySelectorAll<HTMLElement>('body > *').forEach((el) => {
+    (el as unknown as { _unsub?: () => void })._unsub?.();
+    el.remove();
+  });
+});
 
 describe('canvas column preview', () => {
   it('renders the current field name as text, not HTML (no DOM-XSS)', () => {
@@ -35,5 +49,41 @@ describe('row-view toolbar', () => {
     expect(btn).toBeTruthy();
     btn!.click();
     expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+  });
+});
+
+describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
+  it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
+    state.resetAll();
+    const toasts: string[] = [];
+    state.createView({
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [{ elmType: 'button', txtContent: 'Go', customRowAction: { action: 'executeFlow', actionParams: '{"id":"x"}' } }],
+      },
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, (m) => toasts.push(m));
+
+    // the shared chrome renders the segmented toggle, Select active by default
+    expect(host.querySelector('.wb-canvas-mode.active')?.textContent).toBe('Select');
+
+    const clickButton = (): void => {
+      (host.querySelector('.wb-mock-viewrow [data-sp-path="0"]') as HTMLElement)
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    };
+    clickButton();
+    expect(state.selection).toEqual([0]); // selected…
+    expect(toasts.some((t) => t.includes('customRowAction'))).toBe(false); // …not fired
+
+    state.setCanvasMode('live');
+    clickButton();
+    expect(toasts.some((t) => t.includes('customRowAction: executeFlow'))).toBe(true);
+    expect(state.selection).toEqual([0]); // live clicks never change the selection
+
+    state.setCanvasMode('select'); // leave the singleton the way we found it
+    state.resetAll();
   });
 });

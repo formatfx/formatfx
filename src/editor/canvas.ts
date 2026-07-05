@@ -14,6 +14,8 @@ import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { renderGrid } from './gridView';
 import { installPreviewContextMenu } from './contextMenu';
+import { COMPONENT_MIME, componentById, openComponentMapper } from './componentLibrary';
+import { bestGuessMapping, mappingComplete, bindComponentInstance } from './components';
 import type { NodePath, SPElement } from '../core/types';
 import { cfrFieldName } from '../core/refs';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
@@ -65,6 +67,40 @@ function surfaceLabel(): string {
   return state.onFloor ? 'the grid' : `the ${state.activeViewName} view formatter`;
 }
 
+/** Stage 3: the Select/Live segmented toggle — shared canvas chrome on every
+ *  surface (floor, sheets, column drill). Select = clicks pick elements for
+ *  editing; Live = clicks behave like real SharePoint (customRowAction fires,
+ *  nothing selects). The builder preview ships its own always-live rows —
+ *  the same idea, already built in. */
+function canvasModeBar(onToast: (m: string) => void): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'wb-canvas-modebar';
+  const seg = document.createElement('div');
+  seg.className = 'wb-canvas-modeseg';
+  seg.setAttribute('role', 'group');
+  seg.setAttribute('aria-label', 'Canvas mode');
+  const mk = (mode: 'select' | 'live', label: string, title: string): void => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-canvas-mode' + (state.canvasMode === mode ? ' active' : '');
+    b.setAttribute('aria-pressed', String(state.canvasMode === mode));
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener('click', () => {
+      if (state.canvasMode === mode) return;
+      state.setCanvasMode(mode);
+      onToast(mode === 'live'
+        ? 'Live canvas — clicks behave like real SharePoint: buttons run their actions, nothing gets selected. Flip back to Select to edit by clicking.'
+        : 'Select canvas — clicking an element selects it for editing.');
+    });
+    seg.appendChild(b);
+  };
+  mk('select', 'Select', 'Clicking an element selects it for editing (the default)');
+  mk('live', '⚡ Live', 'Clicks behave like real SharePoint — action buttons fire, cards open, nothing gets selected');
+  bar.appendChild(seg);
+  return bar;
+}
+
 export interface CanvasApi {
   getRuntimeIssues: () => RenderIssue[];
   setOutlines: (on: boolean) => void;
@@ -108,13 +144,18 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     host.innerHTML = '';
     runtimeIssues = [];
     host.classList.toggle('wb-style-editing', state.doc.kind === 'column' && state.activeDocKey !== 'main');
+    host.classList.toggle('wb-canvas-live', state.canvasMode === 'live');
     const issues: RenderIssue[] = [];
     const opts = {
       issues,
       tagPaths: true,
       resolveColumnRef,
+      // Stage 3: in Select mode the renderer skips the customRowAction
+      // handlers, so those clicks select instead of firing
+      interactive: state.canvasMode === 'live',
       onAction: (_el: unknown, summary: string) => onToast(summary),
     };
+    host.appendChild(canvasModeBar(onToast));
 
     const kind = state.doc.kind;
     if (kind === 'column') {
@@ -219,8 +260,11 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     });
   };
 
-  // click-to-select — flyouts are appended to <body>, so listen there too
+  // click-to-select — flyouts are appended to <body>, so listen there too.
+  // Live mode routes clicks through the real behaviors instead (Stage 3):
+  // nothing selects, so the canvas feels like the list it will become.
   const selectFrom = (e: MouseEvent, scope: HTMLElement | Document) => {
+    if (state.canvasMode === 'live') return false;
     const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
     if (!target) return false;
     if (scope instanceof HTMLElement && !scope.contains(target)) return false;
@@ -244,9 +288,9 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     // Convention: any overlay/popover that closes ITSELF on a document-level
     // Escape keydown carries the `wb-esc-owner` marker class on its root —
     // added either by the shared `createOverlay` chokepoint (overlay.ts) or,
-    // for the handful of popovers that build their own root (grid menu,
-    // fx float, column gallery, cond-format overlay, icon picker), by hand
-    // at the point they set className. `.wb-flyout` deliberately does NOT
+    // for a popover that builds its own root, by hand at the point it sets
+    // className (the marker IS the convention — deliberately no list of
+    // owners here; the old enumeration went stale). `.wb-flyout` does NOT
     // carry it — it has no Escape handler of its own, so it can't race with
     // this guard. If a document Escape would hit one of those owners first,
     // let it close on its own turn rather than also exiting the drilled
@@ -270,7 +314,8 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     host.classList.remove('wb-canvas-drop');
   };
   host.addEventListener('dragover', (e) => {
-    if (!e.dataTransfer?.types.includes('application/x-wb-palette')) return;
+    const types = e.dataTransfer?.types;
+    if (!types?.includes('application/x-wb-palette') && !types?.includes(COMPONENT_MIME)) return;
     e.preventDefault();
     host.classList.add('wb-canvas-drop');
     const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
@@ -285,8 +330,29 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   });
   host.addEventListener('drop', (e) => {
     const id = e.dataTransfer?.getData('application/x-wb-palette');
+    const compId = e.dataTransfer?.getData(COMPONENT_MIME);
     const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
     clearDropHighlight();
+    // a ⬡ component card dropped where it should live: bind with the best
+    // guess and insert right there (ONE undoable step, provenance-stamped so
+    // the ⬡ inventory counts it); a guess with a hole opens the typed mapper
+    // instead — refuse-and-teach, never a wrong-typed bind.
+    if (compId) {
+      e.preventDefault();
+      const def = componentById(compId);
+      if (!def) return;
+      const guess = bestGuessMapping(def, state.fields);
+      if (!mappingComplete(def, guess)) {
+        onToast(`"${def.name}" needs a column pick your schema can't auto-fill — map its slots first`);
+        openComponentMapper(def, onToast);
+        return;
+      }
+      const path = pathFromAttr(target?.dataset.spPath);
+      const container = path !== undefined ? state.nodeAt(path) : null;
+      const insertedAt = state.insertNode(bindComponentInstance(def, guess), path);
+      onToast(`Added "${def.name}" into ${describeNode(container)} — now selected (depth ${insertedAt.length})`);
+      return;
+    }
     if (!id) return;
     e.preventDefault();
     const item = paletteItemById(id);

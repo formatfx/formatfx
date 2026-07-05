@@ -109,6 +109,11 @@ test('sandbox side: render the workspace and capture every formatted column', as
   // interactive features: DRIVE each one and capture the effect (row 0).
   // View-formatter interactions (field '') are covered by the SP side's
   // whole-row evidence in v1 — the sandbox grid can't isolate them per cell.
+  // Stage 3: the canvas lands in SELECT mode (clicks select, actions don't
+  // fire) — flip to LIVE first or every rowAction reads click-no-effect.
+  if (capture.interactions.length) {
+    await page.locator('.wb-canvas-mode', { hasText: 'Live' }).click();
+  }
   for (const it of capture.interactions) {
     if (!it.field || colIndex[it.field] === undefined) continue;
     const cell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').nth(colIndex[it.field]);

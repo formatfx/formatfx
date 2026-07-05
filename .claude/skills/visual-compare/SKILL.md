@@ -62,6 +62,7 @@ Characterize each real difference, then localize it. The map:
 | Wrapping/truncation only | SP's real column widths vs the sandbox's — expected surface difference | Note it; not a bug |
 | Hover card on one side only | `openOnEvent` semantics, or the sandbox's flyout emulation diverging from SP's callout | `src/core/renderer.ts` (flyout emulation); watch spot #4 selector in `compare.vspec.ts` |
 | Click did nothing | `customRowAction`/`inlineEditField` the sandbox stubs vs SP executes — or a genuinely dead button (bad `actionParams`) | `src/core/renderer.ts` (action stubs); the formatter's `customRowAction` block |
+| Click did nothing on EVERY rowAction (sandbox side) | The canvas was left in SELECT mode — Stage 3 makes Select-mode clicks select instead of firing; the spec must flip to Live before driving interactions | The Live flip in `compare.vspec.ts` (just before the interactions loop) |
 
 Ground rules while diagnosing:
 

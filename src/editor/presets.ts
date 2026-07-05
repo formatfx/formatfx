@@ -534,6 +534,14 @@ const PRESET_FIELD_TYPES: Record<string, FieldType[]> = {
   Link: ['hyperlink'],
 };
 
+/** The authored intent behind a default-schema reference — exported so
+ *  palette-derived components (paletteComponents.ts) can type their slots by
+ *  what the preset MEANS (a due-date badge asks for a date column), not by
+ *  whatever column the live schema's rebind happened to land on. */
+export function presetRefTypes(name: string): FieldType[] | undefined {
+  return PRESET_FIELD_TYPES[name];
+}
+
 /** Pure remap — exported for tests. Returns a new tree; input is not mutated. */
 export function bindFragmentToSchema(fragment: SPElement, fields: MockField[]): SPElement {
   const names = new Set(fields.map((f) => f.name));

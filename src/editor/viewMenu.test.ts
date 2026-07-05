@@ -1,7 +1,8 @@
 /**
- * View Formatters menu (happy-dom): the multi-view list — the floor entry,
- * one row per named sheet (open = navigation, Rename inline), and the
- * template on-ramps (FLOOR-AND-SHEETS Stage 1).
+ * View Formatters menu (happy-dom): the multi-view list — one row per named
+ * sheet (open = navigation, Rename inline) and the template on-ramps
+ * (FLOOR-AND-SHEETS Stage 1). Views-only since the Stage-2 follow-up: the
+ * grid lives on the COLUMNS tab, so there is no floor row here.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openViewMenu, closeViewMenu } from './viewMenu';
@@ -18,11 +19,12 @@ describe('viewMenu', () => {
   beforeEach(() => { state.resetAll(); });
   afterEach(() => { closeViewMenu(); });
 
-  it('always lists the grid floor; a fresh workspace has no views yet', () => {
+  it('a fresh workspace teaches the model — no views yet, and NO floor row (the grid lives on COLUMNS)', () => {
     openViewMenu(anchor(), toast);
     expect(document.querySelector('.wb-viewmenu')).not.toBeNull();
-    expect(document.querySelector('.wb-viewmenu-floor')).not.toBeNull();
+    expect(document.querySelector('.wb-viewmenu-floor')).toBeNull();
     expect(document.querySelector('.wb-viewmenu-empty')).not.toBeNull();
+    expect(document.querySelector('.wb-viewmenu-empty')?.textContent).toContain('columns and components');
     expect(document.querySelector('.wb-viewmenu-name')).toBeNull();
   });
 
@@ -48,16 +50,6 @@ describe('viewMenu', () => {
     expect(state.activeViewId).toBe(a);
     expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
     expect(document.querySelector('.wb-viewmenu')).toBeNull(); // navigated → closed
-  });
-
-  it('the floor entry minimizes back to the grid', () => {
-    addSheet('A');
-    expect(state.onFloor).toBe(false);
-    openViewMenu(anchor(), toast);
-    (document.querySelector('.wb-viewmenu-floor .wb-viewmenu-open') as HTMLElement)
-      .dispatchEvent(new Event('click'));
-    expect(state.onFloor).toBe(true);
-    expect(state.views).toHaveLength(1); // the sheet is untouched
   });
 
   it('Rename → Enter commits the new name via renameView and closes the menu', () => {

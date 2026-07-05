@@ -44,6 +44,7 @@ import {
   type ComponentDef, type ComponentInsertTarget,
 } from './components';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
+import { paletteComponents } from './paletteComponents';
 import { openComponentEditor } from './componentEditor';
 
 function readCustom(): ComponentDef[] {
@@ -94,6 +95,22 @@ function migrateCustomSubtypes(): void {
 export function customComponents(): ComponentDef[] {
   migrateCustomSubtypes();
   return readCustom();
+}
+
+/** Drag payload for component cards → the canvas (carries the def id). */
+export const COMPONENT_MIME = 'application/x-wb-component';
+
+/** Look a component up across every offering: built-ins, the palette
+ *  derivations, and the maker's saved customs. */
+export function componentById(id: string): ComponentDef | undefined {
+  return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customComponents()]
+    .find((d) => d.id === id);
+}
+
+/** The typed mapping dialog, openable from outside the library — the canvas
+ *  drop path uses it when the best guess can't complete a mapping. */
+export function openComponentMapper(def: ComponentDef, onToast: (m: string) => void): void {
+  openMappingDialog(def, onToast);
 }
 
 function writeCustom(components: ComponentDef[]): boolean {
@@ -157,7 +174,11 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   const rerender = (): void => renderComponentLibrary(host, onToast);
 
   const customs = customComponents();
-  const allDefs = [...BUILTIN_COMPONENTS, ...customs];
+  // palette-derived offerings sit beside the built-ins ("the components we
+  // offer are built out from the palette" — owner, 2026-07-05); they join
+  // allDefs so the usage scan and lineage resolution can see their instances
+  const fromPalette = paletteComponents();
+  const allDefs = [...BUILTIN_COMPONENTS, ...fromPalette, ...customs];
   // the active column doc's LIVE root wins over its registry copy (they're
   // synced on emit, but the merge keeps the scan honest mid-edit)
   const refs = state.activeDocKey !== 'main'
@@ -287,6 +308,18 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   const card = (def: ComponentDef): HTMLElement => {
     const el = document.createElement('div');
     el.className = 'wb-comp-card';
+    // element components are DRAG SOURCES onto the canvas — the palette's
+    // signature gesture, generalized to every component (owner, 2026-07-05).
+    // Row components stay click-only: replacing the whole view is never a
+    // gesture a stray drop should perform.
+    if (componentKind(def) === 'element') {
+      el.draggable = true;
+      el.addEventListener('dragstart', (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData(COMPONENT_MIME, def.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+    }
     cardTitle(def, el, { del: true });
     lineage(def, el);
 
@@ -429,6 +462,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   // ── the browser: everything addable (used ones simply also appear above) ──
   heading('Add components', 'wb-complib-h1');
   section('Built-in', BUILTIN_COMPONENTS.filter((c) => componentKind(c) === 'element'));
+  section('From the palette', fromPalette.filter((c) => componentKind(c) === 'element'));
   section('Yours', customs.filter((c) => componentKind(c) === 'element'),
     'Nothing saved yet — right-click an element and “Save as component…” to package it.');
 
