@@ -105,7 +105,12 @@ export function mountTree(
     // _elmName (the throwaway-name convention SP ignores) is the primary
     // label when present; a nameless CFR host borrows the referenced column's
     // display name — either way the elmType steps back to a dim suffix
-    const primaryName = el._elmName ?? cfrDisplay;
+    // On the grid floor the root's pre-stamped 'Row layout' (a default for a
+    // future promotion to a row view — see gridScaffold.buildGridRoot) must
+    // not leak into the tree: no view exists yet. Children keep their names.
+    const primaryName = path.length === 0 && state.doc.kind === 'grid'
+      ? undefined
+      : el._elmName ?? cfrDisplay;
     if (primaryName) {
       const nm = document.createElement('span');
       nm.className = 'wb-tree-name';

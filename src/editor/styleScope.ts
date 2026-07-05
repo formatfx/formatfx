@@ -12,13 +12,15 @@ import { cfrFieldName } from '../core/refs';
 
 export type Scope =
   | { kind: 'view' }
-  | { kind: 'host'; field: string }
+  | { kind: 'grid' }
+  | { kind: 'host'; field: string; surface: 'view' | 'grid' }
   | { kind: 'style'; field: string; places: number };
 
-/** What the next edit hits: the view, the selected host cell, or (when
- *  drilled — or when a column-kind formatter IS the main document, e.g. an
- *  imported/example column formatter opened standalone) the shared style —
- *  with its blast count, clamped to ≥1. */
+/** What the next edit hits: the view (or, on the grid floor, the grid — a
+ *  grid is the list itself, not a view, so the chip must never say "view"
+ *  there), the selected host cell, or (when drilled — or when a column-kind
+ *  formatter IS the main document, e.g. an imported/example column formatter
+ *  opened standalone) the shared style — with its blast count, clamped to ≥1. */
 export function scopeFor(
   activeDocKey: string,
   docKind: string,
@@ -35,16 +37,18 @@ export function scopeFor(
     const blast = cfrBlastRadius(currentFieldName, mainRoot, columnRefs);
     return { kind: 'style', field: currentFieldName, places: Math.max(blast.count, 1) };
   }
+  const surface = docKind === 'grid' ? 'grid' as const : 'view' as const;
   if (selected?.columnFormatterReference) {
-    return { kind: 'host', field: cfrFieldName(selected.columnFormatterReference) };
+    return { kind: 'host', field: cfrFieldName(selected.columnFormatterReference), surface };
   }
-  return { kind: 'view' };
+  return { kind: surface };
 }
 
 export function scopeChipLabel(s: Scope, display: (name: string) => string): string {
   switch (s.kind) {
     case 'view': return 'This view only';
-    case 'host': return 'Host cell · this view only';
+    case 'grid': return 'This grid only';
+    case 'host': return `Host cell · this ${s.surface} only`;
     case 'style': return `${display(s.field)} style · ${s.places} ${s.places === 1 ? 'place' : 'places'}`;
   }
 }

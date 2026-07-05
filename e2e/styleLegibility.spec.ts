@@ -38,8 +38,8 @@ test('double-clicking a linked cell drills into the style', async ({ page }) => 
 });
 
 test('the scope chip always names what an edit will hit', async ({ page }) => {
-  // nothing selected → view scope
-  await expect(page.locator('.wb-scope-chip')).toHaveText('This view only');
+  // nothing selected, still on the grid floor → grid scope (never "view")
+  await expect(page.locator('.wb-scope-chip')).toHaveText('This grid only');
   // select the linked Status host cell (its header selects the cell path and
   // opens the column menu); Escape is wired to a global "deselect everything"
   // shortcut (main.ts), so it would clear the very selection we're testing —
@@ -49,7 +49,7 @@ test('the scope chip always names what an edit will hit', async ({ page }) => {
   await expect(page.locator('.wb-grid-menu')).toBeVisible();
   await page.mouse.click(5, 5);
   await expect(page.locator('.wb-grid-menu')).toHaveCount(0);
-  await expect(page.locator('.wb-scope-chip')).toHaveText('Host cell · this view only');
+  await expect(page.locator('.wb-scope-chip')).toHaveText('Host cell · this grid only');
   // drill in → style scope with blast count
   await page.locator('.wb-grid-cell.wb-cell-linked').first().dblclick();
   await expect(page.locator('.wb-scope-chip')).toContainText('Status style ·');
@@ -85,7 +85,7 @@ test('a CFR host is ONE tree row: click selects the host, the reference tag dril
   // clicking the row selects the HOST element (no drill-in hijack)
   await row.click();
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  await expect(page.locator('.wb-scope-chip')).toHaveText('Host cell · this view only');
+  await expect(page.locator('.wb-scope-chip')).toHaveText('Host cell · this grid only');
   // the explicit affordance is the door into the shared column formatter
   await tag.click();
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);

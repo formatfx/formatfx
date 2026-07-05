@@ -101,8 +101,10 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     chip.title = scope.kind === 'style'
       ? "Edits here change the shared style everywhere it's used"
       : scope.kind === 'host'
-        ? 'The host cell is selected — box edits (width, borders, padding) stay in this view; the content inside belongs to the style'
-        : 'Edits apply to this view formatter only';
+        ? `The host cell is selected — box edits (width, borders, padding) stay in this ${scope.surface}; the content inside belongs to the style`
+        : scope.kind === 'grid'
+          ? "Edits apply to this list's grid — no row or tile view has been made yet"
+          : 'Edits apply to this view formatter only';
     host.appendChild(chip);
     const node = state.selectedNode;
     if (!node) {
