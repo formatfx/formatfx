@@ -1675,6 +1675,13 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-left-color: var(--wb-accent); color: var(--wb-accent);
   background: rgba(0, 120, 212, .08); font-weight: 600;
 }
+/* nesting = technicality: each level indents under its parent */
+.wb-guide-navd1 { padding-left: 22px; }
+.wb-guide-navd2 { padding-left: 36px; }
+.wb-guide-navhint {
+  font-size: 10px; font-style: italic; color: var(--wb-text-2);
+  margin: -4px 6px 6px; opacity: .8;
+}
 .wb-guide-none { font-size: 12px; color: var(--wb-text-2); font-style: italic; padding: 8px; }
 
 /* middle: the article */

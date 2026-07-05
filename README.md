@@ -191,14 +191,17 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   rows, document, undo stack or autosave; expression failures that would
   render silently blank on SP are flagged per row.
 - **Built-in field guide** (☰ menu → 📖) — a full-screen, Learn-style reference
-  with a chapter tree, "in this article" rail, diagrams and Microsoft Learn
-  links — written for developers. What lists really are
-  (SQL tables behind a React UI — view thresholds and the 12-join lookup limit
-  included), the column type system (person/metadata columns ARE lookups,
-  projected fields, calculated-column boundaries, the single-vs-multi
-  capability matrix), the formatting JSON layer (allow-listed CSS — no `var()`
-  / `calc()` / grid — plus `customRowAction`, `inlineEditField`, hover cards),
-  and every field-tested gotcha the linter knows, cross-referenced to its rules.
+  with a nested chapter tree, "in this article" rail, diagrams and Microsoft
+  Learn links, arranged as a technicality gradient: the further down the tree
+  (and the deeper a page nests), the more it assumes. It opens on a
+  plain-language lists-and-libraries floor, then descends into what lists
+  really are (SQL tables behind a React UI, with the view threshold and
+  12-join lookup limit explained from the engine), the column type system
+  (person/metadata columns ARE lookups, projected fields, calculated-column
+  boundaries, the single-vs-multi capability matrix), the formatting JSON
+  layer (allow-listed CSS — no `var()` / `calc()` / grid — plus
+  `customRowAction`, `inlineEditField`, hover cards), and every field-tested
+  gotcha the linter knows, cross-referenced to its rules.
 - **Projects & autosave** — the whole workspace (formatters + schema + data +
   references) autosaves to localStorage and saves/opens as portable
   `.sandbox.json` files. Panes are drag-resizable; the side pane has 📌

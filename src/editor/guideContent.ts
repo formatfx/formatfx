@@ -1,12 +1,15 @@
 /**
  * editor/guideContent.ts — the field guide's pages.
  *
- * A developer-audience intro to SharePoint lists: what they really are (SQL
- * tables behind a React UI), the column type system and its constraints
- * (joins, calculated columns, single-vs-multi capability cliffs), the
- * formatting JSON layer, and the field-tested gotchas this product's linter
- * encodes. Written to set up a base mental model to build on — not to teach
- * lists from zero, and not Excel translation.
+ * SharePoint lists & libraries, arranged by technicality. The guide is a
+ * gradient: it starts at a plain-language floor (what a list is, what a
+ * library is) and runs steadily deeper — SQL under the React UI, the column
+ * type system and its constraints (joins, calculated columns, single-vs-multi
+ * capability cliffs), the formatting JSON layer, and the field-tested gotchas
+ * this product's linter encodes. The gradient is structural, not just tonal:
+ * reading order (page/chapter position) descends basic → complex, and the nav
+ * tree nests — a page's `parent` chain IS its technicality; the deeper a page
+ * sits in the tree, the more it assumes.
  *
  * Every factual claim about SharePoint behavior is either live-verified
  * (docs/HANDOFF.md §3, src/core/linter.ts) or grounded in the linked
@@ -19,6 +22,13 @@ export interface GuidePage {
   chapter: string;
   /** Short title for the nav tree. */
   title: string;
+  /**
+   * Id of the page this one nests under in the nav tree. Nesting encodes
+   * technicality: a chapter's depth-0 page is its plainest on-ramp and each
+   * level down assumes more. A parent must appear earlier in GUIDE_PAGES and
+   * share its child's chapter (guideContent.test.ts enforces both).
+   */
+  parent?: string;
   /** Article HTML. h2 elements need ids (they feed the "In this article" rail). */
   body: string;
 }
@@ -41,6 +51,10 @@ const MS = {
   mmVsLookup: 'https://learn.microsoft.com/en-us/microsoft-365/community/information-architecture-managed-metadata-vs-lookup-column',
   managedMetadata: 'https://learn.microsoft.com/en-us/sharepoint/managed-metadata',
   pnpSamples: 'https://github.com/pnp/List-Formatting',
+  // Basics-floor links (standard support-article ids; see HANDOFF §1.9 sourcing note).
+  introLists: 'https://support.microsoft.com/en-us/office/introduction-to-lists-0a1c3ace-def0-44af-b225-cfa8d92c52d7',
+  whatIsLibrary: 'https://support.microsoft.com/en-us/office/what-is-a-document-library-3b5976dd-65cf-4c9e-bf5a-713c10ca2872',
+  createView: 'https://support.microsoft.com/en-us/office/create-change-or-delete-a-view-of-a-list-or-library-27ae65b8-bc5b-4949-b29b-4ee87144a9c9',
 };
 
 /** Severity chip, mirroring the linter's vocabulary. */
@@ -171,15 +185,140 @@ const FIG_CALC = `
 the row is saved, never on a schedule, and never across the join.</figcaption>
 </figure>`;
 
+const FIG_BASICS = `
+<figure class="wb-guide-fig">
+<svg viewBox="0 0 640 236" width="640" height="236" role="img" aria-label="A list holds rows of information, a library holds rows that are files; both run on the same machinery of typed columns, views, versioning and formatting">
+  <style>
+    .gb-box { fill: var(--wb-surface); stroke: var(--wb-border); rx: 6; }
+    .gb-t { font: 600 12px 'Segoe UI', sans-serif; fill: var(--wb-text); }
+    .gb-s { font: 11px 'Segoe UI', sans-serif; fill: var(--wb-text-2); }
+    .gb-row { fill: var(--wb-bg); stroke: var(--wb-border); }
+    .gb-bar { fill: var(--wb-text-2); opacity: .35; }
+    .gb-file { fill: var(--wb-bg); stroke: var(--wb-accent); stroke-width: 1.2; }
+    .gb-a { stroke: var(--wb-accent); stroke-width: 1.5; fill: none; marker-end: url(#gb-arr); }
+  </style>
+  <defs><marker id="gb-arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="var(--wb-accent)"/></marker></defs>
+  <rect class="gb-box" x="24" y="14" width="284" height="132"/>
+  <text class="gb-t" x="166" y="36" text-anchor="middle">A list</text>
+  <text class="gb-s" x="166" y="52" text-anchor="middle">rows of information</text>
+  <g>
+    <rect class="gb-row" x="44" y="64" width="244" height="20"/>
+    <rect class="gb-bar" x="52" y="70" width="90" height="8" rx="4"/>
+    <rect x="200" y="70" width="54" height="8" rx="4" fill="#107c10" opacity=".75"/>
+    <rect class="gb-row" x="44" y="90" width="244" height="20"/>
+    <rect class="gb-bar" x="52" y="96" width="72" height="8" rx="4"/>
+    <rect x="200" y="96" width="54" height="8" rx="4" fill="var(--wb-accent)" opacity=".75"/>
+    <rect class="gb-row" x="44" y="116" width="244" height="20"/>
+    <rect class="gb-bar" x="52" y="122" width="104" height="8" rx="4"/>
+    <rect x="200" y="122" width="54" height="8" rx="4" fill="#d13438" opacity=".75"/>
+  </g>
+  <rect class="gb-box" x="332" y="14" width="284" height="132"/>
+  <text class="gb-t" x="474" y="36" text-anchor="middle">A library</text>
+  <text class="gb-s" x="474" y="52" text-anchor="middle">rows that are files</text>
+  <g>
+    <rect class="gb-row" x="352" y="64" width="244" height="20"/>
+    <path class="gb-file" d="M 360 67 h 8 l 4 4 v 10 h -12 z"/>
+    <rect class="gb-bar" x="380" y="70" width="120" height="8" rx="4"/>
+    <rect class="gb-row" x="352" y="90" width="244" height="20"/>
+    <path class="gb-file" d="M 360 93 h 8 l 4 4 v 10 h -12 z"/>
+    <rect class="gb-bar" x="380" y="96" width="88" height="8" rx="4"/>
+    <rect class="gb-row" x="352" y="116" width="244" height="20"/>
+    <path class="gb-file" d="M 360 119 h 8 l 4 4 v 10 h -12 z"/>
+    <rect class="gb-bar" x="380" y="122" width="132" height="8" rx="4"/>
+  </g>
+  <rect class="gb-box" x="110" y="192" width="420" height="34"/>
+  <text class="gb-s" x="320" y="213" text-anchor="middle">same machinery: typed columns · views · versioning · formatting</text>
+  <path class="gb-a" d="M 166 146 C 166 168, 200 182, 226 190"/>
+  <path class="gb-a" d="M 474 146 C 474 168, 440 182, 414 190"/>
+</svg>
+<figcaption>The two containers. A library is a list whose rows are files — everything this guide
+covers (columns, views, formatting) applies to both.</figcaption>
+</figure>`;
+
 // ─── the pages ───────────────────────────────────────────────────────────────
 
 export const GUIDE_PAGES: GuidePage[] = [
   {
-    id: 'overview',
-    chapter: 'Start here',
-    title: 'What a list really is',
+    id: 'basics',
+    chapter: 'Lists & libraries',
+    title: 'The basics',
     body: `
-<h1>What a list really is</h1>
+<h1>Lists &amp; libraries: the basics</h1>
+<p class="wb-guide-lede">Everything in SharePoint's data world lives in one of two containers: a
+<strong>list</strong> (rows of information) or a <strong>library</strong> (rows that are files).
+This page is the guide's plain-language floor — no SQL, no JSON. The deeper you go from here,
+the more technical it gets: <strong>down the page order, and down the tree on the left, where a
+nested page always assumes more than its parent</strong>.</p>
+
+${FIG_BASICS}
+
+<h2 id="ba-list">A list: rows of information</h2>
+<p>A list is a set of <strong>items</strong> — one per row — described by <strong>columns</strong>.
+A task list has an item per task, with columns like Title, Due date, Assigned to, Status. You can
+add, edit and delete items in a grid or through a form, and share the whole thing with a team
+(${ext(MS.introLists, 'Introduction to lists')}). If that sounds like a spreadsheet: it looks like
+one on purpose, and the resemblance is the single most misleading thing about it — a list is much
+stricter, and much better at being shared. The pages below this one explain what it actually is.</p>
+
+<h2 id="ba-library">A library: a list where every row is a file</h2>
+<p>A document library is the same idea with one twist: <strong>each item is a file</strong> — the
+document, image, or folder itself — plus whatever columns you add to describe it
+(${ext(MS.whatIsLibrary, 'What is a document library?')}). Status, Owner, Review date on a
+contracts library work exactly like columns on a task list. Nearly everything in this guide
+applies to both containers equally: columns, views, and formatting don't care whether the row is
+an item or a file. The differences that do exist are small and called out where they bite (for
+one: a library's <em>Name</em> column — the filename — can't be formatted).</p>
+
+<h2 id="ba-columns">Columns give every value a type</h2>
+<p>Each column declares what kind of value it holds: a line of text, a number, a date, a choice
+from a menu, a person, a yes/no, a link to an item in another list. The type is enforced — you
+can't put "next Tuesday" in a number column — and the type decides what SharePoint can do with
+the column: sort it, filter it, total it, validate it. Choosing good column types is most of the
+craft of designing a list; the <a href="#" data-guide-page="column-types">column system
+chapter</a> treats them as what they really are, a type system.</p>
+
+<h2 id="ba-views">Views: saved ways of looking</h2>
+<p>A view is a saved way of looking at the same list: which columns show, in what order, filtered
+and sorted and grouped how (${ext(MS.createView, 'Create, change, or delete a view')}). "My open
+tasks", "Everything due this week", "Grouped by owner" — three views, one list, zero copies of
+the data. Views never change the items; deleting a view deletes nothing but the viewpoint.</p>
+
+<h2 id="ba-free">What every list and library gives you for free</h2>
+<ul>
+  <li><strong>Version history</strong> — edits keep the old value; you can see who changed what,
+  and roll back.</li>
+  <li><strong>Permissions</strong> — who can see and edit, down to the individual item when
+  needed.</li>
+  <li><strong>Forms</strong> — an add/edit form for every list, generated from the columns.</li>
+  <li><strong>Alerts and automation hooks</strong> — notify or trigger a flow when things
+  change.</li>
+</ul>
+<p>Building any one of these by hand is a project. Here they're the default — which is the honest
+answer to "why not just use a spreadsheet?".</p>
+
+<h2 id="ba-formatting">Formatting: rules that paint</h2>
+<p>Every column and view can carry <strong>formatting rules</strong> — paint the Status cell green
+when it says Done, show a red flag when the due date is past, turn a number into a progress bar.
+The rules travel with the list and apply for everyone who opens it. Writing those rules well is
+what FormatFX is for, and what the <a href="#" data-guide-page="formatting">JSON layer
+chapter</a> is about.</p>
+
+<div class="wb-guide-note wb-guide-note-info"><strong>How to read this guide.</strong> This page
+is the floor. One level down the tree, <a href="#" data-guide-page="overview">Under the hood</a>
+opens the machinery — from there on the guide is written for developers, and every further level
+of nesting (and every later chapter) assumes more. Go as deep as your problem requires and no
+deeper.</div>
+`,
+  },
+
+  {
+    id: 'overview',
+    chapter: 'Lists & libraries',
+    title: 'Under the hood: SQL + React',
+    parent: 'basics',
+    body: `
+<h1>Under the hood: what a list really is</h1>
 <p class="wb-guide-lede">A SharePoint list looks like a spreadsheet. It isn't one. It's a <strong>typed table in a SQL database, rendered
 by a React app, with a JSON-programmable presentation layer</strong>. Holding those three layers
 apart is the single most useful mental model for everything else in this guide.</p>
@@ -197,15 +336,10 @@ you open runs a real SQL query.</p>
 <p>The famous constraints of lists aren't arbitrary product decisions — they're SQL operational
 limits surfacing through the UI:</p>
 <ul>
-  <li><strong>The list view threshold (5,000)</strong>. SQL Server uses row-level locks and
-  escalates to a table lock when a single query touches too many rows — which would block every
-  other user of that table. SharePoint refuses to run view queries past 5,000 items instead.
-  The data is fine; it's the <em>query</em> that gets rejected. Indexed columns plus filtered
-  views are the way through (${ext(MS.largeLists, 'Manage large lists and libraries')}).</li>
-  <li><strong>The list view lookup threshold (12)</strong>. Each lookup, person, or managed
-  metadata column in a view is a SQL <em>join</em> — Microsoft's limits documentation literally
-  defines this threshold as "join operations per query". More than 12 and the view is throttled
-  (${ext(MS.spoLimits, 'SharePoint Online limits')}).</li>
+  <li><strong>The list view threshold (5,000)</strong> and <strong>the list view lookup
+  threshold (12)</strong> — both are the query engine protecting itself, not a storage cap.
+  The full engine story (lock escalation, joins per query, and how indexes get you through)
+  lives one level deeper: <a href="#" data-guide-page="limits">Limits &amp; thresholds</a>.</li>
   <li><strong>Column type constraints</strong> — which types can be looked up, calculated over,
   indexed, or filtered. These all trace back to how each type is stored and queried. The whole
   <a href="#" data-guide-page="single-vs-multi">capability matrix</a> chapter exists because of this.</li>
@@ -241,10 +375,67 @@ real React elements from it. Two things to internalize early:</p>
   Details in <a href="#" data-guide-page="actions">Commands &amp; actions</a>.</li>
 </ul>
 
-<div class="wb-guide-note wb-guide-note-info"><strong>Who this is for.</strong> This guide assumes
-you've used a list before. It won't teach you how to add an item; it sets up the mechanics —
-storage, types, joins, the formatting runtime — so the constraints you'll hit have reasons
-instead of feeling like trivia. Past this page, it's written for developers.</div>
+<div class="wb-guide-note wb-guide-note-info"><strong>Who this is for.</strong> From this page
+down, the guide is written for developers — <a href="#" data-guide-page="basics">the basics
+page</a> above is the plain-language floor. This page sets up the mechanics — storage, types,
+joins, the formatting runtime — so the constraints you'll hit have reasons instead of feeling
+like trivia; each level deeper in the tree assumes you've absorbed the level above it.</div>
+`,
+  },
+
+  {
+    id: 'limits',
+    chapter: 'Lists & libraries',
+    title: 'Limits & thresholds',
+    parent: 'overview',
+    body: `
+<h1>Limits &amp; thresholds, from the engine</h1>
+<p class="wb-guide-lede">The deepest page of this chapter: why the numbers are what they are.
+Both famous thresholds are the SQL query engine protecting every other user of the content
+database — <strong>the data is never the problem; the query is</strong>.</p>
+
+<h2 id="li-5000">The list view threshold: 5,000</h2>
+<p>SQL Server takes row-level locks while it works, and <strong>escalates to a table lock</strong>
+when a single query touches too many rows — which would block every other user of that table,
+and lists share tables in the content database. SharePoint's defense is to refuse to run view
+queries that would touch more than 5,000 items
+(${ext(MS.largeLists, 'Manage large lists and libraries')}).</p>
+<p>Read the fine print in that sentence: the threshold rejects the <em>query</em>, not the data.
+A list can hold up to <strong>30 million items</strong>
+(${ext(MS.spoLimits, 'SharePoint Online limits')}) — you just can't ask one view to sweep more
+than 5,000 of them unindexed. In
+SharePoint Online the threshold isn't yours to raise; the way through is query design, not a
+bigger number.</p>
+
+<h2 id="li-12">The list view lookup threshold: 12 joins per query</h2>
+<p>Each lookup, person, or managed metadata column in a view is a SQL <em>join</em> —
+Microsoft's limits documentation literally defines this threshold as "join operations per
+query" (${ext(MS.spoLimits, 'SharePoint Online limits')}). More than 12 in one view and the
+view is throttled. The arithmetic sneaks up on people because the three column types look
+unrelated: a view with 6 lookups, 4 person columns and 3 metadata columns is over the line at
+13, even though it "only" has 13 columns total. Why those three types are secretly the same
+feature is the <a href="#" data-guide-page="joins">joins page</a>.</p>
+
+<h2 id="li-indexes">Indexes: the way through</h2>
+<p>An indexed column gives SQL a way to find matching rows <em>without</em> sweeping the table —
+so a view whose <strong>first filter</strong> is on an indexed column, and narrows to fewer
+than 5,000 matching rows, works no matter how large the whole list grows
+(${ext(MS.largeLists, 'Manage large lists and libraries')}). The craft, in order:</p>
+<ul>
+  <li><strong>Index the columns your views filter on</strong> — and do it early; retrofitting
+  indexes onto an already-huge list is much more painful than designing for them.</li>
+  <li><strong>Make every view on a large list a filtered view</strong>, with the indexed filter
+  doing the narrowing before anything else runs. "All items, sorted by Modified" is exactly the
+  query the threshold exists to reject.</li>
+  <li><strong>Mind the type rules</strong> — not every column type can be indexed. Multi-value
+  columns can't, calculated columns can't; the full list is a column of the
+  <a href="#" data-guide-page="single-vs-multi">capability matrix</a>.</li>
+</ul>
+
+<div class="wb-guide-note wb-guide-note-info"><strong>Formatting is threshold-free.</strong>
+Formatting JSON runs in the browser against rows a view already fetched — it can't trip either
+threshold, and it can't rescue a throttled view either. If a view won't load, the fix is up
+here in the query layer, not in the <a href="#" data-guide-page="formatting">JSON layer</a>.</div>
 `,
   },
 
@@ -255,7 +446,9 @@ instead of feeling like trivia. Past this page, it's written for developers.</di
     body: `
 <h1>Columns as a type system</h1>
 <p class="wb-guide-lede">Treat SharePoint's column types as a real type system with three families.
-Which family a column belongs to predicts almost everything it can and can't do.</p>
+Which family a column belongs to predicts almost everything it can and can't do. This page is the
+chapter's on-ramp; the pages nested under it take each family into the engine, ending at the
+full <a href="#" data-guide-page="single-vs-multi">capability matrix</a>.</p>
 
 <h2 id="ct-families">The three families</h2>
 <table class="wb-guide-table">
@@ -317,6 +510,7 @@ columns, and enhanced-rich-text multiline (${ext(MS.columnFormatting, 'Use colum
     id: 'joins',
     chapter: 'The column system',
     title: 'Everything that joins is a lookup',
+    parent: 'column-types',
     body: `
 <h1>Everything that joins is a lookup</h1>
 <p class="wb-guide-lede">Lookup columns, person columns, and managed metadata columns look like
@@ -345,7 +539,8 @@ ${FIG_JOINS}
 in a view is one join in the view's SQL query, and the
 <em>list view lookup threshold</em> caps a view at <strong>12 joins</strong>
 (${ext(MS.spoLimits, 'SharePoint Online limits')}). A view with 6 lookups, 4 person columns and
-3 metadata columns is over the line, even though it "only" has 13 columns.</div>
+3 metadata columns is over the line, even though it "only" has 13 columns. The engine story
+behind the cap is in <a href="#" data-guide-page="limits">Limits &amp; thresholds</a>.</div>
 
 <h2 id="jn-targets">What a lookup may point at</h2>
 <p>Only some source-column types can be the displayed column of a lookup
@@ -405,6 +600,7 @@ back unresolved, this omission is the usual reason.</div>
     id: 'calculated',
     chapter: 'The column system',
     title: 'Calculated columns',
+    parent: 'column-types',
     body: `
 <h1>Calculated columns</h1>
 <p class="wb-guide-lede">A calculated column stores a formula result on the row. Its powers are
@@ -479,9 +675,10 @@ does not tick over at midnight. Anything time-relative belongs in the formatting
     id: 'single-vs-multi',
     chapter: 'The column system',
     title: 'The capability matrix',
+    parent: 'column-types',
     body: `
 <h1>Single vs multi: the capability matrix</h1>
-<p class="wb-guide-lede">The reference table. Rows are column types; columns are the engine
+<p class="wb-guide-lede">The deep end of the column system — the reference table. Rows are column types; columns are the engine
 features that quietly refuse multi-value (and a few other) types. ✓ means documented as
 supported; — means documented as unsupported <em>or absent from Microsoft's supported list</em>
 (in SharePoint those are the same thing in practice).</p>
@@ -652,6 +849,7 @@ XML-escaped operators — go straight to <a href="#" data-guide-page="gotchas">t
     id: 'icons',
     chapter: 'The JSON layer',
     title: 'The icon gallery',
+    parent: 'formatting',
     body: `
 <h1>Icons: the <code>iconName</code> attribute</h1>
 <p class="wb-guide-lede">SharePoint renders a Fluent UI (MDL2) icon wherever an element carries an
@@ -682,6 +880,7 @@ ${ext('https://developer.microsoft.com/en-us/fluentui#/styles/web/icons', 'Fluen
     id: 'actions',
     chapter: 'The JSON layer',
     title: 'Commands & actions',
+    parent: 'formatting',
     body: `
 <h1>Commands &amp; actions</h1>
 <p class="wb-guide-lede">Styling is half the formatting layer. The other half is a small command
@@ -959,4 +1158,29 @@ export const GUIDE_CHAPTERS: Array<{ chapter: string; pages: GuidePage[] }> = ((
     else out.push({ chapter: page.chapter, pages: [page] });
   }
   return out;
+})();
+
+/**
+ * Nav-tree depth per page id, from the parent chain. 0 = a chapter's
+ * plain-language on-ramp; each level down is more technical (the nav indents
+ * accordingly). A typo'd parent or a parent cycle throws right here at module
+ * init — fail fast beats a frozen UI (or a hung test import). The stricter
+ * editorial invariants (parent precedes child, same chapter, depth ≤ 2) live
+ * in guideContent.test.ts.
+ */
+export const GUIDE_DEPTH: ReadonlyMap<string, number> = (() => {
+  const byId = new Map(GUIDE_PAGES.map((p) => [p.id, p]));
+  const depth = new Map<string, number>();
+  for (const page of GUIDE_PAGES) {
+    let d = 0;
+    let cur = page;
+    while (cur.parent) {
+      const parent = byId.get(cur.parent);
+      if (!parent) throw new Error(`guide page "${cur.id}" names a missing parent "${cur.parent}"`);
+      if (++d > GUIDE_PAGES.length) throw new Error(`guide page "${page.id}" sits on a parent cycle`);
+      cur = parent;
+    }
+    depth.set(page.id, d);
+  }
+  return depth;
 })();
