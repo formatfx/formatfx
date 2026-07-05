@@ -1080,10 +1080,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-canvas-mode.active { background: var(--wb-accent); color: var(--wb-accent-text); }
 /* live: the canvas acts like the real list — selection outlines stand down */
 .wb-canvas-live .wb-selected { outline: none; animation: none; }
-/* …and so does the global keyboard-focus ring: custom-focusable targets
-   (e.g. tabindex'd grid headers) trip :focus-visible on mouse click in
-   Chromium, which would flash editor chrome inside the "real list" illusion */
-.wb-canvas-live :focus-visible { outline: none; }
+/* …and the keyboard-focus ring stands down only where it misfires: tabindex'd
+   custom targets (e.g. grid headers) trip :focus-visible on mouse CLICK in
+   Chromium, flashing editor chrome inside the "real list" illusion. Scoped to
+   [tabindex] so native controls in the live canvas keep their keyboard ring. */
+.wb-canvas-live [tabindex]:focus-visible { outline: none; }
 
 /* ── stage 3 (maker redesign): row-view toolbar (density + Templates) ────── */
 .wb-rowview-bar {

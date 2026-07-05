@@ -107,10 +107,13 @@ export function mountTree(
     // display name — either way the elmType steps back to a dim suffix
     // On the grid floor the root's pre-stamped 'Row layout' (a default for a
     // future promotion to a row view — see gridScaffold.buildGridRoot) must
-    // not leak into the tree: no view exists yet. Children keep their names.
-    const primaryName = path.length === 0 && state.doc.kind === 'grid'
-      ? undefined
-      : el._elmName ?? cfrDisplay;
+    // not leak into the tree: no view exists yet. Only that stamped default
+    // is hidden — a name the maker typed themselves still renders, and
+    // children keep their names either way.
+    const primaryName =
+      path.length === 0 && state.doc.kind === 'grid' && el._elmName === 'Row layout'
+        ? undefined
+        : el._elmName ?? cfrDisplay;
     if (primaryName) {
       const nm = document.createElement('span');
       nm.className = 'wb-tree-name';
