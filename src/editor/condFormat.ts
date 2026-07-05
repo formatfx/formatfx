@@ -29,6 +29,7 @@ import {
 } from './condRules';
 import { elementRefChip } from './elmRef';
 import { createOverlay } from './overlay';
+import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
 
 export type CondTarget =
   | { kind: 'element'; path: NodePath }
@@ -107,7 +108,25 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   // wb-esc-owner marker all come from createOverlay — this dialog used to
   // duplicate that machinery by hand
   const { overlay, close } = createOverlay('wb-cf-overlay', () => closeCondFormat());
-  activeClose = close;
+
+  // modal-local undo (§2.3): the rules list and the watched field bottom out
+  // at the moment the dialog opened; render() is the commit chokepoint, so
+  // every gesture that reshapes the rules is exactly one ↶ step. Composer
+  // picks (condition/effect/color before "Add") are pre-gesture config and
+  // deliberately outside the bag. Apply still lands as ONE app-level step.
+  const muBag = (): { fieldName: string; rules: CondRule[] } =>
+    ({ fieldName: field.name, rules });
+  const mu = createModalUndo(muBag());
+  const muRestore = (bag: { fieldName: string; rules: CondRule[] } | null): void => {
+    if (!bag) return;
+    field = state.fields.find((f) => f.name === bag.fieldName) ?? field;
+    pendingField = null;
+    rules.length = 0;
+    rules.push(...bag.rules);
+    render();
+  };
+  const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
+  activeClose = () => { detachMuKeys(); close(); };
 
   const panel = document.createElement('div');
   panel.className = 'wb-cf';
@@ -153,12 +172,16 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       panel.textContent = 'The element is gone (undone or removed) — close and reselect.';
       return;
     }
+    // every gesture funnels through render(): snapshot here (no-op renders
+    // are free — the brain drops identical states)
+    mu.commit(muBag());
 
     // ── header ──
     const head = document.createElement('div');
     head.className = 'wb-cf-head';
     head.innerHTML = `<span class="wb-cf-title">✨ Conditional formatting</span>
       <span class="wb-cf-sub">rules read top-down, the first match wins — nothing changes until you apply</span>`;
+    head.appendChild(modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo())).root);
     const close = document.createElement('button');
     close.className = 'wb-cf-close';
     close.textContent = '✕';

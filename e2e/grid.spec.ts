@@ -335,3 +335,53 @@ test('column tab groups: group via multi-select, pill actions, collapse/expand, 
   await expect(page.locator('.wb-grid-header-label'))
     .toHaveText(['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
 });
+
+test('format cells: modal-local ↶↷ walks the staged gestures; the stack bottoms out at open', async ({ page }) => {
+  await header(page, 'Title').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
+  const fc = page.locator('.wb-fc');
+  await expect(fc.locator('.wb-mu-undo')).toBeDisabled(); // bottoms out where you opened it
+  // two gestures = two local steps
+  await fc.locator('.wb-fc-toggle', { hasText: 'Bold' }).click();
+  await fc.locator('.wb-fc-tab', { hasText: 'Fill' }).click(); // tab switches are free
+  await fc.locator('.wb-fc-swatch[title="#deecf9"]').click();
+  await expect(fc.locator('.wb-fc-swatch[title="#deecf9"]')).toHaveClass(/active/);
+  // ↶ takes back only the fill; Bold stays staged
+  await fc.locator('.wb-mu-undo').click();
+  await expect(fc.locator('.wb-fc-swatch[title="#deecf9"]')).not.toHaveClass(/active/);
+  await fc.locator('.wb-fc-tab', { hasText: 'Font' }).click();
+  await expect(fc.locator('.wb-fc-toggle', { hasText: 'Bold' })).toHaveClass(/active/);
+  // ↶ again reaches the baseline and stops; ↷ replays
+  await fc.locator('.wb-mu-undo').click();
+  await expect(fc.locator('.wb-fc-toggle', { hasText: 'Bold' })).not.toHaveClass(/active/);
+  await expect(fc.locator('.wb-mu-undo')).toBeDisabled();
+  await fc.locator('.wb-mu-redo').click();
+  await expect(fc.locator('.wb-fc-toggle', { hasText: 'Bold' })).toHaveClass(/active/);
+  // in-dialog gestures never touched the APP stack (no document mutation)
+  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+  // Apply commits the surviving staged patch as ONE app-level step
+  await fc.locator('.wb-fc-ok').click();
+  await expect(page.locator('.wb-grid [data-sp-path="0"]').first()).toHaveCSS('font-weight', '600');
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-grid [data-sp-path="0"]').first()).toHaveCSS('font-weight', '400');
+});
+
+test('conditional formatting: modal-local ↶↷ over the rules list; Ctrl+Z inside the dialog stays local', async ({ page }) => {
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  const cf = page.locator('.wb-cf');
+  await expect(cf.locator('.wb-mu-undo')).toBeDisabled();
+  await cf.locator('.wb-cf-cond', { hasText: 'is in the past (overdue)' }).click(); // composer pick — not a step
+  await expect(cf.locator('.wb-mu-undo')).toBeDisabled();
+  await cf.locator('.wb-cf-addbtn').click(); // the gesture
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
+  // Ctrl+Z with the dialog open is the LOCAL undo — the rule comes back off,
+  // the dialog stays open, and the app-level stack never hears about it
+  await page.keyboard.press('Control+z');
+  await expect(cf).toBeVisible();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(0);
+  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+  await cf.locator('.wb-mu-redo').click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
+  await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
+});

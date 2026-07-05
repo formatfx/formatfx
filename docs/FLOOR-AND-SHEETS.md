@@ -226,21 +226,32 @@ that precedent to every canvas (floor, sheets, builder).
   harness drives customRowAction/inlineEdit clicks — it must flip the
   canvas to Live before interaction captures or the sandbox side reads
   `click-no-effect`.
-- **Stage 4 — editor-chrome unification: the structural half SHIPPED
-  2026-07-05; the local-undo half is OPEN.** Audit result: the
-  hand-maintained Escape exception list §1 complained about was already
-  collapsed onto the one `wb-esc-owner` marker check in canvas.ts — what
-  remained was stale prose enumerations in comments (removed; the marker
-  IS the convention) and two stragglers, both fixed: the conditional
-  formatting dialog hand-rolled its backdrop/Esc machinery (now on the
-  `createOverlay` chokepoint) and the view menu self-closed on Escape
-  without carrying the marker. STILL OPEN (the honest gap): §2.3's
-  modal-local ↶↷ undo exists only in the template builder; the component
-  editor and every tier-2 dialog (Format cells, conditional formatting,
-  the knob form, the component-map dialogs) already commit as exactly ONE
-  app-level mutation but keep no local stack yet. The playground is a
-  deliberate outlier — it applies per-action (each one undoable), not
-  Save-committed.
+- **Stage 4 — editor-chrome unification. SHIPPED 2026-07-05** (two
+  passes). *Structural half:* the hand-maintained Escape exception list §1
+  complained about was already collapsed onto the one `wb-esc-owner`
+  marker check in canvas.ts — what remained was stale prose enumerations
+  in comments (removed; the marker IS the convention) and two stragglers,
+  both fixed: the conditional formatting dialog hand-rolled its
+  backdrop/Esc machinery (now on the `createOverlay` chokepoint) and the
+  view menu self-closed on Escape without carrying the marker.
+  *Local-undo half:* §2.3's modal-local ↶↷ contract now has ONE shared
+  implementation — `modalUndo.ts` (pure + node-tested: baseline floor,
+  no-op-commit guard, redo-tail truncation, capture-phase Ctrl+Z/Y wiring
+  that never reaches the app stack, text inputs keep native editing undo)
+  — wired into the component editor (the staged ELEMENT tree; identity
+  text fields stay native), Format cells (the staged patch + border
+  model; render() is the commit chokepoint, so tab switches are free) and
+  conditional formatting (the rules list + watched field; composer picks
+  are pre-gesture config). Each still commits its Save/Apply as exactly
+  ONE app-level mutation. DELIBERATE EXEMPTIONS, recorded not forgotten:
+  the subtype knob form and the component-map dialogs are single-pick
+  forms with nothing destructive — every control is individually
+  re-settable and text inputs carry native undo, so a local stack would
+  be chrome without protection; the playground stays apply-per-action
+  (each apply is its own app-level undo step) — it is not a Save-committed
+  editor; and the template builder keeps its own predating local-undo
+  implementation (the pattern `modalUndo.ts` was extracted from) —
+  migrating it onto the helper is opportunistic cleanup, not a gap.
 
 ## 4. Invariants that survive every stage
 
