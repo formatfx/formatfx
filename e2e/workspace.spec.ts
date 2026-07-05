@@ -57,8 +57,9 @@ test('one-click topbar copy puts the active formatter JSON on the clipboard', as
 
 test('element naming: showcase and presets arrive named, double-click renames, shipped JSON stays clean', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  // the showcase tree reads as names, not anonymous divs
-  await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toBeVisible();
+  // the showcase tree reads as names, not anonymous divs — except the grid
+  // floor's root, whose pre-stamped promotion name must stay hidden (#198)
+  await expect(page.locator('.wb-tree-name', { hasText: 'Row layout' })).toHaveCount(0);
   await expect(page.locator('.wb-tree-name', { hasText: 'DueDate' })).toBeVisible();
   // a fresh preset arrives named after its palette label
   await loadExample(page, 'status-pill');

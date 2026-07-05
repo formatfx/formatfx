@@ -17,14 +17,23 @@ const refs: Record<string, SPElement> = { Status: { elmType: 'div', txtContent: 
 const display = (n: string) => (n === 'Status' ? 'Status' : n);
 
 describe('scopeFor', () => {
-  it('main doc + plain selection → view scope', () => {
-    expect(scopeFor('main', 'grid', 'Status', mainRoot.children![0], mainRoot, refs)).toEqual({ kind: 'view' });
+  it('main doc + plain selection in a row view → view scope', () => {
+    expect(scopeFor('main', 'row', 'Status', mainRoot.children![0], mainRoot, refs)).toEqual({ kind: 'view' });
   });
-  it('main doc + no selection → view scope', () => {
-    expect(scopeFor('main', 'grid', 'Status', null, mainRoot, refs)).toEqual({ kind: 'view' });
+  it('main doc + no selection in a row view → view scope', () => {
+    expect(scopeFor('main', 'row', 'Status', null, mainRoot, refs)).toEqual({ kind: 'view' });
   });
-  it('main doc + host cell selected → host scope with the field name', () => {
-    expect(scopeFor('main', 'grid', 'Status', mainRoot.children![1], mainRoot, refs)).toEqual({ kind: 'host', field: 'Status' });
+  it('grid floor + plain selection → grid scope, never "view" (no view exists yet)', () => {
+    expect(scopeFor('main', 'grid', 'Status', mainRoot.children![0], mainRoot, refs)).toEqual({ kind: 'grid' });
+  });
+  it('grid floor + no selection → grid scope', () => {
+    expect(scopeFor('main', 'grid', 'Status', null, mainRoot, refs)).toEqual({ kind: 'grid' });
+  });
+  it('main doc + host cell selected in a view → host scope, view surface', () => {
+    expect(scopeFor('main', 'row', 'Status', mainRoot.children![1], mainRoot, refs)).toEqual({ kind: 'host', field: 'Status', surface: 'view' });
+  });
+  it('grid floor + host cell selected → host scope, grid surface', () => {
+    expect(scopeFor('main', 'grid', 'Status', mainRoot.children![1], mainRoot, refs)).toEqual({ kind: 'host', field: 'Status', surface: 'grid' });
   });
   it('drilled into a style → style scope with blast count', () => {
     expect(scopeFor('Status', 'grid', 'Status', null, mainRoot, refs)).toEqual({ kind: 'style', field: 'Status', places: 1 });
@@ -42,7 +51,9 @@ describe('scopeFor', () => {
 
 describe('scopeChipLabel', () => {
   it('view', () => expect(scopeChipLabel({ kind: 'view' }, display)).toBe('This view only'));
-  it('host', () => expect(scopeChipLabel({ kind: 'host', field: 'Status' }, display)).toBe('Host cell · this view only'));
+  it('grid', () => expect(scopeChipLabel({ kind: 'grid' }, display)).toBe('This grid only'));
+  it('host in a view', () => expect(scopeChipLabel({ kind: 'host', field: 'Status', surface: 'view' }, display)).toBe('Host cell · this view only'));
+  it('host on the grid floor', () => expect(scopeChipLabel({ kind: 'host', field: 'Status', surface: 'grid' }, display)).toBe('Host cell · this grid only'));
   it('style plural', () => expect(scopeChipLabel({ kind: 'style', field: 'Status', places: 3 }, display)).toBe('Status style · 3 places'));
   it('style singular', () => expect(scopeChipLabel({ kind: 'style', field: 'Status', places: 1 }, display)).toBe('Status style · 1 place'));
 });
