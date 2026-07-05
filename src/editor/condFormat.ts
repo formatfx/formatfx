@@ -24,7 +24,7 @@ import {
 } from './gridScaffold';
 import {
   COND_COLORS, COND_EFFECTS, condColor, condEffect, condExpr, condLabel,
-  conditionOptionsFor, escapeCondValue, rulesToStyle,
+  conditionOptionsFor, escapeCondValue, rulesToStyle, parseRulesFromStyle,
   type CondOption, type CondRule, type EffectId,
 } from './condRules';
 import { elementRefChip } from './elmRef';
@@ -103,6 +103,47 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     target.kind === 'element'
       ? state.nodeAt(target.path)?.style
       : state.columnRefs[paintField!.name]?.style;
+
+  // Reopen, don't restart (§6 1.7's "obvious next step", built 2026-07-05):
+  // `=if()` chains this dialog generated parse back into editable rules —
+  // gated by regenerating the chains and requiring byte-identical output, so
+  // a lossy reopen is structurally impossible. A hand-edited or foreign
+  // formula fails the gate and the dialog starts fresh over the current
+  // style, exactly as before (refuse-and-teach, never a guessed rule).
+  const parsed = parseRulesFromStyle(existingStyle(), state.fields);
+  let parsedFallbacks: Record<string, string> | null = null;
+  if (parsed) {
+    const watched = state.fields.find((f) => f.name === parsed.fieldName);
+    if (watched && (target.kind === 'element' || paintField)) {
+      field = watched; // the chains may watch a different column than they paint
+      rules.push(...parsed.rules);
+      parsedFallbacks = parsed.fallbacks;
+    }
+  }
+
+  /** The style the rules layer over. With a parsed reopen, each managed
+   *  chain reads as its pre-rules FALLBACK (plain value, or absent), so
+   *  re-applying preserves the original fallback and never warns about
+   *  replacing our own generated formulas. */
+  const priorStyle = (base = existingStyle()): Record<string, SPExpr | undefined> | undefined => {
+    if (!parsedFallbacks || !base) return base;
+    const out: Record<string, SPExpr | undefined> = { ...base };
+    for (const [prop, fb] of Object.entries(parsedFallbacks)) {
+      if (fb) out[prop] = fb; else delete out[prop];
+    }
+    return out;
+  };
+
+  /** Zero rules on a parsed reopen = REMOVE the managed chains: each one
+   *  returns to its pre-rules fallback or leaves the style entirely. Effect
+   *  statics stay — inert shape, clearable in Format cells if unwanted. */
+  const removeRulesFrom = (host: { style?: Record<string, SPExpr | undefined> }): void => {
+    const s: Record<string, SPExpr | undefined> = { ...(host.style ?? {}) };
+    for (const [prop, fb] of Object.entries(parsedFallbacks ?? {})) {
+      if (fb) s[prop] = fb; else delete s[prop];
+    }
+    if (Object.keys(s).length) host.style = s; else delete host.style;
+  };
 
   // the shared modal chokepoint (Stage 4): backdrop, Esc-to-close and the
   // wb-esc-owner marker all come from createOverlay — this dialog used to
@@ -295,8 +336,10 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     if (!rules.length) {
       const empty = document.createElement('div');
       empty.className = 'wb-cf-empty';
-      empty.textContent = 'No rules yet — pick a condition below'
-        + (field.type === 'choice' ? ', or let ✨ color every choice at once.' : '.');
+      empty.textContent = parsedFallbacks
+        ? 'All rules removed — Apply now clears the conditional formatting (each property returns to its pre-rules look).'
+        : 'No rules yet — pick a condition below'
+          + (field.type === 'choice' ? ', or let ✨ color every choice at once.' : '.');
       rulesBox.appendChild(empty);
     }
     rules.forEach((rule, i) => {
@@ -487,7 +530,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     if (rules.length && state.rows.length) {
       const strip = document.createElement('div');
       strip.className = 'wb-cf-preview';
-      const gen = rulesToStyle(field, rules, existingStyle());
+      const gen = rulesToStyle(field, rules, priorStyle());
       // the preview wears the PAINTED column's content, styled by the rules
       const sample: SPElement = { ...defaultColumnFormatter(paintField ?? field), style: gen.style };
       state.rows.forEach((row, i) => {
@@ -517,10 +560,10 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     foot.className = 'wb-cf-foot';
     const note = document.createElement('span');
     note.className = 'wb-cf-note';
-    const replaced = rules.length ? rulesToStyle(field, rules, existingStyle()).replacedFormulas : [];
+    const replaced = rules.length ? rulesToStyle(field, rules, priorStyle()).replacedFormulas : [];
     note.textContent = replaced.length
       ? `⚠ replaces the formula currently on ${replaced.join(', ')}`
-      : '';
+      : (parsedFallbacks ? '↻ editing the rules already on it — parsed back from its formulas' : '');
     foot.appendChild(note);
     const cancel = document.createElement('button');
     cancel.textContent = 'Cancel';
@@ -528,11 +571,15 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     foot.appendChild(cancel);
     const apply = document.createElement('button');
     apply.className = 'wb-cf-apply';
-    apply.textContent = target.kind === 'element'
-      ? `Apply to ${nameOf(targetNode!)}`
-      : `Apply to the [$${paintField!.name}] formatter`;
-    apply.title = 'Merge the generated conditional styles (undoable with Ctrl+Z)';
-    apply.disabled = !rules.length;
+    const removing = !rules.length && parsedFallbacks !== null;
+    const targetLabel = target.kind === 'element'
+      ? nameOf(targetNode!)
+      : `the [$${paintField!.name}] formatter`;
+    apply.textContent = removing ? `Remove the rules from ${targetLabel}` : `Apply to ${targetLabel}`;
+    apply.title = removing
+      ? 'Every managed property returns to its pre-rules look (undoable with Ctrl+Z)'
+      : 'Merge the generated conditional styles (undoable with Ctrl+Z)';
+    apply.disabled = !rules.length && !removing;
     apply.addEventListener('click', () => {
       if (target.kind === 'element') applyToElement(target.path);
       else applyToColumn(target.cellPath);
@@ -545,7 +592,12 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   const applyToElement = (path: NodePath): void => {
     const node = state.nodeAt(path);
     if (!node) return;
-    const gen = rulesToStyle(field, rules, node.style);
+    if (!rules.length && parsedFallbacks) {
+      state.mutateDocument(() => removeRulesFrom(node));
+      toast(`Conditional rules removed from ${nameOf(node)} — the pre-rules look is back (Ctrl+Z undoes)`);
+      return;
+    }
+    const gen = rulesToStyle(field, rules, priorStyle(node.style));
     state.mutateDocument(() => { node.style = { ...(node.style ?? {}), ...gen.style }; });
     toast(`${rules.length} rule${rules.length === 1 ? '' : 's'} applied to ${nameOf(node)} — Ctrl+Z undoes`);
   };
@@ -570,7 +622,12 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     }
     state.openColumnRef(paint.name);
     const root = state.doc.root;
-    const gen = rulesToStyle(field, rules, root.style);
+    if (!rules.length && parsedFallbacks) {
+      state.mutateDocument(() => removeRulesFrom(root));
+      toast(`Conditional rules removed from the [$${paint.name}] formatter — the pre-rules look is back (Ctrl+Z undoes)`);
+      return;
+    }
+    const gen = rulesToStyle(field, rules, priorStyle(root.style));
     state.mutateDocument(() => { root.style = { ...(root.style ?? {}), ...gen.style }; });
     toast(existed
       ? `Rules applied to the [$${paint.name}] formatter — you're editing it now (Ctrl+Z undoes the styles)`

@@ -134,7 +134,12 @@ export const PALETTE: PaletteItem[] = [
   },
   {
     id: 'tag-pills', label: 'Tag pills (forEach)', icon: 'Tag', group: 'Text & Status',
-    description: 'Split a delimited field into pills (dynamic-colored-pills). NOTE: forEach+split only survives inside customCardProps in production columns — multi-choice fields iterate directly.',
+    // canon correction (HANDOFF §3b, owner field testimony 2026-06-13): the
+    // old "only survives inside customCardProps" claim was WRONG — forEach +
+    // split() is fatal on the ROOT element only; on child elements (like
+    // this preset's pill span) it works in production. Never resurrect the
+    // old wording without fresh tenant evidence.
+    description: 'Split a delimited field into pills (dynamic-colored-pills). forEach+split works on child elements like these — only the root element must never carry it; multi-choice fields iterate directly.',
     create: () => ({
       elmType: 'div',
       style: { 'display': 'flex', 'flex-wrap': 'wrap' },

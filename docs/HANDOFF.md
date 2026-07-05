@@ -674,10 +674,18 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    fallback, an existing FORMULA is replaced (UI warns first). Column route
    = "Format this column" semantics (register scaffold, CFR-swap the cell
    as one doc mutation, openColumnRef switches the workspace, then the
-   style merge is the undoable step). Known gap, deliberate: the builder
-   is a one-way generator — it does not parse existing =if() chains back
-   into editable rules; reopening starts fresh over the current style as
-   fallback. Parsing chains back into rules is the obvious next step.
+   style merge is the undoable step). The old "one-way generator" gap
+   CLOSED 2026-07-05: `parseRulesFromStyle` (condRules.ts — the contract
+   tests pin it) parses generated =if() chains back into editable rules,
+   so reopening the dialog lands on the applied rules with the WATCHED
+   field recovered and the pre-rules fallbacks preserved (our own
+   formulas never warn as "replaced"). Correctness is the rebuild-verify
+   gate: the parse regenerates the chains and requires byte-identical
+   output — a foreign or hand-edited formula fails it and the dialog
+   starts fresh over the current style, exactly as before. New with the
+   round trip: ZERO rules + Apply REMOVES the managed chains (each
+   property returns to its pre-rules fallback; effect statics stay,
+   clearable in Format cells).
 1.8. **Sheet mode (the Excel-true surface) — design locked 2026-06-12**,
    see docs/SHEET-MODE.md (owner decisions: ribbon, fx bar with a
    property-slot dropdown, bidirectional dialect transpiler that refuses
@@ -687,7 +695,9 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    same day**: Format cells dialog (formatCells.ts — Font/Border/Fill/
    Alignment, one undoable patch) on header + right-click menus, and
    conditional formatting now watches any column (paintField vs watched
-   field split in condFormat.ts — keep those distinct). Stages 2–3 next.
+   field split in condFormat.ts — keep those distinct). Stages 2–3 SHIPPED
+   2026-06-16 (the transpiler + fx bar, then the shell — SHEET-MODE.md is
+   the history; the 2026-07-05 §6 cleanup fixed this line's stale "next").
 1.9. **Field guide — BUILT 2026-06-12** (owner request; landed via PR #7,
    renumbered from 1.7 in the merge): ☰ menu → 📖 opens a
    full-screen Learn-style reader (`editor/guide.ts` UI + `editor/guideContent.ts`
@@ -714,15 +724,16 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    deployment). Owner still owes the one-time live checklist in
    CONNECTIVITY.md §3.6 against a real tenant. Next per the design:
    npm package prep (separate PR; owner adds NPM_TOKEN + tags v0.1.0),
-   then Tier-1 extension after Sheet stage 3.
-1.11. **Maker-first redesign — stages 1–4 SHIPPED** (continuation tracker:
+   then the Tier-1 extension — its "after Sheet stage 3" gate was met
+   2026-06-16, so it's unblocked, just unscheduled (§6 cleanup 2026-07-05).
+1.11. **Maker-first redesign — all five stages SHIPPED** (continuation tracker:
    `docs/HANDOFF-redesign.md`, added by PR #42). A five-stage pass that makes
    the default surface serve the maker and folds the developer studio behind
    one door. Stage 1 (PR #40): grid-first landing, the Studio toggle
    (`#wb-layout.wb-maker`, pref `studioOpen`), monochrome theme icon
    (themeToggle.ts). Stage 2 (PR #41): emergent formatter type — the upfront
    Type dropdown moved into the Studio, replaced by a read-only destination
-   chip (`#wb-dest-chip`, formatterDestination.ts). **Stage 3 (this branch):
+   chip (`#wb-dest-chip`, formatterDestination.ts). **Stage 3:
    the row-view builder** — Ctrl/Cmd-click grid columns to multi-select, "make
    a row view" turns them into weighted **areas** (Normal/Wide/Widest, a
    conflict-free CSS-fr-like flex; areas.ts), with row **density**
@@ -730,8 +741,11 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    emerge (a graduated tile STACKS its areas — buildRowView's `as: 'tile'`);
    density + back-to-grid in a row-view toolbar, and the grid offers
    "⟳ Reopen" after a back-to-grid (state.lastLayoutKind, session-local —
-   FLOOR-AND-SHEETS Stage 0). Per-area right-click sizing was retired
-   2026-07-04 — zone sizing is the template builder inspector's job. **Stage 4 (this branch): CFR linked instances
+   FLOOR-AND-SHEETS Stage 0; both the back-to-grid button and the Reopen
+   bar were later RETIRED by FLOOR-AND-SHEETS Stage 2, 2026-07-05 — the
+   COLUMNS tab and the view strip are the navigation now). Per-area
+   right-click sizing was retired 2026-07-04 — zone sizing is the template
+   builder inspector's job. **Stage 4: CFR linked instances
    (the Figma model)** — a teal link badge (`.wb-cfr-link`, the `#038387` of
    the Structure ⤷ chip) marks a columnFormatterReference cell; its header menu
    offers "Format this Column" (edit the shared format, blast radius named) and
@@ -774,10 +788,13 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    fresh-context recipients. Still open from the epic: W2's outreach motion
    (badges/PRs into pnp docs — owner's call), oversized-workspace row
    capping (the dialog warns + offers fallbacks instead).
-2. Re-point the private visual-compare harness at a local clone of this
-   repo (it currently consumes the old in-repo copy), and have it invoke
-   the tenant-theme import before captures so color becomes a first-class
-   MATCH dimension.
+2. ~~Re-point the private visual-compare harness at a local clone~~
+   SUPERSEDED (§6 cleanup 2026-07-05): the public tenant-agnostic rebuild
+   (`npm run visual:compare`, §7) replaced the private harness for this
+   repo. Still live from this item: invoke the tenant-theme import before
+   captures so color becomes a first-class MATCH dimension — and the SP
+   half's first run against a real tenant is still owed (the numbered ⚠
+   watch spots mark the likely first-run adjustments).
 3. pnp/List-Formatting community outreach — the pitch assets: README, the
    all-MATCH fidelity result, the teaching linter. Decide tool/ contribution
    vs linked standalone repo with maintainers.
@@ -792,7 +809,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 867 vitest unit tests across 48 files (engine semantics incl.
+- `npm test` — 875 vitest unit tests across 48 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -807,7 +824,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the Select/Live canvas mode). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 140 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 141 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { evaluate, type EvalContext } from '../core/expressions';
 import {
   condExpr, condLabel, conditionOptionsFor, rulesToStyle, suggestChoiceColors,
-  escapeCondValue, condColor,
+  escapeCondValue, condColor, parseRulesFromStyle, type CondRule,
 } from './condRules';
 import type { MockField, MockRow } from '../core/types';
 
@@ -157,5 +157,115 @@ describe('rulesToStyle — compiled chains', () => {
     expect(evaluate(style['color'], ctx({ Status: 'Blocked' }))).toBe('');
     expect(evaluate(style['color'], ctx({ Status: 'Done' }))).toBe(condColor('blue').strong);
     expect(evaluate(style['border-left'], ctx({ Status: 'Blocked' }))).toContain(condColor('red').strong);
+  });
+});
+
+// ─── parse-back: rules → style → rules (§6 1.7's "obvious next step") ────────
+// The builder is no longer a one-way generator: chains it generated parse
+// back into editable rules, gated by REBUILDING the style and requiring
+// byte-identical chains — a lossy reopen is structurally impossible.
+
+describe('parseRulesFromStyle — the round trip', () => {
+  const ALL_FIELDS = Object.values(FIELDS);
+
+  const roundTrips = (field: MockField, rules: CondRule[], existing?: Record<string, string>): void => {
+    const gen = rulesToStyle(field, rules, existing);
+    const parsed = parseRulesFromStyle(gen.style, ALL_FIELDS);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.fieldName).toBe(field.name);
+    expect(parsed!.rules).toEqual(rules);
+    // regenerating from the parse reproduces the chains byte-for-byte
+    const regen = rulesToStyle(field, parsed!.rules, existing);
+    expect(regen.style).toEqual(gen.style);
+  };
+
+  it('round-trips every condition kind the builder can produce', () => {
+    roundTrips(FIELDS.Status, [{ cond: { kind: 'eq', value: 'Blocked' }, effect: 'pill', color: 'red' }]);
+    roundTrips(FIELDS.Title, [{ cond: { kind: 'contains', value: 'urgent' }, effect: 'text', color: 'amber' }]);
+    roundTrips(FIELDS.Title, [{ cond: { kind: 'notEmpty' }, effect: 'text', color: 'green' }]);
+    roundTrips(FIELDS.DueDate, [
+      { cond: { kind: 'overdue' }, effect: 'fill', color: 'red' },
+      { cond: { kind: 'today' }, effect: 'fill', color: 'blue' },
+      { cond: { kind: 'soon', days: 14 }, effect: 'fill', color: 'amber' },
+      { cond: { kind: 'empty' }, effect: 'text', color: 'gray' },
+    ]);
+    roundTrips(FIELDS.Progress, [
+      { cond: { kind: 'gte', value: '100' }, effect: 'pill', color: 'green' },
+      { cond: { kind: 'lt', value: '25' }, effect: 'stripe', color: 'red' },
+    ]);
+    roundTrips(FIELDS.Owner, [{ cond: { kind: 'isMe' }, effect: 'fill', color: 'blue' }]);
+    roundTrips(FIELDS.AssignedTo, [{ cond: { kind: 'isMe' }, effect: 'text', color: 'blue' }]);
+    roundTrips(FIELDS.AssignedTo, [{ cond: { kind: 'empty' }, effect: 'strike', color: 'gray' }]);
+    roundTrips(FIELDS.Approved, [
+      { cond: { kind: 'isTrue' }, effect: 'pill', color: 'green' },
+      { cond: { kind: 'isFalse' }, effect: 'text', color: 'gray' },
+    ]);
+    roundTrips(FIELDS.Project, [{ cond: { kind: 'eq', value: 'Apollo' }, effect: 'fill', color: 'teal' }]);
+  });
+
+  it('round-trips mixed effects across rules (per-property chains share one condition spine)', () => {
+    roundTrips(FIELDS.Status, [
+      { cond: { kind: 'eq', value: 'Done' }, effect: 'strike', color: 'green' },
+      { cond: { kind: 'eq', value: 'Blocked' }, effect: 'pill', color: 'red' },
+      { cond: { kind: 'empty' }, effect: 'text', color: 'gray' },
+    ]);
+  });
+
+  it('recovers the plain-value fallbacks an existing style contributed', () => {
+    const existing = { 'color': '#333333', 'font-weight': '400' };
+    const gen = rulesToStyle(FIELDS.Status, [{ cond: { kind: 'eq', value: 'Done' }, effect: 'text', color: 'green' }], existing);
+    const parsed = parseRulesFromStyle(gen.style, ALL_FIELDS)!;
+    expect(parsed.fallbacks['color']).toBe('#333333');
+    expect(parsed.fallbacks['font-weight']).toBe('400');
+  });
+
+  it('recovers the WATCHED field even when it differs from the painted column', () => {
+    // "color DueDate by Status" — the chains test [$Status]
+    const gen = rulesToStyle(FIELDS.Status, [{ cond: { kind: 'eq', value: 'Blocked' }, effect: 'fill', color: 'red' }]);
+    expect(parseRulesFromStyle(gen.style, ALL_FIELDS)!.fieldName).toBe('Status');
+  });
+
+  it('ignores unmanaged properties sitting beside the chains', () => {
+    const gen = rulesToStyle(FIELDS.Status, [{ cond: { kind: 'eq', value: 'Done' }, effect: 'pill', color: 'green' }]);
+    const style = { ...gen.style, 'margin': '4px', 'width': '120px' };
+    const parsed = parseRulesFromStyle(style, ALL_FIELDS);
+    expect(parsed?.rules).toHaveLength(1);
+  });
+
+  it('REFUSES foreign formulas — refuse-and-teach, never a guessed rule', () => {
+    // not an if-chain at all
+    expect(parseRulesFromStyle({ 'color': "=if([$Status]" }, ALL_FIELDS)).toBeNull();
+    expect(parseRulesFromStyle({ 'color': "='#'+substring([$Status],0,6)" }, ALL_FIELDS)).toBeNull();
+    // a hand-written condition outside the builder's vocabulary
+    expect(parseRulesFromStyle(
+      { 'color': "=if([$Progress] > 10 && [$Progress] < 20, '#107c10', '')" }, ALL_FIELDS,
+    )).toBeNull();
+    // an unknown field name
+    expect(parseRulesFromStyle(
+      { 'color': "=if([$Ghost] == 'x', '#107c10', '')" }, ALL_FIELDS,
+    )).toBeNull();
+    // no chains at all
+    expect(parseRulesFromStyle({ 'color': '#333333' }, ALL_FIELDS)).toBeNull();
+    expect(parseRulesFromStyle(undefined, ALL_FIELDS)).toBeNull();
+  });
+
+  it('REFUSES a hand-edited chain value (a color outside the builder palette fails the rebuild gate)', () => {
+    const gen = rulesToStyle(FIELDS.Status, [{ cond: { kind: 'eq', value: 'Done' }, effect: 'text', color: 'green' }]);
+    const edited = { ...gen.style, 'color': gen.style['color'].replace('#107c10', '#123456') };
+    expect(parseRulesFromStyle(edited, ALL_FIELDS)).toBeNull();
+  });
+
+  it('REFUSES chains whose condition spines disagree (one prop hand-reordered)', () => {
+    const gen = rulesToStyle(FIELDS.Status, [
+      { cond: { kind: 'eq', value: 'Done' }, effect: 'fill', color: 'green' },
+      { cond: { kind: 'eq', value: 'Blocked' }, effect: 'fill', color: 'red' },
+    ]);
+    const style = { ...gen.style };
+    // swap the two conditions in ONE property's chain only
+    style['color'] = style['color']
+      .replace("[$Status] == 'Done'", '§TMP§')
+      .replace("[$Status] == 'Blocked'", "[$Status] == 'Done'")
+      .replace('§TMP§', "[$Status] == 'Blocked'");
+    expect(parseRulesFromStyle(style, ALL_FIELDS)).toBeNull();
   });
 });
