@@ -385,3 +385,51 @@ test('conditional formatting: modal-local ↶↷ over the rules list; Ctrl+Z ins
   await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
   await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
 });
+
+test('conditional formatting round-trips: reopen parses the rules back; zero rules removes them', async ({ page }) => {
+  // build and apply one rule the normal way
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  const cf = page.locator('.wb-cf');
+  await cf.locator('.wb-cf-cond', { hasText: 'is in the past (overdue)' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await cf.locator('.wb-cf-apply').click();
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate'); // landed on the formatter
+  await page.locator('.wb-fmt-tab-cols').click(); // back to the grid
+
+  // REOPEN: the dialog parses the chains back — the rule is there to edit
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
+  await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
+  await expect(cf.locator('.wb-cf-note')).toContainText('parsed back');
+
+  // edit: add a second rule and re-apply — both survive the next round trip
+  await cf.locator('.wb-cf-cond', { hasText: 'is today' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(2);
+  await cf.locator('.wb-cf-apply').click();
+  await page.locator('.wb-fmt-tab-cols').click();
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(2);
+
+  // remove them all: zero rules + Apply = clear the conditional formatting
+  await cf.locator('.wb-cf-rule-del').last().click();
+  await cf.locator('.wb-cf-rule-del').click();
+  await expect(cf.locator('.wb-cf-empty')).toContainText('Apply now clears');
+  const apply = cf.locator('.wb-cf-apply');
+  await expect(apply).toHaveText(/Remove the rules/);
+  await apply.click();
+  await expect(page.locator('#wb-toast')).toContainText('Conditional rules removed');
+  // the chains are gone from the registered formatter's JSON
+  await openJson(page);
+  expect(await page.inputValue('#wb-json-text')).not.toContain('if(toString([$DueDate])');
+
+  // and a fresh open is genuinely fresh — nothing left to parse
+  await page.locator('.wb-fmt-tab-cols').click();
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(0);
+  await expect(cf.locator('.wb-cf-empty')).toContainText('No rules yet');
+});

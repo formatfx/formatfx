@@ -336,3 +336,181 @@ export function rulesToStyle(
 
   return { style, replacedFormulas };
 }
+
+// ─── style → rules (the parse-back; §6 1.7's "obvious next step") ────────────
+// The builder is not a one-way generator anymore: `=if()` chains IT generated
+// parse back into editable rules. Correctness is the REBUILD-VERIFY gate —
+// the parse is best-effort, then regenerated through rulesToStyle and every
+// chain must come back byte-identical; anything hand-edited beyond the
+// builder's vocabulary fails the gate and the dialog starts fresh (the
+// templateModal round-trip precedent). Refuse-and-teach: a failed parse
+// returns null, never a guessed rule.
+
+export interface ParsedRules {
+  rules: CondRule[];
+  /** The WATCHED field the chains test (may differ from the painted column). */
+  fieldName: string;
+  /** Per managed property, the pre-rules plain fallback ('' = there was none). */
+  fallbacks: Record<string, string>;
+}
+
+/** One parsed `=if(e1,'v1', if(e2,'v2', … '<fallback>'))` chain. */
+interface IfChain { exprs: string[]; values: string[]; fallback: string }
+
+/** SP string literal: single-quoted, and there is no escape syntax — a quote
+ *  simply cannot appear inside (escapeCondValue strips them on the way in). */
+function unquote(raw: string): string | null {
+  if (raw.length < 2 || !raw.startsWith("'") || !raw.endsWith("'")) return null;
+  const inner = raw.slice(1, -1);
+  return inner.includes("'") ? null : inner;
+}
+
+/** Split `if(…)` innards into exactly three top-level arguments —
+ *  paren-depth and quote aware, so commas inside nested calls don't split. */
+function splitIfArgs(inner: string): [string, string, string] | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote = false;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (quote) { if (ch === "'") quote = false; continue; }
+    if (ch === "'") quote = true;
+    else if (ch === '(') depth++;
+    else if (ch === ')') { depth--; if (depth < 0) return null; }
+    else if (ch === ',' && depth === 0) {
+      if (parts.length === 2) return null; // a 4th top-level argument isn't our shape
+      parts.push(inner.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (quote || depth !== 0 || parts.length !== 2) return null;
+  parts.push(inner.slice(start));
+  return [parts[0].trim(), parts[1].trim(), parts[2].trim()];
+}
+
+/** Parse a generated chain: `=if(expr, 'value', <rest>)` nesting in the last
+ *  argument until a plain quoted fallback. Null on any other shape. */
+function parseIfChain(raw: SPExpr | undefined): IfChain | null {
+  if (typeof raw !== 'string' || !raw.startsWith('=if(')) return null;
+  const exprs: string[] = [];
+  const values: string[] = [];
+  let cur = raw.slice(1);
+  while (cur.startsWith('if(') && cur.endsWith(')')) {
+    const args = splitIfArgs(cur.slice(3, -1));
+    if (!args) return null;
+    const v = unquote(args[1]);
+    if (v === null) return null;
+    exprs.push(args[0]);
+    values.push(v);
+    cur = args[2];
+  }
+  if (!exprs.length) return null;
+  const fallback = unquote(cur);
+  if (fallback === null) return null;
+  return { exprs, values, fallback };
+}
+
+/** The first `[$Name]` / `[$Name.prop]` reference in a condition. */
+const FIELD_REF = /\[\$([A-Za-z0-9_]+)(?:\.[A-Za-z0-9_]+)?\]/;
+
+/**
+ * Recover the Condition behind one generated expression. Extraction is
+ * deliberately sloppy regex — every candidate is VERIFIED by regenerating
+ * condExpr and requiring an exact string match, so a sloppy pull can only
+ * refuse, never mis-parse.
+ */
+function matchCondition(field: MockField, expr: string): Condition | null {
+  const candidates: Condition[] = [
+    { kind: 'empty' }, { kind: 'notEmpty' }, { kind: 'overdue' },
+    { kind: 'today' }, { kind: 'isMe' }, { kind: 'isTrue' }, { kind: 'isFalse' },
+  ];
+  const quoted = /'([^']*)'/.exec(expr)?.[1];
+  if (quoted !== undefined) {
+    candidates.push({ kind: 'eq', value: quoted }, { kind: 'contains', value: quoted });
+  }
+  const num = /(?:>=|<) (-?\d+(?:\.\d+)?)/.exec(expr)?.[1];
+  if (num !== undefined) {
+    candidates.push({ kind: 'gte', value: num }, { kind: 'lt', value: num });
+  }
+  const days = /addDays\(@now, (\d+)\)/.exec(expr)?.[1];
+  if (days !== undefined) candidates.push({ kind: 'soon', days: Number(days) });
+  return candidates.find((c) => condExpr(field, c) === expr) ?? null;
+}
+
+/** Recover rule i's look: the (effect, color) whose conditional properties
+ *  match the chains' values at index i exactly — and every OTHER managed
+ *  property must carry '' there (the rule doesn't set it). */
+function matchLook(
+  chains: Record<string, IfChain>,
+  props: string[],
+  i: number,
+): { effect: EffectId; color: string } | null {
+  for (const effect of COND_EFFECTS) {
+    for (const color of COND_COLORS) {
+      const want = effect.conditional(color);
+      const ok = Object.keys(want).every((p) => p in chains)
+        && props.every((p) => {
+          const expected = want[p];
+          return expected !== undefined ? chains[p].values[i] === expected : chains[p].values[i] === '';
+        });
+      if (ok) return { effect: effect.id, color: color.id };
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse a style's generated `=if()` chains back into editable rules, the
+ * watched field, and the pre-rules fallbacks. Null whenever the style isn't
+ * something this builder produced (no chains, a foreign condition, a
+ * hand-edited value, disagreeing condition spines) — gated at the end by
+ * regenerating every chain and requiring byte-identical output.
+ */
+export function parseRulesFromStyle(
+  style: Record<string, SPExpr | undefined> | undefined,
+  fields: MockField[],
+): ParsedRules | null {
+  if (!style) return null;
+  const chains: Record<string, IfChain> = {};
+  for (const [prop, raw] of Object.entries(style)) {
+    const chain = parseIfChain(raw);
+    if (chain) chains[prop] = chain;
+    // non-chain formulas on other props are simply unmanaged — ignored here
+  }
+  const props = Object.keys(chains);
+  if (!props.length) return null;
+
+  // one condition SPINE across every managed property — rulesToStyle threads
+  // the same rule list through each chain, so any disagreement is foreign
+  const spine = chains[props[0]].exprs;
+  for (const p of props) {
+    const e = chains[p].exprs;
+    if (e.length !== spine.length || e.some((x, i) => x !== spine[i])) return null;
+  }
+
+  const fieldName = FIELD_REF.exec(spine[0])?.[1];
+  const field = fieldName ? fields.find((f) => f.name === fieldName) : undefined;
+  if (!field) return null;
+
+  const rules: CondRule[] = [];
+  for (let i = 0; i < spine.length; i++) {
+    const cond = matchCondition(field, spine[i]);
+    if (!cond) return null;
+    const look = matchLook(chains, props, i);
+    if (!look) return null;
+    rules.push({ cond, effect: look.effect, color: look.color });
+  }
+  const fallbacks: Record<string, string> = {};
+  for (const p of props) fallbacks[p] = chains[p].fallback;
+
+  // the rebuild-verify gate: regenerate from the parse and require every
+  // chain byte-for-byte. (Statics aren't gated — the dialog re-pins shape on
+  // apply, and a hand-tweaked static is not destructive to round-trip.)
+  const existing: Record<string, string> = {};
+  for (const [p, fb] of Object.entries(fallbacks)) if (fb) existing[p] = fb;
+  const regen = rulesToStyle(field, rules, existing);
+  for (const p of props) if (regen.style[p] !== style[p]) return null;
+
+  return { rules, fieldName: field.name, fallbacks };
+}
