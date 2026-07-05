@@ -85,10 +85,8 @@ function isFormula(v: SPExpr | undefined): boolean {
   return (typeof v === 'string' && v.trim().startsWith('=')) || (typeof v === 'object' && v !== null);
 }
 
-function exprText(v: SPExpr | undefined): string {
-  if (v === undefined) return '';
-  if (typeof v === 'object' && v !== null) return JSON.stringify(v);
-  return String(v);
+function exprText(v: SPExpr): string {
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 
 const clip = (s: string, max = 72): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
