@@ -105,8 +105,6 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       </div>
     </div>
     <div class="wb-drawbar" role="toolbar" aria-label="Draw tools">
-      <button class="wb-tool wb-tool-select active" data-tool="select" title="Select elements on the canvas" aria-label="Select">${ICONS.select}</button>
-      <span class="wb-tool-sep" aria-hidden="true"></span>
       <button class="wb-tool" data-tool="text" title="Insert a text element (span)" aria-label="Insert text">${ICONS.text}</button>
       <button class="wb-tool" data-tool="frame" title="Insert a container (div) with border and padding" aria-label="Insert frame">${ICONS.frame}</button>
       <button class="wb-tool" data-tool="icon" title="Insert a Fluent icon" aria-label="Insert icon">${ICONS.icon}</button>
@@ -388,7 +386,6 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
 const ICONS = {
   view: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M2.5 3.5h11v9h-11zM2.5 6.5h11M2.5 9.5h11"/></svg>',
   history: '<svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.8v2.4h2.4M8 5.4V8l1.9 1.4"/></svg>',
-  select: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 2l9 5-3.6 1.2L10 12l-1.4.6L7 9 4 11z"/></svg>',
   text: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 3h10v2.2h-1.1V4.1H8.6v7.8H10V13H6v-1.1h1.4V4.1H4.1v1.1H3z"/></svg>',
   frame: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
   icon: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 2.2l1.6 3.4 3.7.4-2.8 2.5.8 3.6L8 10.7 4.7 12.6l.8-3.6L2.7 6l3.7-.4z"/></svg>',
