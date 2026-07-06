@@ -546,7 +546,9 @@ function beginHostPick(hostPaths: NodePath[], done: (idx: number | null) => void
   const wanted = new Map(hostPaths.map((p, i) => [p.join('.'), i]));
   const marked: HTMLElement[] = [];
   canvas?.querySelectorAll<HTMLElement>('[data-sp-path]').forEach((el) => {
-    if (wanted.has(el.dataset.spPath ?? ' ')) {
+    // the selector guarantees the attribute exists ('' is the ROOT — a real key)
+    const key = el.dataset.spPath;
+    if (key !== undefined && wanted.has(key)) {
       el.classList.add('wb-trigger-candidate');
       marked.push(el);
     }
@@ -561,11 +563,15 @@ function beginHostPick(hostPaths: NodePath[], done: (idx: number | null) => void
     done(idx);
   };
   const onClick = (e: MouseEvent): void => {
-    const t = (e.target as HTMLElement).closest?.('.wb-trigger-candidate') as HTMLElement | null;
-    if (!t) return;
+    // picking is modal: EVERY click is swallowed so a stray one can't fall
+    // through to click-to-select (or any other handler) underneath — only a
+    // candidate ends the pick, only Esc cancels it
     e.preventDefault();
     e.stopPropagation();
-    finish(wanted.get(t.dataset.spPath ?? ' ') ?? null);
+    const t = (e.target as HTMLElement).closest?.('.wb-trigger-candidate') as HTMLElement | null;
+    if (!t) return;
+    const key = t.dataset.spPath;
+    finish(key !== undefined ? wanted.get(key) ?? null : null);
   };
   const onKey = (e: KeyboardEvent): void => {
     if (e.key !== 'Escape') return;
