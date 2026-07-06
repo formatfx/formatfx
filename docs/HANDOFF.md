@@ -394,9 +394,15 @@ Key structural invariants:
   children can't swallow it — generate, don't lint). One pick = ONE
   `mutateDocument` (overlay + props + stamped component); the trigger
   carrier gets selected. The inspector's Row action section gained
-  "⚡ Make this a click surface" for the action kinds. Nested/overlapping
-  triggers stay parked (#205); drag-onto-highlighted-division stays the
-  aspirational upgrade.
+  "⚡ Make this a click surface" for the action kinds — a full param form
+  (defaultClick / executeFlow flow id / setValue column+value / link url,
+  refuse-on-incomplete). The drop-target gesture shipped same-day after
+  owner pushback as "🎯 Point at it…": mapper card mode hides the dialog,
+  candidates glow on the canvas (`.wb-trigger-candidate`), click picks the
+  host, Esc cancels; placement + beak toggles beside it. Raw canvas drops
+  stay prompt-free inline inserts (standing #148 decision) — the pick
+  gesture, not the drop, is the trigger door. Nested/overlapping triggers
+  stay parked (#205).
 
 - **The row view builder (2026-07-03, owner brief — supersedes the 06-24
   template modal's interaction layer)**: "+ New rowview" / the row-view

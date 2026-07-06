@@ -439,6 +439,19 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 
 /* the mapper's trigger picker fine print (issue #204) */
 .wb-compmap-fine { font-size: 10.5px; line-height: 1.45; }
+/* the drop-target gesture: candidates glow teal on the canvas during a pick */
+.wb-trigger-candidate { outline: 2px dashed var(--wb-component); outline-offset: 2px; cursor: copy; }
+.wb-trigger-candidate:hover { outline-style: solid; background: color-mix(in srgb, var(--wb-component) 8%, transparent); }
+.wb-compmap-pick {
+  flex: 0 0 auto; margin-left: 6px; padding: 3px 8px; font-size: 11px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--wb-component); border-radius: 5px;
+  background: transparent; color: var(--wb-component); white-space: nowrap;
+}
+.wb-compmap-pick:hover { background: var(--wb-component-bg); }
+/* the inspector's click-surface generator (the action side of the vocabulary) */
+.wb-clicksurface { display: flex; flex-direction: column; gap: 4px; }
+.wb-clicksurface-params { display: flex; flex-direction: column; gap: 4px; }
+.wb-cs-gen:disabled { opacity: .5; cursor: default; }
 .wb-comp-edit {
   font-size: 11px; padding: 4px 8px; cursor: pointer;
   border: 1px solid var(--wb-lp-border); border-radius: 5px;
