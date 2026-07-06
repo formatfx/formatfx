@@ -61,6 +61,8 @@ const MAP = {
   Name: ['text_field', 'tag'], TouchPointer: ['cursor_click', 'cursor'],
   // components (⬡) — "package this as a reusable component"
   Package: ['box_multiple', 'box', 'cube_multiple'],
+  // view strip ＋ menu + grid column-group chrome (Sheet chrome Stage 2)
+  ViewList: ['apps_list', 'list'], Tiles: ['glance', 'grid'], Clear: ['dismiss'],
   // template / layout / chart icons
   GridViewMedium: ['grid'], GroupedList: ['group_list', 'apps_list', 'list'],
   BarChartHorizontal: ['data_bar_horizontal', 'data_histogram'], DonutChart: ['data_pie'],

@@ -628,7 +628,11 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   icon picker, the fx bar's suggestions, and the canvas renderer) still ride
   the Fabric Core 11 CDN font: those names have no local rule and fall
   through to it. So in an offline container the chrome paints but those
-  arbitrary previews are blank — that's expected, not a bug. A tenant's
+  arbitrary previews are blank — that's expected, not a bug. When NEW
+  chrome names a glyph, add it to the generator's MAP and regenerate —
+  `chromeIcons.test.ts` now sweeps the source for literal glyph names and
+  fails on any without a bundled mask (the Stage-2 view-strip menu shipped
+  three unbundled glyphs before this guard existed). A tenant's
   newer Fluent font may also draw slightly different glyphs for the CDN
   path (cosmetic only).
 - Stock palettes ≠ tenant theme; the Data tab's **Tenant theme import**
@@ -869,7 +873,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 897 vitest unit tests across 49 files (engine semantics incl.
+- `npm test` — 945 vitest unit tests across 52 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state, preset binding, grid
   scaffolding + grid mutations, conditional-formatting codegen evaluated
@@ -884,7 +888,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   the Select/Live canvas mode). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 149 Playwright specs across `sandbox.spec.ts`
+- `npm run test:ui` — 150 Playwright specs across `sandbox.spec.ts`
   (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
   snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
   box model, flex editor, playground incl. quick looks/structure tree/property
