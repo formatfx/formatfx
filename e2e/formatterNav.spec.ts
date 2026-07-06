@@ -14,8 +14,8 @@ test('the floor lands on the COLUMNS tab — the grid IS columns mode (Stage 2)'
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-fmt-tab-view')).not.toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  // the subtle schema tag names which view schema this compiles to
-  await expect(page.locator('.wb-doc-pill-type')).toHaveText('list row schema');
+  // no schema tag on the floor — the view-wrapper chrome belongs to sheets
+  await expect(page.locator('.wb-doc-pill-type')).toBeHidden();
   // the surface pill stays blue — violet is reserved for a drilled column DOC
   await expect(page.locator('.wb-doc-pill')).not.toHaveClass(/wb-doc-pill-col/);
   // the view strip carries no grid chip (no flip-flop button — owner call
@@ -116,11 +116,19 @@ test('clicking COLUMNS while the grid is up browses the formatted-columns galler
   await expect(page.locator('.wb-doc-pill')).toHaveClass(/wb-doc-pill-col/);
 });
 
-test('the VIEWS tab with no sheets yet opens the View Formatters menu (the on-ramp)', async ({ page }) => {
+test('the VIEWS tab with no sheets yet starts a row view of your columns (owner call 2026-07-06)', async ({ page }) => {
   await page.locator('.wb-fmt-tab-view').click();
-  await expect(page.locator('.wb-viewmenu')).toBeVisible();
-  await expect(page.locator('.wb-viewmenu-empty')).toBeVisible();
-  await expect(page.locator('.wb-viewmenu-newrow')).toBeVisible();
+  // no popup detour and no bounce back to Columns: a starting sheet is
+  // created from the grid's columns and opened (one undoable step)
+  await expect(page.locator('.wb-viewmenu')).toHaveCount(0);
+  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
+  await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+  await expect(page.locator('#wb-viewstrip .wb-viewstrip-chip')).toHaveText('View 1');
+  // one Ctrl+Z removes the starting sheet and lands back on the grid
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
+  await expect(page.locator('#wb-viewstrip .wb-viewstrip-chip')).toHaveCount(0);
 });
 
 test('the VIEWS tab returns to the sheet last on the canvas; COLUMNS minimizes to the grid', async ({ page }) => {

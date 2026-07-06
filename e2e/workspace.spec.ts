@@ -182,14 +182,17 @@ test('Title column toggle hides the context column in the column preview', async
   await expect(page.locator('#wb-titlecol')).toBeHidden();
 });
 
-test('wrap-in-parent works on the root', async ({ page }) => {
+test('wrap-in-parent works on the root (of a view sheet — the grid tree has no root row)', async ({ page }) => {
+  await loadRowFixture(page);
   const rootRow = page.locator('.wb-tree-row').first();
   await rootRow.hover();
   await rootRow.locator('button[title*="Wrap"]').click();
   await openJson(page);
   const json = JSON.parse(await page.inputValue('#wb-json-text'));
+  // the new wrapper is the root; the old root (the named fixture) is its child
   expect(json.rowFormatter.style.display).toBe('flex');
   expect(json.rowFormatter.children).toHaveLength(1);
+  expect(json.rowFormatter.children[0]._elmName).toBe('Fixture row');
 });
 
 test('box-model editor writes per-side padding to the selected element', async ({ page }) => {

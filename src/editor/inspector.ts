@@ -48,6 +48,14 @@ export function mountInspector(host: HTMLElement): void {
       host.innerHTML = '<div class="wb-inspector-empty">Select an element on the canvas or in the tree.</div>';
       return;
     }
+    // Columns mode: the grid root is scaffolding, not a maker-editable
+    // element (the canvas ignores its styles, and the tree doesn't list it) —
+    // with it selected (the fresh-load default) the pane teaches instead of
+    // exposing wrapper internals.
+    if (state.doc.kind === 'grid' && state.selection && state.selection.length === 0) {
+      host.innerHTML = '<div class="wb-inspector-empty">You’re on the columns grid — select a column (or an element inside one) to edit it.</div>';
+      return;
+    }
     const commit = (fn: (n: SPElement) => void) => {
       selfCommit = true;
       state.mutateDocument(() => fn(node));

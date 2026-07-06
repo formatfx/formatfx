@@ -69,11 +69,30 @@ export function mountTree(
 
   const render = () => {
     host.innerHTML = '';
-    host.appendChild(renderNode(state.doc.root, []));
+    if (state.doc.kind === 'grid') {
+      // Columns mode: the grid root is scaffolding (the wrapper a future
+      // promotion to a row view would use — gridScaffold.buildGridRoot), not
+      // something the maker built. The tree lists the COLUMNS themselves;
+      // the wrapper div never gets a row here.
+      const cols = state.doc.root.children ?? [];
+      cols.forEach((child, i) => host.appendChild(renderNode(child, [i])));
+      if (!cols.length) {
+        const empty = document.createElement('div');
+        empty.className = 'wb-tree-empty';
+        empty.textContent = 'No columns on the grid — use “+ column” on the canvas to add one.';
+        host.appendChild(empty);
+      }
+    } else {
+      host.appendChild(renderNode(state.doc.root, []));
+    }
     // focus after attach — the rename input is created during the tree walk
     const renameInp = host.querySelector<HTMLInputElement>('.wb-tree-rename');
     if (renameInp) { renameInp.focus(); renameInp.select(); }
   };
+
+  /** Indent depth for a row — on the grid the columns ARE the top level. */
+  const depthOf = (path: NodePath): number =>
+    Math.max(0, path.length - (state.doc.kind === 'grid' ? 1 : 0));
 
   const renderNode = (el: SPElement, path: NodePath): HTMLElement => {
     const wrap = document.createElement('div');
@@ -98,22 +117,16 @@ export function mountTree(
 
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
-    label.style.paddingLeft = `${path.length * 12}px`;
+    label.style.paddingLeft = `${depthOf(path) * 12}px`;
     const typeIcon = document.createElement('i');
     typeIcon.className = `ms-Icon ms-Icon--${elmIconName(el.elmType)} wb-tree-elmicon`;
     label.appendChild(typeIcon);
     // _elmName (the throwaway-name convention SP ignores) is the primary
     // label when present; a nameless CFR host borrows the referenced column's
-    // display name — either way the elmType steps back to a dim suffix
-    // On the grid floor the root's pre-stamped 'Row layout' (a default for a
-    // future promotion to a row view — see gridScaffold.buildGridRoot) must
-    // not leak into the tree: no view exists yet. Only that stamped default
-    // is hidden — a name the maker typed themselves still renders, and
-    // children keep their names either way.
-    const primaryName =
-      path.length === 0 && state.doc.kind === 'grid' && el._elmName === 'Row layout'
-        ? undefined
-        : el._elmName ?? cfrDisplay;
+    // display name — either way the elmType steps back to a dim suffix.
+    // (The grid root and its pre-stamped 'Row layout' name never render here
+    // at all — Columns mode lists the columns themselves, see render().)
+    const primaryName = el._elmName ?? cfrDisplay;
     if (primaryName) {
       const nm = document.createElement('span');
       nm.className = 'wb-tree-name';
@@ -301,7 +314,7 @@ export function mountTree(
     if (el.customCardProps?.formatter) {
       const cardNote = document.createElement('div');
       cardNote.className = 'wb-tree-cardnote';
-      cardNote.style.paddingLeft = `${(path.length + 1) * 12}px`;
+      cardNote.style.paddingLeft = `${(depthOf(path) + 1) * 12}px`;
       cardNote.textContent = '▣ card formatter (flyout content):';
       wrap.appendChild(cardNote);
       // card formatter subtree is fully editable — addressed via CARD_SEGMENT

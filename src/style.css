@@ -748,6 +748,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   padding: 0 1px; font-size: 10px;
 }
 .wb-tree-cardnote { font-size: 10px; color: var(--wb-text-2); font-style: italic; padding: 1px 0; }
+.wb-tree-empty { font-size: 11.5px; color: var(--wb-text-2); padding: 8px 10px; }
 
 /* ── Structure pane split: view section (top) + columns section (bottom) ──── */
 /* the pane becomes a flex column so the two sections can share its height */
@@ -2911,8 +2912,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-leftpane.wb-lens-code .wb-lp-inspector { display: none; }
 .wb-leftpane.wb-lens-code .wb-lp-code { display: flex; flex-direction: column; }
 
-/* ── Code lens declarations box ────────────────────────────────────────────── */
-.wb-codelens { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; height: 100%; }
+/* ── Code lens declarations box ──────────────────────────────────────────────
+   No `display` here: .wb-lp-code owns visibility (hidden outside the Code
+   lens — a same-specificity `display:flex` after it would defeat that and
+   leak the declarations box under the Simple/Pro inspector). */
+.wb-codelens { flex-direction: column; gap: 8px; padding: 14px 16px; height: 100%; }
 .wb-code-box {
   flex: 1 1 auto; width: 100%; min-height: 220px; resize: none;
   font-family: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, monospace;

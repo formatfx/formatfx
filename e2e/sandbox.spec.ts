@@ -24,7 +24,8 @@ test('first load shows the grid-first workspace: Lists-style grid, formatted col
   // grid, and the tree shows its structure
   await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
   await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  await expect(page.locator('.wb-doc-pill-type')).toHaveText('list row schema');
+  // no view-schema tag on the floor — Columns mode carries no wrapper chrome
+  await expect(page.locator('.wb-doc-pill-type')).toBeHidden();
   // the registered column formatters live behind the COLUMN FORMATTERS tab's
   // gallery — Owner is registered but unplaced, so "+ column" can add it, formatted
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
