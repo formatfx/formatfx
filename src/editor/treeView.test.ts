@@ -123,6 +123,38 @@ describe('single-row CFR presentation', () => {
     host.remove();
   });
 
+  it('Columns mode (kind grid): the scaffold root gets NO row — columns are the top level', () => {
+    state.doc = {
+      kind: 'grid',
+      root: {
+        elmType: 'div',
+        _elmName: 'Row layout', // the pre-stamped promotion default
+        children: [
+          { elmType: 'div', _elmName: 'Title', txtContent: '[$Title]' },
+          {
+            elmType: 'div', _elmName: 'Status',
+            columnFormatterReference: '[$Status]',
+            children: [],
+          },
+        ],
+      },
+    };
+    state.columnRefs = { Status: { elmType: 'span', txtContent: '@currentField' } };
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    // one row per COLUMN — the wrapper div (and its stamped name) never renders
+    const rows = host.querySelectorAll<HTMLElement>('.wb-tree-row');
+    expect(rows.length).toBe(2);
+    expect(host.textContent).not.toContain('Row layout');
+    expect(rows[0].dataset.path).toBe('0');
+    expect(rows[1].dataset.path).toBe('1');
+    // columns sit at the visual top level (no phantom indent for the root)
+    expect(rows[0].querySelector<HTMLElement>('.wb-tree-label')?.style.paddingLeft).toBe('0px');
+    host.remove();
+  });
+
   it('a reference named after a prototype key (toString) is still unregistered', () => {
     // Object.hasOwn, not `in`: 'toString' lives on Object.prototype, so an
     // `in` lookup would render a live open button for a missing formatter

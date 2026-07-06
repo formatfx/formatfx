@@ -89,8 +89,22 @@ columns-only floor document IS columns mode. Clicking COLUMNS from a drill
 or a sheet lands on the grid (pure navigation); clicking it when the grid
 is already up browses the formatted-columns gallery. **VIEWS** is active
 exactly while a sheet is up: from the grid it returns to the sheet last on
-the canvas, or opens the View Formatters menu as the on-ramp when no
-sheets exist yet.
+the canvas.
+
+**Amended 2026-07-06 (owner):** with no sheets yet, VIEWS **creates a
+starting row view from the grid's columns** (`makeRowView`, one undoable
+step) and opens it — clicking the tab must land in views mode with
+something real on the canvas, never bounce back to Columns with the View
+Formatters popup (the old on-ramp). The strip's ＋ stays the door to tile
+views and templates.
+
+**Also 2026-07-06 (owner):** Columns mode carries **no view-wrapper
+chrome** in the edit pane. On the floor: the document pill shows plain
+"Grid" (no "list row schema" tag — that tag is sheets-only); the structure
+tree lists the columns themselves (the grid root is scaffolding and never
+gets a row); and the inspector never shows the "Document — grid formatter"
+wrapper card (with the root selected it teaches "select a column" instead
+of exposing wrapper internals like `hideSelection`).
 
 ### 2.2c Column tab groups (owner, 2026-07-05)
 
@@ -186,7 +200,9 @@ that precedent to every canvas (floor, sheets, builder).
   grid chip: the grid is the COLUMNS tab's canvas, so "minimize" is
   "click COLUMNS". The VIEWS tab returns to the sheet last on the canvas
   (`lastOpenViewId`) or opens the View Formatters menu when none exist.
-  "◧ Back to grid" and the Stage-0/1 "⟳ Reopen" bar are retired. The
+  "◧ Back to grid" and the Stage-0/1 "⟳ Reopen" bar are retired. (The
+  no-sheets-yet branch was amended 2026-07-06 — see §2.2b: VIEWS now
+  creates a starting row view instead of opening the menu.) The
   floor can no longer render pseudo-columns at all: the last path in —
   Apply-to-canvas of a row payload over the floor — now gates on the
   schema-import `isPureGrid` guard, so a zoned/composite layout becomes a

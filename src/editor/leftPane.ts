@@ -38,8 +38,9 @@ const LENSES: Array<{ id: EditorLens; label: string }> = [
 ];
 
 /** Subtle schema tag for the view dropdown — which wrapper this view compiles
- *  to. Only read in view mode, where the main doc is on the canvas: grid and
- *  row layouts both ship as the list's row schema; tile is its own schema. */
+ *  to. Only read while a SHEET is up (row/tile view on the canvas): row
+ *  layouts ship as the list's row schema; tile is its own schema. The floor
+ *  never wears it — Columns mode is about columns, not a view wrapper. */
 function viewSchemaLabel(): string {
   return state.doc.kind === 'tile' ? 'tile schema' : 'list row schema';
 }
@@ -164,7 +165,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     colsTab.classList.toggle('active', cols);
     colsTab.setAttribute('aria-selected', String(cols));
     // the pill is violet only for an actual column DOCUMENT — standing on the
-    // grid keeps the blue surface pill ("Grid · list row schema")
+    // grid keeps the blue surface pill (plain "Grid": the schema tag belongs
+    // to sheets — Columns mode carries no view-wrapper chrome)
     pill.classList.toggle('wb-doc-pill-col', drilled);
     if (drilled) {
       const fieldName = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
@@ -173,11 +175,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       pill.title = 'Browse the columns that have a formatter, or start one';
     } else {
       pillName.textContent = state.onFloor ? 'Grid' : state.activeViewName;
-      pillType.textContent = viewSchemaLabel();
+      pillType.textContent = state.onFloor ? '' : viewSchemaLabel();
       pill.title = state.onFloor
         ? 'Browse the columns that have a formatter, or start one'
         : 'Your named views — open one, rename it, or start a new row/tile view';
     }
+    pillType.hidden = pillType.textContent === '';
   };
 
   viewTab.addEventListener('click', () => {
@@ -190,18 +193,21 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       return;
     }
     // standing on the grid: the grid belongs to the COLUMNS tab now, so VIEWS
-    // returns to the sheet last on the canvas (newest as the fallback) — and
-    // with no sheets yet, the View Formatters menu is the "+ New …" on-ramp.
+    // returns to the sheet last on the canvas (newest as the fallback). With
+    // no sheets yet it CREATES a starting row view from the grid's columns
+    // (owner call 2026-07-06): clicking VIEWS must land in views mode with
+    // something real on the canvas — never bounce back to Columns with a
+    // popup. One undoable step; ＋ in the strip stays the tile/template door.
     const target = (state.lastOpenViewId ? state.viewById(state.lastOpenViewId) : undefined)
       ?? state.views[state.views.length - 1];
     if (target) {
       state.openView(target.id);
       toast(`Opened “${target.name}”`);
-      refreshFmtNav();
     } else {
-      refreshFmtNav();
-      openViewMenu(pill, toast);
+      state.makeRowView();
+      toast(`Started “${state.activeViewName}” — a row view of your columns. Use ＋ in the strip for more row or tile views.`);
     }
+    refreshFmtNav();
   });
   colsTab.addEventListener('click', () => {
     const wasLibrary = libraryOpen;
