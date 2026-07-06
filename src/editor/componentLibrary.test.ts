@@ -178,9 +178,18 @@ describe('mapper — the trigger picker (issue #204)', () => {
     expect(overlayEl.style.display).toBe('');
     expect(document.querySelector('.wb-trigger-candidate')).toBeNull();
 
-    // pick again, this time CLICK the child-division copy — the host select
-    // lands on that candidate
+    // pick again — a STRAY click (editor chrome outside any candidate, here
+    // the Live mode button) is swallowed whole: it neither acts underneath
+    // nor ends the pick. (A click INSIDE a candidate resolves to it via
+    // closest() — the whole division is its own click surface.)
     pick.click();
+    const liveBtn = [...canvasHost.querySelectorAll<HTMLButtonElement>('.wb-canvas-mode')]
+      .find((b) => /Live/.test(b.textContent ?? ''))!;
+    liveBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.canvasMode).toBe('select'); // the click never reached the toggle
+    expect(document.querySelector('.wb-trigger-candidate')).not.toBeNull();
+
+    // now CLICK the child-division copy — the host select lands on that candidate
     const child = [...document.querySelectorAll<HTMLElement>('.wb-trigger-candidate')]
       .find((el) => el.dataset.spPath === '0')!;
     child.dispatchEvent(new MouseEvent('click', { bubbles: true }));
