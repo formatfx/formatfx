@@ -66,15 +66,22 @@ Shipped alongside the components-pane inventory redesign:
   on a picked candidate division, with placement; Insert = one
   `mutateDocument` (overlay + card props + stamped component together) and
   selects the trigger carrier. DOM contract in `componentLibrary.test.ts`.
-- **The inspector's action door**: "⚡ Make this a click surface" on any
-  candidate division generates the `sp-card-defaultClickButton` overlay with
-  a `defaultClick` action (one undo step, overlay selected) — the action
-  kind/params are then tuned in the standard Row action section, which
-  already speaks the full vocabulary.
-- Still open (aspirational, per §3): the drag-and-drop drop-target gesture
-  with canvas highlighting, and dedicated executeFlow/setValue param pickers
-  in the picker itself (the generator supports them; the lint gate refuses
-  blanks at deploy).
+- **The inspector's action door**: a "click surface" form on any candidate
+  division speaking the FULL action vocabulary with its parameters —
+  defaultClick / executeFlow (flow id) / setValue (column + value) / link
+  (url) — refuse-on-incomplete, then generates the overlay (one undo step,
+  overlay selected for further tuning in the Row action section).
+- **The drop-target gesture (same day, owner pushback)**: "🎯 Point at it…"
+  in the mapper's card mode hides the dialog, highlights every candidate
+  division ON THE CANVAS (`.wb-trigger-candidate`, every rendered copy),
+  and a click picks the host; Esc returns unchanged, stray clicks do
+  nothing (misclick-resistant). Placement (`directionalHint`) and the
+  `isBeakVisible` beak toggle sit beside it. This IS the §3 highlight-and-
+  point model in its click-safe form. Raw drag-a-component-onto-a-division
+  deliberately does NOT open a trigger prompt: canvas drops stay
+  prompt-free inline inserts (standing owner decision, HANDOFF #148 —
+  "palette drops stay prompt-free"); revisit only if the owner re-opens
+  that decision.
 
 ## 3. The apply gesture (drop-target model)
 

@@ -182,6 +182,76 @@ describe('the inspector click-surface door (the action side of the vocabulary)',
     expect(state.doc.root.children![0].children).toHaveLength(1);
   });
 
+  it('executeFlow refuses until the flow id is filled, then generates complete actionParams', () => {
+    state.resetAll();
+    state.activeLens = 'pro';
+    state.doc = { kind: 'row', root: div([div([span('content')])]) };
+    state.selection = [0];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountInspector(host);
+
+    const kindSel = host.querySelector<HTMLSelectElement>('.wb-cs-kind')!;
+    kindSel.value = 'executeFlow';
+    kindSel.dispatchEvent(new Event('change', { bubbles: true }));
+    const gen = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen.disabled).toBe(true); // refuse-and-teach: no blank flow ids
+    const flow = host.querySelector<HTMLInputElement>('.wb-cs-flowid')!;
+    flow.value = 'flow-guid-1';
+    flow.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(gen.disabled).toBe(false);
+    gen.click();
+
+    const overlay = state.doc.root.children![0].children![1];
+    expect(overlay.customRowAction).toEqual({ action: 'executeFlow', actionParams: '{"id":"flow-guid-1"}' });
+    // complete params → the deploy-gating lint stays quiet
+    expect(lintDocument(state.doc).map((i) => i.rule)).not.toContain('flow-missing-id');
+    state.resetAll();
+  });
+
+  it('setValue asks for column + value; link asks for a url and emits the rel-guarded overlay <a>', () => {
+    state.resetAll();
+    state.activeLens = 'pro';
+    state.doc = { kind: 'row', root: div([div([span('content')])]) };
+    state.selection = [0];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountInspector(host);
+
+    const kindSel = host.querySelector<HTMLSelectElement>('.wb-cs-kind')!;
+    kindSel.value = 'setValue';
+    kindSel.dispatchEvent(new Event('change', { bubbles: true }));
+    const gen = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen.disabled).toBe(true);
+    const fieldSel = host.querySelector<HTMLSelectElement>('.wb-cs-field')!;
+    fieldSel.value = 'Status';
+    fieldSel.dispatchEvent(new Event('change', { bubbles: true }));
+    const val = host.querySelector<HTMLInputElement>('.wb-cs-value')!;
+    val.value = 'Done';
+    val.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(gen.disabled).toBe(false);
+    gen.click();
+    expect(state.doc.root.children![0].children![1].customRowAction)
+      .toEqual({ action: 'setValue', actionInput: { Status: 'Done' } });
+    state.undo();
+
+    // link: url required, overlay is an <a> with the tabnabbing guard
+    // (the undo re-rendered the inspector — query the rebuilt form)
+    const kindSel2 = host.querySelector<HTMLSelectElement>('.wb-cs-kind')!;
+    kindSel2.value = 'link';
+    kindSel2.dispatchEvent(new Event('change', { bubbles: true }));
+    const gen2 = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen2.disabled).toBe(true);
+    const url = host.querySelector<HTMLInputElement>('.wb-cs-href')!;
+    url.value = 'https://contoso.com/wiki';
+    url.dispatchEvent(new Event('input', { bubbles: true }));
+    gen2.click();
+    const overlay = state.doc.root.children![0].children![1];
+    expect(overlay.elmType).toBe('a');
+    expect(overlay.attributes?.rel).toBe('noopener noreferrer');
+    state.resetAll();
+  });
+
   it('offers no door on an element that already carries an action in its subtree', () => {
     state.resetAll();
     state.activeLens = 'pro';

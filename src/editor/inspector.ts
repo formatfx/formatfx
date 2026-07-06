@@ -20,7 +20,7 @@ import { openCondFormat } from './condFormat';
 import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
 import { hoverRevealStatus, setRevealOnHover } from './hoverReveal';
-import { canHostTrigger, applyTriggerAt } from './triggerBind';
+import { canHostTrigger, applyTriggerAt, type TriggerSpec, type TriggerActionKind } from './triggerBind';
 
 /** Common-but-unlisted style properties offered as one-click "quick adds" in the
  *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
@@ -318,25 +318,109 @@ export function mountInspector(host: HTMLElement): void {
     // the trigger model's action door (issue #204): on a candidate division
     // (children, no card/action inside), generate the robust click surface —
     // the sp-card-defaultClickButton overlay — instead of letting children
-    // swallow a raw customRowAction click. One undoable step; the overlay
-    // gets selected so its action can be tuned right here.
+    // swallow a raw customRowAction click. The FULL fixed vocabulary with its
+    // parameters (TRIGGER-MODEL §3): defaultClick / executeFlow (flow id) /
+    // setValue (column + value) / link (url) — incomplete params refuse
+    // (refuse and teach; the completeness lint rules back it up). One
+    // undoable step; the overlay gets selected so it can be tuned below.
     const clickSurface: HTMLElement[] = [];
     if (!cra && canHostTrigger(node) && state.selection) {
       const sel = state.selection;
+      let kind: TriggerActionKind = 'defaultClick';
+      let flowId = '', svField = '', svValue = '', href = '';
+      const form = document.createElement('div');
+      form.className = 'wb-clicksurface';
+      const params = document.createElement('div');
+      params.className = 'wb-clicksurface-params';
       const gen = document.createElement('button');
-      gen.className = 'wb-kv-add';
+      gen.type = 'button';
+      gen.className = 'wb-kv-add wb-cs-gen';
       gen.textContent = '⚡ Make this a click surface';
-      gen.title = 'Adds a full-surface overlay button (the robust pattern — child elements can\'t swallow the click) with a defaultClick action, and selects it so you can change the action below. One undoable step.';
+      gen.title = 'Adds a full-surface overlay (the robust pattern — child elements can\'t swallow the click) carrying this action, and selects it. One undoable step.';
+
+      const complete = (): boolean =>
+        kind === 'defaultClick'
+        || (kind === 'executeFlow' && flowId.trim() !== '')
+        || (kind === 'setValue' && svField !== '' && svValue.trim() !== '')
+        || (kind === 'link' && href.trim() !== '');
+      const specFor = (): TriggerSpec => {
+        const base = { cursor: 'pointer' as const, label: 'Open this item' };
+        if (kind === 'executeFlow') return { ...base, action: kind, actionParams: JSON.stringify({ id: flowId.trim() }) };
+        if (kind === 'setValue') return { ...base, action: kind, actionInput: { [svField]: svValue } };
+        if (kind === 'link') return { ...base, action: kind, href: href.trim() };
+        return { ...base, action: 'defaultClick' };
+      };
+      const paramInput = (cls: string, placeholder: string, value: string, on: (v: string) => void): HTMLInputElement => {
+        const el = document.createElement('input');
+        el.type = 'text';
+        el.className = cls;
+        el.placeholder = placeholder;
+        el.value = value;
+        el.addEventListener('input', () => {
+          on(el.value);
+          gen.disabled = !complete();
+        });
+        return el;
+      };
+      const refreshParams = (): void => {
+        params.replaceChildren();
+        if (kind === 'executeFlow') {
+          params.appendChild(labeled('flow id', paramInput('wb-cs-flowid', 'the Power Automate flow GUID', flowId, (v) => { flowId = v; })));
+        } else if (kind === 'setValue') {
+          const fieldSel = document.createElement('select');
+          fieldSel.className = 'wb-cs-field';
+          const ph = document.createElement('option');
+          ph.value = '';
+          ph.textContent = '— pick a column —';
+          ph.disabled = true;
+          fieldSel.appendChild(ph);
+          for (const f of state.fields.filter((x) => !x.protected)) {
+            const o = document.createElement('option');
+            o.value = f.name;
+            o.textContent = f.displayName ?? f.name;
+            fieldSel.appendChild(o);
+          }
+          fieldSel.value = svField;
+          fieldSel.addEventListener('change', () => {
+            svField = fieldSel.value;
+            gen.disabled = !complete();
+          });
+          params.appendChild(labeled('set column', fieldSel));
+          params.appendChild(labeled('to value', paramInput('wb-cs-value', 'Done', svValue, (v) => { svValue = v; })));
+        } else if (kind === 'link') {
+          params.appendChild(labeled('link url', paramInput('wb-cs-href', 'https://…', href, (v) => { href = v; })));
+        }
+        gen.disabled = !complete();
+      };
+      const kindSel = document.createElement('select');
+      kindSel.className = 'wb-cs-kind';
+      for (const [value, text] of [
+        ['defaultClick', 'defaultClick — open the item'],
+        ['executeFlow', 'executeFlow — run a flow'],
+        ['setValue', 'setValue — write a column'],
+        ['link', 'link — go to a URL'],
+      ] as const) {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = text;
+        kindSel.appendChild(o);
+      }
+      kindSel.value = kind;
+      kindSel.addEventListener('change', () => {
+        kind = kindSel.value as TriggerActionKind;
+        refreshParams();
+      });
       gen.addEventListener('click', () => {
+        if (!complete()) return;
         let at: NodePath | null = null;
         state.mutateDocument(() => {
-          at = applyTriggerAt(state.doc.root, sel, {
-            action: 'defaultClick', cursor: 'pointer', label: 'Open this item',
-          });
+          at = applyTriggerAt(state.doc.root, sel, specFor());
         });
         if (at) state.select(at);
       });
-      clickSurface.push(gen);
+      refreshParams();
+      form.append(labeled('click surface', kindSel), params, gen);
+      clickSurface.push(form);
     }
     host.appendChild(section('Row action (customRowAction)', [
       ...clickSurface,

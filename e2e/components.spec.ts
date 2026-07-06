@@ -159,6 +159,15 @@ test('the trigger picker binds a component as a HOVER CARD on a candidate divisi
   // the host + placement rows appear, with the collision fine print
   await expect(dlg.locator('select[data-role="host"]')).toBeVisible();
   await expect(dlg.locator('.wb-compmap-fine')).toContainText('never collide');
+  // the drop-target gesture: point at the host on the CANVAS — the dialog
+  // steps aside, candidates glow teal, a click picks one
+  await dlg.locator('.wb-compmap-pick').click();
+  await expect(dlg).toBeHidden();
+  const candidate = page.locator('#wb-canvas .wb-trigger-candidate').first();
+  await expect(candidate).toBeVisible();
+  await candidate.click();
+  await expect(dlg).toBeVisible();
+  await expect(page.locator('.wb-trigger-candidate')).toHaveCount(0);
   const attach = dlg.locator('.wb-compmap-insert');
   await expect(attach).toHaveText('Attach as a hover card');
   await attach.click();

@@ -532,6 +532,50 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   host.appendChild(importCard);
 }
 
+/**
+ * The drop-target gesture of TRIGGER-MODEL §3, in its click-safe form: hide
+ * the dialog, highlight every candidate division ON THE CANVAS (each rendered
+ * copy — one per mock row), and let the maker point at the one the card
+ * should open from. Esc returns unchanged; clicks anywhere else do nothing
+ * (misclick-resistant per house rules). Capture-phase listeners so Select
+ * mode's click-to-select and the overlay's own Esc handling never fire
+ * underneath the pick.
+ */
+function beginHostPick(hostPaths: NodePath[], done: (idx: number | null) => void): void {
+  const canvas = document.getElementById('wb-canvas');
+  const wanted = new Map(hostPaths.map((p, i) => [p.join('.'), i]));
+  const marked: HTMLElement[] = [];
+  canvas?.querySelectorAll<HTMLElement>('[data-sp-path]').forEach((el) => {
+    if (wanted.has(el.dataset.spPath ?? ' ')) {
+      el.classList.add('wb-trigger-candidate');
+      marked.push(el);
+    }
+  });
+  const cleanup = (): void => {
+    marked.forEach((el) => el.classList.remove('wb-trigger-candidate'));
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const finish = (idx: number | null): void => {
+    cleanup();
+    done(idx);
+  };
+  const onClick = (e: MouseEvent): void => {
+    const t = (e.target as HTMLElement).closest?.('.wb-trigger-candidate') as HTMLElement | null;
+    if (!t) return;
+    e.preventDefault();
+    e.stopPropagation();
+    finish(wanted.get(t.dataset.spPath ?? ' ') ?? null);
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    finish(null);
+  };
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKey, true);
+}
+
 // ─── the typed mapping dialog (context-aware: view OR open column formatter) ─
 
 function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onInserted?: () => void): void {
@@ -674,7 +718,25 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     hostSel.appendChild(o);
   });
   hostSel.addEventListener('change', () => { hostIdx = Number(hostSel.value) || 0; });
-  hostRow.append(hostLab, hostSel);
+  // the drop-target gesture (TRIGGER-MODEL §3): point at the host on the
+  // canvas itself — candidates highlight, a click picks, Esc comes back
+  const pickBtn = document.createElement('button');
+  pickBtn.type = 'button';
+  pickBtn.className = 'wb-compmap-pick';
+  pickBtn.textContent = '🎯 Point at it…';
+  pickBtn.title = 'Hide this dialog and highlight every element that can host the card on the canvas — click one to choose it, Esc to come back unchanged';
+  pickBtn.addEventListener('click', (e) => {
+    e.preventDefault(); // lives inside a <label> — don't poke the select
+    overlay.style.display = 'none';
+    beginHostPick(hosts, (idx) => {
+      overlay.style.display = '';
+      if (idx !== null) {
+        hostIdx = idx;
+        hostSel.value = String(idx);
+      }
+    });
+  });
+  hostRow.append(hostLab, hostSel, pickBtn);
 
   const hintRow = document.createElement('label');
   hintRow.className = 'wb-compmap-row';
@@ -695,6 +757,21 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
   hintSel.addEventListener('change', () => { cardHint = hintSel.value; });
   hintRow.append(hintLab, hintSel);
 
+  let showBeak = true;
+  const beakRow = document.createElement('label');
+  beakRow.className = 'wb-compmap-row';
+  beakRow.hidden = true;
+  const beakLab = document.createElement('span');
+  beakLab.className = 'wb-compmap-label';
+  beakLab.textContent = 'Pointer beak';
+  const beakBox = document.createElement('input');
+  beakBox.type = 'checkbox';
+  beakBox.checked = showBeak;
+  beakBox.dataset.role = 'beak';
+  beakBox.title = 'Show the little arrow pointing from the card back at its trigger (isBeakVisible)';
+  beakBox.addEventListener('change', () => { showBeak = beakBox.checked; });
+  beakRow.append(beakLab, beakBox);
+
   const fine = document.createElement('div');
   fine.className = 'wb-compmap-note wb-compmap-fine';
   fine.hidden = true;
@@ -703,7 +780,7 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     + 'can\'t swallow the click; hover-reveal classes on the same element compose fine.';
 
   if (!isRow) {
-    panel.append(whereRow, hostRow, hintRow, fine);
+    panel.append(whereRow, hostRow, hintRow, beakRow, fine);
     if (!hosts.length) {
       whereSel.disabled = true;
       whereRow.title = 'No element on the canvas can host a card yet — it needs a container with children and no existing card or action inside.';
@@ -725,6 +802,7 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     const card = appear !== 'inline';
     hostRow.hidden = !card;
     hintRow.hidden = !card;
+    beakRow.hidden = !card;
     fine.hidden = !card;
     insert.textContent = !card ? inlineButtonText
       : appear === 'hover-card' ? 'Attach as a hover card' : 'Attach as a click card';
@@ -768,6 +846,7 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
           action: 'card',
           event: appear === 'hover-card' ? 'hover' : 'click',
           directionalHint: cardHint,
+          isBeakVisible: showBeak,
           cursor: 'pointer',
           label: `Open the ${def.name} card`,
         }, bound);

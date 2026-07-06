@@ -8,6 +8,7 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { renderComponentLibrary, openComponentMapper } from './componentLibrary';
 import { BUILTIN_COMPONENTS } from './components';
+import { mountCanvas } from './canvas';
 import { state } from './state';
 import type { SPElement } from '../core/types';
 
@@ -140,6 +141,75 @@ describe('mapper — the trigger picker (issue #204)', () => {
     expect(overlay.customCardProps?.openOnEvent).toBe('click');
     expect(state.doc.root.style?.position).toBe('relative');
     expect(state.selection).toEqual([1]); // the trigger carrier is selected
+  });
+
+  it('pick-on-canvas: candidates highlight on the real canvas and a click chooses the host (Esc cancels)', () => {
+    // two candidates: the root and its first child division
+    state.doc = {
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'div', children: [{ elmType: 'span', txtContent: 'inner' }] },
+          { elmType: 'span', txtContent: 'leaf' },
+        ],
+      },
+    };
+    const canvasHost = document.createElement('div');
+    canvasHost.id = 'wb-canvas';
+    document.body.appendChild(canvasHost);
+    mountCanvas(canvasHost, () => {});
+
+    openComponentMapper(DEADLINE, () => {});
+    const panel = document.querySelector<HTMLElement>('.wb-compmap')!;
+    const appear = panel.querySelector<HTMLSelectElement>('select[data-role=appear]')!;
+    appear.value = 'hover-card';
+    appear.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const overlayEl = document.querySelector<HTMLElement>('.wb-compmap-overlay')!;
+    const pick = panel.querySelector<HTMLButtonElement>('.wb-compmap-pick')!;
+    pick.click();
+    // the dialog steps aside and every candidate copy glows
+    expect(overlayEl.style.display).toBe('none');
+    const marked = [...document.querySelectorAll<HTMLElement>('.wb-trigger-candidate')];
+    expect(marked.length).toBeGreaterThan(0);
+    // Esc cancels: dialog returns, highlights clear, selection untouched
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(overlayEl.style.display).toBe('');
+    expect(document.querySelector('.wb-trigger-candidate')).toBeNull();
+
+    // pick again, this time CLICK the child-division copy — the host select
+    // lands on that candidate
+    pick.click();
+    const child = [...document.querySelectorAll<HTMLElement>('.wb-trigger-candidate')]
+      .find((el) => el.dataset.spPath === '0')!;
+    child.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(document.querySelector('.wb-trigger-candidate')).toBeNull();
+    const hostSel = panel.querySelector<HTMLSelectElement>('select[data-role=host]')!;
+    expect(hostSel.value).toBe('1'); // hosts are [root, child] in document order
+
+    // …and attaching lands the card on the PICKED division
+    panel.querySelector<HTMLButtonElement>('.wb-compmap-insert')!.click();
+    expect(state.doc.root.children![0].customCardProps?.openOnEvent).toBe('hover');
+    expect(state.doc.root.customCardProps).toBeUndefined();
+  });
+
+  it('the beak toggle rides into isBeakVisible', () => {
+    state.doc = {
+      kind: 'row',
+      root: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'x' }] },
+    };
+    openComponentMapper(DEADLINE, () => {});
+    const panel = document.querySelector<HTMLElement>('.wb-compmap')!;
+    const appear = panel.querySelector<HTMLSelectElement>('select[data-role=appear]')!;
+    appear.value = 'hover-card';
+    appear.dispatchEvent(new Event('change', { bubbles: true }));
+    const beak = panel.querySelector<HTMLInputElement>('input[data-role=beak]')!;
+    expect(beak.closest('label')!.hidden).toBe(false);
+    beak.checked = false;
+    beak.dispatchEvent(new Event('change', { bubbles: true }));
+    panel.querySelector<HTMLButtonElement>('.wb-compmap-insert')!.click();
+    expect(state.doc.root.customCardProps?.isBeakVisible).toBe(false);
   });
 
   it('offers no card modes when nothing on the canvas can host one', () => {
