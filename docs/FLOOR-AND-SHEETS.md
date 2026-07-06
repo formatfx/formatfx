@@ -199,10 +199,10 @@ that precedent to every canvas (floor, sheets, builder).
   double-click renames inline, ＋ is the template on-ramp — and carries NO
   grid chip: the grid is the COLUMNS tab's canvas, so "minimize" is
   "click COLUMNS". The VIEWS tab returns to the sheet last on the canvas
-  (`lastOpenViewId`) or opens the View Formatters menu when none exist.
-  "◧ Back to grid" and the Stage-0/1 "⟳ Reopen" bar are retired. (The
-  no-sheets-yet branch was amended 2026-07-06 — see §2.2b: VIEWS now
-  creates a starting row view instead of opening the menu.) The
+  (`lastOpenViewId`); with no sheets yet, Stage 2 as shipped opened the
+  View Formatters menu as the on-ramp — amended 2026-07-06 (§2.2b): it
+  now creates a starting row view instead.
+  "◧ Back to grid" and the Stage-0/1 "⟳ Reopen" bar are retired. The
   floor can no longer render pseudo-columns at all: the last path in —
   Apply-to-canvas of a row payload over the floor — now gates on the
   schema-import `isPureGrid` guard, so a zoned/composite layout becomes a
