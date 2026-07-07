@@ -17,7 +17,7 @@ import {
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
   MAX_COMPONENT_DEPTH, embedNamespace, embedClosure, componentDepth,
-  embedRefusal, withEmbed, withoutEmbed, componentsEmbedding, flattenComponent,
+  embedRefusal, withEmbed, withoutEmbed, componentsEmbedding, transitiveEmbedders, flattenComponent,
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel } from './componentUsage';
@@ -612,6 +612,33 @@ describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', (
     expect(JSON.stringify(flat)).not.toContain('_embed');
   });
 
+  it('deep chains flatten ALL the way down — well past the old 5-cap (multiple layers)', () => {
+    // an 8-deep chain: each level embeds the previous; only the leaf has a slot
+    const DEEP = 8;
+    const defs: ComponentDef[] = [];
+    let top: ComponentDef = {
+      id: 'c-lvl0', name: 'Lvl0', description: '',
+      slots: [{ key: 'Val', label: 'the value', types: ['text', 'note'] }],
+      root: { elmType: 'span', txtContent: '[$Val]' },
+    };
+    defs.push(top);
+    for (let i = 1; i < DEEP; i++) {
+      const plain: ComponentDef = { id: `c-lvl${i}`, name: `Lvl${i}`, description: '', slots: [], root: { elmType: 'div', children: [] } };
+      top = withEmbed(plain, top);
+      defs.push(top);
+    }
+    const flat = flattenComponent(top, defs);
+    // the whole 8-level tree collapsed into one plain document — no placeholder
+    // survived (it would if any level past the cap silently dropped)
+    expect(JSON.stringify(flat)).not.toContain('_embed');
+    // the leaf's slot surfaced through every level, namespaced the whole way up
+    expect(flat.slots).toHaveLength(1);
+    expect(flat.slots[0].key.endsWith('_Val')).toBe(true);
+    expect(JSON.stringify(flat)).toContain(`[$${flat.slots[0].key}]`);
+    // and the engine still reports the true depth (8, comfortably under the 20 cap)
+    expect(componentDepth(top, defs)).toBe(DEEP);
+  });
+
   it('cycle refusal at author time: self, direct, and transitive — with teaching messages', () => {
     const a = withEmbed(CARD_BASE, PILL); // A(c-card) uses B(c-pill)
     const defs = [a, PILL];
@@ -644,7 +671,7 @@ describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', (
     expect(componentDepth(prev!, defs)).toBe(MAX_COMPONENT_DEPTH);
     // one more level on top is refused with the teaching message…
     const roof: ComponentDef = { id: 'c-roof', name: 'Roof', description: '', slots: [], root: { elmType: 'div' } };
-    expect(embedRefusal(roof, prev!, defs)).toMatch(/cap is 5/);
+    expect(embedRefusal(roof, prev!, defs)).toMatch(new RegExp(`cap is ${MAX_COMPONENT_DEPTH}`));
     // …while embedding the one-shorter chain is fine
     expect(embedRefusal(roof, defs[MAX_COMPONENT_DEPTH - 2], defs)).toBeNull();
   });
@@ -687,6 +714,34 @@ describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', (
     const card = withEmbed(CARD_BASE, PILL);
     expect(componentsEmbedding('c-pill', [PILL, card]).map((d) => d.id)).toEqual(['c-card']);
     expect(componentsEmbedding('c-card', [PILL, card])).toEqual([]);
+  });
+
+  it('transitiveEmbedders: the FULL re-bake blast radius — follows chains, self excluded, cycle-safe', () => {
+    const card = withEmbed(CARD_BASE, PILL);                           // Task card → Status pill
+    const badgePlain: ComponentDef = {
+      id: 'c-badge', name: 'Badge', description: '', slots: [],
+      root: { elmType: 'div', children: [] },
+    };
+    const badge = withEmbed(badgePlain, card);                         // Badge → Task card → Status pill
+    const defs = [PILL, card, badge];
+    // editing the pill must re-bake BOTH the card and the badge that wraps it —
+    // componentsEmbedding (direct-only) would miss the badge
+    expect(transitiveEmbedders('c-pill', defs).map((d) => d.id).sort()).toEqual(['c-badge', 'c-card']);
+    expect(componentsEmbedding('c-pill', defs).map((d) => d.id)).toEqual(['c-card']); // contrast
+    // editing the card re-bakes only the badge above it
+    expect(transitiveEmbedders('c-card', defs).map((d) => d.id)).toEqual(['c-badge']);
+    // a top component nobody embeds has an empty blast radius
+    expect(transitiveEmbedders('c-badge', defs)).toEqual([]);
+    // a hand-corrupted A↔B store terminates (embedClosure never revisits an id)
+    const a: ComponentDef = {
+      id: 'c-a', name: 'A', description: '', slots: [],
+      embeds: [{ ns: 'B', of: 'c-b', name: 'B' }], root: { elmType: 'div', _embed: 'B' },
+    };
+    const b: ComponentDef = {
+      id: 'c-b', name: 'B', description: '', slots: [],
+      embeds: [{ ns: 'A', of: 'c-a', name: 'A' }], root: { elmType: 'div', _embed: 'A' },
+    };
+    expect(transitiveEmbedders('c-a', [a, b]).map((d) => d.id)).toEqual(['c-b']);
   });
 
   it('persistence: embeds round-trip the store; pre-nesting shapes load unchanged; corrupt embeds strip, not sink', () => {

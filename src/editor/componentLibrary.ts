@@ -490,7 +490,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       const line = document.createElement('div');
       line.className = 'wb-comp-lineage';
       line.textContent = `Used by ${embedders.length} component${embedders.length === 1 ? '' : 's'}: ${embedders.map((d) => `“${d.name}”`).join(', ')}`;
-      line.title = 'Editing this component changes what those bake the next time they are applied';
+      line.title = 'Editing this component re-bakes them wherever they are used on the canvas, live';
       box.appendChild(line);
     }
 
