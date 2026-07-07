@@ -63,10 +63,12 @@ an authoring-UX gap in the native product, not a data gap for us.
 > old "extraction stays GET-only" constraint is retired in favor of "extraction
 > stays **read-only** (no mutation)" — so a read-POST like this is explicitly
 > allowed in the capture path; no verb gymnastics needed. The snippet's
-> no-write-verbs test becomes a no-*mutation*-verbs test (a read-POST passes; a
-> data-changing MERGE/POST does not — those stay the confirm-first deploy path).
-> Route the Rules/Quick Steps read wherever is cleanest (`spClient`/the
-> extension is the natural home).
+> no-write-verbs test *will become* a no-*mutation*-verbs test (a read-POST
+> passes; a data-changing MERGE/POST does not — those stay the confirm-first
+> deploy path) **in the read-side implementation PR** — **today the snippet and
+> its tests still enforce literal GET-only**, so this note describes the policy
+> the implementation will realize, not current behavior. Route the Rules/Quick
+> Steps read wherever is cleanest (`spClient`/the extension is the natural home).
 
 ### 3.1 Response shape (the fields that matter)
 

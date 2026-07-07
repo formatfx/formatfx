@@ -28,7 +28,9 @@ npm run test:ui  # Playwright e2e (uses installed Edge by default;
   mutation; read-POSTs like `GetAllRules()` are fine — the old "GET-only"
   phrasing was just a proxy for "never changes the user's data." Owner decision
   2026-07-07, docs/CONNECTIVITY.md §8). Data-changing writes stay the
-  confirm-first, lint-gated deploy path.
+  confirm-first, lint-gated deploy path. Note: this is policy today — the
+  current Tier-0 snippet and its tests still enforce literal GET-only; they
+  relax when the read-side capture (`GetAllRules()`) ships (#214).
 
 Architecture, invariants, and verified SharePoint semantics live in
 [docs/HANDOFF.md](docs/HANDOFF.md).
