@@ -839,6 +839,14 @@ inline-edit affordance (${ext(MS.advanced, 'advanced formatting')}).</p>
 and tenant themes to keep working — a hardcoded <code>#ffffff</code> background looks fine right
 up until the tenant flips dark. (Note it's <code>class</code>, not <code>className</code> —
 this is JSON for a renderer, not JSX.)</p>
+<p>Every color class the sandbox emulates — background, text and border for each
+theme token, plus the semantic status fills. Click any swatch to copy its class name,
+ready to paste into <code>attributes.class</code>:</p>
+<div id="wb-guide-colorwall" class="wb-guide-colorwall"></div>
+<p class="wb-guide-fineprint">Palette tokens (<code>theme*</code>, <code>neutral*</code>, the status
+hues) re-tint in dark mode and follow a pasted tenant theme. The
+<code>sp-field-severity--*</code> status fills carry meaning (good → blocked) and show fixed
+light-mode colors in this preview — SharePoint themes them on the real page.</p>
 
 <h2 id="fm-expressions">Two expression syntaxes</h2>
 <p>Excel-style strings (<code>"=if([$Status] == 'Done', '#107c10', '#a80000')"</code>) and the

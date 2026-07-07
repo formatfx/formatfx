@@ -12,6 +12,8 @@
 import { GUIDE_PAGES, GUIDE_CHAPTERS, GUIDE_DEPTH, type GuidePage } from './guideContent';
 import { renderIconGrid } from './iconPicker';
 import { createOverlay, type OverlayHandle } from './overlay';
+import { themePalette } from '../core/theme';
+import { SEVERITY_LEVELS } from './themeClasses';
 
 let handle: OverlayHandle | null = null;
 /** Session memory: reopening the guide resumes where you left off. */
@@ -20,6 +22,71 @@ let lastPageId = GUIDE_PAGES[0].id;
 export function closeGuide(): void {
   handle?.close();
   handle = null;
+}
+
+/** The live color-class gallery mounted into the field guide's #wb-guide-colorwall.
+ *  One cell per emulated palette token (background / text / border class), plus the
+ *  semantic status fills. Swatches paint via the document-global emulated theme CSS,
+ *  so they show real colors and re-tint with dark mode / a tenant palette. Click a
+ *  swatch to copy its class name. */
+function renderColorWall(host: HTMLElement): void {
+  host.innerHTML = '';
+  const note = document.createElement('div');
+  note.className = 'wb-guide-iconwall-note';
+  const copy = (cls: string): void => {
+    void navigator.clipboard?.writeText(cls)?.catch(() => { /* clipboard blocked */ });
+    note.textContent = `Copied “${cls}” — paste it into attributes.class.`;
+  };
+  const swatch = (cls: string, kind: 'bg' | 'fg' | 'bd', text = ''): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `wb-colorwall-sw wb-colorwall-${kind} ${cls}`;
+    if (text) b.textContent = text;
+    b.title = `${cls} — click to copy`;
+    b.setAttribute('aria-label', `Copy ${cls}`);
+    b.addEventListener('click', () => copy(cls));
+    return b;
+  };
+
+  const grid = document.createElement('div');
+  grid.className = 'wb-colorwall-grid';
+  for (const token of Object.keys(themePalette('light'))) {
+    const cell = document.createElement('div');
+    cell.className = 'wb-colorwall-cell';
+    const swatches = document.createElement('div');
+    swatches.className = 'wb-colorwall-swatches';
+    swatches.append(
+      swatch(`ms-bgColor-${token}`, 'bg'),
+      swatch(`ms-fontColor-${token}`, 'fg', 'Aa'),
+      swatch(`sp-css-borderColor-${token}`, 'bd'),
+    );
+    const name = document.createElement('code');
+    name.className = 'wb-colorwall-name';
+    name.textContent = token;
+    cell.append(swatches, name);
+    grid.appendChild(cell);
+  }
+  host.appendChild(grid);
+
+  const sevHead = document.createElement('div');
+  sevHead.className = 'wb-colorwall-subhead';
+  sevHead.textContent = 'Status fills (sp-field-severity--*)';
+  host.appendChild(sevHead);
+  const sev = document.createElement('div');
+  sev.className = 'wb-colorwall-sev';
+  for (const s of SEVERITY_LEVELS) {
+    const cls = `sp-field-severity--${s.level}`;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = `wb-colorwall-sevchip ${cls}`;
+    chip.textContent = s.label;
+    chip.title = `${cls} — click to copy`;
+    chip.setAttribute('aria-label', `Copy ${cls}`);
+    chip.addEventListener('click', () => copy(cls));
+    sev.appendChild(chip);
+  }
+  host.appendChild(sev);
+  host.appendChild(note);
 }
 
 export function openGuide(pageId?: string): void {
@@ -196,6 +263,13 @@ export function openGuide(pageId?: string): void {
       });
       iconWall.appendChild(note);
     }
+
+    // the live color-class gallery — every emulated theme token (bg/font/border)
+    // plus the semantic status fills. The emulated theme CSS is document-global,
+    // so each swatch paints its real color and re-tints with dark mode / a tenant
+    // palette. Click any swatch to copy its class name.
+    const colorWall = article.querySelector<HTMLElement>('#wb-guide-colorwall');
+    if (colorWall) renderColorWall(colorWall);
 
     renderNav();
     renderRail();

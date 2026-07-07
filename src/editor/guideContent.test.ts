@@ -56,6 +56,11 @@ describe('guideContent — tree invariants', () => {
     }
   });
 
+  it('the theme-class section embeds the live color-gallery mount point', () => {
+    const page = GUIDE_PAGES.find((p) => p.body.includes('id="wb-guide-colorwall"'));
+    expect(page, 'no guide page mounts the color-class gallery').toBeDefined();
+  });
+
   it('h2 ids are present and unique per page (they feed the article rail)', () => {
     for (const page of GUIDE_PAGES) {
       const h2Ids = [...page.body.matchAll(/<h2 id="([^"]+)">/g)].map((m) => m[1]);

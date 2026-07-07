@@ -586,3 +586,67 @@ describe('the visual Flex layout group (#221)', () => {
     expect(undoDepth()).toBe(before + 1);
   });
 });
+
+// ─── Theme colors: the primary theme-aware picker (theme style classes) ────────
+
+function selectPlain(el: Partial<SPElement> = {}): void {
+  state.createView({
+    kind: 'row',
+    root: { elmType: 'div', children: [{ elmType: 'div', txtContent: 'x', ...el } as SPElement] },
+  });
+  state.select([0]);
+}
+const node0 = (): SPElement => state.doc.root.children![0];
+/** Find a theme swatch by the class token in its title (tokens are unique). */
+function tcSwatch(host: HTMLElement, token: string): HTMLButtonElement {
+  return [...host.querySelectorAll<HTMLButtonElement>('.wb-fc-swatch')].find((b) => b.title.includes(token))!;
+}
+function fillNoneChip(host: HTMLElement): HTMLButtonElement {
+  const fillRow = [...host.querySelectorAll<HTMLElement>('.wb-field-row')]
+    .find((r) => r.querySelector('.wb-field-label')?.textContent === 'Fill')!;
+  return fillRow.querySelector<HTMLButtonElement>('.wb-fc-chip')!;
+}
+
+describe('Theme colors — the primary theme-aware color picker', () => {
+  it('a Fill swatch writes attributes.class and clears the conflicting inline style, in one undo step', () => {
+    selectPlain({ style: { 'background-color': '#d13438', color: '#fff' } });
+    const host = mount();
+    const before = undoDepth();
+    tcSwatch(host, 'ms-bgColor-green').click();
+    expect(node0().attributes?.class).toBe('ms-bgColor-green');
+    expect(node0().style?.['background-color']).toBeUndefined(); // dead inline value cleared
+    expect(node0().style?.color).toBe('#fff');                   // sibling untouched
+    expect(undoDepth()).toBe(before + 1);
+  });
+
+  it('the demoted inline Background row shows "(governed by …)" once a theme fill is set', () => {
+    selectPlain();
+    const host = mount();
+    tcSwatch(host, 'ms-bgColor-green').click(); // re-renders (direct mutate, not a selfCommit)
+    expect(host.querySelector('.wb-governed-hint')?.textContent).toContain('ms-bgColor-green');
+    expect(host.querySelector('.wb-field-row.wb-row-governed')).not.toBeNull();
+  });
+
+  it('the Status sub-row emits a severity class, replacing a solid fill on the same slot', () => {
+    selectPlain({ attributes: { class: 'ms-bgColor-red' } });
+    const host = mount();
+    tcSwatch(host, 'sp-field-severity--blocked').click();
+    expect(node0().attributes?.class).toBe('sp-field-severity--blocked');
+  });
+
+  it('"none" clears the theme fill', () => {
+    selectPlain({ attributes: { class: 'ms-bgColor-green' } });
+    const host = mount();
+    fillNoneChip(host).click();
+    expect(node0().attributes?.class).toBeUndefined();
+  });
+
+  it('refuses a formula-valued class — shows a note, offers no swatches, changes nothing', () => {
+    const formula = "=if([$Status]=='Done','ms-bgColor-green','')";
+    selectPlain({ attributes: { class: formula } });
+    const host = mount();
+    expect(host.querySelector('.wb-tc-note')).not.toBeNull();
+    expect(host.querySelectorAll('.wb-fc-swatch').length).toBe(0);
+    expect(node0().attributes?.class).toBe(formula);
+  });
+});

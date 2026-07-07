@@ -16,6 +16,7 @@
  */
 
 import type { MockField, SPExpr } from '../core/types';
+import { parseThemeClass } from './themeClasses';
 
 // ─── colors ──────────────────────────────────────────────────────────────────
 
@@ -676,4 +677,61 @@ export function parseMapFromExpr(
   }
   if (mapRulesToExpr(fields, rules, chain.fallback) !== raw) return null;
   return { rules, elseOutput: chain.fallback };
+}
+
+// ─── rules → theme class (the classes-first conditional look) ─────────────────
+// One watched field, ONE `=if()` chain of theme-class tokens for attributes.class
+// (e.g. =if([$Status]=='Done','sp-field-severity--good','')). Same spine shape as
+// rulesToStyle (one field fanned across rules), but the value per rule is a single
+// class token instead of per-property style values — so a conditional look
+// survives dark mode and tenant re-theming. Parses back under the same
+// rebuild-verify discipline, and every token must be recognized theme-class
+// vocabulary (refuse-and-teach on anything foreign).
+
+export interface CondClassRule {
+  cond: Condition;
+  /** The theme-class token applied when this rule matches first. */
+  token: string;
+}
+
+export interface ParsedClassRules {
+  rules: CondClassRule[];
+  /** The watched field the chain tests. */
+  fieldName: string;
+  /** The class applied when no rule matches ('' = none). */
+  elseToken: string;
+}
+
+/** Compile single-field rules into one `=if()` class chain. Null on no rules. */
+export function rulesToClass(field: MockField, rules: CondClassRule[], elseToken = ''): string | null {
+  if (!rules.length) return null;
+  let expr = `'${elseToken}'`;
+  for (let i = rules.length - 1; i >= 0; i--) {
+    expr = `if(${condExpr(field, rules[i].cond)}, '${rules[i].token}', ${expr})`;
+  }
+  return `=${expr}`;
+}
+
+/**
+ * Parse a generated class chain back into editable rules + the watched field.
+ * Single spine field (like parseRulesFromStyle), every rule token a recognized
+ * theme class, gated by byte-identical regeneration — a hand-edited or foreign
+ * formula returns null, never a guessed rule.
+ */
+export function parseClassRules(raw: SPExpr | undefined, fields: MockField[]): ParsedClassRules | null {
+  const chain = parseIfChain(raw);
+  if (!chain) return null;
+  const name = FIELD_REF.exec(chain.exprs[0])?.[1];
+  const field = name ? fields.find((f) => f.name === name) : undefined;
+  if (!field) return null;
+  const rules: CondClassRule[] = [];
+  for (let i = 0; i < chain.exprs.length; i++) {
+    if (FIELD_REF.exec(chain.exprs[i])?.[1] !== field.name) return null; // one watched field
+    const cond = matchCondition(field, chain.exprs[i]);
+    if (!cond) return null;
+    if (!parseThemeClass(chain.values[i])) return null; // only our theme-class vocabulary
+    rules.push({ cond, token: chain.values[i] });
+  }
+  if (rulesToClass(field, rules, chain.fallback) !== raw) return null;
+  return { rules, fieldName: field.name, elseToken: chain.fallback };
 }

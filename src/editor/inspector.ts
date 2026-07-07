@@ -18,7 +18,12 @@ import { focusFxSlot } from './fxBar';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
 import { openMapData } from './mapData';
-import { governedProperties } from './classPrecedence';
+import { governedProperties, governanceFor, classTokens } from './classPrecedence';
+import {
+  THEME_COLORS, SEVERITY_LEVELS, type ColorRole,
+  paletteClass, severityClass, activeThemeClass, setThemeClass, clearThemeClass,
+} from './themeClasses';
+import { themePalette } from '../core/theme';
 import { styleAcross } from './multiSelect';
 import { hoverRevealStatus, setRevealOnHover } from './hoverReveal';
 import {
@@ -247,6 +252,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
     if (!pro) {
       host.appendChild(section('Text', [txtContentField()]));
+      host.appendChild(section('Theme colors', themeColorsSection(node, toast)));
       host.appendChild(section('Typography', typographySection(node, commitAll), false, sectionReset(TYPO_PROPS)));
       // the click-only flex-arrangement chip is retained as a Simple convenience;
       // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
@@ -277,6 +283,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       host.appendChild(section('Flex layout', [flexLayoutGroup(node, commitAll)], false, sectionReset(FLEX_ALIGN_PROPS)));
       host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
       host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
+      host.appendChild(section('Theme colors', themeColorsSection(node, toast)));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
       host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
       host.appendChild(revealSection());
@@ -1591,7 +1598,7 @@ const OVERFLOWS: Array<[string, string]> = [
 function typographySection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
   return [
     exprRow(node, commit, 'Size', 'font-size', () => propInput(node, commit, 'font-size', 'e.g. 13px')),
-    exprRow(node, commit, 'Color', 'color', () => colorControl(node, commit, 'color', '#605e5c')),
+    governedColorRow(node, commit, 'Color', 'color', '#605e5c'),
     exprRow(node, commit, 'Weight', 'font-weight', () => propSelect(node, commit, 'font-weight', WEIGHTS)),
     exprRow(node, commit, 'Align', 'text-align', () => segmented(
       [{ value: '', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }, { value: 'justify', label: 'Justify' }],
@@ -1604,7 +1611,7 @@ function typographySection(node: SPElement, commit: (fn: (n: SPElement) => void)
 /** Appearance section (Simple + Pro share this primitive). */
 function appearanceSection(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement[] {
   return [
-    exprRow(node, commit, 'Background', 'background-color', () => colorControl(node, commit, 'background-color', 'None')),
+    governedColorRow(node, commit, 'Background', 'background-color', 'None'),
     exprRow(node, commit, 'Radius', 'border-radius', () => propInput(node, commit, 'border-radius', '0px')),
     exprRow(node, commit, 'Opacity', 'opacity', () => propInput(node, commit, 'opacity', '1.00')),
     exprRow(node, commit, 'Overflow', 'overflow', () => propSelect(node, commit, 'overflow', OVERFLOWS)),
@@ -1617,8 +1624,130 @@ function borderSection(node: SPElement, commit: (fn: (n: SPElement) => void) => 
     exprRow(node, commit, 'Width', 'border-width', () => propInput(node, commit, 'border-width', '0px')),
     exprRow(node, commit, 'Style', 'border-style', () => propSelect(node, commit, 'border-style',
       [['', 'none'], ['solid', 'solid'], ['dashed', 'dashed'], ['dotted', 'dotted']])),
-    exprRow(node, commit, 'Color', 'border-color', () => colorControl(node, commit, 'border-color', '#e1dfdd')),
+    governedColorRow(node, commit, 'Color', 'border-color', '#e1dfdd'),
   ];
+}
+
+// ─── theme colors (the primary, theme-aware color picker) ────────────────────
+// Emits SharePoint utility classes onto attributes.class instead of hex onto
+// style, so a color survives dark mode and tenant re-theming. Click-only. Each
+// swatch is painted from the live emulated palette, so it shows what SharePoint
+// will actually render (and re-tints with a pasted tenant palette). Wired with
+// direct state.mutateDocument — NOT the selfCommit-suppressed `commit` — so the
+// whole inspector re-renders and the governance on the demoted inline color
+// rows re-syncs after every pick.
+
+const THEME_ROLES: Array<[ColorRole, string]> = [['text', 'Text'], ['fill', 'Fill'], ['border', 'Border']];
+
+function roleTokenHex(role: ColorRole, colorId: string): string {
+  const c = THEME_COLORS.find((x) => x.id === colorId)!;
+  const token = role === 'text' ? c.text : role === 'fill' ? c.fill : c.border;
+  return themePalette(state.themeMode)[token] ?? '#888';
+}
+
+function themeColorsSection(node: SPElement, toast: (m: string) => void): HTMLElement[] {
+  const classAttr = node.attributes?.class;
+  // A formula-driven class can't be statically edited — teach, don't clobber.
+  if (typeof classAttr === 'string' && classAttr.trim().startsWith('=')) {
+    const note = document.createElement('div');
+    note.className = 'wb-tc-note';
+    note.textContent = 'This element’s class is a formula — edit it in the Function Bar (ƒx) or the Attributes editor.';
+    return [note];
+  }
+
+  const has = (token: string) => classTokens(classAttr).includes(token);
+  const pick = (role: ColorRole, token: string) => {
+    let refused = false;
+    state.mutateDocument(() => state.selectedNodes.forEach((n) => { if (!setThemeClass(n, role, token)) refused = true; }));
+    if (refused) toast('This element’s class is a formula — edit it in the Function Bar.');
+  };
+  const clear = (role: ColorRole) => state.mutateDocument(() => state.selectedNodes.forEach((n) => clearThemeClass(n, role)));
+
+  const noneChip = (role: ColorRole, active: boolean): HTMLElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-fc-chip' + (active ? ' active' : '');
+    b.textContent = 'none';
+    b.title = 'No theme color for this slot';
+    b.addEventListener('click', () => clear(role));
+    return b;
+  };
+  const swatch = (bg: string, token: string, title: string, role: ColorRole): HTMLElement => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wb-fc-swatch' + (has(token) ? ' active' : '');
+    b.style.background = bg;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.addEventListener('click', () => pick(role, token));
+    return b;
+  };
+  const swatchStrip = (role: ColorRole, kids: HTMLElement[]): HTMLElement => {
+    const strip = document.createElement('span');
+    strip.className = 'wb-fc-swatches';
+    strip.appendChild(noneChip(role, !activeThemeClass(node, role)));
+    kids.forEach((k) => strip.appendChild(k));
+    return strip;
+  };
+  const fieldRow = (label: string, control: HTMLElement): HTMLElement => {
+    const row = document.createElement('div');
+    row.className = 'wb-field-row';
+    const lab = document.createElement('span');
+    lab.className = 'wb-field-label';
+    lab.textContent = label;
+    row.append(lab, control);
+    return row;
+  };
+
+  const rows: HTMLElement[] = [];
+  for (const [role, label] of THEME_ROLES) {
+    const swatches = THEME_COLORS.map((c) =>
+      swatch(roleTokenHex(role, c.id), paletteClass(role, c), `${c.label} — ${paletteClass(role, c)}`, role));
+    rows.push(fieldRow(label, swatchStrip(role, swatches)));
+    if (role === 'fill') {
+      // Status fills carry SharePoint's own semantics (padding, background-only).
+      const strip = document.createElement('span');
+      strip.className = 'wb-fc-swatches';
+      for (const s of SEVERITY_LEVELS) {
+        strip.appendChild(swatch(s.bg, severityClass(s.level), `${s.label} — ${severityClass(s.level)}`, 'fill'));
+      }
+      rows.push(fieldRow('Status', strip));
+    }
+  }
+  return rows;
+}
+
+/**
+ * A demoted inline hex row (the "custom color" fallback). When a theme class
+ * governs the same CSS slot, fade it and show "(governed by …)"; when an inline
+ * value shadows a class, show the "[Class Overridden]" badge — mirroring the
+ * Style editor's kvEditor badge so the relationship is never hidden.
+ */
+function governedColorRow(
+  node: SPElement,
+  commit: (fn: (n: SPElement) => void) => void,
+  label: string,
+  prop: string,
+  placeholder: string,
+): HTMLElement {
+  const row = exprRow(node, commit, label, prop, () => colorControl(node, commit, prop, placeholder));
+  const gov = governanceFor(prop, node.attributes?.class, styleOf(node, prop) !== '');
+  if (gov.kind === 'governed') {
+    row.classList.add('wb-row-governed');
+    const hint = document.createElement('span');
+    hint.className = 'wb-governed-hint';
+    hint.textContent = `governed by ${gov.className}`;
+    hint.title = `The class “${gov.className}” paints ${prop}. Pick “none” under Theme colors, or set a value here to override it.`;
+    row.appendChild(hint);
+  } else if (gov.kind === 'overridden') {
+    row.classList.add('wb-row-override');
+    const badge = document.createElement('span');
+    badge.className = 'wb-governed-badge';
+    badge.textContent = '[Class Overridden]';
+    badge.title = `This inline value overrides class “${gov.className}”. Clear it to let the class control ${prop}.`;
+    row.appendChild(badge);
+  }
+  return row;
 }
 
 // ─── alignment editor ────────────────────────────────────────────────────────
