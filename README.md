@@ -247,3 +247,19 @@ reusable (CLI linting of sample JSON, tests, other UIs).
 The preview is an *emulation*, not the real SharePoint renderer. It is built to
 be pixel-plausible and quirk-faithful, but always verify the exported JSON on a
 real list before shipping. THIS CODE IS PROVIDED AS IS WITHOUT WARRANTY OF ANY KIND.
+
+## License
+
+FormatFX is **dual-licensed** under **AGPL-3.0-only** (see [`LICENSE`](./LICENSE))
+**or** a commercial license — see [`LICENSING.md`](./LICENSING.md) for which track
+applies to you.
+
+- **Using formatfx.dev** and the SharePoint JSON you export from it — no obligations.
+  The generated JSON is yours to use anywhere, including closed/commercial projects.
+- **Self-hosting or forking the code** — the AGPL applies: a modified version served
+  over a network (§13) must offer its complete source under the AGPL.
+- **Embedding FormatFX in a proprietary product or SaaS** without AGPL obligations —
+  a **commercial license** is required. This also covers private/self-hosted
+  deployment (data never leaves your tenant), SSO, and priority support.
+
+© 2026 Sam Yost.

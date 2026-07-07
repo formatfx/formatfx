@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/canvas.ts — Interactive preview surface. Renders the formatter
  * against every mock row in a context matching the document kind (column

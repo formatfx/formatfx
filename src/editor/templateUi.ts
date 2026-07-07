@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/templateUi.ts — small shared primitives for the row-template modal's
  * three regions (fields bar, preview canvas, inspector). Keeps el()/segmented()/
