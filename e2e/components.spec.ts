@@ -50,7 +50,7 @@ test('the library is always on: inventory first, then the browser — rows in th
   await expect(page.locator('#wb-tree-body')).toBeVisible();
   // the inventory comes first — the showcase columns wear looks, so their
   // components already count as usages
-  await expect(lib.locator('.wb-complib-h1').first()).toHaveText('In this project');
+  await expect(lib.locator('.wb-complib-foldhead .wb-lp-sec-title').first()).toHaveText('In this project');
   await expect(usedNode(page, 'Status pill').locator('.wb-comp-count')).toHaveText('2');
   // the hand-written built-ins lead the browser; the palette offering follows
   await expect(lib.locator('.wb-complib-group', { hasText: 'Built-in' })).toBeVisible();

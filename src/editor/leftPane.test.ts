@@ -53,8 +53,14 @@ describe('structure (§3, top to bottom)', () => {
       'wb-lp-shelves', 'wb-lp-header', 'wb-drawbar', 'wb-lp-props',
     ]);
     const shelves = host.querySelector('#wb-lp-shelves')!;
-    expect([...shelves.children].map((el) => el.id))
-      .toEqual(['wb-lp-shelf', 'wb-lp-library', 'wb-lp-views']);
+    // columns + components are now collapsible sections wrapping their mounts;
+    // the views list is a plain (non-collapsible) sibling
+    expect([...shelves.children].map((el) => (el as HTMLElement).dataset.sec ?? el.id))
+      .toEqual(['columns', 'components', 'wb-lp-views']);
+    expect(shelves.querySelector('.wb-lp-sec[data-sec="columns"] #wb-lp-shelf')).not.toBeNull();
+    expect(shelves.querySelector('.wb-lp-sec[data-sec="components"] #wb-lp-library')).not.toBeNull();
+    // the inspector is a collapsible section down in the props region
+    expect(host.querySelector('.wb-lp-props .wb-lp-sec[data-sec="inspector"] #wb-lp-inspector')).not.toBeNull();
   });
 
   it('the tree renders the active surface; the library is ALWAYS mounted (no swap mode)', () => {
@@ -78,6 +84,51 @@ describe('structure (§3, top to bottom)', () => {
     state.createView({ kind: 'row', root: { elmType: 'div', children: [] } }, 'Board');
     expect(card.hidden).toBe(false);
     expect(card.querySelector('.wb-viewcard-name')?.textContent).toBe('Board');
+  });
+});
+
+describe('collapsible sections (issue #236: Columns · Components · Inspector)', () => {
+  const sec = (host: HTMLElement, id: string) =>
+    host.querySelector<HTMLElement>(`.wb-lp-sec[data-sec="${id}"]`)!;
+  const head = (host: HTMLElement, id: string) =>
+    host.querySelector<HTMLButtonElement>(`.wb-lp-sec-head[data-sec-head="${id}"]`)!;
+
+  it('mounts all three sections expanded by default, each with a header button', () => {
+    const host = mount();
+    for (const id of ['columns', 'components', 'inspector']) {
+      expect(sec(host, id)).not.toBeNull();
+      const h = head(host, id);
+      expect(h).not.toBeNull();
+      expect(h.getAttribute('aria-controls')).toBe(`wb-lp-${id === 'columns' ? 'shelf' : id === 'components' ? 'library' : 'inspector'}`);
+      expect(sec(host, id).classList.contains('wb-collapsed')).toBe(false);
+      expect(h.getAttribute('aria-expanded')).toBe('true');
+    }
+  });
+
+  it('clicking a header folds the section (class + aria) and clicking again restores it', () => {
+    const host = mount();
+    const h = head(host, 'components');
+    h.click();
+    expect(sec(host, 'components').classList.contains('wb-collapsed')).toBe(true);
+    expect(h.getAttribute('aria-expanded')).toBe('false');
+    // the other sections are unaffected — collapse is per-section
+    expect(sec(host, 'columns').classList.contains('wb-collapsed')).toBe(false);
+    h.click();
+    expect(sec(host, 'components').classList.contains('wb-collapsed')).toBe(false);
+    expect(h.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('persists the collapsed state across a remount (a reload)', () => {
+    const host = mount();
+    head(host, 'inspector').click();
+    expect(sec(host, 'inspector').classList.contains('wb-collapsed')).toBe(true);
+    // tear down and rebuild the pane as a reloaded session would
+    (host as unknown as { _unsub?: () => void })._unsub?.();
+    const host2 = mount();
+    expect(sec(host2, 'inspector').classList.contains('wb-collapsed')).toBe(true);
+    expect(head(host2, 'inspector').getAttribute('aria-expanded')).toBe('false');
+    // the sections left alone come back expanded
+    expect(sec(host2, 'columns').classList.contains('wb-collapsed')).toBe(false);
   });
 });
 

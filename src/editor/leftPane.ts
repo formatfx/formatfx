@@ -32,6 +32,9 @@ import { openSnapMenu } from './snapMenu';
 import { mountComponentLibrary } from './componentLibrary';
 import { mountColumnShelf } from './columnShelf';
 import { mountViewCard } from './viewCard';
+import {
+  isSectionCollapsed, setSectionCollapsed, type PaneSectionId,
+} from './paneSections';
 import type { SPElement } from '../core/types';
 
 export interface LeftPaneOptions {
@@ -43,6 +46,24 @@ const LENSES: Array<{ id: EditorLens; label: string }> = [
   { id: 'pro', label: 'Pro' },
   { id: 'code', label: 'Code' },
 ];
+
+/** The three big pane sections that fold away (issue #236). Order/label only —
+ *  the DOM lives in the mountLeftPane template; wiring is wireSection(). */
+const COLLAPSIBLE_SECTIONS: Array<{ id: PaneSectionId; label: string }> = [
+  { id: 'columns', label: 'Columns' },
+  { id: 'components', label: 'Components' },
+  // id stays 'inspector' (frozen persist key / aria); only the label reads
+  // "Properties" — the property editor for the selected element.
+  { id: 'inspector', label: 'Properties' },
+];
+
+/** A section's clickable header: a real <button> (Enter/Space + focus for free),
+ *  a chevron whose glyph is CSS-driven off .wb-collapsed, and the title. */
+const sectionHead = (id: PaneSectionId, label: string, bodyId: string): string =>
+  `<button type="button" class="wb-lp-sec-head" data-sec-head="${id}" aria-controls="${bodyId}">
+      <span class="wb-lp-sec-caret" aria-hidden="true"></span>
+      <span class="wb-lp-sec-title">${label}</span>
+    </button>`;
 
 export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const hostAny = host as any;
@@ -70,8 +91,14 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-lp-shelves" id="wb-lp-shelves">
-      <div id="wb-lp-shelf"></div>
-      <div class="wb-complib" id="wb-lp-library"></div>
+      <section class="wb-lp-sec" data-sec="columns">
+        ${sectionHead('columns', 'Columns', 'wb-lp-shelf')}
+        <div id="wb-lp-shelf" class="wb-lp-sec-body"></div>
+      </section>
+      <section class="wb-lp-sec" data-sec="components">
+        ${sectionHead('components', 'Components', 'wb-lp-library')}
+        <div class="wb-complib wb-lp-sec-body" id="wb-lp-library"></div>
+      </section>
       <div id="wb-lp-views"></div>
     </div>
     <div class="wb-lp-header">
@@ -90,7 +117,10 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       <div class="wb-palette-pop" id="wb-palette-pop" hidden></div>
     </div>
     <div class="wb-lp-props" id="wb-lp-props">
-      <div class="wb-lp-inspector" id="wb-lp-inspector"></div>
+      <section class="wb-lp-sec wb-lp-sec-inspector" data-sec="inspector">
+        ${sectionHead('inspector', 'Properties', 'wb-lp-inspector')}
+        <div class="wb-lp-inspector wb-lp-sec-body" id="wb-lp-inspector"></div>
+      </section>
       <div class="wb-lp-code" id="wb-lp-code"></div>
     </div>
   `;
@@ -103,6 +133,28 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   mountViewsList(host.querySelector<HTMLElement>('#wb-lp-views')!, toast);
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!, { toast });
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
+
+  // ── collapsible sections (issue #236): Columns · Components · Inspector ─────
+  // The .wb-collapsed class + the header live on the SECTION wrapper, which the
+  // section's own mount never re-renders — so the fold survives every body
+  // repaint and the handler is wired exactly once here (no re-binding on
+  // re-render). State persists on its own frozen key (paneSections.ts).
+  for (const { id, label } of COLLAPSIBLE_SECTIONS) {
+    const sec = host.querySelector<HTMLElement>(`.wb-lp-sec[data-sec="${id}"]`);
+    const head = host.querySelector<HTMLButtonElement>(`.wb-lp-sec-head[data-sec-head="${id}"]`);
+    if (!sec || !head) continue;
+    const apply = (collapsed: boolean): void => {
+      sec.classList.toggle('wb-collapsed', collapsed);
+      head.setAttribute('aria-expanded', String(!collapsed));
+      head.title = collapsed ? `Show ${label}` : `Hide ${label}`;
+    };
+    apply(isSectionCollapsed(id));
+    head.addEventListener('click', () => {
+      const next = !sec.classList.contains('wb-collapsed');
+      apply(next);
+      setSectionCollapsed(id, next);
+    });
+  }
 
   // ── navigation back (retrace doc switches — not undo) ──────────────────────
   const backBtn = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
