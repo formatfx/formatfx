@@ -612,6 +612,33 @@ describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', (
     expect(JSON.stringify(flat)).not.toContain('_embed');
   });
 
+  it('deep chains flatten ALL the way down — well past the old 5-cap (multiple layers)', () => {
+    // an 8-deep chain: each level embeds the previous; only the leaf has a slot
+    const DEEP = 8;
+    const defs: ComponentDef[] = [];
+    let top: ComponentDef = {
+      id: 'c-lvl0', name: 'Lvl0', description: '',
+      slots: [{ key: 'Val', label: 'the value', types: ['text', 'note'] }],
+      root: { elmType: 'span', txtContent: '[$Val]' },
+    };
+    defs.push(top);
+    for (let i = 1; i < DEEP; i++) {
+      const plain: ComponentDef = { id: `c-lvl${i}`, name: `Lvl${i}`, description: '', slots: [], root: { elmType: 'div', children: [] } };
+      top = withEmbed(plain, top);
+      defs.push(top);
+    }
+    const flat = flattenComponent(top, defs);
+    // the whole 8-level tree collapsed into one plain document — no placeholder
+    // survived (it would if any level past the cap silently dropped)
+    expect(JSON.stringify(flat)).not.toContain('_embed');
+    // the leaf's slot surfaced through every level, namespaced the whole way up
+    expect(flat.slots).toHaveLength(1);
+    expect(flat.slots[0].key.endsWith('_Val')).toBe(true);
+    expect(JSON.stringify(flat)).toContain(`[$${flat.slots[0].key}]`);
+    // and the engine still reports the true depth (8, comfortably under the 20 cap)
+    expect(componentDepth(top, defs)).toBe(DEEP);
+  });
+
   it('cycle refusal at author time: self, direct, and transitive — with teaching messages', () => {
     const a = withEmbed(CARD_BASE, PILL); // A(c-card) uses B(c-pill)
     const defs = [a, PILL];
@@ -644,7 +671,7 @@ describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', (
     expect(componentDepth(prev!, defs)).toBe(MAX_COMPONENT_DEPTH);
     // one more level on top is refused with the teaching message…
     const roof: ComponentDef = { id: 'c-roof', name: 'Roof', description: '', slots: [], root: { elmType: 'div' } };
-    expect(embedRefusal(roof, prev!, defs)).toMatch(/cap is 5/);
+    expect(embedRefusal(roof, prev!, defs)).toMatch(new RegExp(`cap is ${MAX_COMPONENT_DEPTH}`));
     // …while embedding the one-shorter chain is fine
     expect(embedRefusal(roof, defs[MAX_COMPONENT_DEPTH - 2], defs)).toBeNull();
   });

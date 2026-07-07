@@ -314,9 +314,12 @@ export function bindComponentInstance(def: ComponentDef, mapping: Record<string,
 // A→B→A when the maker tries it (embedRefusal, teaching message), and even a
 // hand-corrupted store can never bake a cycle (flattenComponent hard-stops).
 
-/** Nesting guardrail IN ADDITION to cycle detection — legal chains stay
- *  comprehensible and flatten stays visibly bounded. */
-export const MAX_COMPONENT_DEPTH = 5;
+/** Nesting guardrail IN ADDITION to cycle detection — a runaway/sanity net, not
+ *  a real design limit: deep chains flatten fine (the cycle guard alone already
+ *  guarantees termination), so this is set generously far past any hand-built
+ *  design. Past it, embedRefusal teaches rather than silently exploding a bake.
+ *  (Owner call 2026-07-07: 5 → 20 — "multiple layers, absolutely".) */
+export const MAX_COMPONENT_DEPTH = 20;
 
 /** Namespace candidate from a child's name — field-ref-safe ([A-Za-z0-9_])
  *  and deduped against the parent's existing namespaces ("Pill", "Pill2"…). */

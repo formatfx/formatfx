@@ -39,7 +39,7 @@ import {
   bestGuessMapping, bindComponent, componentId, componentKind,
   createVariant, rebindInstance, replaceStampedIn, restampIn, uniqueName,
   flattenComponent, embedRefusal, embedClosure, withEmbed, withoutEmbed,
-  transitiveEmbedders,
+  transitiveEmbedders, MAX_COMPONENT_DEPTH,
   type ComponentDef, type ComponentEmbed,
 } from './components';
 import { paletteComponents } from './paletteComponents';
@@ -384,7 +384,7 @@ export function mountComponentWorkshop(
     add.type = 'button';
     add.className = 'wb-ce-embedadd';
     add.textContent = '＋ Embed';
-    add.title = 'Insert the chosen component into this one — one ↶ step. Loops are refused; nesting caps at 5 levels.';
+    add.title = `Insert the chosen component into this one — one ↶ step. Loops are refused; nesting caps at ${MAX_COMPONENT_DEPTH} levels.`;
     add.disabled = !candidates.length;
     add.addEventListener('click', () => {
       const child = candidates.find((d) => d.id === pick.value);
