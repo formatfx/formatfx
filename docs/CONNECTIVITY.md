@@ -65,10 +65,14 @@ at capture time.
 
 ### 3.2 Extraction snippet (`src/bridge/extractSnippet.ts`)
 
-`buildExtractSnippet(opts?)` returns a **commented, unminified, GET-only**
+`buildExtractSnippet(opts?)` returns a **commented, unminified, read-only**
 async IIFE (~120 lines) the user pastes into devtools on their list page.
 Auditability is a product feature: a maker (or their IT) can read every
-line; there is no bundled library blob. Contract:
+line; there is no bundled library blob. **Read-only means no mutation, not
+"GET verb only"** (owner decision, §8, 2026-07-07): read calls that SharePoint
+requires as POST — e.g. `GetAllRules()` for Rules/Quick Steps — are allowed.
+The line the snippet must never cross is *changing the user's data*; that stays
+the confirm-first deploy path (§3.3). Contract:
 
 1. Target = the list you're on (`_spPageContextInfo.pageListId`), or a
    baked-in list title; neither → teaching error ("open your list page").
@@ -133,7 +137,9 @@ escaping is NOT applied (REST stores the raw string).
 ### 3.6 Test boundary
 
 - Unit (vitest): snapshot parsing; snippet string contracts (endpoints,
-  extractor contains no write verbs); **executed-snippet round-trips** —
+  extractor contains no **mutating** verbs — a read-POST like `GetAllRules()`
+  is fine; what's banned is anything that changes data, i.e. the MERGE/POST
+  writes the deploy path owns); **executed-snippet round-trips** —
   the generated code is `eval`'d with stubbed `fetch`/`_spPageContextInfo`
   /`clipboard`/`confirm` against canned OData fixtures, and the captured
   payload is fed straight back through `importSchema()`. Deploy: digest-
@@ -251,3 +257,12 @@ pnp/List-Formatting outreach.
   stages 2 and 3** — it is now the immediate next work, no longer gated
   behind the Sheet shell (§4). Accepted consequence: the Apply/Extract UI
   ships in today's surface and migrates into the Sheet shell later.
+- **2026-07-07 (owner decision):** the "extraction stays **GET-only**"
+  constraint is retired in favor of "extraction stays **read-only** (no
+  mutation)." GET-only was only ever a proxy for "a capture never silently
+  changes the user's data," and it was blocking real value (reading Rules &
+  Quick Steps needs `POST …/GetAllRules()`). Read-POSTs are now explicitly
+  allowed in the capture path; **writes stay the confirm-first, lint-gated
+  deploy motion** (that property is about not surprising the user with a
+  mutation, and still holds). The no-write-verbs snippet test becomes a
+  no-*mutation*-verbs test. See docs/QUICK-STEPS.md and #214.

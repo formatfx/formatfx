@@ -53,6 +53,9 @@ guidance in your environment.
   never wipe anyone's autosaved work.
 - Connectivity snippets (`src/bridge/`) stay self-contained, commented and
   auditable — a maker's IT must be able to read every line. `src/bridge`
-  stays dependency-free; extraction stays GET-only; deploys confirm first
-  and are lint-gated. The auth constraint behind all of this is closed:
+  stays dependency-free; extraction stays **read-only** (no mutation —
+  read-POSTs like `GetAllRules()` are fine; the retired "GET-only" phrasing
+  was only a proxy for "never silently changes the user's data" — owner
+  decision 2026-07-07, docs/CONNECTIVITY.md §8); deploys confirm first and are
+  lint-gated. The auth constraint behind all of this is closed:
   docs/CONNECTIVITY.md §1.

@@ -57,17 +57,16 @@ capture target on the List Snapshot format (CONNECTIVITY §3.1). **The identifie
 is therefore NOT dev-tools-only** — the "scrape it from the DOM" limitation is
 an authoring-UX gap in the native product, not a data gap for us.
 
-> **Implementation note — POST vs the GET-only extractor invariant.** Unlike
-> the field/view/item captures, `GetAllRules()` is a **POST** (a POST that
-> *reads*). The Tier-0 extract snippet is deliberately **GET-only** and has a
-> test asserting the extractor contains no write verbs (CONNECTIVITY §3.6). So
-> this call cannot ride the existing extract-snippet path unchanged: either
-> route the Rules/Quick Steps read through `spClient`/the extension (where a
-> read-POST is fine) rather than the pasted GET-only snippet, or relax that
-> invariant to allow an allow-listed read-POST. The safety property we actually
-> care about is **no mutation**, not the HTTP verb — but the literal "GET-only"
-> contract is load-bearing for the snippet's auditability, so keep the read-POST
-> out of it.
+> **Implementation note — `GetAllRules()` is a read-POST, and that's fine now.**
+> Unlike the field/view/item captures, `GetAllRules()` is a **POST** (a POST
+> that *reads*). Per the **2026-07-07 owner decision** (CONNECTIVITY §8), the
+> old "extraction stays GET-only" constraint is retired in favor of "extraction
+> stays **read-only** (no mutation)" — so a read-POST like this is explicitly
+> allowed in the capture path; no verb gymnastics needed. The snippet's
+> no-write-verbs test becomes a no-*mutation*-verbs test (a read-POST passes; a
+> data-changing MERGE/POST does not — those stay the confirm-first deploy path).
+> Route the Rules/Quick Steps read wherever is cleanest (`spClient`/the
+> extension is the natural home).
 
 ### 3.1 Response shape (the fields that matter)
 
@@ -235,10 +234,10 @@ CONNECTIVITY §3.6 one-time on-tenant checklist):
 
 ## 7. House-rule fit
 
-- **Reads mutate nothing.** `GetAllRules()` is a read-only call (a read-POST —
-  see the §3 note on keeping it out of the literal GET-only extract snippet);
-  any `CreateRuleEx()` write is a separate, later, confirm-first + lint-gated
-  motion (§5).
+- **Reads mutate nothing.** `GetAllRules()` is a read-only call (a read-POST,
+  explicitly allowed since the 2026-07-07 GET-only→read-only decision —
+  CONNECTIVITY §8); any `CreateRuleEx()` write is a separate, later,
+  confirm-first + lint-gated motion (§5).
 - **No new auth surface.** Everything inside the closed CONNECTIVITY §1 model:
   the user's authenticated session, the extension under `activeTab`.
 - **Zero runtime deps; `src/bridge` stays dependency-free, commented,

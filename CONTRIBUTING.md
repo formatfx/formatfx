@@ -24,7 +24,11 @@ npm run test:ui  # Playwright e2e (uses installed Edge by default;
   people's autosaved work.
 - **One user gesture = one undoable mutation.**
 - **`src/bridge/` stays self-contained and auditable** — no dependencies, every
-  line readable by a maker's IT department, extraction is GET-only.
+  line readable by a maker's IT department, extraction is **read-only** (no
+  mutation; read-POSTs like `GetAllRules()` are fine — the old "GET-only"
+  phrasing was just a proxy for "never changes the user's data." Owner decision
+  2026-07-07, docs/CONNECTIVITY.md §8). Data-changing writes stay the
+  confirm-first, lint-gated deploy path.
 
 Architecture, invariants, and verified SharePoint semantics live in
 [docs/HANDOFF.md](docs/HANDOFF.md).
