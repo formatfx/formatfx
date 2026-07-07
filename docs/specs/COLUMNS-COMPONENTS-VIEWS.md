@@ -97,6 +97,15 @@ key).
   the pane. The fx bar, JSON pane, Explain, and deploy target follow the
   ACTIVE TAB's document (a component tab exports its def preview as
   column-formatter JSON only via explicit copy — deploy stays view/grid).
+- **v1 constraint (Phase B, 2026-07-06):** the workshop tab is
+  SELF-CONTAINED — its own preview, mini structure list and staged style
+  panel live inside the tab, while the left pane's tree/inspector and the
+  fx bar / JSON pane / Explain keep following the active SURFACE
+  (`state.doc` never aliases a staged def; the kind select disables while
+  a component tab is up). The previous bullet's follow-the-active-tab
+  behavior for those panels is deferred; revisit once the owner reacts to
+  the shipped tabs. (The view strip also survives Phase B alongside the
+  canvas strip; it dies when the left pane rebuilds in Phase C.)
 
 ## 3. The left pane (Mockup B, approved)
 

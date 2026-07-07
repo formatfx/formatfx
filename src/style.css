@@ -3409,3 +3409,80 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
   0% { box-shadow: 0 0 0 3px var(--wb-accent); }
   100% { box-shadow: 0 0 0 3px transparent; }
 }
+
+/* ── the CANVAS TAB STRIP (COLUMNS-COMPONENTS-VIEWS §2, Phase B) ────────────
+   One tab per open surface/workshop above the fx bar: the standing ▦ Grid
+   tab, the named views, and ⬡ component workshop tabs (teal channel + dirty
+   dot). Active = accent underline, the .wb-fmt-tab idiom; drag to rearrange
+   (insert indicator) and spring-load view tabs under component/field drags. */
+.wb-canvastabs {
+  flex: 0 0 auto; display: flex; align-items: stretch; gap: 2px;
+  padding: 4px 10px 0; border-bottom: 1px solid var(--wb-border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.wb-canvastabs::-webkit-scrollbar { display: none; }
+.wb-canvastab {
+  flex: 0 0 auto; display: inline-flex; align-items: center; max-width: 190px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  border-radius: 3px 3px 0 0;
+}
+.wb-canvastab-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  border: none; background: none; cursor: pointer; padding: 7px 4px 6px 8px;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--wb-text-2);
+  white-space: nowrap;
+}
+.wb-canvastab-mark { flex: 0 0 auto; font-size: 13px; line-height: 1; }
+.wb-canvastab-name {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.wb-canvastab:hover { background: color-mix(in srgb, var(--wb-accent) 7%, transparent); }
+.wb-canvastab:hover .wb-canvastab-btn { color: var(--wb-accent); }
+.wb-canvastab.active { border-bottom-color: var(--wb-accent); }
+.wb-canvastab.active .wb-canvastab-btn { color: var(--wb-accent); }
+/* component tabs speak the teal ⬡ channel */
+.wb-canvastab-comp:hover { background: color-mix(in srgb, var(--wb-component) 7%, transparent); }
+.wb-canvastab-comp:hover .wb-canvastab-btn { color: var(--wb-component); }
+.wb-canvastab-comp.active { border-bottom-color: var(--wb-component); }
+.wb-canvastab-comp.active .wb-canvastab-btn { color: var(--wb-component); }
+/* unsaved staged edits — the dirty dot after the name */
+.wb-canvastab-dot {
+  flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--wb-component);
+}
+.wb-canvastab-close {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer;
+  padding: 2px 6px 2px 2px; font-size: 10.5px; line-height: 1;
+  color: var(--wb-text-2); opacity: 0; border-radius: 3px;
+}
+.wb-canvastab:hover .wb-canvastab-close,
+.wb-canvastab.active .wb-canvastab-close { opacity: .8; }
+.wb-canvastab-close:hover { opacity: 1; color: var(--wb-accent); }
+.wb-canvastab-comp .wb-canvastab-close:hover { color: var(--wb-component); }
+/* drag-to-rearrange: the insert-before/after indicator + the lifted source */
+.wb-canvastab-dragging { opacity: .45; }
+.wb-canvastab-before { box-shadow: inset 2px 0 0 0 var(--wb-accent); }
+.wb-canvastab-after { box-shadow: inset -2px 0 0 0 var(--wb-accent); }
+/* spring-loaded view tabs during component/field drags (§5) */
+.wb-canvastab-spring {
+  background: color-mix(in srgb, var(--wb-accent) 14%, transparent);
+  outline: 1px dashed var(--wb-accent); outline-offset: -1px;
+}
+/* inline rename input — the viewStrip convention, tab-shaped */
+.wb-canvastab-input {
+  flex: 0 1 130px; min-width: 70px; margin: 4px 2px; padding: 2px 8px;
+  border: 1px solid var(--wb-accent); border-radius: 3px;
+  background: var(--wb-surface); color: var(--wb-text);
+  font: inherit; font-size: 12px; font-weight: 600;
+}
+
+/* ── the component WORKSHOP host — fills the canvas region while a component
+   tab is active (#wb-canvas hides; the surface waits untouched underneath).
+   The panel inside reuses the .wb-ce styles the modal shipped with. ── */
+.wb-pane-canvas > #wb-workshop {
+  flex: 1 1 0; min-height: 140px; overflow: auto;
+  display: flex; padding: 10px; box-sizing: border-box;
+}
+.wb-pane-canvas > #wb-workshop[hidden] { display: none; }
+#wb-workshop .wb-ce-workshop { overflow-y: visible; box-shadow: none; }

@@ -16,6 +16,7 @@ import { PRODUCT_NAME, PRODUCT_TAGLINE, PROJECT_FILE_NAME } from './branding';
 import { applyTheme, setCustomPalette } from './core/theme';
 import { exportJson } from './core/serializer';
 import { mountCanvas } from './editor/canvas';
+import { mountCanvasTabs } from './editor/canvasTabs';
 import { mountFxBar } from './editor/fxBar';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
@@ -88,9 +89,11 @@ app.innerHTML = `
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-leftpane" id="wb-leftpane"></aside>
     <section class="wb-pane-canvas">
+      <div id="wb-canvastabs" title="Canvas tabs — the Grid plus every view or component you open; drag to rearrange"></div>
       <div id="wb-fxbar" title="The Function Bar — paint the selected element's properties with Excel-style formulas."></div>
       <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to show the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       <div id="wb-canvas" class="wb-canvas"></div>
+      <div id="wb-workshop" hidden></div>
       <div class="wb-data-split" id="wb-data-split" title="Drag to resize the data panel"></div>
       <section class="wb-data-dock" id="wb-data-dock">
         <div class="wb-data-dock-head" id="wb-data-dock-head" title="Mock rows &amp; columns — click the title to collapse">
@@ -324,11 +327,13 @@ kindSel.addEventListener('change', () => {
     : `Same element tree, new wrapper: this view now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 
-// the wrapper kind only makes sense on a surface (floor or sheet). The
-// activeDocKey guard keeps compiling for the canvas-tabs phase, where a
-// component tab re-targets the canvas doc key; it's always 'main' today.
+// the wrapper kind only makes sense on a surface (floor or sheet): it stays
+// disabled while a component WORKSHOP tab covers the canvas (the staged def
+// is not a document — COLUMNS-COMPONENTS-VIEWS §2). The activeDocKey guard
+// stays for the later phase where a component tab re-targets the canvas doc
+// key; it's always 'main' today.
 const refreshStudioDisabled = () => {
-  kindSel.disabled = state.activeDocKey !== 'main';
+  kindSel.disabled = state.activeDocKey !== 'main' || state.activeComponentTab !== null;
 };
 state.subscribe((reason) => {
   if (reason === 'data' || reason === 'load' || reason === 'kind') {
@@ -454,6 +459,9 @@ mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElemen
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountExplainPanel(document.getElementById('wb-tab-explain')!);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
+// the canvas tab strip mounts LAST: its first render may swap the workshop
+// over #wb-canvas (a component tab restored active), so the canvas must exist
+mountCanvasTabs(document.getElementById('wb-canvastabs')!, document.getElementById('wb-workshop')!, toast);
 
 // ── share: mint links, restore backups, open incoming links safely ──
 document.getElementById('wb-share')!.addEventListener('click', () => openShareDialog({ toast }));

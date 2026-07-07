@@ -1206,3 +1206,257 @@ describe('lens + save checkpoint', () => {
     expect(s.selection).toEqual([0]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANVAS TABS (COLUMNS-COMPONENTS-VIEWS §2, Phase B) — appended test group.
+// state owns tab BOOKKEEPING only: openTabs (grid always present, open
+// order, rearrangeable), activeComponentTab (UI state — the workshop cover),
+// and the sanitize/persistence rules. All tab gestures follow the renameView
+// rule: OFF the undo stack, but autosaved ('data').
+// ─────────────────────────────────────────────────────────────────────────────
+import { tabKey, type CanvasTab } from './state';
+
+describe('canvas tabs (§2): openTabs bookkeeping', () => {
+  it('a fresh workspace has the standing Grid tab, active, no workshop cover', () => {
+    const s = new EditorState();
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.activeTabKey).toBe('grid');
+  });
+
+  it('tabKey is the stable identity: grid | view:id | component:defId', () => {
+    expect(tabKey({ kind: 'grid' })).toBe('grid');
+    expect(tabKey({ kind: 'view', id: 'v1' })).toBe('view:v1');
+    expect(tabKey({ kind: 'component', defId: 'c-x' })).toBe('component:c-x');
+  });
+
+  it('createView appends the sheet\'s tab (sheets are born open); openView re-ensures a closed one', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    const b = s.createView(rowDoc())!;
+    expect(s.openTabs).toEqual([
+      { kind: 'grid' },
+      { kind: 'view', id: a.id },
+      { kind: 'view', id: b.id },
+    ]);
+    // reopening never duplicates
+    s.openView(a.id);
+    s.openView(b.id);
+    expect(s.openTabs).toHaveLength(3);
+    // close a's tab, then navigate to it — the chokepoint re-appends in open order
+    s.closeTab(`view:${a.id}`);
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${b.id}`]);
+    s.openView(a.id);
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${b.id}`, `view:${a.id}`]);
+  });
+
+  it('activeTabKey derives from existing state — no duplicated active-tab field for surfaces', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    expect(s.activeTabKey).toBe(`view:${sheet.id}`);
+    s.minimizeView();
+    expect(s.activeTabKey).toBe('grid');
+    s.openComponentTab('c-x');
+    expect(s.activeTabKey).toBe('component:c-x');
+    expect(s.onFloor).toBe(true); // the surface waits untouched underneath
+  });
+
+  it('openComponentTab appends once and re-activates on focus; the doc keeps aliasing the surface', () => {
+    const s = new EditorState();
+    const docBefore = s.doc;
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-b');
+    s.openComponentTab('c-a'); // focus, not a new tab
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', 'component:c-a', 'component:c-b']);
+    expect(s.activeComponentTab).toBe('c-a');
+    expect(s.doc).toBe(docBefore); // activeDocKey stays 'main'; doc never re-aliases
+    expect(s.activeDocKey).toBe('main');
+  });
+
+  it('surface navigation always clears the workshop cover (openView / minimizeView / deactivate)', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.openComponentTab('c-a');
+    s.openView(sheet.id); // already the active surface — just uncovers it
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.openTabs.map(tabKey)).toContain('component:c-a'); // the tab stays open
+
+    s.openComponentTab('c-a');
+    s.minimizeView(); // real navigation to the floor
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.onFloor).toBe(true);
+
+    s.openComponentTab('c-a');
+    s.deactivateComponentTab();
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.openTabs.map(tabKey)).toContain('component:c-a');
+  });
+
+  it('closing the ACTIVE view tab minimizes to the grid — navigation, never deletion, no undo step', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const depth = undoDepth(s); // the creation only
+    expect(s.closeTab(`view:${sheet.id}`)).toBe(true);
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toHaveLength(1); // the view itself waits in the list
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(undoDepth(s)).toBe(depth);
+  });
+
+  it('closing an INACTIVE view tab never navigates', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    const b = s.createView(rowDoc())!;
+    expect(s.closeTab(`view:${a.id}`)).toBe(true);
+    expect(s.activeViewId).toBe(b.id); // still standing on b
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${b.id}`]);
+  });
+
+  it('closing the grid tab is refused; unknown keys report false', () => {
+    const s = new EditorState();
+    expect(s.closeTab('grid')).toBe(false);
+    expect(s.closeTab('view:ghost')).toBe(false);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+  });
+
+  it('closing the active component tab clears activeComponentTab (the surface uncovers)', () => {
+    const s = new EditorState();
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-b');
+    expect(s.closeTab('component:c-b')).toBe(true);
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.activeTabKey).toBe('grid');
+    // closing an INACTIVE component tab leaves the active one covering
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-c');
+    s.closeTab('component:c-a');
+    expect(s.activeComponentTab).toBe('c-c');
+  });
+
+  it('moveTab rearranges (any tab, the Grid included); out-of-range is a no-op', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    s.openComponentTab('c-x');
+    s.moveTab(2, 0); // the component tab to the front
+    expect(s.openTabs.map(tabKey)).toEqual(['component:c-x', 'grid', `view:${a.id}`]);
+    s.moveTab(0, 99); // clamped to the end
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${a.id}`, 'component:c-x']);
+    const before = s.openTabs.map(tabKey);
+    s.moveTab(-1, 0);
+    s.moveTab(99, 0);
+    s.moveTab(1, 1);
+    expect(s.openTabs.map(tabKey)).toEqual(before);
+  });
+
+  it('tab gestures follow the renameView rule: OFF the undo stack, but they emit \'data\' (autosave)', () => {
+    const s = new EditorState();
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-b');
+    s.moveTab(2, 1);
+    s.closeTab('component:c-a');
+    s.deactivateComponentTab();
+    expect(s.canUndo).toBe(false); // presentational metadata, not document edits
+    expect(reasons).toContain('data');
+    expect(reasons).not.toContain('document');
+  });
+
+  it('undoing a createView drops its now-dangling tab (restore-side sanitize)', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    expect(s.openTabs).toHaveLength(2);
+    s.undo(); // the sheet is gone — its tab must not survive as a ghost
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    s.redo(); // the sheet returns open — openView-side ensure re-tabs it
+    expect(s.views).toHaveLength(1);
+  });
+
+  it('persists ADDITIVELY: no openTabs key while only the Grid tab is open', () => {
+    const p = JSON.parse(new EditorState().serializeProject());
+    expect(p.openTabs).toBeUndefined();
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const p2 = JSON.parse(s.serializeProject());
+    expect(p2.openTabs).toEqual([{ kind: 'grid' }, { kind: 'view', id: sheet.id }]);
+  });
+
+  it('round-trips openTabs (order included) through serialize/load; the cover never persists', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    // a component tab for a def the stores KNOW (a palette derivation)
+    s.openComponentTab('palette-status-pill');
+    s.moveTab(2, 1); // rearranged order is project metadata — it round-trips
+    const text = s.serializeProject();
+    const s2 = new EditorState();
+    s2.loadProject(text);
+    expect(s2.openTabs.map(tabKey)).toEqual(['grid', 'component:palette-status-pill', `view:${a.id}`]);
+    expect(s2.activeComponentTab).toBeNull(); // UI state — a reload lands on the surface
+    expect(s2.serializeProject()).toBe(text);
+  });
+
+  it('sanitize-on-load: garbage entries, dangling views and unknown defs drop; grid + active view re-assert', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const p = JSON.parse(s.serializeProject());
+    p.openTabs = [
+      { bogus: true },
+      { kind: 'view', id: 'ghost' },          // no such view
+      { kind: 'component', defId: 'c-ghost' }, // no such def in any store
+      { kind: 'view', id: sheet.id },
+      { kind: 'view', id: sheet.id },          // duplicate — deduped
+    ];
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(p));
+    expect(s2.openTabs).toEqual([{ kind: 'grid' }, { kind: 'view', id: sheet.id }]);
+  });
+
+  it('sanitize-on-load: an ABSENT openTabs key seeds the Grid tab plus the active view\'s', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const p = JSON.parse(s.serializeProject());
+    delete p.openTabs;
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(p));
+    expect(s2.openTabs).toEqual([{ kind: 'grid' }, { kind: 'view', id: sheet.id }]);
+    expect(s2.activeViewId).toBe(sheet.id);
+  });
+
+  it('a MALFORMED openTabs value never fails the strict guard — it is outside it', () => {
+    const s = new EditorState();
+    const p = JSON.parse(s.serializeProject());
+    p.openTabs = 'not-an-array';
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(p)); // must not throw
+    expect(s2.openTabs).toEqual([{ kind: 'grid' }]);
+  });
+
+  it('resetAll returns to the lone Grid tab with no cover', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    s.openComponentTab('c-a');
+    s.resetAll();
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(s.activeComponentTab).toBeNull();
+  });
+
+  it('applySnapshot(\'all\') sanitizes tabs against the restored view list', () => {
+    const s = new EditorState();
+    const snap = s.captureSnapshot({ kind: 'all' })!; // captured with NO views
+    const sheet = s.createView(rowDoc())!;
+    expect(s.openTabs.map(tabKey)).toContain(`view:${sheet.id}`);
+    expect(s.applySnapshot(snap)).toBe(true);
+    expect(s.views).toEqual([]);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]); // the dead view's tab dropped
+  });
+
+  it('openTabs entries are plain CanvasTab data (the type round-trips as JSON)', () => {
+    const tabs: CanvasTab[] = [
+      { kind: 'grid' },
+      { kind: 'view', id: 'v1' },
+      { kind: 'component', defId: 'c-20260706-abc' },
+    ];
+    expect(JSON.parse(JSON.stringify(tabs))).toEqual(tabs);
+    expect(tabs.map(tabKey)).toEqual(['grid', 'view:v1', 'component:c-20260706-abc']);
+  });
+});
