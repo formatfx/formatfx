@@ -2,8 +2,8 @@
  * The left VIEW STRIP (happy-dom) — FLOOR-AND-SHEETS Stage 2, as amended by
  * the owner 2026-07-05: one chip per named sheet + the ＋ on-ramp, NO
  * grid/floor chip (the grid is the COLUMNS tab's canvas). Chip clicks are
- * navigation only; double-click renames inline; the strip keeps working —
- * and keeps switching the surface — while a column formatter is drilled.
+ * navigation only; double-click renames inline (Enter/blur commit, Esc
+ * cancels — the viewMenu convention).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mountViewStrip } from './viewStrip';
@@ -40,6 +40,14 @@ describe('viewStrip', () => {
     expect(host.textContent).not.toContain('Grid'); // no flip-flop button (owner call)
   });
 
+  it('is plain navigation to AT too: a nav landmark, the active chip aria-current', () => {
+    addSheet('A');
+    const host = mount();
+    expect(host.getAttribute('role')).toBe('navigation');
+    expect(host.getAttribute('aria-label')).toBe('Views');
+    expect(host.querySelector('.wb-viewstrip-chip.active')?.getAttribute('aria-current')).toBe('true');
+  });
+
   it('marks the open sheet active and re-renders on navigation', () => {
     const a = addSheet('A');
     addSheet('B');
@@ -61,16 +69,16 @@ describe('viewStrip', () => {
     expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
   });
 
-  it('keeps switching the surface while a column formatter is drilled (§2.2 owner requirement)', () => {
+  it('chips keep working from the floor — the grid stays where it was, the sheet slides over it', () => {
     const a = addSheet('A');
-    state.minimizeView();
-    state.openColumnRef('Status'); // drill in from the floor
+    state.minimizeView(); // standing on the floor (the COLUMNS canvas)
+    const floorJson = JSON.stringify(state.floorDoc);
     const host = mount();
     const chipA = [...host.querySelectorAll<HTMLElement>('.wb-viewstrip-chip')]
       .find((c) => c.textContent === 'A')!;
     chipA.dispatchEvent(new Event('click'));
-    expect(state.activeViewId).toBe(a);       // the surface underneath switched…
-    expect(state.activeDocKey).toBe('Status'); // …and the drill stayed put
+    expect(state.activeViewId).toBe(a);
+    expect(JSON.stringify(state.floorDoc)).toBe(floorJson); // navigation mutated nothing
   });
 
   it('double-click renames inline: Enter commits via renameView, Esc cancels', () => {
@@ -89,6 +97,17 @@ describe('viewStrip', () => {
     input.value = 'Discarded';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(state.viewById(id)?.name).toBe('Sprint board');
+  });
+
+  it('blur commits the rename too (the viewMenu convention)', () => {
+    const id = addSheet();
+    const host = mount();
+    host.querySelector<HTMLElement>('.wb-viewstrip-chip')!.dispatchEvent(new Event('dblclick'));
+    const input = host.querySelector<HTMLInputElement>('.wb-viewstrip-input')!;
+    input.value = 'Committed on blur';
+    input.dispatchEvent(new Event('blur'));
+    expect(state.viewById(id)?.name).toBe('Committed on blur');
+    expect(host.querySelector<HTMLElement>('.wb-viewstrip-chip')?.textContent).toBe('Committed on blur');
   });
 
   it('＋ opens the New view menu with the row/tile template on-ramps', () => {
