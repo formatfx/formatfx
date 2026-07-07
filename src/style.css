@@ -2046,6 +2046,107 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-cf-apply:not(:disabled):hover { color: var(--wb-accent-text) !important; }
 .wb-cf-foot button:disabled { opacity: .45; cursor: default; }
 
+/* ── ▦ Map data: the per-property IF/ELSE-IF/ELSE builder (#217) ──────────── */
+.wb-md-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 7vh;
+}
+.wb-md {
+  width: 720px; max-width: 94vw; max-height: 86vh; overflow-y: auto;
+  background: var(--wb-surface); color: var(--wb-text);
+  border: 1px solid var(--wb-border); border-top: 3px solid var(--wb-accent);
+  border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  padding: 14px 18px; font-size: 12px;
+}
+.wb-md-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.wb-md-title { font-size: 15px; font-weight: 600; }
+.wb-md-sub { color: var(--wb-text-2); font-size: 11px; }
+.wb-md-close {
+  margin-left: auto; border: none; background: transparent; color: var(--wb-text-2);
+  font-size: 14px; cursor: pointer; padding: 2px 6px;
+}
+.wb-md-close:hover { color: var(--wb-accent); }
+.wb-md-target { display: flex; align-items: center; gap: 5px; margin: 2px 0 8px; color: var(--wb-text-2); }
+.wb-md-rows { display: flex; flex-direction: column; gap: 6px; }
+.wb-md-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wb-md-kw {
+  flex: 0 0 52px; text-align: right; font-size: 10px; font-weight: 700;
+  letter-spacing: .06em; color: var(--wb-accent);
+}
+.wb-md-row select, .wb-md-row input[type="text"], .wb-md-row input[type="number"] {
+  font: 11.5px Consolas, monospace; padding: 3px 6px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-md-val { width: 140px; }
+.wb-md-days { width: 64px; }
+.wb-md-arrow { color: var(--wb-text-2); flex-shrink: 0; }
+.wb-md-out { display: inline-flex; align-items: center; gap: 4px; }
+.wb-md-outtext { width: 150px; }
+.wb-md-swatch {
+  width: 24px; height: 24px; padding: 0; border: 1px solid var(--wb-border);
+  border-radius: 4px; background: transparent; cursor: pointer;
+}
+.wb-md-del {
+  border: none; background: transparent; color: var(--wb-text-2);
+  cursor: pointer; font-size: 10px; flex-shrink: 0;
+}
+.wb-md-del:hover { color: #d13438; }
+.wb-md-else .wb-md-kw { color: var(--wb-text-2); }
+.wb-md-add {
+  align-self: flex-start; margin-left: 58px; padding: 3px 10px; font-size: 11px;
+  border: 1px dashed var(--wb-accent); border-radius: 10px; cursor: pointer;
+  background: transparent; color: var(--wb-accent);
+}
+.wb-md-add:hover { background: rgba(0, 120, 212, .08); }
+.wb-md-expr {
+  display: block; margin: 10px 0 0; padding: 6px 8px; font: 10.5px Consolas, monospace;
+  background: var(--wb-bg); border: 1px solid var(--wb-border); border-radius: 4px;
+  color: var(--wb-text-2); overflow-wrap: anywhere;
+}
+.wb-md-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.wb-md-preview-item {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+  border: 1px solid var(--wb-border); border-radius: 10px; font-size: 10.5px;
+  color: var(--wb-text-2);
+}
+.wb-md-preview-dot {
+  width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--wb-border);
+  flex-shrink: 0;
+}
+.wb-md-foreign {
+  margin: 8px 0; padding: 8px 10px; font-size: 11px;
+  background: rgba(202, 80, 16, .07); border: 1px solid rgba(202, 80, 16, .28);
+  border-radius: 5px;
+}
+.wb-md-foreign-msg { color: #ca5010; }
+.wb-md-foreign-code {
+  display: block; margin: 6px 0; padding: 4px 6px; font: 10.5px Consolas, monospace;
+  background: var(--wb-bg); border: 1px solid var(--wb-border); border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.wb-md-foreign-hint { color: var(--wb-text-2); margin-bottom: 6px; }
+.wb-md-fresh {
+  padding: 3px 10px; border-radius: 4px; border: 1px solid #ca5010;
+  background: transparent; color: #ca5010; font-size: 11px; cursor: pointer;
+}
+.wb-md-fresh:hover { background: rgba(202, 80, 16, .08); }
+.wb-md-foot {
+  display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+  border-top: 1px solid var(--wb-border); padding-top: 10px; margin-top: 12px;
+}
+.wb-md-note { margin-right: auto; font-size: 10px; color: var(--wb-text-2); }
+.wb-md-foot button {
+  padding: 5px 14px; border-radius: 4px; cursor: pointer;
+  background: var(--wb-surface); color: var(--wb-text); border: 1px solid var(--wb-border);
+}
+.wb-md-foot button:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-md-apply:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: var(--wb-accent-text); }
+.wb-md-apply:not(:disabled):hover { color: var(--wb-accent-text) !important; }
+.wb-md-foot button:disabled { opacity: .45; cursor: default; }
+
 /* ── format cells dialog ─────────────────────────────────── */
 .wb-fc-overlay {
   position: fixed; inset: 0; z-index: 300;
@@ -3033,6 +3134,25 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   font-family: ui-monospace, "Cascadia Code", monospace; line-height: 1; font-style: italic;
 }
 .wb-expr-fx:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+/* ▦ Map data (#217) — the visual IF/ELSE-IF/ELSE door beside a property field */
+.wb-expr-map {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 5px;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2); cursor: pointer; font-size: 11px; line-height: 1;
+}
+.wb-expr-map:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-kv-map {
+  flex: 0 0 auto; border: none; background: transparent; cursor: pointer;
+  color: var(--wb-text-2); font-size: 11px; padding: 0 2px; line-height: 1;
+}
+.wb-kv-map:hover { color: var(--wb-accent); }
+.wb-mapdata-host { display: flex; flex-direction: column; gap: 4px; }
+.wb-mapdata-btn {
+  align-self: flex-end; padding: 2px 9px; font-size: 10.5px; border-radius: 4px;
+  border: 1px dashed var(--wb-lp-field-border); background: transparent;
+  color: var(--wb-lp-text-2); cursor: pointer;
+}
+.wb-mapdata-btn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 /* ⓘ doc-card button on a dedicated visual field row */
 .wb-field-row .wb-field-info { flex: 0 0 auto; align-self: center; }
 

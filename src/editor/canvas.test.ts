@@ -156,6 +156,87 @@ describe('field drops (§5: FIELD_MIME lands as the look-aware cell)', () => {
   });
 });
 
+describe('token drops (#217): a chip onto a rendered text element binds its text', () => {
+  const dragEvent = (type: string, fieldName: string): Event => {
+    const ev = new Event(type, { bubbles: true, cancelable: true });
+    (ev as unknown as { dataTransfer: unknown }).dataTransfer = {
+      types: ['application/x-wb-field'],
+      getData: (mime: string) => (mime === 'application/x-wb-field' ? fieldName : ''),
+      setData: () => {},
+      dropEffect: '',
+      effectAllowed: '',
+    };
+    return ev;
+  };
+  const undoDepth = (): number => (state as unknown as { undoStack: string[] }).undoStack.length;
+
+  const mountRowView = (toasts: string[]): HTMLElement => {
+    state.resetAll();
+    state.createView({
+      kind: 'row',
+      root: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'hello' }] },
+    });
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, (m) => toasts.push(m));
+    return host;
+  };
+
+  it('binds txtContent to the field token — ONE undoable mutation, toast, selected', () => {
+    const toasts: string[] = [];
+    const host = mountRowView(toasts);
+    const leaf = host.querySelector('.wb-mock-viewrow [data-sp-path="0"]') as HTMLElement;
+
+    const before = undoDepth();
+    leaf.dispatchEvent(dragEvent('drop', 'Status'));
+    expect(state.nodeAt([0])!.txtContent).toBe('[$Status]');
+    expect(state.doc.root.children).toHaveLength(1); // bound, not inserted
+    expect(undoDepth()).toBe(before + 1);            // ONE undo step
+    expect(state.selection).toEqual([0]);
+    expect(toasts.at(-1)).toContain('now shows Status');
+
+    state.undo();
+    expect(state.nodeAt([0])!.txtContent).toBe('hello');
+    state.resetAll();
+  });
+
+  it('the token is type-aware (a person chip lands as [$Owner.title])', () => {
+    const host = mountRowView([]);
+    (host.querySelector('.wb-mock-viewrow [data-sp-path="0"]') as HTMLElement)
+      .dispatchEvent(dragEvent('drop', 'Owner'));
+    expect(state.nodeAt([0])!.txtContent).toBe('[$Owner.title]');
+    state.resetAll();
+  });
+
+  it('a container keeps insert semantics — dropping on the row root adds a cell, text untouched', () => {
+    const toasts: string[] = [];
+    const host = mountRowView(toasts);
+    (host.querySelector('.wb-mock-viewrow [data-sp-path=""]') as HTMLElement)
+      .dispatchEvent(dragEvent('drop', 'Status'));
+    expect(state.doc.root.children).toHaveLength(2); // inserted into the container
+    expect(state.nodeAt([0])!.txtContent).toBe('hello');
+    expect(toasts.at(-1)).toContain('Added the Status column');
+    state.resetAll();
+  });
+
+  it('the grid floor keeps its "chips are columns" grammar: a cell drop still adds a column', () => {
+    state.resetAll(); // the floor grid — Title is column 0, a plain text cell
+    const toasts: string[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, (m) => toasts.push(m));
+
+    const columnsBefore = state.doc.root.children!.length;
+    (host.querySelector('.wb-grid [data-sp-path="0"]') as HTMLElement)
+      .dispatchEvent(dragEvent('drop', 'Tags'));
+    expect(state.doc.root.children!.length).toBe(columnsBefore + 1); // a NEW column
+    expect(state.nodeAt([0])!.txtContent).toBe('[$Title]');          // never rebound
+    expect(toasts.at(-1)).toContain('Added the Tags column');
+    state.resetAll();
+  });
+});
+
 describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
   it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
     state.resetAll();

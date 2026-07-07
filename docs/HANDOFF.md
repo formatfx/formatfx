@@ -902,14 +902,16 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 950 vitest unit tests across 51 files (engine semantics incl.
+- `npm test` — 1009 vitest unit tests across 52 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
   `lookDialect` ref-dialect converters, preset binding, grid scaffolding +
   grid mutations, conditional-formatting codegen evaluated
   through the real engine — that test file is the contract for
-  generated-condition semantics — the bridge's EXECUTED-snippet round trips
+  generated-condition semantics, incl. the Map Data property mapper's
+  compile/round-trip/refuse discipline (#217) and the ▦ dialog + canvas
+  token-drop DOM contracts — the bridge's EXECUTED-snippet round trips
   against stubbed fetch, the collaborative-hub contracts (the share
   codec byte-exact round trips, the stress-test variant catalog incl.
   threshold mining, the Explain visitor over both expression syntaxes, the

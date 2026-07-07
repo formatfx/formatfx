@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { evaluate, type EvalContext } from '../core/expressions';
+import { lintDocument, stripExpressionWhitespace } from '../core/linter';
 import {
   condExpr, condLabel, conditionOptionsFor, rulesToStyle, suggestChoiceColors,
   escapeCondValue, condColor, parseRulesFromStyle, type CondRule,
+  mapOperatorsFor, mapRulesToExpr, parseMapFromExpr,
+  type Condition, type CondKind, type MapRule,
 } from './condRules';
-import type { MockField, MockRow } from '../core/types';
+import type { FormatterDocument, MockField, MockRow } from '../core/types';
 
 const FIELDS: Record<string, MockField> = {
   Status: { name: 'Status', type: 'choice', choices: ['Not started', 'In Progress', 'Blocked', 'Done'] },
@@ -15,6 +18,7 @@ const FIELDS: Record<string, MockField> = {
   Title: { name: 'Title', type: 'text' },
   Approved: { name: 'Approved', type: 'boolean' },
   Project: { name: 'Project', type: 'lookup', lookup: { list: 'Projects', column: 'Title' } },
+  Tags: { name: 'Tags', type: 'choiceMulti', choices: ['web', 'ops', 'intranet'] },
 };
 
 const ctx = (row: MockRow): EvalContext => ({
@@ -267,5 +271,198 @@ describe('parseRulesFromStyle — the round trip', () => {
       .replace("[$Status] == 'Blocked'", "[$Status] == 'Done'")
       .replace('§TMP§', "[$Status] == 'Blocked'");
     expect(parseRulesFromStyle(style, ALL_FIELDS)).toBeNull();
+  });
+});
+
+// ─── the Map Data property mapper (#217) ─────────────────────────────────────
+// One PROPERTY, one `=if()` chain: visual IF / ELSE-IF / ELSE rows compile
+// through the SAME condExpr vocabulary as the ✨ builder (no parallel
+// codegen), and parse back under the same rebuild-verify discipline —
+// byte-identical regeneration or refuse. Unlike rulesToStyle (one watched
+// field fanned across effect properties), a map's rows may each watch a
+// DIFFERENT column.
+
+// the linter's own standalone-'!' shape: '!=' stays legal, '!('/'![$'/'!@' never
+const STANDALONE_BANG = /!(?=\s*[([@])/;
+
+describe('neq — not-equals (no logical NOT exists: != is the only negation)', () => {
+  it('evaluates per type through the engine', () => {
+    expect(test(FIELDS.Status, { kind: 'neq', value: 'Done' }, { Status: 'Blocked' })).toBe(true);
+    expect(test(FIELDS.Status, { kind: 'neq', value: 'Done' }, { Status: 'Done' })).toBe(false);
+    expect(test(FIELDS.Title, { kind: 'neq', value: 'x' }, { Title: 'y' })).toBe(true);
+    // multi-choice: "does not include" — indexOf == -1, never a '!'
+    // (mock rows carry multi-choice as the ';'-joined string, like the showcase)
+    expect(test(FIELDS.Tags, { kind: 'neq', value: 'web' }, { Tags: 'ops' })).toBe(true);
+    expect(test(FIELDS.Tags, { kind: 'neq', value: 'web' }, { Tags: 'web;ops' })).toBe(false);
+    const apollo = { lookupId: 3, lookupValue: 'Apollo' };
+    expect(test(FIELDS.Project, { kind: 'neq', value: 'Apollo' }, { Project: apollo })).toBe(false);
+    expect(test(FIELDS.Project, { kind: 'neq', value: 'Gemini' }, { Project: apollo })).toBe(true);
+  });
+
+  it('never emits a standalone "!" and strips quotes like eq does', () => {
+    for (const f of [FIELDS.Status, FIELDS.Tags, FIELDS.Title, FIELDS.Project]) {
+      expect(condExpr(f, { kind: 'neq', value: 'x' })).not.toMatch(STANDALONE_BANG);
+    }
+    expect(condExpr(FIELDS.Title, { kind: 'neq', value: "a'b" })).not.toContain("a'b");
+  });
+
+  it('labels read like sentences', () => {
+    expect(condLabel(FIELDS.Status, { kind: 'neq', value: 'Done' })).toBe('Status is not Done');
+  });
+});
+
+describe('mapOperatorsFor — type-honest operator menus', () => {
+  const kinds = (f: MockField): CondKind[] => mapOperatorsFor(f).map((o) => o.kind);
+
+  it('text gets equals / not-equals / contains, never number comparisons', () => {
+    expect(kinds(FIELDS.Title)).toEqual(['eq', 'neq', 'contains', 'empty', 'notEmpty']);
+  });
+
+  it('numbers get the engine comparisons (at least / below), never contains', () => {
+    expect(kinds(FIELDS.Progress)).toEqual(['gte', 'lt', 'empty', 'notEmpty']);
+  });
+
+  it('dates get the verified date semantics, not raw equality', () => {
+    expect(kinds(FIELDS.DueDate)).toEqual(['overdue', 'today', 'soon', 'empty', 'notEmpty']);
+  });
+
+  it('booleans and people stay inside the engine vocabulary', () => {
+    expect(kinds(FIELDS.Approved)).toEqual(['isTrue', 'isFalse']);
+    expect(kinds(FIELDS.Owner)).toEqual(['isMe', 'empty', 'notEmpty']);
+    expect(kinds(FIELDS.AssignedTo)).toEqual(['isMe', 'empty', 'notEmpty']);
+  });
+
+  it('every offered operator compiles and evaluates for its type (even on a blank row)', () => {
+    for (const f of Object.values(FIELDS)) {
+      for (const op of mapOperatorsFor(f)) {
+        const cond: Condition = { kind: op.kind };
+        if (op.needs === 'text') cond.value = 'x';
+        if (op.needs === 'number') cond.value = '5';
+        if (op.needs === 'days') cond.days = 7;
+        expect(() => evaluate(`=${condExpr(f, cond)}`, ctx({}))).not.toThrow();
+      }
+    }
+  });
+});
+
+describe('mapRulesToExpr — the builder compile', () => {
+  const ALL = Object.values(FIELDS);
+
+  it('IF / ELSE-IF / ELSE: first match wins, and rows may watch different columns', () => {
+    const expr = mapRulesToExpr(ALL, [
+      { fieldName: 'Status', cond: { kind: 'eq', value: 'Blocked' }, output: '#fde7e9' },
+      { fieldName: 'Progress', cond: { kind: 'gte', value: '100' }, output: '#dff6dd' },
+    ], '#f3f2f1')!;
+    const bg = (row: MockRow): unknown => evaluate(expr, ctx(row));
+    expect(bg({ Status: 'Blocked', Progress: 100 })).toBe('#fde7e9'); // first match wins
+    expect(bg({ Status: 'Open', Progress: 100 })).toBe('#dff6dd');
+    expect(bg({ Status: 'Open', Progress: 10 })).toBe('#f3f2f1');    // the ELSE row
+  });
+
+  it('quotes are stripped from outputs and the else (SP literals have no escape syntax)', () => {
+    const expr = mapRulesToExpr(ALL, [
+      { fieldName: 'Title', cond: { kind: 'eq', value: "O'Brien" }, output: "d'oh" },
+    ], "els'e")!;
+    expect(expr).not.toContain("O'Brien");
+    expect(evaluate(expr, ctx({ Title: 'OBrien' }))).toBe('doh');
+    expect(evaluate(expr, ctx({ Title: 'zzz' }))).toBe('else');
+  });
+
+  it('refuses an unknown column or an empty rule list — never a guessed chain', () => {
+    expect(mapRulesToExpr(ALL, [{ fieldName: 'Ghost', cond: { kind: 'eq', value: 'x' }, output: 'a' }], '')).toBeNull();
+    expect(mapRulesToExpr(ALL, [], 'x')).toBeNull();
+  });
+
+  it('never emits a standalone "!" across the whole operator catalog', () => {
+    for (const f of ALL) {
+      for (const op of mapOperatorsFor(f)) {
+        const cond: Condition = { kind: op.kind };
+        if (op.needs === 'text') cond.value = 'x';
+        if (op.needs === 'number') cond.value = '5';
+        if (op.needs === 'days') cond.days = 3;
+        const expr = mapRulesToExpr(ALL, [{ fieldName: f.name, cond, output: 'out' }], 'fallback')!;
+        expect(expr).not.toMatch(STANDALONE_BANG);
+      }
+    }
+  });
+
+  it('generated output lints clean and survives Sanitize (the export whitespace strip)', () => {
+    const expr = mapRulesToExpr(ALL, [
+      { fieldName: 'Status', cond: { kind: 'neq', value: 'Done' }, output: '#fde7e9' },
+      { fieldName: 'DueDate', cond: { kind: 'soon', days: 7 }, output: '#fff4ce' },
+    ], '#ffffff')!;
+    const doc: FormatterDocument = {
+      kind: 'row',
+      root: { elmType: 'div', txtContent: expr, style: { 'background-color': expr } },
+    };
+    const issues = lintDocument(doc, ALL.map((f) => f.name), Object.fromEntries(ALL.map((f) => [f.name, f.type])));
+    // info-grade zero-whitespace notes are expected (Sanitize strips the
+    // spaces on export, same as every ✨-generated chain) — nothing above info
+    expect(issues.filter((i) => i.severity !== 'info')).toEqual([]);
+    expect(evaluate(stripExpressionWhitespace(expr), ctx({ Status: 'Done' }))).toBe('#ffffff');
+  });
+});
+
+describe('parseMapFromExpr — the round trip', () => {
+  const ALL = Object.values(FIELDS);
+
+  const roundTrips = (rules: MapRule[], elseOutput = ''): void => {
+    const expr = mapRulesToExpr(ALL, rules, elseOutput)!;
+    const parsed = parseMapFromExpr(expr, ALL);
+    expect(parsed).toEqual({ rules, elseOutput });
+    // regenerating from the parse reproduces the chain byte-for-byte
+    expect(mapRulesToExpr(ALL, parsed!.rules, parsed!.elseOutput)).toBe(expr);
+  };
+
+  it('round-trips every operator/type combo the builder can offer', () => {
+    for (const f of ALL) {
+      for (const op of mapOperatorsFor(f)) {
+        const cond: Condition = { kind: op.kind };
+        if (op.needs === 'text') cond.value = 'sample';
+        if (op.needs === 'number') cond.value = '42';
+        if (op.needs === 'days') cond.days = 14;
+        roundTrips([{ fieldName: f.name, cond, output: '#dff6dd' }], '#f3f2f1');
+      }
+    }
+  });
+
+  it('round-trips a multi-column chain (rows watching different fields)', () => {
+    roundTrips([
+      { fieldName: 'Status', cond: { kind: 'eq', value: 'Blocked' }, output: '#fde7e9' },
+      { fieldName: 'DueDate', cond: { kind: 'overdue' }, output: '#fff4ce' },
+      { fieldName: 'Progress', cond: { kind: 'gte', value: '100' }, output: '#dff6dd' },
+    ], '#ffffff');
+  });
+
+  it('contains normalizes its comparison to lowercase (the engine is case-insensitive)', () => {
+    const expr = mapRulesToExpr(ALL, [
+      { fieldName: 'Title', cond: { kind: 'contains', value: 'URGENT' }, output: 'x' },
+    ], '')!;
+    const parsed = parseMapFromExpr(expr, ALL)!;
+    expect(parsed.rules[0].cond.value).toBe('urgent');
+    expect(mapRulesToExpr(ALL, parsed.rules, parsed.elseOutput)).toBe(expr);
+  });
+
+  it('reads chains the ✨ conditional-formatting builder generated (shared vocabulary)', () => {
+    const gen = rulesToStyle(FIELDS.Status, [{ cond: { kind: 'eq', value: 'Done' }, effect: 'text', color: 'green' }]);
+    const parsed = parseMapFromExpr(gen.style['color'], ALL);
+    expect(parsed?.rules).toEqual([
+      { fieldName: 'Status', cond: { kind: 'eq', value: 'Done' }, output: condColor('green').strong },
+    ]);
+  });
+
+  it('REFUSES foreign expressions — refuse-and-teach, never a guessed row', () => {
+    expect(parseMapFromExpr(undefined, ALL)).toBeNull();
+    expect(parseMapFromExpr('#dff6dd', ALL)).toBeNull(); // a plain literal is not a map
+    expect(parseMapFromExpr("='#'+substring([$Status],0,6)", ALL)).toBeNull();
+    expect(parseMapFromExpr("=if([$Progress] > 10 && [$Progress] < 20, 'a', 'b')", ALL)).toBeNull();
+    expect(parseMapFromExpr("=if([$Ghost] == 'x', 'a', 'b')", ALL)).toBeNull();
+    // a non-literal fallback is beyond the builder's vocabulary
+    expect(parseMapFromExpr("=if([$Status] == 'Done', 'a', [$Title])", ALL)).toBeNull();
+  });
+
+  it('REFUSES an in-vocabulary chain that is not byte-identical to a rebuild', () => {
+    // hand-typed without the generator's spacing — the rebuild gate refuses
+    expect(parseMapFromExpr("=if([$Status]=='Done','a','b')", ALL)).toBeNull();
   });
 });

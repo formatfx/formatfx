@@ -42,6 +42,12 @@ export interface FxSlot {
 /** Elements that render text (so text + type slots are offered). */
 const TEXT_CAPABLE = new Set(['div', 'span', 'a', 'p', 'button']);
 
+/** Whether an element type renders txtContent — the same set the slot list
+ *  uses, exported for the canvas token-drop gesture (#217). */
+export function isTextCapable(elmType: string): boolean {
+  return TEXT_CAPABLE.has(elmType);
+}
+
 const TEXT_HINT = 'The text shown in the cell — plain words, a column’s value, or a formula.';
 
 type StyleDef = { id: string; label: string; prop: string; hint: string };
