@@ -1010,15 +1010,19 @@ export class EditorState {
   }
 
   /** Restore a snapshot and notify: emits 'load' too when the restore moved
-   *  the canvas to another surface (undo navigates to its change). */
+   *  the canvas to another surface (undo navigates to its change). 'data'
+   *  fires unconditionally — a restore can change the views/tabs/looks
+   *  collections WITHOUT moving the canvas (e.g. undoing a floor-side
+   *  createView after wandering back to the floor), and the list surfaces
+   *  (tab strip, views list, library) re-render on 'data'. */
   private applyRestore(snap: string): void {
     const navBefore = `${this.activeDocKey}·${this.activeViewId}`;
     this.restoreSnap(snap);
     this.clampSelection();
     if (`${this.activeDocKey}·${this.activeViewId}` !== navBefore) {
       this.emit('load');
-      this.emit('data');
     }
+    this.emit('data');
     this.emit('document');
     this.emit('selection');
   }

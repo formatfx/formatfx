@@ -1247,6 +1247,9 @@ function openSaveDialog(
         return;
       }
     }
+    // the library is a standing pane now (no tab remount to re-scan it) —
+    // tell it the offering changed so the new def shows up immediately
+    state.emit('data');
     onToast(`${existing ? 'Replaced' : 'Saved'} “${name}” ${existing ? 'in' : 'to'} the component library (the ⬡ Components tab)`);
   });
   foot.appendChild(save);

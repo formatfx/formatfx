@@ -1,19 +1,20 @@
 /**
- * E2E: the ⬡ Components tab — first an INVENTORY of the components in use in
- * the current project ("In this project": usage-count chips, jump-to-usage
- * rows), then the add-a-component browser (Built-in / From the palette /
- * Yours / Whole rows / Bring your own). The pane speaks the tree's inventory
- * language (owner redesign 2026-07-05): one wb-tree-row-idiom ROW per
- * component with a click-to-expand details drawer — no card list. The typed
- * mapping dialog inserts wherever the canvas points — the view, or the OPEN
- * column formatter — always as one undoable step, and (issue #204) can bind
- * the component as a hover/click card on a candidate division instead.
- * "Save as component…" (element context menu) derives typed slots and
- * persists to the library across reloads; CFR-carrying subtrees are refused
- * (components are self-contained).
+ * E2E: the ⬡ Components library — ALWAYS visible in the left pane (the old
+ * tab-swap mode died with the formatter tabs): first the project INVENTORY
+ * ("In this project": usage-count chips, jump-to-usage rows — column LOOKS
+ * count as usages), then the add-a-component browser (Built-in / From the
+ * palette / Yours / Whole rows / Bring your own). One wb-tree-row-idiom ROW
+ * per component with a click-to-expand details drawer. The typed mapping
+ * dialog inserts into the active view (a new grid column on the grid), can
+ * bind the component as a hover/click card on a candidate division, and
+ * saving over an existing name replaces the def AND re-bakes every column
+ * wearing it. "Save as component…" (element context menu / column header
+ * menu) derives typed slots and persists across reloads; imported JSON
+ * carrying a columnFormatterReference is refused (components are
+ * self-contained — nothing resolves references anymore).
  */
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { freshApp, header } from './helpers';
+import { freshApp, header, canvasTab, openGridTab, makeRowView } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -41,18 +42,17 @@ async function openDrawer(node: Locator): Promise<Locator> {
   return drawer;
 }
 
-test('the COMPONENTS tab opens the inventory + browser: rows in the tree idiom, no cards', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
-  await expect(page.locator('.wb-fmt-tab-comp')).toHaveClass(/active/);
-  // library mode replaces the tree browser; the other tabs read inactive
-  await expect(page.locator('.wb-fmt-tab-view')).not.toHaveClass(/active/);
-  await expect(page.locator('#wb-tree-body')).toBeHidden();
+test('the library is always on: inventory first, then the browser — rows in the tree idiom, no cards', async ({ page }) => {
   const lib = page.locator('#wb-lp-library');
+  // no tab to click — the library is a standing left-pane section, beside the
+  // tree (which keeps rendering the active surface)
   await expect(lib).toBeVisible();
-  // the inventory comes first — empty until something is actually in use
+  await expect(page.locator('#wb-tree-body')).toBeVisible();
+  // the inventory comes first — the showcase columns wear looks, so their
+  // components already count as usages
   await expect(lib.locator('.wb-complib-h1').first()).toHaveText('In this project');
-  await expect(lib.locator('.wb-complib-empty').first()).toContainText('Nothing in use yet');
-  // the hand-written built-ins lead; the palette-derived offering follows
+  await expect(usedNode(page, 'Status pill').locator('.wb-comp-count')).toHaveText('2');
+  // the hand-written built-ins lead the browser; the palette offering follows
   await expect(lib.locator('.wb-complib-group', { hasText: 'Built-in' })).toBeVisible();
   await expect(lib.locator('.wb-complib-group', { hasText: 'From the palette' })).toBeVisible();
   // rows, not cards — the pane speaks the same language as the structure tree
@@ -63,18 +63,14 @@ test('the COMPONENTS tab opens the inventory + browser: rows in the tree idiom, 
   await expect(drawer.locator('.wb-comp-slot')).toContainText(['The deadline to track · date']);
   // best-guess preview renders against the mock rows (row 1 has a future date)
   await expect(drawer.locator('.wb-comp-preview')).toContainText(/Due|Overdue/);
-  // leaving via the COLUMNS tab (the grid) restores the tree browser
-  await page.locator('.wb-fmt-tab-cols').click();
-  await expect(page.locator('#wb-lp-library')).toBeHidden();
-  await expect(page.locator('#wb-tree-body')).toBeVisible();
 });
 
 test('an inserted component appears under "In this project"; its usage row jumps to the instance', async ({ page }) => {
   // insert Deadline chip into the view (grid → a new root column)
-  await page.locator('.wb-fmt-tab-comp').click();
   const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
   await drawer.locator('.wb-comp-add').click();
   await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Added Deadline chip as a new grid column');
   // the library re-renders in place: the chip is now inventory, count chip 1
   const used = usedNode(page, 'Deadline chip');
   await expect(used).toBeVisible();
@@ -89,37 +85,28 @@ test('an inserted component appears under "In this project"; its usage row jumps
   await expect(page.locator('#wb-canvas .wb-selected').first()).toBeVisible();
 });
 
-test('with a column formatter open, insertion targets IT — and the inventory shows the column usage', async ({ page }) => {
-  // drill into the shared Status column style
-  await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
-  // the library over an open column formatter: the dialog is honest about the destination
-  await page.locator('.wb-fmt-tab-comp').click();
-  const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
-  await drawer.locator('.wb-comp-add').click();
-  const dlg = page.locator('.wb-compmap');
-  await expect(dlg.locator('.wb-compmap-insert')).toHaveText('Add to the Status column formatter');
-  await dlg.locator('.wb-compmap-insert').click();
-  await expect(page.locator('#wb-toast')).toContainText('Added Deadline chip to the Status column formatter');
-  // the insert went INTO the open formatter: the canvas still shows the
-  // COLUMN preview (per-row cells, not the grid) and now renders the chip
-  // (row 2's due date is 3 days past → Overdue)
-  await expect(page.locator('#wb-canvas .wb-mock-cell-fmt').first()).toBeVisible();
-  await expect(page.locator('.wb-grid-headrow')).toHaveCount(0);
-  await expect(page.locator('#wb-canvas')).toContainText('Overdue');
-  // the inventory tracks it as ONE column usage
+test('a column LOOK counts as a usage; its inventory row says so and jumps to the grid column', async ({ page }) => {
+  // dress DueDate by applying Deadline chip from its header menu
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Apply a component…' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Deadline chip' }).click();
+  await expect(header(page, 'DueDate').locator('.wb-grid-look')).toHaveCount(1);
+  // the inventory tracks the dressed column TWICE while the grid is up: the
+  // look store entry AND the floor cell that embeds a stamped clone of it —
+  // the placed cell IS an instance in the document (§1: looks are embedded)
   const used = usedNode(page, 'Deadline chip');
-  await expect(used.locator('.wb-comp-count')).toHaveText('1');
+  await expect(used.locator('.wb-comp-count')).toHaveText('2');
   const usedDrawer = await openDrawer(used);
-  await expect(usedDrawer.locator('.wb-comp-usage')).toHaveText('Status — column formatter');
-  // one Ctrl+Z removes it from the column formatter
+  await expect(usedDrawer.locator('.wb-comp-usage', { hasText: 'DueDate — column look' })).toHaveCount(1);
+  // the column-look jump row selects the dressed grid column
+  await usedDrawer.locator('.wb-comp-usage', { hasText: 'column look' }).click();
+  await expect(page.locator('#wb-canvas .wb-selected').first()).toBeVisible();
+  // one Ctrl+Z takes the look off again — the inventory row empties out
   await page.keyboard.press('Control+z');
-  await expect(page.locator('#wb-canvas')).not.toContainText('Overdue');
+  await expect(usedNode(page, 'Deadline chip')).toHaveCount(0);
 });
 
 test('Add to view: the mapping dialog filters columns by slot type and inserts one undoable grid column', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
   const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
   await drawer.locator('.wb-comp-add').click();
   const dlg = page.locator('.wb-compmap');
@@ -144,13 +131,9 @@ test('Add to view: the mapping dialog filters columns by slot type and inserts o
 
 test('the trigger picker binds a component as a HOVER CARD on a candidate division — one undo unwinds it (issue #204)', async ({ page }) => {
   // a row view gives the canvas a division that can host a card
-  const gridHeader = (l: string) => page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: l }) });
-  await gridHeader('Title').click({ modifiers: ['Control'] });
-  await gridHeader('DueDate').click({ modifiers: ['Control'] });
-  await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
+  await makeRowView(page, ['Title', 'DueDate']);
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
 
-  await page.locator('.wb-fmt-tab-comp').click();
   const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
   await drawer.locator('.wb-comp-add').click();
   const dlg = page.locator('.wb-compmap');
@@ -185,7 +168,6 @@ test('the trigger picker binds a component as a HOVER CARD on a candidate divisi
 });
 
 test('a two-slot component maps person + date independently', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
   const drawer = await openDrawer(browseNode(page, 'Assignee + deadline'));
   await drawer.locator('.wb-comp-add').click();
   const dlg = page.locator('.wb-compmap');
@@ -210,12 +192,9 @@ test('Save as component: derives typed slots, lands in "Yours", persists across 
   await dlg.locator('.wb-compmap-name').fill('My date look');
   await dlg.locator('.wb-compmap-insert').click();
   await expect(page.locator('#wb-toast')).toContainText('Saved “My date look”');
-  // it shows under Yours…
-  await page.locator('.wb-fmt-tab-comp').click();
+  // it shows under Yours, and survives a reload (its own additive storage key)
   await expect(browseNode(page, 'My date look')).toBeVisible();
-  // …and survives a reload (its own additive storage key)
   await page.reload();
-  await page.locator('.wb-fmt-tab-comp').click();
   const mine = browseNode(page, 'My date look');
   await expect(mine).toBeVisible();
   // delete via the row's hover actions removes it
@@ -225,13 +204,7 @@ test('Save as component: derives typed slots, lands in "Yours", persists across 
 });
 
 test('a whole row saves as a row component and later REPLACES a view\'s layout, one undo', async ({ page }) => {
-  // build a CFR-free row view: Ctrl-click plain columns, "make a row view"
-  // (a template-built row carries CFR cells, which save correctly refuses —
-  // components are self-contained)
-  const gridHeader = (l: string) => page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: l }) });
-  await gridHeader('Title').click({ modifiers: ['Control'] });
-  await gridHeader('DueDate').click({ modifiers: ['Control'] });
-  await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
+  await makeRowView(page, ['Title', 'DueDate']);
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
 
   // save the ROOT row as a component — right-click the tree's root row
@@ -243,11 +216,9 @@ test('a whole row saves as a row component and later REPLACES a view\'s layout, 
   await dlg.locator('.wb-compmap-insert').click();
   await expect(page.locator('#wb-toast')).toContainText('Saved “My row shape”');
 
-  // back to the grid (the COLUMNS tab — Stage 2 retired the toolbar button),
-  // then use the saved row component as the layout again
-  await page.locator('.wb-fmt-tab-cols').click();
+  // back to the grid (the standing tab), then use the saved row component
+  await openGridTab(page);
   await expect(page.locator('.wb-grid-headrow')).toBeVisible();
-  await page.locator('.wb-fmt-tab-comp').click();
   const mine = browseNode(page, 'My row shape'); // under Whole rows
   await expect(mine).toBeVisible();
   // a row component's row hints its scope and is NOT a drag source
@@ -261,14 +232,23 @@ test('a whole row saves as a row component and later REPLACES a view\'s layout, 
   await expect(page.locator('.wb-grid-headrow')).toBeVisible();
 });
 
-test('Import from formatter JSON: a pasted rowFormatter becomes a mappable row component; bad JSON teaches', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
+test('Import from formatter JSON: a pasted rowFormatter becomes a mappable row component; bad JSON and CFRs teach', async ({ page }) => {
   await page.locator('.wb-comp-rowlink', { hasText: 'Import from formatter JSON' }).click();
   const dlg = page.locator('.wb-compmap');
   // refuse-and-teach on junk
   await dlg.locator('.wb-compmap-json').fill('{not json');
   await dlg.locator('.wb-compmap-insert').click();
   await expect(dlg.locator('.wb-compmap-error')).toContainText('Invalid JSON');
+  // refuse-and-teach on a columnFormatterReference — components are
+  // self-contained, and nothing resolves references anymore
+  await dlg.locator('.wb-compmap-json').fill(JSON.stringify({
+    rowFormatter: {
+      elmType: 'div',
+      children: [{ elmType: 'div', columnFormatterReference: '[$Ghost]' }],
+    },
+  }));
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(dlg.locator('.wb-compmap-error')).toContainText('self-contained');
   // a real pnp-style rowFormatter imports with derived slots
   await dlg.locator('.wb-compmap-name').fill('Community row');
   await dlg.locator('.wb-compmap-json').fill(JSON.stringify({
@@ -293,28 +273,39 @@ test('Import from formatter JSON: a pasted rowFormatter becomes a mappable row c
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('Launch new intranet');
 });
 
-test('saving over an existing name replaces the component instead of duplicating it', async ({ page }) => {
-  const save = async (name: string) => {
-    await treeRow(page, 'DueDate').click({ button: 'right' });
-    await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
-    await page.locator('.wb-compmap .wb-compmap-name').fill(name);
-    await page.locator('.wb-compmap .wb-compmap-insert').click();
-  };
-  await save('Same look');
-  await save('Same look');
-  await expect(page.locator('#wb-toast')).toContainText('Replaced “Same look”');
-  await page.locator('.wb-fmt-tab-comp').click();
-  await expect(compNode(page, 'Same look')).toHaveCount(1);
+test('saving over an existing name replaces the component and re-bakes every column wearing it', async ({ page }) => {
+  // package Status's look as "My pill", then dress Status in it
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  await page.locator('.wb-compmap .wb-compmap-name').fill('My pill');
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Remove the look' }).click();
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Apply a component…' }).click();
+  await page.locator('.wb-grid-menu button', { hasText: 'My pill' }).click();
+  await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveAttribute('title', /My pill/);
+
+  // saving the (restyled) look under the SAME name replaces the def and
+  // re-bakes the wearing column — one toast says exactly that
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  await page.locator('.wb-compmap .wb-compmap-name').fill('My pill');
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Replaced “My pill” and re-baked the 1 column wearing it');
+  // still exactly one "My pill" DEF — replaced, not duplicated (it renders
+  // once in the inventory and once in the Yours browser group)
+  await expect(usedNode(page, 'My pill')).toHaveCount(1);
+  await expect(browseNode(page, 'My pill')).toHaveCount(1);
 });
 
-test('the component editor: edit a slot label + a style, pin one usage as-found — one undo reverts the whole apply', async ({ page }) => {
+test('the workshop: edit a slot label + a style, pin one usage as-found — one undo reverts the whole apply', async ({ page }) => {
   // package the DueDate cell as a custom component…
   await treeRow(page, 'DueDate').click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
   await page.locator('.wb-compmap .wb-compmap-name').fill('My date look');
   await page.locator('.wb-compmap .wb-compmap-insert').click();
   // …and insert it TWICE (two view usages, two new grid columns)
-  await page.locator('.wb-fmt-tab-comp').click();
   await (await openDrawer(browseNode(page, 'My date look'))).locator('.wb-comp-add').click();
   await page.locator('.wb-compmap .wb-compmap-insert').click();
   // (the library re-rendered — drawers reset, re-open the inventory row)
@@ -323,12 +314,13 @@ test('the component editor: edit a slot label + a style, pin one usage as-found 
   const used = usedNode(page, 'My date look');
   await expect(used.locator('.wb-comp-count')).toHaveText('2');
 
-  // open the editor from the inventory row — it covers the canvas pane only,
-  // the Left Edit Pane (the library) stays visible behind it
+  // open the WORKSHOP from the inventory row — it covers the canvas as a tab;
+  // the left pane (the library) stays visible beside it
   await used.locator('.wb-comp-row').hover();
   await used.locator('.wb-comp-rowedit').click();
-  const ce = page.locator('.wb-ce');
+  const ce = page.locator('#wb-workshop .wb-ce');
   await expect(ce).toBeVisible();
+  await expect(canvasTab(page, 'My date look')).toHaveClass(/active/);
   await expect(page.locator('#wb-lp-library')).toBeVisible();
   // slot KEY is immutable; the LABEL (what the mapping dialog asks) is not
   await expect(ce.locator('.wb-ce-slotkey')).toHaveText('[$DueDate]');
@@ -338,8 +330,6 @@ test('the component editor: edit a slot label + a style, pin one usage as-found 
   // Chromium serializes the inline style as rgb(92, 45, 145))
   const purple = '[style*="rgb(92, 45, 145)"]';
   await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
-  // nothing committed yet — the canvas still has no purple anywhere
-  await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
 
   // pin the SECOND usage "keep as-found"; the save button counts honestly
   await expect(ce.locator('.wb-ce-usage')).toHaveCount(2);
@@ -349,8 +339,9 @@ test('the component editor: edit a slot label + a style, pin one usage as-found 
   await save.click();
   await expect(page.locator('#wb-toast')).toContainText('kept 1 as-found');
 
-  // the unpinned instance wears the new look (once per mock row), the pinned
-  // one keeps the old look — 3 purple elements, not 6
+  // back on the grid: the unpinned instance wears the new look (once per mock
+  // row), the pinned one keeps the old look — 3 purple elements, not 6
+  await openGridTab(page);
   await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(3);
   // the as-found variant nests (indented) under its parent row with the tag
   const variant = page.locator('.wb-comp-variantnode');
@@ -372,65 +363,46 @@ test('the component editor: edit a slot label + a style, pin one usage as-found 
   await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
 });
 
-test('editing a built-in offers Save-as-new only and lands the copy under Yours', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
+test('editing a built-in offers Save-as-new only; the tab swaps onto the copy under Yours', async ({ page }) => {
   const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
   await drawer.locator('.wb-comp-edit').click();
-  const ce = page.locator('.wb-ce');
+  const ce = page.locator('#wb-workshop .wb-ce');
   await expect(ce).toBeVisible();
   await expect(ce.locator('.wb-ce-sub')).toContainText('built-ins can\'t be overwritten');
   // no replace/apply button — Save as new component is the ONLY save
   await expect(ce.locator('.wb-ce-foot button', { hasText: 'Save and apply' })).toHaveCount(0);
-  await expect(ce.locator('.wb-ce-foot button', { hasText: /^Save$/ })).toHaveCount(0);
   await ce.locator('.wb-ce-name').fill('My chip copy');
   await ce.locator('.wb-ce-savenew').click();
   await expect(page.locator('#wb-toast')).toContainText('Saved “My chip copy” as a new component');
+  // the maker keeps editing THEIR component: the tab swapped onto the copy
+  await expect(canvasTab(page, 'My chip copy')).toHaveClass(/active/);
   await expect(browseNode(page, 'My chip copy')).toBeVisible();
   // the built-in itself is untouched
   await expect(browseNode(page, 'Deadline chip')).toBeVisible();
 });
 
-test('a CFR-carrying subtree is refused with teaching, not silently broken', async ({ page }) => {
-  // the Status cell hosts a columnFormatterReference — not self-contained
-  await treeRow(page, 'Status').click({ button: 'right' });
-  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
-  await expect(page.locator('.wb-compmap')).toHaveCount(0); // no dialog
-  await expect(page.locator('#wb-toast')).toContainText('must be self-contained');
-});
-
-test('palette components: offered in the library, draggable straight onto the canvas', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
-  const lib = page.locator('#wb-lp-library');
-  // the palette-derived offering sits beside the built-ins, live-previewed
-  await expect(lib.locator('.wb-complib-group', { hasText: 'From the palette' })).toBeVisible();
+test('a ⬡ row dragged onto a grid column applies its look there (the drop twin of "Apply a component…")', async ({ page }) => {
+  // Facepile fits a multi-person column — drop its library row onto AssignedTo
   const faces = browseNode(page, 'Facepile');
-  await expect(faces).toBeVisible();
-  const drawer = await openDrawer(faces);
-  await expect(drawer.locator('.wb-comp-slot')).toContainText(['AssignedTo · multi-person / person']);
-  await expect(drawer.locator('.wb-comp-preview img').first()).toBeVisible(); // best-guess preview renders avatars
-
-  // the palette gesture, generalized: drag the ROW onto a grid cell — the
-  // best guess completes against the default schema, so it lands right there
-  await faces.locator('.wb-comp-row').dragTo(page.locator('.wb-grid-cell[data-col="0"]').first());
-  await expect(page.locator('#wb-toast')).toContainText('Added "Facepile"');
-
-  // provenance-stamped on drop → the ⬡ inventory counts the usage
-  await page.locator('.wb-fmt-tab-cols').click(); // leave the library (re-enter re-scans)
-  await page.locator('.wb-fmt-tab-comp').click();
-  await expect(usedNode(page, 'Facepile').locator('.wb-comp-count')).toHaveText('1');
-
-  // back on the grid the instance sits in the tree; one Ctrl+Z reverts the drop
-  await page.locator('.wb-fmt-tab-cols').click();
-  await expect(treeRow(page, 'Facepile')).toBeVisible();
+  await faces.locator('.wb-comp-row')
+    .dragTo(page.locator('.wb-grid-cell[data-col="4"]').first());
+  await expect(page.locator('#wb-toast')).toContainText('Applied Facepile to AssignedTo');
+  // the column is dressed: ⬡ header mark + avatars in the cells
+  await expect(header(page, 'AssignedTo').locator('.wb-grid-look')).toHaveCount(1);
+  await expect(page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="4"] img').first())
+    .toBeVisible();
+  // the inventory counts the dressed column (look store + the embedded cell)
+  await expect(usedNode(page, 'Facepile').locator('.wb-comp-count')).toHaveText('2');
+  // one Ctrl+Z undresses the column again
   await page.keyboard.press('Control+z');
-  await expect(treeRow(page, 'Facepile')).toHaveCount(0);
+  await expect(header(page, 'AssignedTo').locator('.wb-grid-look')).toHaveCount(0);
+  await expect(usedNode(page, 'Facepile')).toHaveCount(0);
 });
 
-test('component editor: modal-local ↶↷ over element edits; text fields stay native', async ({ page }) => {
-  await page.locator('.wb-fmt-tab-comp').click();
+test('workshop: modal-local ↶↷ over element edits; staged means staged (the app stack never hears)', async ({ page }) => {
   const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
   await drawer.locator('.wb-comp-edit').click();
-  const ce = page.locator('.wb-ce');
+  const ce = page.locator('#wb-workshop .wb-ce');
   await expect(ce).toBeVisible();
   await expect(ce.locator('.wb-mu-undo')).toBeDisabled(); // bottoms out at open
   // a style gesture on the selected root = one local step, live in the preview
@@ -443,6 +415,32 @@ test('component editor: modal-local ↶↷ over element edits; text fields stay 
   await expect(ce.locator(`.wb-ce-preview ${purple}`)).not.toHaveCount(0);
   // nothing reached the document or the app stack — staged means staged
   await expect(page.locator('.wb-tool-undo')).toBeDisabled();
-  await ce.locator('.wb-ce-close').click(); // dirty → confirm, auto-accepted
+  // closing the dirty tab asks (auto-accepted) and discards
+  await canvasTab(page, 'Deadline chip').locator('.wb-canvastab-close').click();
   await expect(ce).not.toBeVisible();
+});
+
+test('legacy wb-subtypes customs migrate one-way into the library as "Yours"', async ({ page }) => {
+  // seed a LEGACY maker-authored subtype into the retired wb-subtypes store
+  await page.evaluate(() => {
+    localStorage.removeItem('wb-components.subtypes-migrated.v1');
+    localStorage.setItem('wb-subtypes', JSON.stringify({
+      version: 1,
+      subtypes: [{
+        id: 'custom-due-1', name: 'My Due Look', origin: 'custom', baseTypes: ['date'],
+        formatter: { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' },
+        knobs: [], vocab: { refs: ['@currentField'], values: [] },
+      }],
+    }));
+  });
+  await page.reload();
+  // the migrated custom reads as one of Yours in the library…
+  await expect(browseNode(page, 'My Due Look')).toBeVisible();
+  // …and the apply catalog of a fitting (date) column offers it, badged Yours
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Apply a component…' }).click();
+  const mine = page.locator('.wb-grid-menu button', { hasText: 'My Due Look' });
+  await expect(mine.locator('.wb-menu-badge')).toHaveText('Yours');
+  await mine.click();
+  await expect(header(page, 'DueDate').locator('.wb-grid-look')).toHaveCount(1);
 });

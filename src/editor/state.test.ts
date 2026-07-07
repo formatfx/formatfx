@@ -1372,6 +1372,22 @@ describe('canvas tabs (§2): openTabs bookkeeping', () => {
     expect(s.views).toHaveLength(1);
   });
 
+  it('an undo emits \'data\' even when it never moves the canvas — the list surfaces must hear it', () => {
+    // undo a floor-side createView from the floor itself: no navigation
+    // happens (floor → floor), but the views/tabs collections change — the
+    // tab strip and views list re-render on 'data', so it must fire anyway
+    const s = new EditorState();
+    s.createView(rowDoc());
+    s.minimizeView(); // wander back to the floor before undoing
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    s.undo(); // the sheet (and its tab) disappear; the canvas stays put
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toHaveLength(0);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(reasons).toContain('data');
+  });
+
   it('persists ADDITIVELY: no openTabs key while only the Grid tab is open', () => {
     const p = JSON.parse(new EditorState().serializeProject());
     expect(p.openTabs).toBeUndefined();

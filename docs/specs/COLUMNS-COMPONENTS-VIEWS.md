@@ -168,6 +168,10 @@ Top to bottom:
 
 ## 6. Phases (each ends compiling + unit-green)
 
+> **All six phases SHIPPED 2026-07-07** (A–E landed 2026-07-06→07 on the
+> migration branch; F — the e2e realignment + docs refresh — closed
+> 2026-07-07: unit suite 950 across 51 files, e2e 136 across 16 files).
+
 - **A. Model core** — types (drop `columnFormatterReference`, `_component`
   stays; MockField loses subtype/subtypeArgs), renderer (delete CFR
   block + resolveColumnRef), cfr.ts → `lookDialect.ts` (keep the two

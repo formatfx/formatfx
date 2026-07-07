@@ -1,7 +1,7 @@
 /**
  * E2E: the row view (and tile) builder. The Templates button on the row-view
- * toolbar (and "+ New rowview" / "+ New tileview" in the document dropdown)
- * opens the builder on a WIREFRAME GALLERY (grouped Row/Tile); picking a
+ * toolbar (and "＋ New rowview…" / "＋ New tileview…" in the left pane's views
+ * list) opens the builder on a WIREFRAME GALLERY (grouped Row/Tile); picking a
  * layout enters the zone editor with a live preview. A style exclusion is
  * felt (a greyed control with a reason); Apply replaces the layout as ONE
  * undoable step; fields AND components drag from the chips bar into zones;
@@ -141,12 +141,10 @@ test('zones nest: drop a zone onto a zone, and the nest survives Apply → reope
   await expect(page.locator('[data-edit-item="0:1:0"]')).toBeVisible(); // its item came along
 });
 
-test('New rowview is reachable from the view strip\'s ＋ on the landing screen', async ({ page }) => {
+test('New rowview is reachable from the views list on the landing screen', async ({ page }) => {
   await page.goto('/');
-  // straight from the grid landing — the strip's ＋ is the on-ramp (the pill
-  // browses columns there; the view menu belongs to sheets)
-  await page.locator('#wb-viewstrip .wb-viewstrip-add').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'New rowview…' }).click();
+  // straight from the grid landing — the views list's ＋ is the on-ramp
+  await page.locator('.wb-viewslist-newrow').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   // pick a layout, apply — the grid graduates into a row view
   await page.locator('[data-wireframe="avatar-card"]').click();
@@ -156,8 +154,7 @@ test('New rowview is reachable from the view strip\'s ＋ on the landing screen'
 
 test('the builder makes a TILE view: tile gallery → tile editor → Save → the tile deck, then reopen', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#wb-viewstrip .wb-viewstrip-add').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'New tileview…' }).click();
+  await page.locator('.wb-viewslist-newtile').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   // the tile ask leads the gallery with the tile layouts
   await expect(page.locator('.wb-template-gallery-head').first()).toHaveText('Tile layouts');

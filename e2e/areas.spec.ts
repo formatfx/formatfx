@@ -1,12 +1,13 @@
 /**
- * E2E: Stage 3 — the row-view builder. Ctrl-click grid columns to multi-select,
- * "make a row view" turns them into weighted areas, density is a separate
- * row-level knob, and tile is an explicit layout pick that can never emerge on
- * its own. Zone/area sizing lives in the template builder's inspector — the old
- * right-click "Area width" entries were retired 2026-07-04 (FLOOR-AND-SHEETS).
+ * E2E: the graduation gestures — Ctrl-click grid columns to multi-select,
+ * "make a row view" turns them into weighted areas (a NEW view in its own
+ * canvas tab), density is a separate row-level knob, and tile is an explicit
+ * layout pick that can never emerge on its own. Zone/area sizing lives in the
+ * template builder's inspector — the old right-click "Area width" entries
+ * were retired 2026-07-04 (FLOOR-AND-SHEETS).
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, header } from './helpers';
+import { freshApp, header, canvasTab, openGridTab } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -43,7 +44,7 @@ test('the retired right-click Area width entries stay gone (sizing is the builde
   await expect(area1).toHaveCSS('flex-grow', '1');
 });
 
-test('density is a separate row-level knob, and you can go back to the grid', async ({ page }) => {
+test('density is a separate row-level knob, and the Grid tab is the way back', async ({ page }) => {
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await header(page, 'Status').click({ modifiers: ['Control'] });
   await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
@@ -54,9 +55,9 @@ test('density is a separate row-level knob, and you can go back to the grid', as
   await page.locator('.wb-rowview-bar-btn', { hasText: 'Roomy' }).click();
   await expect(root).toHaveCSS('gap', '16px');
 
-  // Stage 2: the toolbar's "Back to grid" is retired — the COLUMNS tab is the
-  // grid (minimize is navigation; the sheet waits as a chip in the view strip)
-  await page.locator('.wb-fmt-tab-cols').click();
+  // the Grid tab is the way back (minimize is navigation; the view waits in
+  // its own tab) — no toolbar "Back to grid" button anywhere
+  await openGridTab(page);
   // the FLOOR comes back exactly as it was — a real separate document, not
   // the view's areas relabeled as pseudo-columns (FLOOR-AND-SHEETS Stage 1)
   await expect(page.locator('.wb-grid-header-label'))
@@ -64,12 +65,11 @@ test('density is a separate row-level knob, and you can go back to the grid', as
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
   await expect(page.locator('.wb-rowview-bar-btn', { hasText: 'Back to grid' })).toHaveCount(0);
 
-  // …and the way back is VISIBLE: the view strip's chip reopens the named
-  // view untouched (the fix for "you can never get back")
-  await page.locator('#wb-viewstrip .wb-viewstrip-chip', { hasText: 'View 1' }).click();
+  // …and the way back is VISIBLE: the view's canvas tab reopens it untouched
+  await canvasTab(page, 'View 1').locator('.wb-canvastab-btn').click();
   await expect(page.locator('.wb-rowview-bar')).toBeVisible();
   await expect(page.locator('.wb-mock-viewrow').first().locator('> [data-sp-path] > [data-sp-path]')).toHaveCount(2);
-  await expect(page.locator('#wb-viewstrip .wb-viewstrip-chip')).toHaveClass(/active/); // the chip shows it's up
+  await expect(canvasTab(page, 'View 1')).toHaveClass(/active/); // the tab shows it's up
 });
 
 test('tile is an explicit layout pick from the selection', async ({ page }) => {
@@ -79,9 +79,7 @@ test('tile is an explicit layout pick from the selection', async ({ page }) => {
   // a graduated tile stacks its areas vertically — never a row in a tile box
   await expect(page.locator('.wb-mock-tile').first().locator('> [data-sp-path=""]'))
     .toHaveCSS('flex-direction', 'column');
-  // a tile is still a view formatter → the VIEW FORMATTERS tab stays active,
-  // the document dropdown still names View 1 (as a tile schema now)
-  await expect(page.locator('.wb-fmt-tab-view')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('View 1');
-  await expect(page.locator('.wb-doc-pill-type')).toHaveText('tile schema');
+  // a tile is still a view — its canvas tab is active and wears the ▤ mark
+  await expect(canvasTab(page, 'View 1')).toHaveClass(/active/);
+  await expect(canvasTab(page, 'View 1').locator('.wb-canvastab-mark')).toHaveText('▤');
 });

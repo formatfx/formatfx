@@ -1,10 +1,10 @@
 /**
- * Visual smoke tests for the List Formatting Sandbox.
+ * Visual smoke tests for the sandbox core flows.
  * Run locally: npm run test:ui   (uses your installed Edge/Chrome)
  * Screenshots land in test-results/ for every test.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, loadExample, openJson, openPalette } from './helpers';
+import { freshApp, header, loadExample, openJson, openPalette } from './helpers';
 
 let lastDialog = '';
 test.beforeEach(async ({ page }) => {
@@ -14,46 +14,45 @@ test.beforeEach(async ({ page }) => {
   await freshApp(page);
 });
 
-test('first load shows the grid-first workspace: Lists-style grid, formatted columns resolve', async ({ page }) => {
+test('first load shows the grid-first workspace: Lists-style grid, dressed columns render their looks', async ({ page }) => {
   // default is a grid — one column per view column, real headers
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']);
   await expect(page.locator('.wb-grid-row')).toHaveCount(3);
-  // formatter navigation: the grid IS columns mode (Stage 2, owner call
-  // 2026-07-05) — the COLUMNS tab is active, the document dropdown names the
-  // grid, and the tree shows its structure
-  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  // no view-schema tag on the floor — Columns mode carries no wrapper chrome
-  await expect(page.locator('.wb-doc-pill-type')).toBeHidden();
-  // the registered column formatters live behind the COLUMN FORMATTERS tab's
-  // gallery — Owner is registered but unplaced, so "+ column" can add it, formatted
+  // the canvas tab strip is the navigation: the standing ▦ Grid tab, active
+  await expect(page.locator('#wb-canvastabs .wb-canvastab')).toHaveCount(1);
+  await expect(page.locator('#wb-canvastabs .wb-canvastab-grid')).toHaveClass(/active/);
+  // Owner is dressed but unplaced, so "+ column" can add it, formatted
   await expect(page.locator('.wb-grid-addcol')).toBeVisible();
-  // formatted columns render their formatters (CFR resolves, pills not chips)
+  // dressed columns render their component looks embedded (pills, data bars)
   await expect(page.locator('.wb-grid-row').first()).toContainText('In Progress');
-  await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
+  await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(1);
 });
 
-test('status pill example renders colored pills per row', async ({ page }) => {
+test('a column example applies as the current column\'s LOOK — the grid renders it', async ({ page }) => {
   await loadExample(page, 'status-pill');
-  const cells = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt');
-  await expect(cells.nth(0)).toContainText('In Progress');
-  await expect(cells.nth(1)).toContainText('Blocked');
-  await expect(cells.nth(2)).toContainText('Done');
+  await expect(page.locator('#wb-toast')).toContainText("applied as the Status column's look");
+  // still on the grid — the pill renders per row inside the Status column
+  await expect(page.locator('#wb-canvastabs .wb-canvastab-grid')).toHaveClass(/active/);
+  const statusCells = page.locator('.wb-grid-cell[data-col="1"]');
+  await expect(statusCells.nth(0)).toContainText('In Progress');
+  await expect(statusCells.nth(1)).toContainText('Blocked');
+  await expect(statusCells.nth(2)).toContainText('Done');
   // conditional background evaluated per row
-  const done = cells.nth(2).locator('[data-sp-path]').first();
-  await expect(done).toHaveCSS('background-color', 'rgb(16, 124, 16)');
+  await expect(statusCells.nth(2).locator('[data-sp-path]').first())
+    .toHaveCSS('background-color', 'rgb(16, 124, 16)');
 });
 
-test('palette click inserts an element, selects it and toasts', async ({ page }) => {
-  await loadExample(page, 'status-pill'); // column-kind canvas
+test('palette click inserts an element and selects it', async ({ page }) => {
   await openPalette(page);
   await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Traffic light' }).click();
-  await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('In Progress');
-  await expect(page.locator('.wb-tree-row.selected')).toHaveCount(1);
+  // on the grid it arrives as a new column, rendered per row and selected
+  await expect(page.locator('.wb-grid-header-label')).toHaveCount(7);
+  await expect(page.locator('#wb-tree-body .wb-tree-row.selected')).toHaveCount(1);
+  await expect(page.locator('#wb-tree-body .wb-tree-name', { hasText: 'Traffic light' })).toBeVisible();
 });
 
-test('JSON round-trip: edit JSON, apply, canvas updates', async ({ page }) => {
+test('JSON round-trip: edit JSON, apply, the canvas updates', async ({ page }) => {
   await openJson(page);
   const json = {
     $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
@@ -62,12 +61,15 @@ test('JSON round-trip: edit JSON, apply, canvas updates', async ({ page }) => {
   };
   await page.fill('#wb-json-text', JSON.stringify(json));
   await page.click('#wb-json-apply');
-  await expect(page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first()).toContainText('Hello Launch new intranet');
+  // a column payload becomes the current field's look, embedded on the grid
+  await expect(page.locator('.wb-grid-row').first()).toContainText('Hello Launch new intranet');
 });
 
 test('lint panel teaches: nested = gets a verbose, positioned error', async ({ page }) => {
   await openJson(page);
-  const bad = { elmType: 'div', txtContent: "=if([$Title]=='x','y',=if(true,'a','b'))" };
+  const bad = {
+    rowFormatter: { elmType: 'div', txtContent: "=if([$Title]=='x','y',=if(true,'a','b'))" },
+  };
   await page.fill('#wb-json-text', JSON.stringify(bad));
   await page.click('#wb-json-apply');
   const lintItem = page.locator('.wb-lint-item.wb-lint-error', { hasText: "extra '='" });
@@ -77,10 +79,9 @@ test('lint panel teaches: nested = gets a verbose, positioned error', async ({ p
 });
 
 test('hover card opens as flyout and its content is selectable', async ({ page }) => {
-  await loadExample(page, 'status-pill');
   await openPalette(page);
   await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
-  await page.locator('.wb-mock-cell-fmt .wb-has-card').first().click();
+  await page.locator('.wb-grid .wb-has-card').first().click();
   const flyout = page.locator('.wb-flyout');
   await expect(flyout).toBeVisible();
   await expect(flyout).toContainText('Status: In Progress');
@@ -105,22 +106,29 @@ test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) =
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
-test('one unified surface — left pane (lens + formatter tabs + tree + draw bar) and fx bar all present', async ({ page }) => {
+test('one unified surface — left pane, canvas tab strip and fx bar all present', async ({ page }) => {
   // there is no mode toggle anymore — everything is on screen at once
   await expect(page.locator('#wb-mode')).toHaveCount(0);
 
-  // the Left Edit Pane: lens tabs (Simple/Pro/Code), the formatter tabs, the
-  // document dropdown, the structure tree and the draw toolbar are all visible
+  // the Left Edit Pane: lens tabs (Simple/Pro/Code), the structure tree, the
+  // columns shelf, the always-on components library, the views list and the
+  // draw toolbar are all visible
   await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-lens-tab')).toHaveCount(3);
-  await expect(page.locator('.wb-fmt-tab')).toHaveCount(3); // view · columns · components
-  await expect(page.locator('#wb-doc-pill')).toBeVisible();
   await expect(page.locator('#wb-tree-body')).toBeVisible();
+  await expect(page.locator('.wb-colshelf-rack')).toBeVisible();
+  await expect(page.locator('#wb-lp-library')).toBeVisible();
+  await expect(page.locator('#wb-lp-views')).toBeVisible();
   await expect(page.locator('.wb-drawbar')).toBeVisible();
   await expect(page.locator('#wb-fxbar')).toBeVisible();
+  // the canvas tab strip is the one navigation surface
+  await expect(page.locator('#wb-canvastabs')).toBeVisible();
 
-  // the old ribbon breadcrumb strip is gone — the left pane owns navigation
+  // the retired navigation chrome stays gone
   await expect(page.locator('#wb-ribbon')).toHaveCount(0);
+  await expect(page.locator('.wb-fmt-tab')).toHaveCount(0);
+  await expect(page.locator('#wb-doc-pill')).toHaveCount(0);
+  await expect(page.locator('#wb-viewstrip')).toHaveCount(0);
 
   // the palette popover shows the FULL set — basics AND actions/people/shells
   await openPalette(page);
@@ -147,15 +155,16 @@ test('applying name-less JSON over a named design warns before dropping names', 
   await page.fill('#wb-json-text', JSON.stringify({ elmType: 'div', txtContent: 'plain' }));
   await page.click('#wb-json-apply');
   expect(lastDialog).toContain('element names');
-  // auto-accepted → applied; names are gone, exactly what the dialog said
-  await expect(page.locator('.wb-tree-name')).toHaveCount(0);
+  // auto-accepted → applied as the current column's look, exactly as warned
+  await expect(page.locator('.wb-grid-cell[data-col="1"]').first()).toHaveText('plain');
 });
 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {
-  await loadExample(page, 'status-pill');
-  await openPalette(page);
-  const source = page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first();
-  const target = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt [data-sp-path]').first();
-  await source.dragTo(target);
+  const source = async () => {
+    await openPalette(page);
+    return page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first();
+  };
+  const target = page.locator('.wb-grid-cell[data-col="0"] [data-sp-path]').first();
+  await (await source()).dragTo(target);
   await expect(page.locator('#wb-toast')).toContainText('Inserted "Icon"');
 });
