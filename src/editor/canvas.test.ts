@@ -156,6 +156,155 @@ describe('field drops (§5: FIELD_MIME lands as the look-aware cell)', () => {
   });
 });
 
+describe('canvas zoom (#216) — a read-only VIEW control', () => {
+  const mount = (prefs?: unknown) => {
+    const sets: unknown[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {}, { get: () => prefs, set: (p) => sets.push({ ...p }) });
+    return { host, sets };
+  };
+
+  it('renders −/%/＋ on the toolbar; stepping scales the zoom box and persists', () => {
+    state.resetAll();
+    const { host, sets } = mount();
+    const box = host.querySelector('.wb-canvas-zoombox') as HTMLElement;
+    expect(box.style.transform).toBe(''); // 100% = no transform (e2e-safe default)
+    expect(host.querySelector('.wb-canvas-zoompct')?.textContent).toBe('100%');
+
+    (host.querySelector('[data-zoom="in"]') as HTMLButtonElement).click();
+    expect(box.style.transform).toBe('scale(1.1)');
+    expect(host.querySelector('.wb-canvas-zoompct')?.textContent).toBe('110%');
+    expect(sets.at(-1)).toMatchObject({ zoom: 1.1 });
+
+    // the % readout is the reset button
+    (host.querySelector('.wb-canvas-zoompct') as HTMLButtonElement).click();
+    expect(box.style.transform).toBe('');
+    expect(sets.at(-1)).toMatchObject({ zoom: 1 });
+    state.resetAll();
+  });
+
+  it('clamps at 25%–200% (buttons disable at the ends)', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 2 });
+    const inBtn = host.querySelector('[data-zoom="in"]') as HTMLButtonElement;
+    expect(inBtn.disabled).toBe(true);
+    expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(2)');
+    state.resetAll();
+  });
+
+  it('Ctrl+wheel zooms; a bare wheel scrolls as usual', () => {
+    state.resetAll();
+    const { host } = mount();
+    const box = host.querySelector('.wb-canvas-zoombox') as HTMLElement;
+
+    host.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+    expect(box.style.transform).toBe(''); // no Ctrl → untouched
+
+    const zoomWheel = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+    // happy-dom's WheelEventInit drops modifier keys — stamp it on directly
+    Object.defineProperty(zoomWheel, 'ctrlKey', { value: true });
+    host.dispatchEvent(zoomWheel);
+    expect(zoomWheel.defaultPrevented).toBe(true); // never page-zooms the app
+    expect(box.style.transform).toBe('scale(1.1)');
+    state.resetAll();
+  });
+
+  it('zoom mutates nothing: no undo entry, document JSON untouched', () => {
+    state.resetAll();
+    const { host } = mount();
+    const doc = JSON.stringify(state.doc.root);
+    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+    (host.querySelector('[data-zoom="out"]') as HTMLButtonElement).click();
+    expect(JSON.stringify(state.doc.root)).toBe(doc);
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
+    state.resetAll();
+  });
+
+  it('restores a persisted zoom at mount (and sanitizes garbage)', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 1.5 });
+    expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(1.5)');
+    const { host: h2 } = mount({ zoom: 'huge' });
+    expect((h2.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('');
+    state.resetAll();
+  });
+});
+
+describe('viewport width presets + drag handle (#224) — width reflows, zoom magnifies', () => {
+  const mount = (prefs?: unknown) => {
+    const sets: unknown[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {}, { get: () => prefs, set: (p) => sets.push({ ...p }) });
+    return { host, sets };
+  };
+
+  it('offers Fit/Monitor/Half/Phone and a resize handle in every canvas kind', () => {
+    state.resetAll(); // the floor grid
+    for (const make of [
+      () => {},
+      () => state.createView({ kind: 'row', root: { elmType: 'div', children: [] } }),
+      () => state.createView({ kind: 'tile', root: { elmType: 'div', children: [] } }),
+    ]) {
+      make();
+      const { host } = mount();
+      expect([...host.querySelectorAll('[data-viewport]')].map((b) => b.getAttribute('data-viewport')))
+        .toEqual(['fit', 'monitor', 'half', 'phone']);
+      expect(host.querySelector('.wb-canvas-widthhandle')).toBeTruthy();
+    }
+    state.resetAll();
+  });
+
+  it('a preset constrains the STAGE layout width (real reflow), shows ≈px, persists — and mutates nothing', () => {
+    state.resetAll();
+    const { host, sets } = mount();
+    const stage = host.querySelector('.wb-canvas-stage') as HTMLElement;
+    const doc = JSON.stringify(state.doc.root);
+    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+
+    (host.querySelector('[data-viewport="phone"]') as HTMLButtonElement).click();
+    expect(stage.style.width).toBe('360px');
+    expect(stage.classList.contains('wb-canvas-stage--framed')).toBe(true);
+    expect(host.querySelector('.wb-canvas-vppx')?.textContent).toBe('≈360px'); // honesty on screen
+    expect(host.querySelector('[data-viewport="phone"]')?.classList.contains('active')).toBe(true);
+    expect(sets.at(-1)).toEqual({ zoom: 1, viewportWidth: 360 });
+    // read-only view control: no undo entry, no document change
+    expect(JSON.stringify(state.doc.root)).toBe(doc);
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
+
+    (host.querySelector('[data-viewport="fit"]') as HTMLButtonElement).click();
+    expect(stage.style.width).toBe('');
+    expect(stage.classList.contains('wb-canvas-stage--framed')).toBe(false);
+    expect(sets.at(-1)).toEqual({ zoom: 1, viewportWidth: null });
+    state.resetAll();
+  });
+
+  it('zoom and width COMPOSE (phone width and zoomed in) and restore together at mount', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 1.5, viewportWidth: 860 });
+    expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(1.5)');
+    const stage = host.querySelector('.wb-canvas-stage') as HTMLElement;
+    expect(stage.style.width).toBe('860px'); // layout width unscathed by zoom
+    expect(host.querySelector('[data-viewport="half"]')?.classList.contains('active')).toBe(true);
+    state.resetAll();
+  });
+
+  it('a custom (dragged) width shows the ≈px readout with no preset active', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 1, viewportWidth: 500 });
+    expect((host.querySelector('.wb-canvas-stage') as HTMLElement).style.width).toBe('500px');
+    expect(host.querySelector('.wb-canvas-vppx')?.textContent).toBe('≈500px');
+    expect(host.querySelector('.wb-canvas-vpbtn.active')).toBeNull();
+    // double-clicking the handle dissolves the constraint back to Fit
+    (host.querySelector('.wb-canvas-widthhandle') as HTMLElement)
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect((host.querySelector('.wb-canvas-stage') as HTMLElement).style.width).toBe('');
+    expect(host.querySelector('[data-viewport="fit"]')?.classList.contains('active')).toBe(true);
+    state.resetAll();
+  });
+});
+
 describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
   it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
     state.resetAll();
