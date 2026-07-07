@@ -75,5 +75,6 @@ guidance in your environment.
 - SharePoint REST from the page: read-**POSTs** (e.g. `GetAllRules()`) need
   `X-RequestDigest` from `POST /_api/contextinfo` (403 "security validation"
   without). Deletes often need params in the **query string**, not a JSON body.
-- PowerShell has **no heredoc** — write multi-line git commit / PR bodies to a
+- PowerShell has here-strings (`@'...'@`) but **not bash `<<EOF` heredoc
+  redirection** (parse error) — write multi-line git commit / PR bodies to a
   temp file and use `git commit -F file` / `gh pr create --body-file file`.
