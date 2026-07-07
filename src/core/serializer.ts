@@ -101,7 +101,11 @@ function cloneTree(el: SPElement, opts: ExportOptions): SPElement {
   return out as unknown as SPElement;
 }
 
-export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): string {
+/** Assemble the export payload — the exact object tree JSON.stringify renders —
+ *  plus the cloned root element inside it. Exposed so core/jsonMap.ts can walk
+ *  the same payload and map text offsets back to element paths (#218); the
+ *  clone means the returned objects are never the live document's. */
+export function exportPayload(doc: FormatterDocument, opts: ExportOptions = {}): { payload: Record<string, unknown>; root: SPElement } {
   const root = cloneTree(doc.root, opts);
   let payload: Record<string, unknown>;
   switch (doc.kind) {
@@ -128,6 +132,11 @@ export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): st
     default:
       payload = { $schema: SCHEMA_URLS.column, ...root };
   }
+  return { payload, root };
+}
+
+export function exportJson(doc: FormatterDocument, opts: ExportOptions = {}): string {
+  const { payload } = exportPayload(doc, opts);
   let text = JSON.stringify(payload, null, opts.indent ?? 2);
   if (opts.csomSafe) {
     text = text.replace(/&/g, '\\u0026').replace(/</g, '\\u003c');

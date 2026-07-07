@@ -1453,6 +1453,21 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-color: var(--wb-accent); color: var(--wb-accent); font-weight: 600;
 }
 
+/* ── #218 split-view sync: flash the selected element's JSON lines ────── */
+/* the JSON pane host becomes the positioning context for the flash bar */
+.wb-codesync { position: relative; }
+.wb-code-flashbar {
+  position: absolute; pointer-events: none; z-index: 5; border-radius: 2px;
+  background: color-mix(in srgb, var(--wb-accent) 20%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--wb-accent) 45%, transparent);
+  animation: wb-code-flash 1.2s ease-out forwards;
+}
+@keyframes wb-code-flash {
+  from { opacity: 1; }
+  55% { opacity: .85; }
+  to { opacity: 0; }
+}
+
 /* ── lint ────────────────────────────────────────────────── */
 .wb-lint { margin-top: 8px; overflow: auto; max-height: 220px; }
 .wb-lint-ok { color: #107c10; font-size: 12px; padding: 6px; }
