@@ -35,7 +35,7 @@ simply a Rule whose trigger is a button press (`TriggerType = 5`), rather
 than a list-item event. (Rules are Microsoft's replacement for **Alerts,
 retiring July 2026** — a growing, invested-in area, so this is
 future-aligned, not a dead end.) The "alert" vocabulary still leaks through in
-error messages — see the delete quirk in §5.3.
+error messages — see the delete quirk in §5.6.
 
 Sources: **Breakdown of the SharePoint API for List Rules & Quick Steps** —
 365Automate, Jonathan Cardy, `https://www.365automate.com/posts/sharepoint-rules-quicksteps-api/`;
@@ -483,7 +483,7 @@ update sibling. Capture it before building a read→edit→deploy story (§6).
 level** write is *unverified* (single account on the tenant). Pairs with §3.3's
 read-permission gap → CONNECTIVITY §3.4 table once a second account confirms it.
 
-## 5.8 Auth — restates the closed CONNECTIVITY §1 reality
+### 5.8 Auth — restates the closed CONNECTIVITY §1 reality
 
 From the 365Automate source, confirmed by our capture: only an **end-user
 identity** token works — an application-identity token creates the rule but it
