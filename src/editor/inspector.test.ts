@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountInspector } from './inspector';
 import { state } from './state';
 import { BUILTIN_COMPONENTS, bindComponentInstance } from './components';
+import { ALLOWED_STYLES, STYLE_VALUE_SUGGESTIONS } from '../core/schema';
+import { lintDocument } from '../core/linter';
 import type { SPElement } from '../core/types';
 
 const DEADLINE = BUILTIN_COMPONENTS[0]; // one 'Due' slot, types ['date']
@@ -403,6 +405,184 @@ describe('the card actions', () => {
     (host.querySelector('.wb-inst-removelook') as HTMLButtonElement).click();
     expect(Object.hasOwn(state.columnLooks, 'DueDate')).toBe(false);
     expect(state.floorDoc.root.children![i]._component).toBeUndefined(); // plain cell again
+    expect(undoDepth()).toBe(before + 1);
+  });
+});
+
+// ─── #221: the visual Flex layout group ──────────────────────────────────────
+
+/** A row view whose first child is a two-child box wearing `style`. */
+function viewWithBox(style?: Record<string, string>): void {
+  state.createView({
+    kind: 'row',
+    root: {
+      elmType: 'div',
+      children: [{
+        elmType: 'div',
+        ...(style ? { style } : {}),
+        children: [{ elmType: 'span', txtContent: 'a' }, { elmType: 'span', txtContent: 'b' }],
+      }],
+    },
+  });
+  state.select([0]);
+}
+
+const boxStyle = (): Record<string, unknown> | undefined =>
+  state.doc.root.children![0].style as Record<string, unknown> | undefined;
+
+const flexBtn = (host: HTMLElement, prop: string, value: string): HTMLButtonElement =>
+  host.querySelector<HTMLButtonElement>(`.wb-flexbtn[data-prop="${prop}"][data-value="${value}"]`)!;
+
+describe('the visual Flex layout group (#221)', () => {
+  it('refuses alignment controls on a non-flex element — the one-click make-flex door instead', () => {
+    viewWithBox(); // no style at all
+    const host = mount();
+    expect(host.querySelectorAll('.wb-flexbtn')).toHaveLength(0); // never stamp no-op props
+    const make = host.querySelector<HTMLButtonElement>('.wb-flex-make')!;
+    expect(make.textContent).toContain('Make this a flex container');
+    const before = undoDepth();
+    make.click();
+    expect(boxStyle()).toEqual({ display: 'flex' });
+    expect(undoDepth()).toBe(before + 1); // ONE undoable step
+    // the controls appear in place (local re-render on self-commit)
+    expect(host.querySelectorAll('.wb-flexbtn').length).toBeGreaterThan(0);
+    state.undo();
+    expect(boxStyle()).toBeUndefined();
+  });
+
+  it('a display already set to something else is replaced honestly (the tooltip says so)', () => {
+    viewWithBox({ display: 'block' });
+    const host = mount();
+    const make = host.querySelector<HTMLButtonElement>('.wb-flex-make')!;
+    expect(make.title).toContain('display: block');
+    make.click();
+    expect(boxStyle()).toEqual({ display: 'flex' });
+  });
+
+  it('inline-flex and a conditional =if(…,"flex") display both count as flex containers', () => {
+    viewWithBox({ display: 'inline-flex' });
+    const host = mount();
+    expect(host.querySelector('.wb-flex-make')).toBeNull();
+    expect(host.querySelectorAll('.wb-flexbtn').length).toBeGreaterThan(0);
+
+    viewWithBox({ display: "=if([$Done],'none','flex')" });
+    expect(host.querySelector('.wb-flex-make')).toBeNull();
+    expect(host.querySelectorAll('.wb-flexbtn').length).toBeGreaterThan(0);
+  });
+
+  it('renders all three rows with the full visual vocabulary, in the Simple lens too', () => {
+    state.setLens('simple');
+    viewWithBox({ display: 'flex' });
+    const host = mount();
+    const values = (prop: string) =>
+      [...host.querySelectorAll<HTMLButtonElement>(`.wb-flexbtn[data-prop="${prop}"]`)].map((b) => b.dataset.value);
+    expect(values('flex-direction')).toEqual(['row', 'column', 'row-reverse', 'column-reverse']);
+    expect(values('justify-content')).toEqual(['flex-start', 'center', 'flex-end', 'space-between', 'space-around']);
+    expect(values('align-items')).toEqual(['flex-start', 'center', 'flex-end', 'stretch']);
+    // arrows on the direction buttons; live mini-diagram glyphs on the rest
+    expect(flexBtn(host, 'flex-direction', 'row').querySelector('.wb-flexdir-arrow')?.textContent).toBe('→');
+    expect(flexBtn(host, 'flex-direction', 'column').querySelector('.wb-flexdir-arrow')?.textContent).toBe('↓');
+    expect(flexBtn(host, 'flex-direction', 'row-reverse').querySelector('.wb-flexdir-arrow')?.textContent).toBe('←');
+    expect(flexBtn(host, 'flex-direction', 'column-reverse').querySelector('.wb-flexdir-arrow')?.textContent).toBe('↑');
+    expect(flexBtn(host, 'justify-content', 'space-between').querySelector('.wb-flexglyph')).not.toBeNull();
+    expect(flexBtn(host, 'align-items', 'stretch').querySelector('.wb-flexglyph')).not.toBeNull();
+  });
+
+  it('reflects the current values — explicit sets read active, unset props highlight the CSS default softly', () => {
+    viewWithBox({ display: 'flex', 'flex-direction': 'column', 'justify-content': 'center' });
+    const host = mount();
+    expect(flexBtn(host, 'flex-direction', 'column').classList.contains('active')).toBe(true);
+    expect(flexBtn(host, 'flex-direction', 'column').classList.contains('implicit')).toBe(false);
+    expect(flexBtn(host, 'flex-direction', 'row').classList.contains('active')).toBe(false);
+    expect(flexBtn(host, 'justify-content', 'center').classList.contains('active')).toBe(true);
+    // align-items is NOT set → the default (stretch) is highlighted, marked implicit
+    const stretch = flexBtn(host, 'align-items', 'stretch');
+    expect(stretch.classList.contains('active')).toBe(true);
+    expect(stretch.classList.contains('implicit')).toBe(true);
+  });
+
+  it('tooltips carry the CSS property and value names', () => {
+    viewWithBox({ display: 'flex', 'justify-content': 'center' });
+    const host = mount();
+    expect(flexBtn(host, 'flex-direction', 'row-reverse').title).toContain('flex-direction: row-reverse');
+    expect(flexBtn(host, 'align-items', 'stretch').title).toContain('align-items: stretch');
+    expect(flexBtn(host, 'justify-content', 'space-around').title).toContain('justify-content: space-around');
+    // the set value teaches the clear gesture
+    expect(flexBtn(host, 'justify-content', 'center').title).toContain('click again to clear');
+  });
+
+  it('a click writes the property — ONE undo step, reflected immediately', () => {
+    viewWithBox({ display: 'flex' });
+    const host = mount();
+    const before = undoDepth();
+    flexBtn(host, 'justify-content', 'space-between').click();
+    expect(boxStyle()).toEqual({ display: 'flex', 'justify-content': 'space-between' });
+    expect(undoDepth()).toBe(before + 1);
+    // the group re-rendered itself: the clicked value now reads active (explicit)
+    const b = flexBtn(host, 'justify-content', 'space-between');
+    expect(b.classList.contains('active')).toBe(true);
+    expect(b.classList.contains('implicit')).toBe(false);
+    state.undo(); // one Ctrl+Z reverts the click
+    expect(boxStyle()).toEqual({ display: 'flex' });
+  });
+
+  it('clicking the active (set) value clears the property back to default — also one undo step', () => {
+    viewWithBox({ display: 'flex', 'align-items': 'center' });
+    const host = mount();
+    const before = undoDepth();
+    flexBtn(host, 'align-items', 'center').click();
+    expect(boxStyle()).toEqual({ display: 'flex' }); // cleared, display untouched
+    expect(undoDepth()).toBe(before + 1);
+    // the default (stretch) takes the highlight back over
+    expect(flexBtn(host, 'align-items', 'stretch').classList.contains('implicit')).toBe(true);
+    state.undo();
+    expect(boxStyle()).toEqual({ display: 'flex', 'align-items': 'center' });
+  });
+
+  it('justify/align glyphs follow the current direction — a column container previews vertically', () => {
+    viewWithBox({ display: 'flex', 'flex-direction': 'column' });
+    const host = mount();
+    const glyph = flexBtn(host, 'justify-content', 'center').querySelector<HTMLElement>('.wb-flexglyph')!;
+    expect(glyph.style.getPropertyValue('flex-direction')).toBe('column');
+  });
+
+  it('every emitted value is on the SP schema allow-list and lints clean', () => {
+    viewWithBox({ display: 'flex' });
+    const host = mount();
+    const offered = [...host.querySelectorAll<HTMLButtonElement>('.wb-flexbtn')]
+      .map((b) => [b.dataset.prop!, b.dataset.value!] as const);
+    expect(offered.length).toBe(4 + 5 + 4);
+    for (const [prop, value] of offered) {
+      expect(ALLOWED_STYLES.has(prop)).toBe(true);
+      // the schema's own value vocabulary for the property carries every offer
+      expect(STYLE_VALUE_SUGGESTIONS[prop]).toContain(value);
+    }
+    // drive every button once — the document must stay lint-clean on css rules
+    for (const [prop, value] of offered) {
+      flexBtn(host, prop, value).click();
+      expect(lintDocument(state.doc).filter((i) => i.rule.startsWith('css-'))).toEqual([]);
+      const written = boxStyle()?.[prop];
+      if (written !== undefined) expect(written).toBe(value);
+    }
+  });
+
+  it('multi-select: one click writes the property to EVERY selected node as one undo step', () => {
+    state.createView({
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [
+          { elmType: 'div', style: { display: 'flex' }, children: [{ elmType: 'span', txtContent: 'a' }] },
+          { elmType: 'div', style: { display: 'flex' }, children: [{ elmType: 'span', txtContent: 'b' }] },
+        ],
+      },
+    });
+    state.selectMulti([[0], [1]]);
+    const host = mount();
+    const before = undoDepth();
+    flexBtn(host, 'flex-direction', 'column').click();
+    expect(state.doc.root.children![0].style?.['flex-direction']).toBe('column');
+    expect(state.doc.root.children![1].style?.['flex-direction']).toBe('column');
     expect(undoDepth()).toBe(before + 1);
   });
 });
