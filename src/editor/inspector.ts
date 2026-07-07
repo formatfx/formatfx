@@ -1187,6 +1187,10 @@ function flexLayoutGroup(node: SPElement, commit: (fn: (n: SPElement) => void) =
       b.title = `${prop}: ${o.value} — ${o.gist}`
         + (explicit === o.value ? '. Set on this element — click again to clear it.'
           : o.value === effective ? ' (the default — nothing is set yet)' : '');
+      // icon-only buttons: give assistive tech a real name and pressed-state,
+      // not just the hover title (screen readers don't announce `title` reliably)
+      b.setAttribute('aria-label', `${prop}: ${o.value} — ${o.gist}`);
+      b.setAttribute('aria-pressed', o.value === effective ? 'true' : 'false');
       b.appendChild(icon(o.value));
       b.addEventListener('click', () => pick(prop, o.value));
       group.appendChild(b);
