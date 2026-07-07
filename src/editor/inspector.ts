@@ -1551,6 +1551,9 @@ function exprField(
     mapBtn.className = 'wb-expr-map';
     mapBtn.textContent = '▦';
     mapBtn.title = 'Map data: drive this property from your columns with visual IF / ELSE-IF / ELSE rows — no formula typing';
+    // glyph-only button: give assistive tech a real name + the dialog hint
+    mapBtn.setAttribute('aria-label', 'Map data');
+    mapBtn.setAttribute('aria-haspopup', 'dialog');
     mapBtn.addEventListener('click', () => {
       if (state.selection) {
         openMapData({ path: state.selection, slot: 'style', prop, label: label ?? prop }, inspectorToast);
@@ -2403,6 +2406,9 @@ function kvEditor(
       mapBtn.className = 'wb-kv-map';
       mapBtn.textContent = '▦';
       mapBtn.title = 'Map data: drive this property from your columns with visual IF / ELSE-IF / ELSE rows';
+      // glyph-only button: give assistive tech a real name + the dialog hint
+      mapBtn.setAttribute('aria-label', 'Map data');
+      mapBtn.setAttribute('aria-haspopup', 'dialog');
       mapBtn.addEventListener('click', () => {
         const k = key.value.trim();
         if (k) onMapProp(k);

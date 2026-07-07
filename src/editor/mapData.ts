@@ -131,6 +131,12 @@ export function openMapData(target: MapDataTarget, onToast?: (m: string) => void
 
   const panel = document.createElement('div');
   panel.className = 'wb-md';
+  // modal dialog semantics — createOverlay wires the backdrop + Escape; name
+  // the panel and make it focusable so keyboard/screen-reader users can reach it
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-label', `Map data — ${target.label ?? target.prop ?? 'property'}`);
+  panel.tabIndex = -1;
   overlay.appendChild(panel);
 
   const ctxForRow = (rowIndex: number): EvalContext => ({
@@ -533,4 +539,7 @@ export function openMapData(target: MapDataTarget, onToast?: (m: string) => void
 
   render();
   document.body.appendChild(overlay);
+  // move focus into the dialog so it doesn't linger behind the backdrop —
+  // first interactive control if there is one, else the panel itself
+  (panel.querySelector<HTMLElement>('button, input, select, textarea, [tabindex]') ?? panel).focus();
 }

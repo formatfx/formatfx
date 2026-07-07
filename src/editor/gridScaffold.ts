@@ -50,7 +50,9 @@ function plainCellContent(field: MockField): Partial<SPElement> {
  * person chip lands as `[$Owner.title]`, a date as its locale string, etc.
  */
 export function fieldTextToken(field: MockField): SPExpr {
-  return plainCellContent(field).txtContent as SPExpr;
+  // plainCellContent always carries txtContent today; guard so a future
+  // content shape can never bind an element to `undefined`.
+  return (plainCellContent(field).txtContent ?? ref(field.name)) as SPExpr;
 }
 
 /**
