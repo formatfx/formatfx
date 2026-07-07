@@ -1,10 +1,11 @@
 /**
- * components.ts is the contract for "formatting without a column to call
- * home": boundary-aware slot binding, slot derivation from a subtree, the
- * best-guess mapping, store round-trips, and — most load-bearing — that every
- * BUILT-IN component binds to the default schema and renders through the real
- * engine without a single runtime issue (built-ins must definitely-work, the
- * same bar as generated formatters).
+ * components.ts is the contract for the ONE unit of packaged formatting
+ * (COLUMNS-COMPONENTS-VIEWS model B): boundary-aware slot binding, slot
+ * derivation from a subtree, the best-guess mapping, store round-trips, the
+ * usage scan over view stamps + column looks, and — most load-bearing — that
+ * every BUILT-IN component binds to the default schema and renders through
+ * the real engine without a single runtime issue (built-ins must
+ * definitely-work, the same bar as generated formatters).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -23,7 +24,7 @@ import { importJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
 import { defaultFields, defaultRows, state } from './state';
-import type { SPElement, SPExpr, MockField } from '../core/types';
+import type { SPElement, SPExpr } from '../core/types';
 import type { EvalContext } from '../core/expressions';
 
 const DEF: ComponentDef = {
@@ -72,12 +73,25 @@ describe('field-ref remap + scan', () => {
     expect(fieldRefsIn(DEF.root).sort()).toEqual(['Due', 'Person']);
   });
 
-  it('spots a columnFormatterReference anywhere in a subtree', () => {
+  it('containsCfr scans RAW parsed JSON for the property KEY — § left the model, only imports can carry it', () => {
     expect(containsCfr(DEF.root)).toBe(false);
+    expect(containsCfr({ elmType: 'div', columnFormatterReference: '[$Status]' })).toBe(true);
+    // nested objects, arrays, and card content all hide the key equally well
     expect(containsCfr({
       elmType: 'div',
-      children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
+      children: [{ elmType: 'div', children: [{ columnFormatterReference: '[$X]' }] }],
     })).toBe(true);
+    expect(containsCfr([{ ok: 1 }, { columnFormatterReference: '[$X]' }])).toBe(true);
+    expect(containsCfr({
+      elmType: 'div',
+      customCardProps: { openOnEvent: 'hover', formatter: { elmType: 'div', columnFormatterReference: '[$Y]' } },
+    })).toBe(true);
+    // key PRESENCE is the offense — the value doesn't matter
+    expect(containsCfr({ columnFormatterReference: null })).toBe(true);
+    // strings and scalars aren't keys
+    expect(containsCfr('columnFormatterReference')).toBe(false);
+    expect(containsCfr(null)).toBe(false);
+    expect(containsCfr(undefined)).toBe(false);
   });
 });
 
@@ -203,13 +217,22 @@ describe('row components + the formatter-JSON import bridge', () => {
     expect(isSingleColumnComponent(def, 'text')).toBe(false);
   });
 
-  it('refuses tiles and CFR-carrying trees with teaching errors', () => {
+  it('refuses tiles and CFR-carrying imports with teaching errors', () => {
     const tile = importJson(JSON.stringify({ formatter: { elmType: 'div' }, width: 254 }));
     expect(() => componentFromFormatterDoc(tile, 'T', defaultFields(), 'c-t')).toThrow(/Tile formatters/);
+    // the columnFormatterReference KEY anywhere in the parsed JSON refuses,
+    // with the self-contained teaching error — nothing resolves it anymore
     const cfr = importJson(JSON.stringify({
       rowFormatter: { elmType: 'div', children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }] },
     }));
     expect(() => componentFromFormatterDoc(cfr, 'C', defaultFields(), 'c-c')).toThrow(/self-contained/);
+    // a column formatter hiding one under card content refuses the same way
+    const inCard = importJson(JSON.stringify({
+      elmType: 'div',
+      txtContent: '@currentField',
+      customCardProps: { openOnEvent: 'hover', formatter: { elmType: 'div', columnFormatterReference: '[$Notes]' } },
+    }));
+    expect(() => componentFromFormatterDoc(inCard, 'C2', defaultFields(), 'c-c2')).toThrow(/self-contained/);
   });
 
   it('row kind round-trips the store; invalid kinds are dropped', () => {
@@ -409,7 +432,7 @@ describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
         },
       ],
     };
-    const out = scanComponentUsages([DEF], main, {}, []);
+    const out = scanComponentUsages([DEF], main, {});
     expect(out.get('c-test')).toEqual([
       { kind: 'view', path: [1], label: 'Deadline chip' },
       // card content rides the CARD_SEGMENT (-1) path convention; the
@@ -417,24 +440,37 @@ describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
       { kind: 'view', path: [2, -1], label: 'Test comp' },
     ]);
     // a row component IS the root — path [] is a usage too
-    const asRoot = scanComponentUsages([DEF], stamp('My row'), {}, []);
+    const asRoot = scanComponentUsages([DEF], stamp('My row'), {});
     expect(asRoot.get('c-test')).toEqual([{ kind: 'view', path: [], label: 'My row' }]);
   });
 
-  it('column usages: the subtype tag and a stamped subtree both count, ONCE per column, only when registered', () => {
-    const fields: MockField[] = [
-      { name: 'Status', type: 'choice', subtype: 'c-test' },
-      { name: 'Ghost', type: 'text', subtype: 'c-test' }, // tagged but never registered
-    ];
-    const refs: Record<string, SPElement> = {
-      // tag AND stamp agree → still one usage
+  it('column usages come from _component stamps in look trees, ONCE per (component, column)', () => {
+    const looks: Record<string, SPElement> = {
+      // the normal shape: the look's baked root IS the stamped instance
       Status: stamp(),
-      // no tag, but a stamped subtree deep in the registered tree
-      DueDate: { elmType: 'div', children: [{ elmType: 'span' }, stamp()] },
+      // several stamps of the same component inside one look — still ONE usage
+      DueDate: {
+        elmType: 'div',
+        children: [
+          stamp(),
+          { elmType: 'div', customCardProps: { formatter: stamp(), openOnEvent: 'hover' } },
+        ],
+      },
+      // an imported look is UNSTAMPED (no def) — no usage row
+      Title: { elmType: 'div', txtContent: '[$Title]' },
     };
-    const out = scanComponentUsages([DEF], undefined, refs, fields);
+    const out = scanComponentUsages([DEF], undefined, looks);
     expect(out.get('c-test')).toEqual([
       { kind: 'column', field: 'Status' },
+      { kind: 'column', field: 'DueDate' },
+    ]);
+  });
+
+  it('a look on a column AND an instance in the view report as separate usages', () => {
+    const main: SPElement = { elmType: 'div', children: [stamp('Placed chip')] };
+    const out = scanComponentUsages([DEF], main, { DueDate: stamp() });
+    expect(out.get('c-test')).toEqual([
+      { kind: 'view', path: [0], label: 'Placed chip' },
       { kind: 'column', field: 'DueDate' },
     ]);
   });
@@ -444,26 +480,21 @@ describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
       elmType: 'div',
       children: [{ elmType: 'div', _component: { id: 'c-gone', map: {} } }],
     };
-    const out = scanComponentUsages([DEF], main, {}, []);
+    const out = scanComponentUsages([DEF], main, {
+      Status: { elmType: 'div', _component: { id: 'c-gone', map: {} } },
+    });
     expect(out.get('c-gone')).toBeUndefined(); // no def carries that id
-    expect(out.get('c-test')).toBeUndefined(); // in the doc: nothing stamped for it
+    expect(out.get('c-test')).toBeUndefined(); // nothing stamped for it anywhere
   });
 
-  it('mainUsageLabel: "View — X" normally, the column-formatter noun when the MAIN doc is one', () => {
-    const u = { kind: 'view' as const, path: [1], label: 'Deadline chip' };
-    expect(mainUsageLabel(u, false, 'Status')).toBe('View — Deadline chip');
-    // a JSON-tab-imported column formatter IS the main doc — the jump row
-    // must agree with the insert copy ("Add to the X column formatter")
-    expect(mainUsageLabel(u, true, 'Due date')).toBe('Due date column formatter — Deadline chip');
+  it('mainUsageLabel: the uniform "View — X" jump row (the main doc is always a view or the grid)', () => {
+    expect(mainUsageLabel({ kind: 'view', path: [1], label: 'Deadline chip' })).toBe('View — Deadline chip');
   });
 
-  it('componentInsertTarget: an open column formatter wins; otherwise the view (grid flagged)', () => {
-    expect(componentInsertTarget('main', 'grid', 'Status')).toEqual({ kind: 'view', grid: true });
-    expect(componentInsertTarget('main', 'row', 'Status')).toEqual({ kind: 'view', grid: false });
-    expect(componentInsertTarget('main', 'tile', 'Status')).toEqual({ kind: 'view', grid: false });
-    expect(componentInsertTarget('DueDate', 'column', 'Status')).toEqual({ kind: 'column', field: 'DueDate' });
-    // the MAIN doc itself can be a column formatter (a JSON-tab import)
-    expect(componentInsertTarget('main', 'column', 'Status')).toEqual({ kind: 'column', field: 'Status' });
+  it('componentInsertTarget: always the active view — the grid flag drives the arrives-as-a-column copy', () => {
+    expect(componentInsertTarget('grid')).toEqual({ grid: true });
+    expect(componentInsertTarget('row')).toEqual({ grid: false });
+    expect(componentInsertTarget('tile')).toEqual({ grid: false });
   });
 });
 

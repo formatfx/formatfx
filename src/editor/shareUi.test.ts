@@ -69,23 +69,43 @@ describe('normalizeSharedPayload — bare formatter JSON becomes a live workspac
     expect(normalizeSharedPayload(json)).toBe(json);
   });
 
-  it('wraps a raw column formatter (a PnP sample): registered on the current field, rendered by the floor', () => {
+  it('wraps a raw column formatter (a PnP sample): seeded as the current field\'s LOOK, embedded by the floor', () => {
     const sample = JSON.stringify({
       elmType: 'div',
       txtContent: '@currentField',
       style: { 'background-color': "=if([$Approval]=='Rejected','#d13438','')" },
     });
+    const normalized = normalizeSharedPayload(sample);
+    // the synthesized workspace is a version-3 payload seeding columnLooks
+    // with the inlined (explicit-dialect, unstamped) look for the field
+    const payload = JSON.parse(normalized);
+    expect(payload.version).toBe(3);
+    expect(Object.keys(payload.columnLooks)).toEqual(['Status']);
+    expect(payload.columnLooks.Status.txtContent).toBe('[$Status]');
+    expect(payload.columnLooks.Status._component).toBeUndefined();
+
     const s = new EditorState();
-    s.loadProject(normalizeSharedPayload(sample));
+    s.loadProject(normalized);
     expect(s.onFloor).toBe(true);
     expect(s.doc.kind).toBe('grid');
-    expect(s.columnRefs[s.currentFieldName].txtContent).toBe('@currentField');
-    // the floor's cell for that field references the shared format
-    const cell = s.floorDoc.root.children!.find((c) => c.columnFormatterReference);
-    expect(cell?.columnFormatterReference).toBe(`[$${s.currentFieldName}]`);
+    expect(s.columnLooks[s.currentFieldName].txtContent).toBe(`[$${s.currentFieldName}]`);
+    // the floor's cell for that field EMBEDS a clone of the look (no
+    // reference element), wearing the cell's grid-layout styles
+    const cell = s.floorDoc.root.children!.find((c) => c._field === s.currentFieldName)!;
+    expect(cell.txtContent).toBe(`[$${s.currentFieldName}]`);
+    expect(cell.style?.['background-color']).toBe("=if([$Approval]=='Rejected','#d13438','')");
+    expect(cell.style?.['flex']).toBe('1');
     // referenced-but-unknown fields get text stubs so the sample renders
     expect(s.fields.some((f) => f.name === 'Approval')).toBe(true);
     expect(s.rows.length).toBeGreaterThan(0);
+  });
+
+  it('a rowFormatter share seeds NO looks — columnLooks arrives empty', () => {
+    const payload = JSON.parse(normalizeSharedPayload(
+      JSON.stringify({ rowFormatter: { elmType: 'div', txtContent: '[$Title]' } }),
+    ));
+    expect(payload.version).toBe(3);
+    expect(payload.columnLooks).toEqual({});
   });
 
   it('wraps a rowFormatter wrapper as a named view over a default floor', () => {

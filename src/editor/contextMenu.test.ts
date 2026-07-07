@@ -58,30 +58,13 @@ describe('element menu header — tree-style name', () => {
   });
 
   it('a nameless element shows its <type> — same text the tree/nameOf print', () => {
-    state.doc = { kind: 'column', root: { elmType: 'div', children: [{ elmType: 'a', txtContent: 'x' }] } };
+    state.doc = { kind: 'row', root: { elmType: 'div', children: [{ elmType: 'a', txtContent: 'x' }] } };
     state.fields = [];
     state.select([0]);
     openElementMenu([0], { x: 0, y: 0 }, () => {});
 
     const current = [...menuTitle().querySelectorAll('.wb-elmref')].pop()!;
     expect(current.querySelector('.wb-elmref-name')?.textContent).toBe('<a>');
-  });
-
-  it('a CFR host borrows the referenced column\'s name, exactly like the tree', () => {
-    state.doc = {
-      kind: 'row',
-      root: {
-        elmType: 'div',
-        _elmName: 'Row',
-        children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
-      },
-    };
-    state.fields = [];
-    state.select([0]);
-    openElementMenu([0], { x: 0, y: 0 }, () => {});
-
-    const current = [...menuTitle().querySelectorAll('.wb-elmref')].pop()!;
-    expect(current.querySelector('.wb-elmref-name')?.textContent).toBe('Status');
   });
 });
 
@@ -123,24 +106,32 @@ describe('element menu header — clickable parent crumb', () => {
 });
 
 describe('element menu — action toasts share the header\'s display name', () => {
-  it('a nameless CFR host toasts its borrowed column name, not <div>', () => {
-    // header shows "Status" (borrowed); the toast must not disagree with "<div>"
+  it('toasts speak the element\'s display name: _elmName when set, <type> otherwise', () => {
+    // one naming rule for header + toasts — "Status pill" in the header must
+    // never disagree with "<div> removed" in a toast
     state.doc = {
       kind: 'row',
       root: {
         elmType: 'div',
         _elmName: 'Row',
-        children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
+        children: [
+          { elmType: 'div', _elmName: 'Status pill', txtContent: '[$Status]' },
+          { elmType: 'span', txtContent: '[$Title]' },
+        ],
       },
     };
     state.fields = [];
-    state.select([0]);
 
     const toasts: string[] = [];
-    const items = elementMenuItems([0], (m) => toasts.push(m), { x: 0, y: 0 });
-    items.find((i) => i.label === 'Remove')!.fn();
+    state.select([0]);
+    elementMenuItems([0], (m) => toasts.push(m), { x: 0, y: 0 })
+      .find((i) => i.label === 'Remove')!.fn();
+    expect(toasts.join('\n')).toContain('Status pill removed');
 
-    expect(toasts.join('\n')).toContain('Status removed');
-    expect(toasts.join('\n')).not.toContain('<div>');
+    // the nameless span (now at [0]) falls back to its <type>
+    state.select([0]);
+    elementMenuItems([0], (m) => toasts.push(m), { x: 0, y: 0 })
+      .find((i) => i.label === 'Remove')!.fn();
+    expect(toasts.join('\n')).toContain('<span> removed');
   });
 });

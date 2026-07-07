@@ -138,7 +138,6 @@ describe('explainDocument — the element walk', () => {
           },
         },
         { elmType: 'div', forEach: '_tag in [$Tags]', children: [{ elmType: 'span', txtContent: '[$_tag]' }] },
-        { elmType: 'div', columnFormatterReference: '[$Progress]' },
         { elmType: 'span', txtContent: '=mystery([$Title])' },
       ],
     },
@@ -172,13 +171,12 @@ describe('explainDocument — the element walk', () => {
     expect(inside!.lines[0].text).toBe('Shows “Notes”.');
   });
 
-  it('forEach and CFRs are described', () => {
+  it('forEach is described', () => {
     expect(byPath([4])!.lines.some((l) => l.text.includes('Repeats once for each item in “Tags”'))).toBe(true);
-    expect(byPath([5])!.lines.some((l) => l.text.includes('own registered formatter'))).toBe(true);
   });
 
   it('unknown constructs surface as honest refusals, flagged unexplained', () => {
-    const mystery = byPath([6])!;
+    const mystery = byPath([5])!;
     const line = mystery.lines.find((l) => l.unexplained);
     expect(line).toBeDefined();
     expect(line!.text).toContain('can’t explain this yet');
