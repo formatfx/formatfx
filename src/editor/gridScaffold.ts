@@ -9,7 +9,7 @@
  * generated here arrives fully _elmName'd (a product constraint).
  */
 
-import type { SPElement, MockField } from '../core/types';
+import type { SPElement, SPExpr, MockField } from '../core/types';
 import { cfrFieldName } from '../core/refs';
 
 /** Deep clone for embedding a stored look into a cell. */
@@ -42,6 +42,15 @@ function plainCellContent(field: MockField): Partial<SPElement> {
     case 'hyperlink': return { txtContent: ref(n), attributes: { href: ref(n) } };
     default: return { txtContent: ref(n) };
   }
+}
+
+/**
+ * The plain text token a column-chip drop binds an element's txtContent to
+ * (#217) — the same faithful per-type rendering plainCellContent uses, so a
+ * person chip lands as `[$Owner.title]`, a date as its locale string, etc.
+ */
+export function fieldTextToken(field: MockField): SPExpr {
+  return plainCellContent(field).txtContent as SPExpr;
 }
 
 /**

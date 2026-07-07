@@ -16,7 +16,8 @@ import { renderGrid } from './gridView';
 import { installPreviewContextMenu } from './contextMenu';
 import { COMPONENT_MIME, componentById, openComponentMapper } from './componentLibrary';
 import { FIELD_MIME } from './columnShelf';
-import { gridCellForField } from './gridScaffold';
+import { gridCellForField, fieldTextToken } from './gridScaffold';
+import { isTextCapable } from './fxSlots';
 import { bestGuessMapping, mappingComplete, bindComponentInstance } from './components';
 import type { NodePath, SPElement } from '../core/types';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
@@ -486,6 +487,23 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
       const field = state.fields.find((f) => f.name === fieldName);
       if (!field) return;
       const path = pathFromAttr(target?.dataset.spPath);
+      // Token drop (#217): a chip dropped ONTO a rendered text-bearing leaf
+      // element re-binds that element's text to the column — txtContent
+      // becomes the field's plain token, ONE undoable mutation. The grid
+      // floor's top-level column cells keep the §5 "chips are columns"
+      // grammar (drop = add a column), containers keep insert-into, and an
+      // empty-canvas drop still just inserts at the root — the standing
+      // behaviors are untouched.
+      if (path !== undefined && !(state.doc.kind === 'grid' && path.length <= 1)) {
+        const el = state.nodeAt(path);
+        if (el && isTextCapable(el.elmType) && !el.children?.length) {
+          const label = describeNode(el); // before the rebind — name what was hit
+          state.mutateDocument(() => { el.txtContent = fieldTextToken(field); });
+          state.select(path);
+          onToast(`${label} now shows ${field.displayName ?? field.name} — Ctrl+Z undoes`);
+          return;
+        }
+      }
       const container = path !== undefined ? state.nodeAt(path) : null;
       state.insertNode(gridCellForField(field, state.columnLooks), path);
       onToast(`Added the ${field.displayName ?? field.name} column into ${describeNode(container)} — now selected`);

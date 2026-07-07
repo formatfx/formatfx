@@ -66,7 +66,7 @@ export function suggestChoiceColors(choices: string[]): Map<string, string> {
 // ─── conditions ──────────────────────────────────────────────────────────────
 
 export type CondKind =
-  | 'eq' | 'contains' | 'empty' | 'notEmpty'
+  | 'eq' | 'neq' | 'contains' | 'empty' | 'notEmpty'
   | 'gte' | 'lt'
   | 'overdue' | 'today' | 'soon'
   | 'isMe' | 'isTrue' | 'isFalse';
@@ -161,6 +161,15 @@ export function condExpr(field: MockField, cond: Condition): string {
       if (field.type === 'choiceMulti') return `indexOf(${r}, '${v}') != -1`;
       return `${r} == '${v}'`;
     }
+    case 'neq': {
+      // the mirror of eq, negated INSIDE the expression — there is no logical
+      // NOT, so '!=' / '== -1' carry the negation (never a standalone '!')
+      const v = escapeCondValue(cond.value ?? '');
+      if (field.type === 'lookup') return `[$${n}.lookupValue] != '${v}'`;
+      if (field.type === 'lookupMulti') return `indexOf([$${n}.lookupValue], '${v}') == -1`;
+      if (field.type === 'choiceMulti') return `indexOf(${r}, '${v}') == -1`;
+      return `${r} != '${v}'`;
+    }
     case 'contains': {
       const v = escapeCondValue(cond.value ?? '').toLowerCase();
       return `indexOf(toLowerCase(${r}), '${v}') != -1`;
@@ -209,6 +218,7 @@ export function condLabel(field: MockField, cond: Condition): string {
   const n = field.displayName ?? field.name;
   switch (cond.kind) {
     case 'eq': return `${n} is ${cond.value}`;
+    case 'neq': return `${n} is not ${cond.value}`;
     case 'contains': return `${n} contains "${cond.value}"`;
     case 'empty': return field.type === 'person' || field.type === 'personMulti'
       ? `${n} is unassigned` : `${n} is empty`;
@@ -427,7 +437,11 @@ function matchCondition(field: MockField, expr: string): Condition | null {
   ];
   const quoted = /'([^']*)'/.exec(expr)?.[1];
   if (quoted !== undefined) {
-    candidates.push({ kind: 'eq', value: quoted }, { kind: 'contains', value: quoted });
+    candidates.push(
+      { kind: 'eq', value: quoted },
+      { kind: 'neq', value: quoted },
+      { kind: 'contains', value: quoted },
+    );
   }
   const num = /(?:>=|<) (-?\d+(?:\.\d+)?)/.exec(expr)?.[1];
   if (num !== undefined) {
@@ -513,4 +527,153 @@ export function parseRulesFromStyle(
   for (const p of props) if (regen.style[p] !== style[p]) return null;
 
   return { rules, fieldName: field.name, fallbacks };
+}
+
+// ─── property mapping (Map Data — issue #217) ────────────────────────────────
+// One PROPERTY, one `=if()` chain: the visual IF / ELSE-IF / ELSE builder
+// compiles each row through the SAME condExpr vocabulary the ✨ dialog uses
+// (no parallel codegen), and parses back under the same rebuild-verify
+// discipline — byte-identical regeneration or refuse. Unlike rulesToStyle
+// (one watched field fanned across effect properties), a map's rows may each
+// watch a DIFFERENT column.
+
+export interface MapRule {
+  /** The column this row watches. */
+  fieldName: string;
+  cond: Condition;
+  /** The value the property takes when this row matches first. */
+  output: string;
+}
+
+export interface ParsedMap { rules: MapRule[]; elseOutput: string }
+
+/** An operator the Map Data builder may offer for a column — strictly the
+ *  engine's verified vocabulary per type: no 'greater' on plain text, dates
+ *  through the pinned overdue/today/soon semantics, and never a standalone
+ *  '!' (neq negates with '!=' / '== -1' inside the expression). */
+export interface MapOperator {
+  kind: CondKind;
+  label: string;
+  /** The comparison input this operator needs, if any. */
+  needs?: 'text' | 'number' | 'days';
+}
+
+export function mapOperatorsFor(field: MockField): MapOperator[] {
+  switch (field.type) {
+    case 'choice':
+      return [
+        { kind: 'eq', label: 'equals', needs: 'text' },
+        { kind: 'neq', label: 'does not equal', needs: 'text' },
+        { kind: 'empty', label: 'is empty' },
+        { kind: 'notEmpty', label: 'has a value' },
+      ];
+    case 'choiceMulti': case 'lookupMulti':
+      return [
+        { kind: 'eq', label: 'includes', needs: 'text' },
+        { kind: 'neq', label: 'does not include', needs: 'text' },
+        { kind: 'empty', label: 'is empty' },
+        { kind: 'notEmpty', label: 'has a value' },
+      ];
+    case 'number': case 'currency':
+      return [
+        { kind: 'gte', label: 'is at least (≥)', needs: 'number' },
+        { kind: 'lt', label: 'is below (<)', needs: 'number' },
+        { kind: 'empty', label: 'is empty' },
+        { kind: 'notEmpty', label: 'has a value' },
+      ];
+    case 'date':
+      return [
+        { kind: 'overdue', label: 'is in the past (overdue)' },
+        { kind: 'today', label: 'is today' },
+        { kind: 'soon', label: 'is within the next … days', needs: 'days' },
+        { kind: 'empty', label: 'has no date' },
+        { kind: 'notEmpty', label: 'has a date' },
+      ];
+    case 'person':
+      return [
+        { kind: 'isMe', label: 'is you' },
+        { kind: 'empty', label: 'is unassigned' },
+        { kind: 'notEmpty', label: 'is assigned' },
+      ];
+    case 'personMulti':
+      return [
+        { kind: 'isMe', label: 'includes you' },
+        { kind: 'empty', label: 'is unassigned' },
+        { kind: 'notEmpty', label: 'is assigned' },
+      ];
+    case 'boolean':
+      return [
+        { kind: 'isTrue', label: 'is Yes' },
+        { kind: 'isFalse', label: 'is No' },
+      ];
+    case 'lookup':
+      return [
+        { kind: 'eq', label: 'equals', needs: 'text' },
+        { kind: 'neq', label: 'does not equal', needs: 'text' },
+        { kind: 'empty', label: 'is empty' },
+        { kind: 'notEmpty', label: 'has a value' },
+      ];
+    default: // text, note, hyperlink
+      return [
+        { kind: 'eq', label: 'equals', needs: 'text' },
+        { kind: 'neq', label: 'does not equal', needs: 'text' },
+        { kind: 'contains', label: 'contains', needs: 'text' },
+        { kind: 'empty', label: 'is empty' },
+        { kind: 'notEmpty', label: 'has a value' },
+      ];
+  }
+}
+
+/** Output values live inside SP single-quoted literals, which have no escape
+ *  syntax — quotes simply can't appear (escapeCondValue's rule, minus the
+ *  trim: an output is a value, not a search term). */
+export function escapeMapOutput(raw: string): string {
+  return raw.replace(/['"\\]/g, '');
+}
+
+/**
+ * Compile IF/ELSE-IF rows + an ELSE output into one `=if(…)` chain — the
+ * exact chain shape rulesToStyle emits, so parseIfChain/parseMapFromExpr
+ * read it back. Null when a rule names an unknown column or there are no
+ * rules at all (refuse — never guess).
+ */
+export function mapRulesToExpr(
+  fields: MockField[],
+  rules: MapRule[],
+  elseOutput: string,
+): string | null {
+  if (!rules.length) return null;
+  let expr = `'${escapeMapOutput(elseOutput)}'`;
+  for (let i = rules.length - 1; i >= 0; i--) {
+    const field = fields.find((f) => f.name === rules[i].fieldName);
+    if (!field) return null;
+    expr = `if(${condExpr(field, rules[i].cond)}, '${escapeMapOutput(rules[i].output)}', ${expr})`;
+  }
+  return `=${expr}`;
+}
+
+/**
+ * Parse a generated map chain back into editable rows (each row recovering
+ * its own watched column) + the ELSE output. Gated exactly like
+ * parseRulesFromStyle: regenerate through mapRulesToExpr and require the
+ * byte-identical expression — a hand-edited or foreign formula returns null,
+ * never a guessed row.
+ */
+export function parseMapFromExpr(
+  raw: SPExpr | undefined,
+  fields: MockField[],
+): ParsedMap | null {
+  const chain = parseIfChain(raw);
+  if (!chain) return null;
+  const rules: MapRule[] = [];
+  for (let i = 0; i < chain.exprs.length; i++) {
+    const name = FIELD_REF.exec(chain.exprs[i])?.[1];
+    const field = name ? fields.find((f) => f.name === name) : undefined;
+    if (!field) return null;
+    const cond = matchCondition(field, chain.exprs[i]);
+    if (!cond) return null;
+    rules.push({ fieldName: field.name, cond, output: chain.values[i] });
+  }
+  if (mapRulesToExpr(fields, rules, chain.fallback) !== raw) return null;
+  return { rules, elseOutput: chain.fallback };
 }
