@@ -19,9 +19,11 @@
 
 import { state } from './state';
 import { slotsFor, readSlot, writeSlot, slotIdForProp, type FxSlot } from './fxSlots';
-import { fxSuggestions, completionAt } from './fxSuggest';
+import { fxSuggestions, completionAt, type CompletionOpts } from './fxSuggest';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
+import { openAcMenu, type AcMenu } from './acMenu';
+import { ctxForRow } from './previewCtx';
 import type { SPExpr } from '../core/types';
 
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
@@ -240,12 +242,18 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
       closeMenu();
     };
 
-    // ── inline autocomplete: column refs, functions / context tokens, and
-    // IF() condition / result templates appear as you type a formula. ──
+    // ── inline autocomplete: column refs, system @tokens (with inline docs +
+    // live mock previews, #222), and IF() condition / result templates appear
+    // as you type a formula. Previews evaluate against the data editor's
+    // first mock row via the shared preview context.
+    const acOpts = (): CompletionOpts => ({
+      current: state.fields.find((f) => f.name === state.currentFieldName),
+      ctx: state.rows.length ? ctxForRow(0) : undefined,
+    });
     const updateAc = (): void => {
       if (view.readOnly) { closeAc(); return; }
       const caret = editor.selectionStart ?? editor.value.length;
-      const comp = completionAt(editor.value, caret, slot, state.fields);
+      const comp = completionAt(editor.value, caret, slot, state.fields, acOpts());
       if (!comp || comp.items.length === 0) { closeAc(); return; }
       closeMenu(); // the inline typeahead supersedes the on-focus value menu
       closeAc();
@@ -684,58 +692,6 @@ function openMenu(
   el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
   el.style.minWidth = `${Math.max(220, r.width)}px`;
   return { el, move, activeValue };
-}
-
-// ─── inline autocomplete menu (caret-driven typeahead) ───────────────────────
-
-interface AcMenu {
-  el: HTMLElement;
-  move: (delta: number) => void;
-  /** Accept the highlighted item; false when there's nothing to accept. */
-  accept: () => boolean;
-  close: () => void;
-}
-
-/**
- * A compact typeahead under the editor — column references, functions / context
- * tokens and IF() condition / result templates, driven by completionAt(). Arrow
- * keys highlight; Enter / Tab or click accepts (the picked text is spliced into
- * the formula by the caller, which then re-runs completionAt to chain).
- */
-function openAcMenu(editor: HTMLElement, items: string[], onPick: (value: string) => void): AcMenu {
-  const el = document.createElement('div');
-  el.className = 'wb-fx-acmenu';
-  const shown = items.slice(0, 10);
-  const nodes: HTMLElement[] = [];
-  let active = 0;
-  shown.forEach((value, i) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'wb-fx-acopt' + (i === 0 ? ' active' : '');
-    b.textContent = value;
-    // keep focus in the editor so the click can't blur-commit first
-    b.addEventListener('mousedown', (e) => e.preventDefault());
-    b.addEventListener('click', () => onPick(value));
-    nodes.push(b);
-    el.appendChild(b);
-  });
-  const setActive = (i: number): void => {
-    nodes[active]?.classList.remove('active');
-    active = (i + nodes.length) % nodes.length;
-    nodes[active]?.classList.add('active');
-    nodes[active]?.scrollIntoView({ block: 'nearest' });
-  };
-  document.body.appendChild(el);
-  const r = editor.getBoundingClientRect();
-  el.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 12)}px`;
-  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
-  el.style.minWidth = `${Math.max(180, r.width)}px`;
-  return {
-    el,
-    move: (d) => setActive(active + d),
-    accept: () => { if (!shown.length) return false; onPick(shown[active]); return true; },
-    close: () => el.remove(),
-  };
 }
 
 /** The single best default for a slot — what we pre-populate the bar with. */
