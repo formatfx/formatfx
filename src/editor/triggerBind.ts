@@ -18,12 +18,12 @@
  * content together).
  */
 
-import type { SPElement, NodePath, CustomRowAction } from '../core/types';
+import type { SPElement, NodePath, CustomRowAction, MockField, FieldType } from '../core/types';
 
 /** Path segment that descends into customCardProps.formatter (state.ts convention). */
 const CARD_SEGMENT = -1;
 
-export type TriggerActionKind = 'card' | 'defaultClick' | 'executeFlow' | 'setValue' | 'link';
+export type TriggerActionKind = 'card' | 'defaultClick' | 'executeFlow' | 'setValue' | 'link' | 'inlineEdit';
 
 /** The fixed apply-time vocabulary (TRIGGER-MODEL §3). Nothing outside it. */
 export interface TriggerSpec {
@@ -39,10 +39,66 @@ export interface TriggerSpec {
   actionInput?: Record<string, unknown>;
   /** link only. */
   href?: string;
+  /** inlineEdit only: the FieldRef to edit, '[$Internal]' — blank refuses. */
+  inlineEditField?: string;
   /** cursor on the trigger surface. */
   cursor?: 'pointer' | 'default';
   /** Accessible label for the generated trigger surface. */
   label?: string;
+}
+
+// ─── inline edit (issue #212) — element-level, Text & Person columns only ────
+
+/**
+ * Column types `inlineEditField` verifiably works with on real SP (the
+ * inspector's long-standing "Text & Person fields only" constraint, restated
+ * in issue #212). personMulti IS a Person column (multi-select). Everything
+ * else refuses-and-teaches at the picker — never guess.
+ */
+export const INLINE_EDITABLE_TYPES: ReadonlySet<FieldType> = new Set(['text', 'person', 'personMulti']);
+
+/** Human-readable label for a field's type in refuse-and-teach copy. */
+const TYPE_LABELS: Record<FieldType, string> = {
+  text: 'Text', note: 'Multiple lines of text', number: 'Number', currency: 'Currency',
+  choice: 'Choice', choiceMulti: 'Choice (multi)', date: 'Date', person: 'Person',
+  personMulti: 'Person (multi)', boolean: 'Yes/No', hyperlink: 'Hyperlink',
+  lookup: 'Lookup', lookupMulti: 'Lookup (multi)',
+};
+
+/**
+ * Why a column can't take an inline editor — null when it can (refuse-don't-
+ * guess: the picker greys unsupported columns WITH this reason, it never
+ * silently drops them).
+ */
+export function inlineEditBlockReason(field: MockField): string | null {
+  if (field.protected) return `${field.name} is a read-only system column — it can't be edited.`;
+  if (!INLINE_EDITABLE_TYPES.has(field.type)) {
+    return `${field.name} is a ${TYPE_LABELS[field.type]} column — inline edit works on Text & Person columns only (verified SP). Use setValue, or stage through a draft Text column.`;
+  }
+  return null;
+}
+
+/**
+ * The column an element (subtree) displays — used to default the inline-edit
+ * target to "the field you're showing". Prefers the editor's `_field` cell
+ * stamp, then the first `[$Field]` reference in a txtContent (depth-first),
+ * then `@currentField` mapped to the caller-supplied current column. Returns
+ * the INTERNAL name (no `[$…]`), or null when the element displays no field.
+ */
+export function displayedField(el: SPElement, currentField?: string): string | null {
+  if (el._field) return el._field;
+  const t = el.txtContent;
+  if (t !== undefined) {
+    const s = typeof t === 'string' ? t : JSON.stringify(t);
+    const m = /\[\$([A-Za-z0-9_]+)/.exec(s);
+    if (m) return m[1];
+    if (currentField && s.includes('@currentField')) return currentField;
+  }
+  for (const c of el.children ?? []) {
+    const r = displayedField(c, currentField);
+    if (r) return r;
+  }
+  return null;
 }
 
 function nodeAt(root: SPElement, path: NodePath): SPElement | null {
@@ -140,6 +196,20 @@ export function applyTriggerAt(
 ): NodePath | null {
   const host = nodeAt(root, hostPath);
   if (!host) return null;
+
+  if (spec.action === 'inlineEdit') {
+    // Element-level like hover-reveal (#203), NOT a customRowAction/
+    // customCardProps — inlineEditField rides the element directly (no
+    // overlay), composes with the structural triggers, and works on leaves.
+    // The #204 candidate-collision rules deliberately don't apply. Refuses a
+    // blank FieldRef and never silently clobbers an existing inline editor.
+    const ref = spec.inlineEditField?.trim();
+    if (!ref || host.inlineEditField) return null;
+    host.inlineEditField = ref;
+    if (spec.cursor) host.style = { ...(host.style ?? {}), cursor: spec.cursor };
+    return hostPath;
+  }
+
   // re-validate at apply time — the pick may be stale (the candidate scan ran
   // when the picker opened): a host that gained a trigger since, or stopped
   // being a division-with-children, refuses instead of colliding (#205 parks
@@ -199,4 +269,94 @@ export function applyTriggerAt(
   ensurePositioned(host);
   host.children = [...(host.children ?? []), overlay];
   return [...hostPath, host.children.length - 1];
+}
+
+// ─── the "Editable with confirm" recipe (issue #212 part 2b) ─────────────────
+
+/** Parameters for the draft-column confirm & commit recipe. INTERNAL names. */
+export interface ConfirmEditSpec {
+  /** The column the value really lives in — Save promotes the draft here. */
+  realField: string;
+  /** The scratch Text column edits stage into (chosen by the maker). */
+  draftField: string;
+}
+
+/**
+ * The owner's field-tested draft-column "confirm & commit" pattern, stamped
+ * in ONE call (callers wrap it in mutateDocument → one undoable gesture):
+ *
+ *   host division
+ *   ├─ edit surface  — the host's ORIGINAL children, wrapped, wearing
+ *   │                  inlineEditField:[$Draft] (edits stage into the draft;
+ *   │                  the wrapper keeps the editable surface and the Save/
+ *   │                  Cancel buttons disjoint, so a button click can never
+ *   │                  double as "open the editor")
+ *   └─ confirm edit  — visible ONLY while [$Draft]!='' (SP has NO logical
+ *                      NOT — the gate is `!=`, never a standalone `!`):
+ *                      [$Real] → [$Draft]   [Save]   [Cancel]
+ *
+ * Save is ONE setValue with TWO ordered actionInput entries — promote the
+ * draft into the real column, then clear the draft ({Real:"[$Draft]",
+ * Draft:""}); Cancel just clears ({Draft:""}). setValue has no Text/Person
+ * restriction, so the REAL column can be any editable type; only the draft
+ * must be Text (the form layer enforces that — refuse-and-teach when the
+ * schema has no scratch Text column).
+ *
+ * Returns the host path (select the whole assembly), or null when the spec
+ * is incomplete (blank/identical columns) or the host isn't a candidate
+ * division (the generated buttons carry actions — collision rules apply).
+ */
+export function applyConfirmEditAt(
+  root: SPElement,
+  hostPath: NodePath,
+  spec: ConfirmEditSpec,
+): NodePath | null {
+  const host = nodeAt(root, hostPath);
+  if (!host) return null;
+  const real = spec.realField.trim();
+  const draft = spec.draftField.trim();
+  if (!real || !draft || real === draft) return null;
+  if (!canHostTrigger(host)) return null;
+
+  const draftRef = `[$${draft}]`;
+  const editSurface: SPElement = {
+    elmType: 'div',
+    _elmName: 'edit surface',
+    inlineEditField: draftRef,
+    style: { cursor: 'pointer' },
+    children: host.children,
+  };
+  const btn = (label: string, title: string, actionInput: Record<string, unknown>): SPElement => ({
+    elmType: 'button',
+    _elmName: `${label} draft`,
+    txtContent: label,
+    attributes: { class: 'sp-field-quickActionButton', title },
+    style: { cursor: 'pointer' },
+    customRowAction: { action: 'setValue', actionInput },
+  });
+  const confirm: SPElement = {
+    elmType: 'div',
+    _elmName: 'confirm edit',
+    style: {
+      // no logical NOT on SP — non-empty is `!=''` (verified empty-value
+      // semantics, HANDOFF §3); no spaces (split-safe habit, lint-quiet)
+      display: `=if(${draftRef}!='','flex','none')`,
+      'align-items': 'center',
+      gap: '6px',
+    },
+    children: [
+      { elmType: 'span', _elmName: 'current value', txtContent: `[$${real}]` },
+      // the from→to arrow as a Fluent icon, not a literal '→' — the ascii-only
+      // lint (CSOM deployments garble non-ASCII) must stay quiet on generated
+      // JSON, and SP's attribute allow-list has no aria-* keys to hide it with
+      { elmType: 'span', attributes: { iconName: 'Forward', title: 'becomes' } },
+      { elmType: 'span', _elmName: 'pending value', txtContent: draftRef, style: { 'font-weight': '600' } },
+      // ordered entries: 1) promote the draft into the real column, 2) clear
+      // the draft — one action, one round-trip (the #212 contract shape)
+      btn('Save', `Write the pending value into ${real}, then clear the draft`, { [real]: draftRef, [draft]: '' }),
+      btn('Cancel', 'Discard the pending value (clears the draft column)', { [draft]: '' }),
+    ],
+  };
+  host.children = [editSurface, confirm];
+  return hostPath;
 }

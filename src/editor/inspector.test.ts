@@ -7,7 +7,7 @@
  * `_field` cell whose column wears a look) also offers "Remove the look",
  * and its re-binds keep the look STORE and the placed cell in lockstep.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountInspector } from './inspector';
 import { state } from './state';
 import { BUILTIN_COMPONENTS, bindComponentInstance } from './components';
@@ -44,6 +44,16 @@ beforeEach(() => {
   localStorage.clear();
   state.resetAll();
   state.setLens('pro');
+});
+
+// unhook every mounted inspector from the state store — a leaked subscriber
+// keeps re-rendering into its detached host on every state change, and the
+// accumulated drag times later tests out
+afterEach(() => {
+  document.querySelectorAll<HTMLElement>('body > *').forEach((el) => {
+    (el as unknown as { _unsub?: () => void })._unsub?.();
+    el.remove();
+  });
 });
 
 describe('when the card shows', () => {
@@ -125,6 +135,209 @@ describe('per-slot re-binding (type-filtered, one undo step)', () => {
     state.undo(); // one Ctrl+Z reverts BOTH
     expect(state.columnLooks.DueDate._component?.map).toEqual({ Due: 'DueDate' });
     expect(state.floorDoc.root.children![i]._component?.map).toEqual({ Due: 'DueDate' });
+  });
+});
+
+// ─── the #212 click-action door: inline edit, multi-setValue, confirm recipe ──
+
+/** A row view whose first child is a candidate division showing `ref`. */
+function viewShowing(ref: string): void {
+  state.createView({
+    kind: 'row',
+    root: {
+      elmType: 'div',
+      children: [{ elmType: 'div', children: [{ elmType: 'span', txtContent: ref }] }],
+    },
+  });
+  state.select([0]);
+}
+
+function pickKind(host: HTMLElement, kind: string): void {
+  const sel = host.querySelector<HTMLSelectElement>('.wb-cs-kind')!;
+  sel.value = kind;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+describe('the click-action picker (#212) — inline edit as a first-class action', () => {
+  it('offers the flat vocabulary with value-writing actions last and ✏️-marked (click-only safety)', () => {
+    viewShowing('[$Title]');
+    const host = mount();
+    const kindSel = host.querySelector<HTMLSelectElement>('.wb-cs-kind')!;
+    expect([...kindSel.options].map((o) => o.value))
+      .toEqual(['defaultClick', 'link', 'executeFlow', 'inlineEdit', 'confirmEdit', 'setValue']);
+    const labels = [...kindSel.options].map((o) => o.textContent ?? '');
+    expect(labels).toContain('✏️ Edit inline — type a new value right here');
+    // every action that writes list data is marked; no read-only action is
+    for (const l of labels) {
+      expect(l.startsWith('✏️')).toBe(/inline|confirm|setValue/i.test(l));
+    }
+  });
+
+  it('defaults the target to the shown column, pins it, and stamps inlineEditField as ONE undo step (no overlay)', () => {
+    viewShowing('[$Title]');
+    const host = mount();
+    pickKind(host, 'inlineEdit');
+    const fieldSel = host.querySelector<HTMLSelectElement>('.wb-cs-inlinefield')!;
+    expect(fieldSel.value).toBe('Title'); // the column the element displays
+    expect(fieldSel.disabled).toBe(true); // pinned until the 2a checkbox opts out
+    const gen = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen.disabled).toBe(false);
+    const before = undoDepth();
+    gen.click();
+    const node = state.doc.root.children![0];
+    expect(node.inlineEditField).toBe('[$Title]');
+    expect(node.children).toHaveLength(1); // rides the element — no overlay child
+    expect(node.customRowAction).toBeUndefined();
+    expect(undoDepth()).toBe(before + 1);
+    state.undo();
+    expect(state.doc.root.children![0].inlineEditField).toBeUndefined();
+  });
+
+  it('type-filters to Text & Person: unsupported columns greyed WITH a reason, never offered silently', () => {
+    viewShowing('[$Status]'); // Choice — not inline-editable
+    const host = mount();
+    pickKind(host, 'inlineEdit');
+    const fieldSel = host.querySelector<HTMLSelectElement>('.wb-cs-inlinefield')!;
+    expect(fieldSel.value).toBe(''); // refuses to guess a default
+    expect(fieldSel.disabled).toBe(false);
+    const opt = (name: string) => [...fieldSel.options].find((o) => o.value === name)!;
+    expect(opt('Status').disabled).toBe(true);
+    expect(opt('Status').title).toMatch(/Text & Person columns only/);
+    expect(opt('DueDate').disabled).toBe(true);
+    expect(opt('ID').disabled).toBe(true); // protected system column
+    expect(opt('Title').disabled).toBe(false);
+    expect(opt('Owner').disabled).toBe(false);
+    expect(opt('AssignedTo').disabled).toBe(false); // personMulti IS a Person column
+    // the shown column's refusal is taught inline, not hidden
+    expect(host.querySelector('.wb-cs-note')?.textContent).toMatch(/Choice column/);
+    const gen = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen.disabled).toBe(true); // refuse until a supported column is picked
+    fieldSel.value = 'Owner';
+    fieldSel.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(gen.disabled).toBe(false);
+    gen.click();
+    expect(state.doc.root.children![0].inlineEditField).toBe('[$Owner]');
+  });
+
+  it('2a: "Write to a different column than the one shown" unlocks the (still filtered) target picker', () => {
+    viewShowing('[$Title]');
+    const host = mount();
+    pickKind(host, 'inlineEdit');
+    const cb = host.querySelector<HTMLInputElement>('.wb-cs-difftarget')!;
+    expect(cb.checked).toBe(false);
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    const fieldSel = host.querySelector<HTMLSelectElement>('.wb-cs-inlinefield')!; // rebuilt
+    expect(fieldSel.disabled).toBe(false);
+    expect(fieldSel.value).toBe('Title'); // still defaults to the shown column
+    fieldSel.value = 'Tags';
+    fieldSel.dispatchEvent(new Event('change', { bubbles: true }));
+    host.querySelector<HTMLButtonElement>('.wb-cs-gen')!.click();
+    expect(state.doc.root.children![0].inlineEditField).toBe('[$Tags]');
+  });
+});
+
+describe('the multi-row setValue form (#212 part 2b)', () => {
+  it('grows to ordered rows, refuses blanks and duplicates, and emits one multi-entry actionInput', () => {
+    viewShowing('[$Title]');
+    const host = mount();
+    pickKind(host, 'setValue');
+    const gen = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen.disabled).toBe(true);
+    const setRow = (i: number, field: string, value: string) => {
+      const f = host.querySelectorAll<HTMLSelectElement>('.wb-cs-field')[i];
+      f.value = field;
+      f.dispatchEvent(new Event('change', { bubbles: true }));
+      const v = host.querySelectorAll<HTMLInputElement>('.wb-cs-value')[i];
+      v.value = value;
+      v.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    setRow(0, 'Status', 'Done');
+    expect(gen.disabled).toBe(false);
+    host.querySelector<HTMLButtonElement>('.wb-cs-addrow')!.click();
+    expect(host.querySelectorAll('.wb-cs-field')).toHaveLength(2);
+    expect(gen.disabled).toBe(true); // the new row is blank — refuse
+    setRow(1, 'Status', 'x'); // same column twice — last-wins is a silent trap
+    expect(gen.disabled).toBe(true);
+    setRow(1, 'Tags', 'reviewed');
+    expect(gen.disabled).toBe(false);
+    gen.click();
+    const overlay = state.doc.root.children![0].children![1];
+    expect(overlay.customRowAction).toEqual({
+      action: 'setValue',
+      actionInput: { Status: 'Done', Tags: 'reviewed' },
+    });
+    // entries emit IN ROW ORDER — the draft-commit pattern depends on it
+    expect(Object.keys(overlay.customRowAction!.actionInput as Record<string, unknown>))
+      .toEqual(['Status', 'Tags']);
+  });
+
+  it('a row can be removed again', () => {
+    viewShowing('[$Title]');
+    const host = mount();
+    pickKind(host, 'setValue');
+    host.querySelector<HTMLButtonElement>('.wb-cs-addrow')!.click();
+    expect(host.querySelectorAll('.wb-cs-field')).toHaveLength(2);
+    host.querySelector<HTMLButtonElement>('.wb-cs-removerow')!.click();
+    expect(host.querySelectorAll('.wb-cs-field')).toHaveLength(1);
+  });
+});
+
+describe('the "Editable with confirm" recipe (#212 part 2b)', () => {
+  it('one gesture stamps the whole loop — draft edit surface + gated confirm row — as ONE undo step', () => {
+    viewShowing('[$Status]');
+    const host = mount();
+    pickKind(host, 'confirmEdit');
+    const real = host.querySelector<HTMLSelectElement>('.wb-cs-real')!;
+    expect(real.value).toBe('Status'); // defaults to the shown column
+    const draft = host.querySelector<HTMLSelectElement>('.wb-cs-draft')!;
+    // only scratch Text columns are offered as drafts
+    expect([...draft.options].filter((o) => o.value !== '').map((o) => o.value)).toEqual(['Title', 'Tags']);
+    const gen = host.querySelector<HTMLButtonElement>('.wb-cs-gen')!;
+    expect(gen.disabled).toBe(true); // the draft is a deliberate choice — no guessed default
+    draft.value = 'Tags';
+    draft.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(gen.disabled).toBe(false);
+    const before = undoDepth();
+    gen.click();
+
+    const node = state.doc.root.children![0];
+    expect(node.children).toHaveLength(2);
+    const [surface, confirm] = node.children!;
+    expect(surface.inlineEditField).toBe('[$Tags]');
+    expect(surface.children![0].txtContent).toBe('[$Status]'); // original content wrapped
+    expect(String(confirm.style?.display)).toBe("=if([$Tags]!='','flex','none')");
+    const save = confirm.children!.find((c) => c.txtContent === 'Save')!;
+    expect(save.customRowAction).toEqual({ action: 'setValue', actionInput: { Status: '[$Tags]', Tags: '' } });
+    const cancel = confirm.children!.find((c) => c.txtContent === 'Cancel')!;
+    expect(cancel.customRowAction).toEqual({ action: 'setValue', actionInput: { Tags: '' } });
+
+    expect(undoDepth()).toBe(before + 1);
+    state.undo(); // ONE Ctrl+Z reverts the whole assembly
+    const back = state.doc.root.children![0];
+    expect(back.children).toHaveLength(1);
+    expect(back.children![0].inlineEditField).toBeUndefined();
+  });
+
+  it('the draft picker greys the chosen real column — a draft must be a different column', () => {
+    viewShowing('[$Title]'); // Title (a Text column) is both shown and the default real
+    const host = mount();
+    pickKind(host, 'confirmEdit');
+    const draft = host.querySelector<HTMLSelectElement>('.wb-cs-draft')!;
+    const title = [...draft.options].find((o) => o.value === 'Title')!;
+    expect(title.disabled).toBe(true);
+    expect(title.title).toMatch(/real column/);
+    expect([...draft.options].find((o) => o.value === 'Tags')!.disabled).toBe(false);
+  });
+
+  it('refuses and TEACHES when the schema has no scratch Text column — never writes straight to the real field', () => {
+    state.fields = state.fields.filter((f) => f.type !== 'text');
+    viewShowing('[$Status]');
+    const host = mount();
+    pickKind(host, 'confirmEdit');
+    expect(host.querySelector('.wb-cs-draft')).toBeNull();
+    expect(host.querySelector('.wb-cs-note')?.textContent).toMatch(/Add a single-line text column/);
+    expect(host.querySelector<HTMLButtonElement>('.wb-cs-gen')!.disabled).toBe(true);
   });
 });
 

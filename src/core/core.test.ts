@@ -818,6 +818,16 @@ describe('renderer (happy-dom)', () => {
     expect(node.style.getPropertyValue('gap')).toBe('4px');
   });
 
+  it('inlineEditField indicator is legible: names the column so the maker sees the action took (#212)', () => {
+    const el: SPElement = { elmType: 'div', txtContent: '[$Title]', inlineEditField: '[$Title]' };
+    const node = renderElement(el, ctx) as HTMLElement;
+    expect(node.classList.contains('wb-inline-edit')).toBe(true);
+    expect(node.getAttribute('title')).toBe('double-click to edit Title');
+    // a non-FieldRef value stays the honest raw readout
+    const raw = renderElement({ elmType: 'div', inlineEditField: '@currentField' } as SPElement, ctx) as HTMLElement;
+    expect(raw.getAttribute('title')).toBe('inlineEditField: @currentField');
+  });
+
   it('expands forEach children per item with loopIndex', () => {
     const facepile: SPElement = {
       elmType: 'div',

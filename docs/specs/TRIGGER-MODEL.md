@@ -172,13 +172,14 @@ Where each advanced concept stands today, and the authoring gap:
 | `customRowAction` | full: renderer stub+toast, completeness lint, inspector section (action/actionInput/actionParams) | raw fields; wants the §3 fixed-vocabulary form (esp. flow picker / setValue form) |
 | `sp-card-defaultClickButton` | themed in `theme.ts`, class suggestion | never generated; **becomes the §5 overlay pattern the workflow emits** |
 | `defaultHoverField` | schema + inspector free-text field; **not emulated** in preview (HANDOFF §4) | low priority: field-picker dropdown + a preview affordance (even a badge) so makers know it did something |
-| `inlineEditField` | schema + inspector free-text; renderer shows indicator only; works-in-forEach canon (§3b) | field-picker limited to Text/Person; true inline-edit preview is a separate feature |
+| `inlineEditField` | schema + inspector free-text; renderer indicator (legible — names the column); works-in-forEach canon (§3b); **click-action picker entry, Text/Person-filtered, + the draft-column “Editable with confirm” recipe (#212)** | **closed** as of #212 except the true inline-edit preview (still indicator-only, HANDOFF §4) |
 | `columnFormatterReference` | full subsystem (registry, cycle protection, CFR drill-in, blast radius) | **closed** — already first-class |
 | `openOnEvent` / `directionalHint` / `isBeakVisible` | types, renderer, inspector selects, tests | folded into the §3 vocabulary so they're set at bind time, not hunted for afterwards |
 
 Priority order suggested by the audit: (1) the §3 apply workflow (unlocks
 components-as-cards, the biggest maker win), (2) `customRowAction` param
-forms, (3) `defaultHoverField`/`inlineEditField` pickers.
+forms, (3) `defaultHoverField`/`inlineEditField` pickers (the
+`inlineEditField` half shipped with #212; `defaultHoverField` remains).
 
 ## 7. Out of scope
 
