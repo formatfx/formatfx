@@ -232,6 +232,8 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       // the click-only flex-arrangement chip is retained as a Simple convenience;
       // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
       host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
+      // the visual flexbox alignment controls (#221) — click-only, so Simple keeps them
+      host.appendChild(section('Flex layout', [flexLayoutGroup(node, commitAll)], false, sectionReset(FLEX_ALIGN_PROPS)));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
       host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
       host.appendChild(revealSection());
@@ -253,6 +255,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
       host.appendChild(section('Position', [positionControls(node, commitAll)]));
       host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
+      host.appendChild(section('Flex layout', [flexLayoutGroup(node, commitAll)], false, sectionReset(FLEX_ALIGN_PROPS)));
       host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
       host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
       host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
@@ -1092,6 +1095,149 @@ function contentsLayout(node: SPElement, commit: (fn: (n: SPElement) => void) =>
       gapRow.append(gl, gi);
       wrap.appendChild(gapRow);
     }
+  };
+  render();
+  return wrap;
+}
+
+// ─── Flex layout (#221): visual flexbox alignment controls ──────────────────
+// Icon-first buttons for the three flex alignment properties — arrows for the
+// direction, live mini-diagrams for justify/align (the wb-flexmini idea: each
+// glyph is a real flex container actually wearing the value, so the icon can't
+// lie). Every emitted value sits on the SP allow-list vocabulary
+// (STYLE_VALUE_SUGGESTIONS), and the group refuses to stamp alignment onto a
+// non-flex element — it offers the one-click "Make this a flex container"
+// door instead (refuse and teach, never silently emit properties that do
+// nothing on real SP).
+
+/** The properties this group governs (feeds the section Reset + active dot). */
+const FLEX_ALIGN_PROPS = ['flex-direction', 'justify-content', 'align-items'];
+
+const FLEX_DIR_OPTIONS: Array<{ value: string; arrow: string; gist: string }> = [
+  { value: 'row', arrow: '→', gist: 'children flow left to right' },
+  { value: 'column', arrow: '↓', gist: 'children stack top to bottom' },
+  { value: 'row-reverse', arrow: '←', gist: 'children flow right to left' },
+  { value: 'column-reverse', arrow: '↑', gist: 'children stack bottom to top' },
+];
+const FLEX_JUSTIFY_OPTIONS: Array<{ value: string; gist: string }> = [
+  { value: 'flex-start', gist: 'pack children at the start of the main axis' },
+  { value: 'center', gist: 'pack children in the middle' },
+  { value: 'flex-end', gist: 'pack children at the end' },
+  { value: 'space-between', gist: 'first and last at the edges, equal space between' },
+  { value: 'space-around', gist: 'equal breathing room around every child' },
+];
+const FLEX_ALIGNITEMS_OPTIONS: Array<{ value: string; gist: string }> = [
+  { value: 'flex-start', gist: 'line children up at the start of the cross axis' },
+  { value: 'center', gist: 'center children across the cross axis' },
+  { value: 'flex-end', gist: 'line children up at the end of the cross axis' },
+  { value: 'stretch', gist: 'stretch children to fill the cross axis' },
+];
+
+/** A tiny LIVE flex container of three bars wearing the given props — a
+ *  truthful mini-diagram, direction-aware for free. `stretch` leaves the bars'
+ *  cross size unset so align-items:stretch actually stretches them. */
+function flexGlyph(dir: 'row' | 'column', props: Record<string, string>, stretch = false): HTMLElement {
+  const g = document.createElement('span');
+  g.className = 'wb-flexglyph';
+  g.setAttribute('aria-hidden', 'true');
+  g.style.setProperty('flex-direction', dir);
+  for (const [k, v] of Object.entries(props)) g.style.setProperty(k, v);
+  for (const size of ['55%', '90%', '70%']) {
+    const bar = document.createElement('i');
+    if (dir === 'column') { bar.style.height = '3px'; if (!stretch) bar.style.width = size; }
+    else { bar.style.width = '3px'; if (!stretch) bar.style.height = size; }
+    g.appendChild(bar);
+  }
+  return g;
+}
+
+/** The visual Flex layout group (issue #221). One undoable mutation per click
+ *  through the shared style path (setStyleProp → commit → mutateDocument);
+ *  clicking the explicitly-set value clears it again (also one undo step). */
+function flexLayoutGroup(node: SPElement, commit: (fn: (n: SPElement) => void) => void): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'wb-flexlayout';
+
+  const pick = (prop: string, value: string) => {
+    setStyleProp(commit, prop, styleOf(node, prop) === value ? '' : value);
+    render(); // the inspector skips self-commit rebuilds — reflect the new state locally
+  };
+
+  /** One row of icon buttons. `effective` is what the browser will actually do
+   *  (the explicit value, or the CSS default when unset); the default-driven
+   *  highlight reads softer (.implicit) than an explicit set. */
+  const buttonRow = (
+    prop: string,
+    options: Array<{ value: string; gist: string }>,
+    explicit: string,
+    dflt: string,
+    icon: (value: string) => HTMLElement,
+  ): HTMLElement => {
+    const group = document.createElement('div');
+    group.className = 'wb-flexgroup';
+    const effective = explicit || dflt;
+    for (const o of options) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-flexbtn'
+        + (o.value === effective ? ' active' : '')
+        + (o.value === effective && explicit === '' ? ' implicit' : '');
+      b.dataset.prop = prop;
+      b.dataset.value = o.value;
+      b.title = `${prop}: ${o.value} — ${o.gist}`
+        + (explicit === o.value ? '. Set on this element — click again to clear it.'
+          : o.value === effective ? ' (the default — nothing is set yet)' : '');
+      // icon-only buttons: give assistive tech a real name and pressed-state,
+      // not just the hover title (screen readers don't announce `title` reliably)
+      b.setAttribute('aria-label', `${prop}: ${o.value} — ${o.gist}`);
+      b.setAttribute('aria-pressed', o.value === effective ? 'true' : 'false');
+      b.appendChild(icon(o.value));
+      b.addEventListener('click', () => pick(prop, o.value));
+      group.appendChild(b);
+    }
+    return group;
+  };
+
+  const render = () => {
+    wrap.innerHTML = '';
+    // honesty gate: alignment properties do nothing unless the element IS a
+    // flex container. A string containing 'flex' counts ('flex', 'inline-flex',
+    // and the common =if(…,'none','flex') conditional all qualify).
+    const rawDisplay = node.style?.['display'];
+    const display = rawDisplay === undefined ? ''
+      : typeof rawDisplay === 'string' ? rawDisplay : JSON.stringify(rawDisplay);
+    if (!display.includes('flex')) {
+      const make = document.createElement('button');
+      make.type = 'button';
+      make.className = 'wb-flex-make';
+      make.textContent = '▦ Make this a flex container';
+      make.title = (display === ''
+        ? 'Sets display: flex on this element'
+        : `Replaces display: ${display} with display: flex`)
+        + ' so the direction and alignment controls apply — one undoable step.';
+      make.addEventListener('click', () => { setStyleProp(commit, 'display', 'flex'); render(); });
+      const note = document.createElement('div');
+      note.className = 'wb-inspector-empty wb-flex-note';
+      note.textContent = 'Direction and alignment only work on a flex container. This element isn\'t one yet, so these controls stay out of the way instead of writing properties that would silently do nothing.';
+      wrap.append(make, note);
+      return;
+    }
+
+    const dir = styleOf(node, 'flex-direction');
+    const glyphDir: 'row' | 'column' = (dir || 'row').startsWith('column') ? 'column' : 'row';
+    wrap.appendChild(visualRow(node, 'Direction', 'flex-direction',
+      buttonRow('flex-direction', FLEX_DIR_OPTIONS, dir, 'row', (v) => {
+        const a = document.createElement('span');
+        a.className = 'wb-flexdir-arrow';
+        a.textContent = FLEX_DIR_OPTIONS.find((o) => o.value === v)!.arrow;
+        return a;
+      })));
+    wrap.appendChild(visualRow(node, 'Justify', 'justify-content',
+      buttonRow('justify-content', FLEX_JUSTIFY_OPTIONS, styleOf(node, 'justify-content'), 'flex-start',
+        (v) => flexGlyph(glyphDir, { 'justify-content': v, 'align-items': 'center' }))));
+    wrap.appendChild(visualRow(node, 'Align', 'align-items',
+      buttonRow('align-items', FLEX_ALIGNITEMS_OPTIONS, styleOf(node, 'align-items'), 'stretch',
+        (v) => flexGlyph(glyphDir, { 'align-items': v }, v === 'stretch'))));
   };
   render();
   return wrap;

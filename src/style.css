@@ -3106,6 +3106,39 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   color: var(--wb-accent); border-color: var(--wb-accent);
 }
 
+/* ── Flex layout (#221): visual flexbox alignment controls ─────────────────── */
+.wb-flexlayout { display: flex; flex-direction: column; gap: 8px; }
+.wb-flexgroup { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
+.wb-flexbtn {
+  flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 28px; height: 26px; padding: 2px 5px; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--wb-lp-field-border); background: var(--wb-lp-surface);
+  color: var(--wb-lp-text-2);
+}
+.wb-flexbtn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-flexbtn.active {
+  background: color-mix(in srgb, var(--wb-accent) 16%, transparent);
+  color: var(--wb-accent); border-color: var(--wb-accent);
+}
+/* a highlight that only reflects the CSS DEFAULT (nothing set) reads softer —
+   a dashed ring, not the filled accent chip of an explicit value */
+.wb-flexbtn.active.implicit {
+  background: transparent; color: var(--wb-lp-text-2); border-style: dashed;
+  border-color: color-mix(in srgb, var(--wb-accent) 55%, transparent);
+}
+.wb-flexdir-arrow { font-size: 14px; font-weight: 600; line-height: 1; }
+/* the live mini-diagram: a real flex container of three currentColor bars */
+.wb-flexglyph { display: flex; gap: 2px; width: 22px; height: 14px; pointer-events: none; }
+.wb-flexglyph i { background: currentColor; border-radius: 1px; flex: 0 0 auto; }
+/* the honesty door shown while the element is not a flex container yet */
+.wb-flex-make {
+  align-self: flex-start; border: 1px dashed var(--wb-lp-field-border); border-radius: 6px;
+  background: var(--wb-lp-surface); color: var(--wb-accent); cursor: pointer;
+  font-size: 12px; padding: 6px 10px;
+}
+.wb-flex-make:hover { border-color: var(--wb-accent); }
+.wb-flex-note { font-size: 11px; }
+
 /* ── Simple lens: dedicated visual fields (color swatch, active dot) ────────── */
 .wb-color-control { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
 .wb-color-control .wb-field-input { flex: 1 1 auto; min-width: 0; }
