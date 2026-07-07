@@ -35,19 +35,25 @@ import {
 } from './rowTemplates';
 import {
   BUILTIN_COMPONENTS, loadComponents, bestGuessMapping, componentKind,
-  COMPONENTS_KEY, type ComponentDef,
+  COMPONENTS_KEY, flattenComponent, type ComponentDef,
 } from './components';
+import { paletteComponents } from './paletteComponents';
 import { renderChips, renderPreview, renderZoneTree } from './templatePreview';
 import { renderInspector } from './templateInspector';
 import { el, type ModalApi, type ModalUI, type Selection } from './templateUi';
 
 /** Element-kind components the builder offers as chips: built-ins + the maker's
  *  saved ones (read via the pure store loader — row components replace the whole
- *  view and stay in the ⬡ library where that copy is honest). */
+ *  view and stay in the ⬡ library where that copy is honest). Customs resolve
+ *  (inline-flatten, #225) before offering — the palette defs join the resolve
+ *  POOL so a custom embedding one expands, without changing the chip offer. */
 function elementComponents(): ComponentDef[] {
   let customs: ComponentDef[] = [];
   try { customs = loadComponents(localStorage.getItem(COMPONENTS_KEY)); } catch { /* private mode */ }
-  return [...BUILTIN_COMPONENTS, ...customs].filter((c) => componentKind(c) === 'element');
+  const pool = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customs];
+  return [...BUILTIN_COMPONENTS, ...customs]
+    .map((c) => flattenComponent(c, pool))
+    .filter((c) => componentKind(c) === 'element');
 }
 
 export function openTemplateModal(

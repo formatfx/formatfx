@@ -35,11 +35,13 @@ import { FONT_SIZES, RADII, INK_SWATCHES, HAIRLINE } from './formatCells';
 import { COND_COLORS } from './condRules';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
 import {
-  COMPONENTS_KEY, loadComponents, serializeComponents, addComponent,
-  bestGuessMapping, bindComponent, componentId,
+  COMPONENTS_KEY, BUILTIN_COMPONENTS, loadComponents, serializeComponents, addComponent,
+  bestGuessMapping, bindComponent, componentId, componentKind,
   createVariant, rebindInstance, replaceStampedIn, restampIn, uniqueName,
-  type ComponentDef,
+  flattenComponent, embedRefusal, embedClosure, withEmbed, withoutEmbed,
+  type ComponentDef, type ComponentEmbed,
 } from './components';
+import { paletteComponents } from './paletteComponents';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
 import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
 
@@ -64,6 +66,13 @@ function writeCustom(components: ComponentDef[]): boolean {
 
 function fieldLabel(name: string): string {
   return state.fields.find((f) => f.name === name)?.displayName ?? name;
+}
+
+/** Everything a nested def can resolve against: built-ins, the palette
+ *  derivations, and the maker's stored customs (raw — resolution wants the
+ *  stored shapes, flattenComponent does the expanding itself). */
+function libraryDefs(): ComponentDef[] {
+  return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...readCustom()];
 }
 
 /** Managed by the compact style panel — the Format-cells vocabulary, compact. */
@@ -170,18 +179,24 @@ export function mountComponentWorkshop(
   // modal-local undo (§2.3, Stage 4): the ELEMENT edits — the destructive
   // gestures — bottom out at the moment the workshop (re)mounted. Name/
   // description/slot text fields stay on native input undo (the builder
-  // rule), so the bag is the staged TREE only. Save still commits ONE
-  // app-level step. (muRestore is a function declaration on purpose: it runs
-  // only after the render fns below are assigned, but the head's buttons
-  // wire up first.)
-  const mu = createModalUndo({ root: staged.root });
-  function muRestore(bag: { root: SPElement } | null): void {
+  // rule), so the bag is the staged TREE plus its embed records (#225 — an
+  // embed insert/remove touches both together, so one ↶ reverts both). Save
+  // still commits ONE app-level step. (muRestore is a function declaration
+  // on purpose: it runs only after the render fns below are assigned, but
+  // the head's buttons wire up first.)
+  const muBag = (): { root: SPElement; embeds: ComponentEmbed[] } =>
+    ({ root: staged.root, embeds: staged.embeds ?? [] });
+  const mu = createModalUndo(muBag());
+  function muRestore(bag: { root: SPElement; embeds: ComponentEmbed[] } | null): void {
     if (!bag) return;
     staged.root = bag.root;
+    if (bag.embeds.length) staged.embeds = bag.embeds;
+    else delete staged.embeds;
     if (!nodeAtStaged(sel)) sel = [];
     renderPreview();
     renderStruct();
     renderStylePanel();
+    renderEmbeds();
     muButtons.refresh();
   }
   const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
@@ -298,6 +313,97 @@ export function mountComponentWorkshop(
     slotsSec.appendChild(row);
   }
 
+  // ── embedded components (#225): reuse another component inside this one ──
+  // Composition at the definition layer. Embedding is ONE gesture = one ↶
+  // step (the bindComponentInstance precedent); cycles and over-deep chains
+  // are refused with teaching copy BEFORE anything mutates. What eventually
+  // bakes is the inline-flattened snapshot — flattenComponent at bind time.
+  const embedsSec = section(left, 'Embedded components — reuse a component inside this one');
+  const embedsHost = document.createElement('div');
+  embedsHost.className = 'wb-ce-embeds';
+  embedsSec.appendChild(embedsHost);
+
+  const afterEmbedChange = (): void => {
+    if (!nodeAtStaged(sel)) sel = [];
+    setDirty(true);
+    mu.commit(muBag());
+    muButtons.refresh();
+    renderPreview();
+    renderStruct();
+    renderStylePanel();
+    renderEmbeds();
+  };
+
+  const renderEmbeds = (): void => {
+    embedsHost.replaceChildren();
+    const note = document.createElement('div');
+    note.className = 'wb-ce-note';
+    note.textContent = 'Applying this component bakes ONE flattened, self-contained formatter — a snapshot, no live link on SharePoint. An embedded component\'s unmapped slots surface on this one, namespaced.';
+    embedsHost.appendChild(note);
+    for (const em of staged.embeds ?? []) {
+      const row = document.createElement('div');
+      row.className = 'wb-ce-embed';
+      const chip = document.createElement('span');
+      chip.className = 'wb-ce-slotkey';
+      chip.textContent = `⬡ ${em.name}`;
+      chip.title = libraryDefs().some((d) => d.id === em.of)
+        ? `Embedded component — its unbound slots surface as [$${em.ns}_…]`
+        : `“${em.name}” is no longer in the library — this embed bakes as nothing until you remove it here or restore the component`;
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'wb-ce-embeddel';
+      rm.textContent = '✕';
+      rm.title = `Remove the embedded ${em.name} — one ↶ step`;
+      rm.setAttribute('aria-label', rm.title);
+      rm.addEventListener('click', () => {
+        const next = withoutEmbed(staged, em.ns);
+        staged.root = next.root;
+        if (next.embeds) staged.embeds = next.embeds;
+        else delete staged.embeds;
+        afterEmbedChange();
+      });
+      row.append(chip, rm);
+      embedsHost.appendChild(row);
+    }
+    // the insert row: pick an offered element component, ＋ Embed appends it
+    const addRow = document.createElement('div');
+    addRow.className = 'wb-ce-row';
+    const pick = document.createElement('select');
+    pick.className = 'wb-ce-input wb-ce-embedpick';
+    pick.setAttribute('aria-label', 'Component to embed');
+    const candidates = libraryDefs()
+      .filter((d) => d.id !== def.id && componentKind(d) === 'element');
+    for (const d of candidates) {
+      const o = document.createElement('option');
+      o.value = d.id;
+      o.textContent = d.name;
+      pick.appendChild(o);
+    }
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'wb-ce-embedadd';
+    add.textContent = '＋ Embed';
+    add.title = 'Insert the chosen component into this one — one ↶ step. Loops are refused; nesting caps at 5 levels.';
+    add.disabled = !candidates.length;
+    add.addEventListener('click', () => {
+      const child = candidates.find((d) => d.id === pick.value);
+      if (!child) return;
+      // refuse-and-teach BEFORE any mutation — a cycle is never even staged
+      const refusal = embedRefusal(staged, child, libraryDefs());
+      if (refusal) {
+        onToast(refusal);
+        return;
+      }
+      const next = withEmbed(staged, child);
+      staged.root = next.root;
+      staged.embeds = next.embeds;
+      afterEmbedChange();
+      onToast(`Embedded “${child.name}” — its slots now surface on this component (↶ undoes)`);
+    });
+    addRow.append(pick, add);
+    embedsHost.appendChild(addRow);
+  };
+
   // ── live preview: best-guess bound, click-to-select via data-sp-path ──
   const prevSec = section(right, 'Elements — click to select, restyle below');
   const previewHost = document.createElement('div');
@@ -307,25 +413,41 @@ export function mountComponentWorkshop(
   structHost.className = 'wb-ce-struct';
   prevSec.appendChild(structHost);
 
-  const previewMapping = (): Record<string, string> => {
-    const m = bestGuessMapping(staged, state.fields);
+  const previewMapping = (def2: ComponentDef): Record<string, string> => {
+    const m = bestGuessMapping(def2, state.fields);
     // slot-key identity fallback: when the schema can't fill a slot the
     // preview still renders the recipe's own refs rather than nothing
-    for (const s of staged.slots) if (!m[s.key]) m[s.key] = s.key;
+    for (const s of def2.slots) if (!m[s.key]) m[s.key] = s.key;
     return m;
   };
 
   const renderPreview = (): void => {
     previewHost.replaceChildren();
     try {
-      const bound = bindComponent(staged, previewMapping());
-      // binding rewrites refs only — paths in the bound tree match staged.root
+      // resolve embeds first (#225) so the preview is WYSIWYG for a nested
+      // def; binding then rewrites refs only, and substitution is node-for-
+      // node, so every path that EXISTS in staged.root still lines up —
+      // grafted children add deeper paths, which the click handler clamps
+      const flat = flattenComponent(staged, libraryDefs());
+      const bound = bindComponent(flat, previewMapping(flat));
       previewHost.appendChild(renderElement(bound, ctxForRow(0), { tagPaths: true }));
     } catch {
       previewHost.textContent = '—';
     }
     const picked = previewHost.querySelector(`[data-sp-path="${sel.join('.')}"]`);
     picked?.classList.add('wb-ce-picked');
+  };
+  /** Clamp a preview path to the nearest node staged.root actually has —
+   *  clicking INSIDE an embedded component's graft selects its placeholder. */
+  const clampToStaged = (path: NodePath): NodePath => {
+    const ok: NodePath = [];
+    let node: SPElement | undefined = staged.root;
+    for (const i of path) {
+      node = i === CARD_SEGMENT ? node?.customCardProps?.formatter : node?.children?.[i];
+      if (!node) break;
+      ok.push(i);
+    }
+    return ok;
   };
   // selection only — preview clicks never trigger card flyouts/row actions
   previewHost.addEventListener('click', (e) => {
@@ -334,7 +456,7 @@ export function mountComponentWorkshop(
     const t = (e.target as HTMLElement).closest?.('[data-sp-path]');
     if (!(t instanceof Element) || !previewHost.contains(t)) return;
     const raw = (t as HTMLElement).dataset.spPath ?? '';
-    sel = raw === '' ? [] : raw.split('.').map(Number);
+    sel = clampToStaged(raw === '' ? [] : raw.split('.').map(Number));
     refreshSelection();
   }, true);
 
@@ -347,7 +469,13 @@ export function mountComponentWorkshop(
       row.type = 'button';
       row.className = 'wb-ce-struct-row' + (path.join('.') === sel.join('.') ? ' active' : '');
       row.style.paddingLeft = `${8 + depth * 12}px`;
-      row.textContent = `${card ? 'card · ' : ''}${el._elmName ?? `<${el.elmType}>`}`;
+      // an embed placeholder (#225) reads as the component it stands in for
+      const embedName = el._embed !== undefined
+        ? (staged.embeds ?? []).find((em) => em.ns === el._embed)?.name ?? el._embed
+        : null;
+      row.textContent = embedName !== null
+        ? `${card ? 'card · ' : ''}⬡ ${embedName}`
+        : `${card ? 'card · ' : ''}${el._elmName ?? `<${el.elmType}>`}`;
       row.addEventListener('click', () => { sel = path; refreshSelection(); });
       structHost.appendChild(row);
       el.children?.forEach((c, i) => walk(c, [...path, i], depth + 1, false));
@@ -372,7 +500,7 @@ export function mountComponentWorkshop(
     else node.style[prop] = value;
     if (Object.keys(node.style).length === 0) delete node.style;
     setDirty(true);
-    mu.commit({ root: staged.root }); // one gesture = one ↶ step
+    mu.commit(muBag()); // one gesture = one ↶ step
     muButtons.refresh();
     renderPreview();
     renderStylePanel();
@@ -385,6 +513,16 @@ export function mountComponentWorkshop(
       const none = document.createElement('div');
       none.className = 'wb-ce-note';
       none.textContent = 'Select an element in the preview or the list above.';
+      styleHost.appendChild(none);
+      return;
+    }
+    if (node._embed !== undefined) {
+      // refuse-and-teach: styles set on a placeholder would vanish when
+      // flatten swaps the child's tree in — point at the honest surface
+      const em = (staged.embeds ?? []).find((e) => e.ns === node._embed);
+      const none = document.createElement('div');
+      none.className = 'wb-ce-note';
+      none.textContent = `This is the embedded “${em?.name ?? node._embed}” component — restyle it in its OWN workshop (open it from the ⬡ library), or remove it under Embedded components.`;
       styleHost.appendChild(none);
       return;
     }
@@ -545,7 +683,18 @@ export function mountComponentWorkshop(
     out.name = out.name.trim() || def.name;
     out.description = out.description.trim();
     for (const s of out.slots) s.label = s.label.trim() || s.key;
+    if (out.embeds && !out.embeds.length) delete out.embeds;
     return out;
+  };
+
+  /** Last-line cycle guard at SAVE time (#225): the author-time refusal
+   *  can't see another tab embedding the other way while this one staged, so
+   *  re-check against the store as it is NOW — a cycle is never persisted. */
+  const savedCycleRefusal = (candidate: ComponentDef, list: ComponentDef[]): string | null => {
+    const defs = [...list.filter((c) => c.id !== candidate.id), candidate];
+    return embedClosure(candidate, defs).has(candidate.id)
+      ? `Saving would loop “${candidate.name}” back into itself through another component — the library changed while you edited. Remove one side's embed first.`
+      : null;
   };
 
   const saveAsNew = (): void => {
@@ -626,6 +775,11 @@ export function mountComponentWorkshop(
     const now = new Date();
     const newDef: ComponentDef = { ...stagedPlain(), id: def.id };
     let list = readCustom();
+    const refusal = savedCycleRefusal(newDef, list);
+    if (refusal) {
+      onToast(refusal);
+      return;
+    }
     list = list.some((c) => c.id === def.id)
       ? list.map((c) => (c.id === def.id ? newDef : c))
       : addComponent(list, newDef);
@@ -633,18 +787,24 @@ export function mountComponentWorkshop(
     const unpinnedList = usages.filter((_, i) => !pinned.has(i));
     let variant: ComponentDef | null = null;
     if (pinnedList.length) {
-      variant = createVariant(def, componentId(now), list.map((c) => c.name), now);
+      // freeze the FLATTENED old recipe (#225): "as-found" must mean as it
+      // bakes today — a variant carrying live embeds would keep drifting
+      variant = createVariant(flattenComponent(def, libraryDefs()),
+        componentId(now), list.map((c) => c.name), now);
       list = addComponent(list, variant);
     }
     if (!writeCustom(list)) {
       onToast('Could not save the component — browser storage is full or blocked');
       return;
     }
+    // instances always wear the RESOLVED recipe — re-bakes bind the flattened
+    // shape (#225), matching what the mapper bound at insert time
+    const bakedDef = flattenComponent(newDef, [...BUILTIN_COMPONENTS, ...paletteComponents(), ...list]);
     // the WHOLE apply — doc subtree replacements + registry re-bakes + tag
     // restamps — is ONE undoable step (batchProjectUpdate wraps one snapshot)
     const touched = [...new Set(usages.flatMap((u) => (u.kind === 'column' ? [u.field] : [])))];
     state.batchProjectUpdate(touched, () => {
-      for (const u of unpinnedList) applyUsage(u, newDef);
+      for (const u of unpinnedList) applyUsage(u, bakedDef);
       if (variant) for (const u of pinnedList) pinUsage(u, variant.id);
     });
     setDirty(false);
@@ -659,6 +819,11 @@ export function mountComponentWorkshop(
   const saveReplaceOnly = (): void => {
     const newDef: ComponentDef = { ...stagedPlain(), id: def.id };
     const list = readCustom();
+    const refusal = savedCycleRefusal(newDef, list);
+    if (refusal) {
+      onToast(refusal);
+      return;
+    }
     const next = list.some((c) => c.id === def.id)
       ? list.map((c) => (c.id === def.id ? newDef : c))
       : addComponent(list, newDef);
@@ -710,6 +875,7 @@ export function mountComponentWorkshop(
   renderPreview();
   renderStruct();
   renderStylePanel();
+  renderEmbeds();
   refreshFoot();
   if (!opts.resume) panel.querySelector<HTMLElement>('.wb-ce-name')?.focus();
 

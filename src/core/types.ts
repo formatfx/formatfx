@@ -59,6 +59,11 @@ export interface SPElement {
    *  the slot→column mapping this subtree was bound with. Ignored by
    *  SharePoint, stripped by keepMeta:false like _elmName. */
   _component?: { id: string; map: Record<string, string> };
+  /** Component-NESTING placeholder (issue #225): names the embed record (its
+   *  `ns`) this node stands in for inside a STORED component def's tree.
+   *  flattenComponent replaces it before any bind/bake, so it never reaches a
+   *  live document; stripped by keepMeta:false like the rest of the family. */
+  _embed?: string;
   /** Which column a grid/view cell represents (editor meta, like _elmName —
    *  ignored by SharePoint, stripped by keepMeta:false). Column identity used
    *  to ride the § reference; a cell's look is embedded now, so the identity

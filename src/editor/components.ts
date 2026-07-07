@@ -35,6 +35,27 @@ export interface ComponentSlot {
   description?: string;
 }
 
+/**
+ * One embedded child component (#225 — composition at the definition layer).
+ * The parent def's tree carries a `_embed: ns` placeholder node per record;
+ * flattenComponent resolves it against the live library at bind/apply time.
+ */
+export interface ComponentEmbed {
+  /** Slot namespace, unique per parent — the child's unbound slot `Key`
+   *  surfaces on the parent as `${ns}_${Key}` (the field-ref grammar has no
+   *  dots inside names, so `_` joins the segments). */
+  ns: string;
+  /** The child def's id, looked up in the library at flatten time. */
+  of: string;
+  /** The child's name when it was embedded — drives labels and teaching copy
+   *  even after the child is renamed or deleted. */
+  name: string;
+  /** Compose-time bindings: child slot key → a parent-side reference (one of
+   *  the parent's own slot keys, or a column name). Bound child slots stay
+   *  bound through flatten; UNBOUND ones surface on the parent, namespaced. */
+  map?: Record<string, string>;
+}
+
 export interface ComponentDef {
   id: string;
   name: string;
@@ -52,6 +73,11 @@ export interface ComponentDef {
    *  every pre-variant store (schema stays version 1), and a dangling id
    *  (parent deleted) just renders as a normal top-level card. */
   variantOf?: string;
+  /** Components this def EMBEDS (issue #225 — a component reusing another
+   *  component). ADDITIVE like variantOf — the store stays version 1 under
+   *  the frozen key, pre-nesting builds simply never read it, and a dangling
+   *  reference degrades to nothing at flatten time (never an error). */
+  embeds?: ComponentEmbed[];
   /** Ships in code; not persisted, not deletable. */
   builtin?: boolean;
 }
@@ -269,6 +295,196 @@ export function bindComponentInstance(def: ComponentDef, mapping: Record<string,
   return bound;
 }
 
+// ─── nesting (issue #225): a component can EMBED another component ──────────
+// Composition at the DEFINITION layer. The stored parent keeps a live-ish
+// reference (embeds[] + a `_embed` placeholder node in its tree); resolution
+// is INLINE-FLATTEN (snapshot): flattenComponent expands the whole nested
+// tree into ONE plain, self-contained def at bind/apply time, so what bakes
+// onto a column or view — and what ships to SharePoint — is ordinary
+// schema-valid JSON with zero runtime dependency. Editing a child updates
+// every parent's NEXT bake; already-applied instances stay frozen snapshots.
+// (A CFR-backed LIVE reference — the parent pointing at a child column
+// formatter ON THE TENANT via columnFormatterReference — is deliberately
+// future work; the owner's call on #225 is snapshot-only for now.)
+//
+// Cycle protection replays the CFR registry's author-time pattern: refuse
+// A→B→A when the maker tries it (embedRefusal, teaching message), and even a
+// hand-corrupted store can never bake a cycle (flattenComponent hard-stops).
+
+/** Nesting guardrail IN ADDITION to cycle detection — legal chains stay
+ *  comprehensible and flatten stays visibly bounded. */
+export const MAX_COMPONENT_DEPTH = 5;
+
+/** Namespace candidate from a child's name — field-ref-safe ([A-Za-z0-9_])
+ *  and deduped against the parent's existing namespaces ("Pill", "Pill2"…). */
+export function embedNamespace(childName: string, taken: string[]): string {
+  const base = childName.replace(/[^A-Za-z0-9_]/g, '') || 'Part';
+  if (!taken.includes(base)) return base;
+  for (let i = 2; ; i++) {
+    const candidate = `${base}${i}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+}
+
+/** Every def id reachable from `def` through embeds (transitive). The walk
+ *  never revisits an id, so even a cyclic (corrupt) store terminates. */
+export function embedClosure(def: ComponentDef, defs: ComponentDef[]): Set<string> {
+  const seen = new Set<string>();
+  const walk = (d: ComponentDef): void => {
+    for (const e of d.embeds ?? []) {
+      if (seen.has(e.of)) continue;
+      seen.add(e.of);
+      const child = defs.find((x) => x.id === e.of);
+      if (child) walk(child);
+    }
+  };
+  walk(def);
+  return seen;
+}
+
+/** Nesting depth: 1 for a plain component, 1 + the deepest child chain
+ *  otherwise. Cycle-guarded and dangling-tolerant (both stop the walk —
+ *  flattenComponent refuses to expand them anyway). */
+export function componentDepth(
+  def: ComponentDef,
+  defs: ComponentDef[],
+  seen: ReadonlySet<string> = new Set([def.id]),
+): number {
+  let depth = 1;
+  for (const e of def.embeds ?? []) {
+    const child = defs.find((d) => d.id === e.of);
+    if (!child || seen.has(child.id)) continue;
+    depth = Math.max(depth, 1 + componentDepth(child, defs, new Set([...seen, child.id])));
+  }
+  return depth;
+}
+
+/**
+ * Refuse-and-teach gate for embedding `child` into `parent` — null means go.
+ * Checked at AUTHOR time (the workshop's Embed button), so a cycle is never
+ * even stored; the depth cap is a second, independent guardrail.
+ */
+export function embedRefusal(parent: ComponentDef, child: ComponentDef, defs: ComponentDef[]): string | null {
+  if (parent.id === child.id) {
+    return `“${child.name}” can't be embedded inside itself — a component containing itself would expand forever. Save a copy under a new name first if you want a variant to build on.`;
+  }
+  if (embedClosure(child, defs).has(parent.id)) {
+    return `Embedding “${child.name}” here would create a loop — “${child.name}” already uses “${parent.name}” (directly or through another component), so each would expand the other forever. Unwind one side first.`;
+  }
+  const depth = 1 + componentDepth(child, defs);
+  if (depth > MAX_COMPONENT_DEPTH) {
+    return `That would nest components ${depth} levels deep — the cap is ${MAX_COMPONENT_DEPTH}, so designs stay readable and bakes stay predictable. Flatten a level first: save the combined design as its own component, then embed that.`;
+  }
+  return null;
+}
+
+/** Embed `child` into `parent` (pure): records the reference and appends the
+ *  placeholder node to the parent root's children. Callers gate through
+ *  embedRefusal FIRST — this helper trusts them and never re-checks. */
+export function withEmbed(parent: ComponentDef, child: ComponentDef): ComponentDef {
+  const out = JSON.parse(JSON.stringify(parent)) as ComponentDef;
+  const ns = embedNamespace(child.name, (out.embeds ?? []).map((e) => e.ns));
+  out.embeds = [...(out.embeds ?? []), { ns, of: child.id, name: child.name }];
+  out.root.children = [...(out.root.children ?? []), { elmType: 'div', _embed: ns }];
+  return out;
+}
+
+/** Remove the `ns` embed from `parent` (pure): the reference record and its
+ *  placeholder node(s) both. */
+export function withoutEmbed(parent: ComponentDef, ns: string): ComponentDef {
+  const out = JSON.parse(JSON.stringify(parent)) as ComponentDef;
+  out.embeds = (out.embeds ?? []).filter((e) => e.ns !== ns);
+  if (!out.embeds.length) delete out.embeds;
+  const strip = (el: SPElement): void => {
+    if (el.children) {
+      el.children = el.children.filter((c) => c._embed !== ns);
+      if (el.children.length) el.children.forEach(strip);
+      else delete el.children;
+    }
+    if (el.customCardProps?.formatter) strip(el.customCardProps.formatter);
+  };
+  strip(out.root);
+  return out;
+}
+
+/** The defs whose embeds reference `id` directly — the "used by N components"
+ *  blast radius (the CFR subsystem's precedent, kept minimal). */
+export function componentsEmbedding(id: string, defs: ComponentDef[]): ComponentDef[] {
+  return defs.filter((d) => d.id !== id && (d.embeds ?? []).some((e) => e.of === id));
+}
+
+/**
+ * INLINE-FLATTEN a def: expand every embedded child (recursively) into ONE
+ * plain self-contained def — the shape everything downstream already speaks
+ * (bestGuessMapping / bindComponent / the mapper / the usage scan). A def
+ * without embeds returns AS-IS (identity), so pre-nesting behavior is
+ * bit-identical.
+ *
+ * Per embed: the child is flattened first, its BOUND slots (embed.map)
+ * rewrite straight to their parent-side target, its UNBOUND slots surface on
+ * the parent as `${ns}_${key}` (auto-namespaced — collision-proof even for
+ * two embeds of the same child), and the remapped tree replaces the `_embed`
+ * placeholder. Defense in depth: a cyclic, over-deep or dangling reference
+ * (only a hand-edited store can hold one — embedRefusal blocks them at
+ * author time) is NEVER expanded; its placeholder simply drops out, so a
+ * cycle cannot bake and the output is always schema-valid.
+ */
+export function flattenComponent(def: ComponentDef, defs: ComponentDef[]): ComponentDef {
+  return flattenInto(def, defs, new Set([def.id]), 1);
+}
+
+function flattenInto(
+  def: ComponentDef,
+  defs: ComponentDef[],
+  stack: ReadonlySet<string>,
+  depth: number,
+): ComponentDef {
+  if (!def.embeds?.length) return def;
+  const slots = def.slots.map((s) => ({ ...s }));
+  const grafts = new Map<string, SPElement>();
+  for (const embed of def.embeds) {
+    const child = defs.find((d) => d.id === embed.of);
+    // never expand a cycle, past the cap, or a deleted child — the
+    // placeholder drops out below and everything else still bakes
+    if (!child || stack.has(child.id) || depth >= MAX_COMPONENT_DEPTH) continue;
+    const flat = flattenInto(child, defs, new Set([...stack, child.id]), depth + 1);
+    const replacements = new Map<string, string>();
+    for (const s of flat.slots) {
+      const bound = embed.map?.[s.key];
+      if (bound) {
+        // bound child slots stay bound — no surfaced slot, just the rewrite
+        if (bound !== s.key) replacements.set(s.key, bound);
+        continue;
+      }
+      const key = `${embed.ns}_${s.key}`;
+      if (key !== s.key) replacements.set(s.key, key);
+      slots.push({ ...s, key, label: `${embed.name} · ${s.label}` });
+    }
+    const graft = remapFieldRefs(flat.root, replacements);
+    graft._elmName = graft._elmName ?? embed.name;
+    grafts.set(embed.ns, graft);
+  }
+  const walk = (el: SPElement): SPElement | null => {
+    if (el._embed !== undefined) {
+      const graft = grafts.get(el._embed);
+      return graft ? (JSON.parse(JSON.stringify(graft)) as SPElement) : null;
+    }
+    const out: SPElement = { ...el };
+    if (el.children) {
+      out.children = el.children.map(walk).filter((c): c is SPElement => c !== null);
+    }
+    if (el.customCardProps?.formatter) {
+      const inner = walk(el.customCardProps.formatter);
+      out.customCardProps = { ...el.customCardProps, formatter: inner ?? { elmType: 'div' } };
+    }
+    return out;
+  };
+  const root = walk(JSON.parse(JSON.stringify(def.root)) as SPElement) ?? { elmType: 'div' };
+  const out: ComponentDef = { ...def, slots, root };
+  delete out.embeds;
+  return out;
+}
+
 // ─── context-aware insertion (where does "Add" land?) ────────────────────────
 
 /**
@@ -289,6 +505,16 @@ function isValidSlot(s: unknown): s is ComponentSlot {
     && typeof (s as ComponentSlot).key === 'string' && (s as ComponentSlot).key.length > 0
     && typeof (s as ComponentSlot).label === 'string'
     && Array.isArray((s as ComponentSlot).types) && (s as ComponentSlot).types.length > 0);
+}
+
+function isValidEmbed(e: unknown): e is ComponentEmbed {
+  if (!e || typeof e !== 'object') return false;
+  const o = e as ComponentEmbed;
+  return typeof o.ns === 'string' && /^[A-Za-z0-9_]+$/.test(o.ns)
+    && typeof o.of === 'string' && o.of.length > 0
+    && typeof o.name === 'string'
+    && (o.map === undefined || (!!o.map && typeof o.map === 'object' && !Array.isArray(o.map)
+      && Object.values(o.map).every((v) => typeof v === 'string')));
 }
 
 function isValidDef(c: unknown): c is ComponentDef {
@@ -321,6 +547,18 @@ export function loadComponents(raw: string | null): ComponentDef[] {
       // rather than sinking the entry; pre-variant stores simply lack it
       if (def.variantOf !== undefined && typeof def.variantOf !== 'string') {
         delete def.variantOf;
+      }
+      // embeds (#225) is optional nesting — ADDITIVE like variantOf. Corrupt
+      // records drop one by one (an orphaned placeholder just falls out at
+      // flatten time); a non-array field strips whole. Pre-nesting stores
+      // simply lack it and load exactly as before.
+      if (def.embeds !== undefined) {
+        if (Array.isArray(def.embeds)) {
+          def.embeds = (def.embeds as unknown[]).filter(isValidEmbed);
+          if (!def.embeds.length) delete def.embeds;
+        } else {
+          delete def.embeds;
+        }
       }
       return def;
     });

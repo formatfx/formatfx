@@ -515,6 +515,21 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
   font-size: 10.5px; color: var(--wb-text-2); cursor: pointer;
 }
+/* embedded components (#225): the workshop's compose section */
+.wb-ce-embeds { display: flex; flex-direction: column; gap: 6px; }
+.wb-ce-embed { display: flex; align-items: center; gap: 8px; }
+.wb-ce-embeddel {
+  border: none; background: transparent; color: var(--wb-text-2);
+  cursor: pointer; font-size: 12px; padding: 2px 5px; border-radius: 4px;
+}
+.wb-ce-embeddel:hover { color: #d13438; background: var(--wb-component-bg); }
+.wb-ce-embedadd {
+  flex: 0 0 auto; font-size: 11px; padding: 4px 10px; cursor: pointer;
+  border: 1px solid var(--wb-component); border-radius: 10px;
+  background: transparent; color: var(--wb-component); font-weight: 600;
+}
+.wb-ce-embedadd:hover { background: var(--wb-component-bg); }
+.wb-ce-embedadd:disabled { opacity: .5; cursor: default; }
 .wb-ce-foot {
   display: flex; justify-content: flex-end; gap: 8px; align-items: center;
   margin-top: auto; padding-top: 8px; border-top: 1px solid var(--wb-border);
