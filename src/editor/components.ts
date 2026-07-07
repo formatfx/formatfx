@@ -421,7 +421,10 @@ export function componentsEmbedding(id: string, defs: ComponentDef[]): Component
  *  refreshes A's AND D's live instances, not just A's). `componentsEmbedding`
  *  is the direct-only sibling (delete guard, "used by N" line); this follows
  *  the whole chain. Leans on embedClosure, which is cycle- and dangling-safe,
- *  so it terminates on any store — including a hand-corrupted cyclic one. */
+ *  so it terminates on any store — including a hand-corrupted cyclic one.
+ *  O(N·(N+E)) by reusing embedClosure per def, but N is hard-bounded by
+ *  COMPONENT_CAP (50) and this runs once per save gesture, so a reverse-graph
+ *  walk isn't worth trading the one-liner's obvious correctness for. */
 export function transitiveEmbedders(id: string, defs: ComponentDef[]): ComponentDef[] {
   return defs.filter((d) => d.id !== id && embedClosure(d, defs).has(id));
 }

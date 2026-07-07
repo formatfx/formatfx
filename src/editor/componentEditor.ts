@@ -742,32 +742,38 @@ export function mountComponentWorkshop(
    *  flattened against the fresh library), using the instance's OWN stored slot
    *  map. `oldName` is the name instances were stamped under — rebindInstance
    *  preserves a maker's rename against it. Generalized over `targetId` so the
-   *  embedder cascade can re-bake PARENT instances, not only the edited def. */
-  const rebakeUsage = (u: ComponentUsage, targetId: string, oldName: string, bakedDef: ComponentDef): void => {
+   *  embedder cascade can re-bake PARENT instances, not only the edited def.
+   *  Returns whether it ACTUALLY re-baked: a stale NodePath or a since-removed
+   *  column look changes nothing, and the cascade counts only real changes so
+   *  its toast can't overclaim. */
+  const rebakeUsage = (u: ComponentUsage, targetId: string, oldName: string, bakedDef: ComponentDef): boolean => {
     if (u.kind === 'view') {
       const el = state.nodeAt(u.path);
-      if (!el || el._component?.id !== targetId) return; // stale path — never clobber
+      if (!el || el._component?.id !== targetId) return false; // stale path — never clobber
       const next = rebindInstance(bakedDef, el, oldName);
-      if (next) replaceInDoc(u.path, next);
-      return;
+      if (!next) return false;
+      replaceInDoc(u.path, next);
+      return true;
     }
     // column wearer: the look IS a stamped instance — re-bind it with its own
     // stored slot map (looks stay in explicit-[$Field] dialect) and mirror the
     // floor cell. An imported (unstamped-root) look can still carry stamped
     // subtrees; those re-bind in place.
     const look = Object.hasOwn(state.columnLooks, u.field) ? state.columnLooks[u.field] : undefined;
-    if (!look) return;
+    if (!look) return false;
     const next = look._component?.id === targetId
       ? rebindInstance(bakedDef, look, oldName)
       : replaceStampedIn(look, targetId, (el) => rebindInstance(bakedDef, el, oldName) ?? el);
-    if (!next) return;
+    if (!next) return false;
     state.columnLooks[u.field] = next;
     rewriteFloorCell(u.field);
+    return true;
   };
 
   /** The edited def's own direct usages (behaviour-identical to before). */
-  const applyUsage = (u: ComponentUsage, newDef: ComponentDef): void =>
+  const applyUsage = (u: ComponentUsage, newDef: ComponentDef): void => {
     rebakeUsage(u, def.id, def.name, newDef);
+  };
 
   /**
    * The in-app LIVE cascade (#225 follow-up): saving a component re-bakes every
@@ -793,7 +799,7 @@ export function mountComponentWorkshop(
       // re-bake from the parent's OWN flatten — it inlines the fresh child
       const baked = flattenComponent(parent, allDefs);
       for (const u of parentUsages) {
-        rebakeUsage(u, parent.id, parent.name, baked);
+        if (!rebakeUsage(u, parent.id, parent.name, baked)) continue; // count only real re-bakes
         places += 1;
         if (u.kind === 'column') fields.add(u.field);
       }
