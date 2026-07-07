@@ -16,17 +16,34 @@
  *   "  ↔ '       ·  TODAY()/NOW() ↔ @now   ·  ME() ↔ @me
  *   AND()/OR()   ↔ &&/||           ·  IF(…) ↔ if(…)   (function names case-folded)
  *   TRUE/FALSE   ↔ true/false      ·  [Display Name] ↔ [$InternalName]
+ *   @tokens      — the engine's SPECIAL_TOKENS (@currentField, @rowIndex,
+ *                  @window.innerWidth, …) pass through verbatim both ways
+ *                  (#222); bare @now/@me still display as TODAY()/ME(). An
+ *                  Excel-side [$Internal(.prop)] spelling is accepted too.
  *   NOT(x)       — rewritten in place (flip the operator, De Morgan, compare a
  *                  yes/no column with = FALSE); refused when it can't be.
  *
- * Anything outside the subset (other SP functions, other @tokens, [!display]
+ * Anything outside the subset (other SP functions, unknown @tokens, [!display]
  * refs) is refused — the caller falls back to Advanced, which shows raw SP.
  *
  * dialect.test.ts is the contract: change behaviour there first, then here.
  */
 
 import { parseExpression, type AstNode } from '../core/expressions';
+import { SPECIAL_TOKENS } from '../core/schema';
 import type { FieldType, MockField } from '../core/types';
+
+/** Exactly the engine's tokens — plus a dotted property on a BASE token the
+ *  engine resolves on its own (e.g. @currentField.email, @me.email). A head
+ *  that only ever appears dotted in SPECIAL_TOKENS (@window) is NOT itself a
+ *  token: never accept or render what SharePoint wouldn't resolve. */
+const EXACT_TOKENS = new Set<string>(SPECIAL_TOKENS);
+const DOTTED_BASES = new Set<string>(SPECIAL_TOKENS.filter((t) => !t.includes('.')));
+const knownToken = (name: string): boolean => {
+  if (EXACT_TOKENS.has(name)) return true;
+  const dot = name.indexOf('.');
+  return dot > 0 && DOTTED_BASES.has(name.slice(0, dot));
+};
 
 // ─── public surface ──────────────────────────────────────────────────────────
 
@@ -129,8 +146,11 @@ function indexFields(fields?: DialectField[]): FieldIndex {
   return { byKey, displayOf, typeOf, labels };
 }
 
-/** Excel `[Display Name(.prop)]` → SP ref body `$Internal(.prop)`. */
-function resolveExcelColumn(inner: string, idx: FieldIndex): string {
+/** Excel `[Display Name(.prop)]` (or SP-spelled `[$Internal(.prop)]`) → SP ref
+ *  body `$Internal(.prop)`. The `$` spelling is what the token autocomplete
+ *  inserts (#222); byKey already indexes internal names, so just strip it. */
+function resolveExcelColumn(rawInner: string, idx: FieldIndex): string {
+  const inner = rawInner.trim().startsWith('$') ? rawInner.trim().slice(1) : rawInner;
   const segs = inner.split('.');
   // Longest leading run of segments that names a real column wins; the rest
   // are property access (e.g. a lookup's `.lookupValue`).
@@ -251,6 +271,9 @@ function renderExcel(node: AstNode, idx: FieldIndex): string {
       case 'token':
         if (n.name === '@now') return 'TODAY()';
         if (n.name === '@me') return 'ME()';
+        // every other engine-known token (and a dotted @me.prop / @now.prop)
+        // reads the same in both dialects — pass it through verbatim (#222)
+        if (knownToken(n.name)) return n.name;
         throw new Refusal(`This formula uses ${n.name}, which the Sheet bar doesn’t translate — edit it in Advanced mode (it shows the raw SharePoint formula).`);
       case 'ident':
         if (n.name === 'true') return 'TRUE';
@@ -290,7 +313,7 @@ function wrap(text: string, prec: number, parentPrec: number, side: 'l' | 'r'): 
 
 // ─── Excel tokenizer + parser (→ SP-vocabulary AstNode) ──────────────────────
 
-type ExTokType = 'num' | 'str' | 'col' | 'op' | 'ident' | 'lparen' | 'rparen' | 'comma';
+type ExTokType = 'num' | 'str' | 'col' | 'attok' | 'op' | 'ident' | 'lparen' | 'rparen' | 'comma';
 interface ExTok { type: ExTokType; value: string }
 
 const EX_OPS2 = ['<>', '<=', '>=', '==', '!=', '&&', '||'];
@@ -331,6 +354,12 @@ function exTokenize(src: string): ExTok[] {
       if (end < 0) throw new Refusal('A [column] reference is missing its closing bracket.');
       toks.push({ type: 'col', value: src.slice(i + 1, end) });
       i = end + 1; continue;
+    }
+    if (c === '@') {
+      let j = i + 1;
+      while (j < src.length && /[A-Za-z0-9_.]/.test(src[j])) j++;
+      toks.push({ type: 'attok', value: src.slice(i, j) });
+      i = j; continue;
     }
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] ?? ''))) {
       let j = i;
@@ -425,6 +454,14 @@ class ExcelParser {
     if (t.type === 'num') { this.eat(); return { kind: 'num', value: parseFloat(t.value) }; }
     if (t.type === 'str') { this.eat(); return { kind: 'str', value: t.value }; }
     if (t.type === 'col') { this.eat(); return { kind: 'field', ref: resolveExcelColumn(t.value, this.idx) }; }
+    if (t.type === 'attok') {
+      this.eat();
+      // only the tokens the engine actually resolves — refuse-don't-guess
+      if (!knownToken(t.value)) {
+        throw new Refusal(`“${t.value}” isn’t a SharePoint context token. The tokens are: ${SPECIAL_TOKENS.join(', ')}.`);
+      }
+      return { kind: 'token', name: t.value };
+    }
     if (t.type === 'lparen') {
       this.eat();
       const inner = this.orExpr();

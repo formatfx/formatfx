@@ -176,6 +176,54 @@ describe('round-trip safety (SP is the stored truth)', () => {
   });
 });
 
+describe('#222 — SharePoint context tokens pass through both dialects', () => {
+  it('engine-known @tokens are accepted by the Excel side verbatim', () => {
+    expect(ok(sp('=@currentField'))).toBe('=@currentField');
+    expect(ok(sp('=@rowIndex % 2 = 0'))).toBe('=@rowIndex % 2 == 0');
+    expect(ok(sp('=@window.innerWidth < 640'))).toBe('=@window.innerWidth < 640');
+    expect(ok(sp('=@currentField.lookupValue = "Apollo"')))
+      .toBe("=@currentField.lookupValue == 'Apollo'");
+  });
+
+  it('typed @now/@me normalise to the stored tokens and still display as TODAY()/ME()', () => {
+    expect(ok(sp('=[Due date] < @now'))).toBe('=[$DueDate] < @now');
+    expect(ok(ex('=[$DueDate] < @now'))).toBe('=[Due date] < TODAY()');
+    expect(ok(sp('=@me'))).toBe('=@me');
+    expect(ok(ex('=@me.email'))).toBe('=@me.email'); // a dotted @me keeps its prop
+  });
+
+  it('a bare head that only exists dotted is NOT a token — @window refuses both ways', () => {
+    // exact tokens and dotted-on-a-real-base pass; a head like @window that
+    // only appears dotted in SPECIAL_TOKENS is nothing SP would resolve
+    const exq = ex('=@window');
+    expect(exq.ok).toBe(false);
+    if (!exq.ok) expect(exq.reason).toMatch(/doesn’t translate/);
+    expect(sp('=@window').ok).toBe(false);
+    expect(sp('=@window.zoom').ok).toBe(false); // dotted, but the base isn't a token
+    expect(ok(sp('=@window.innerWidth > 0'))).toBe('=@window.innerWidth > 0');
+  });
+
+  it('stored tokens render back verbatim, so the round-trip is stable', () => {
+    for (const s of ['=@currentField', '=@rowIndex', "=@currentWeb + '/Lists'", '=@window.innerHeight']) {
+      expect(ok(excelToSp(ok(ex(s)), FIELDS))).toBe(s);
+    }
+  });
+
+  it('an unknown @token refuses with the engine\'s token list (refuse-don\'t-guess)', () => {
+    const r = sp('=@thousands');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/context token/i);
+  });
+
+  it('the SP internal [$Name(.prop)] spelling is accepted on the Excel side', () => {
+    expect(ok(sp('=[$Status] = "Done"'))).toBe("=[$Status] == 'Done'");
+    expect(ok(sp('=[$Project.lookupValue]'))).toBe('=[$Project.lookupValue]');
+    const r = sp('=[$Ghost]');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/no column called/i);
+  });
+});
+
 describe('no-schema fallback', () => {
   it('column names pass through as identity both directions', () => {
     expect(ok(excelToSp('[Status] = "Done"'))).toBe("=[$Status] == 'Done'");

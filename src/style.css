@@ -2291,6 +2291,23 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-fx-acopt:hover,
 .wb-fx-acopt.active { border-color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 10%, transparent); }
 
+/* #222 — IntelliSense rows: completion + type badge + one-line doc + live mock value */
+.wb-fx-acopt-rich { display: flex; align-items: baseline; gap: 7px; }
+.wb-fx-ac-ins { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
+.wb-fx-ac-type {
+  flex: none; padding: 0 5px; border-radius: 4px; font-size: 9.5px; line-height: 15px;
+  letter-spacing: .02em;
+  color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 12%, transparent);
+}
+.wb-fx-ac-doc {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  font-family: system-ui, sans-serif; font-size: 11px; color: var(--wb-text-2);
+}
+.wb-fx-ac-val {
+  flex: none; max-width: 34%; overflow: hidden; text-overflow: ellipsis;
+  font-size: 11px; font-style: italic; color: var(--wb-text-2);
+}
+
 /* the property-styled previews that sit at the left of a value option */
 .wb-fx-prev { flex: none; }
 .wb-fx-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--wb-border); }
