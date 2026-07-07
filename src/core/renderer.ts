@@ -140,10 +140,14 @@ export function renderElement(
     node.appendChild(document.createTextNode(text));
   }
 
-  // inlineEditField indicator
+  // inlineEditField indicator — honest (no live editor yet, HANDOFF §4) but
+  // legible: name the column so the maker can SEE the action took (#212)
   if (el.inlineEditField) {
     node.classList.add('wb-inline-edit');
-    node.setAttribute('title', `inlineEditField: ${el.inlineEditField}`);
+    const m = /^\s*\[\$([^\]]+)\]\s*$/.exec(el.inlineEditField);
+    node.setAttribute('title', m
+      ? `double-click to edit ${m[1]}`
+      : `inlineEditField: ${el.inlineEditField}`);
   }
 
   // customRowAction — stub with toast (Select mode skips the handler so the

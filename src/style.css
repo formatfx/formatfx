@@ -410,6 +410,16 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
 .wb-clicksurface { display: flex; flex-direction: column; gap: 4px; }
 .wb-clicksurface-params { display: flex; flex-direction: column; gap: 4px; }
 .wb-cs-gen:disabled { opacity: .5; cursor: default; }
+/* #212: multi-row setValue + inline-edit / confirm-recipe params */
+.wb-cs-svrow { display: flex; flex-direction: column; gap: 4px; }
+.wb-cs-svrow + .wb-cs-svrow { border-top: 1px dashed var(--wb-border); margin-top: 4px; padding-top: 4px; }
+.wb-cs-addrow, .wb-cs-removerow { align-self: flex-start; }
+.wb-cs-removerow {
+  font-size: 10.5px; padding: 2px 6px; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 4px;
+  background: transparent; color: var(--wb-text-2);
+}
+.wb-cs-note { font-size: 10.5px; line-height: 1.45; }
 .wb-comp-edit {
   font-size: 11px; padding: 4px 8px; cursor: pointer;
   border: 1px solid var(--wb-lp-border); border-radius: 5px;
