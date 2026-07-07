@@ -8,7 +8,7 @@
  * pill and view strip are gone.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, header, canvasTab, openGridTab, makeRowView } from './helpers';
+import { freshApp, canvasTab, openGridTab, makeRowView } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 

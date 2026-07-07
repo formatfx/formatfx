@@ -6,7 +6,7 @@
  * Select/Live canvas toggle.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { freshApp, header, canvasTab, openGridTab, loadExample, openJson, openPalette } from './helpers';
+import { freshApp, header, openGridTab, openJson, openPalette } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 

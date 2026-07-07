@@ -7,7 +7,7 @@
  * One undoable document mutation per gesture.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, header, canvasTab, openGridTab, openJson } from './helpers';
+import { freshApp, header, canvasTab, openJson } from './helpers';
 
 // dialogs accepted: applying name-less JSON over a named design asks first
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
