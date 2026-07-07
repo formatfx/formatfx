@@ -51,12 +51,23 @@ Body: { "includeQuicksteps": true, "includeAutomaticRules": true }
 ```
 
 This is a normal SharePoint REST call our Tier-0/Tier-1 bridge already speaks
-(raw REST over ~6 endpoints, `src/bridge/spClient.ts`). It is a **read** —
-extraction stays GET-only in spirit (a POST that fetches, no mutation), so it
-belongs in `captureSnapshot` as an additive, versioned capture target on the
-List Snapshot format (CONNECTIVITY §3.1). **The identifier is therefore NOT
-dev-tools-only** — the "scrape it from the DOM" limitation is an authoring-UX
-gap in the native product, not a data gap for us.
+(raw REST over ~6 endpoints, `src/bridge/spClient.ts`). It is **read-only** (it
+mutates nothing), so it belongs in `captureSnapshot` as an additive, versioned
+capture target on the List Snapshot format (CONNECTIVITY §3.1). **The identifier
+is therefore NOT dev-tools-only** — the "scrape it from the DOM" limitation is
+an authoring-UX gap in the native product, not a data gap for us.
+
+> **Implementation note — POST vs the GET-only extractor invariant.** Unlike
+> the field/view/item captures, `GetAllRules()` is a **POST** (a POST that
+> *reads*). The Tier-0 extract snippet is deliberately **GET-only** and has a
+> test asserting the extractor contains no write verbs (CONNECTIVITY §3.6). So
+> this call cannot ride the existing extract-snippet path unchanged: either
+> route the Rules/Quick Steps read through `spClient`/the extension (where a
+> read-POST is fine) rather than the pasted GET-only snippet, or relax that
+> invariant to allow an allow-listed read-POST. The safety property we actually
+> care about is **no mutation**, not the HTTP verb — but the literal "GET-only"
+> contract is load-bearing for the snippet's auditability, so keep the read-POST
+> out of it.
 
 ### 3.1 Response shape (the fields that matter)
 
@@ -120,11 +131,30 @@ visibility expression.
 
 | Quick Step `ActionType` | ActionParams payload | FormatFX reproduction |
 |---|---|---|
-| `10001` ExecuteItemFlow | `FlowId` | `executeFlow` — put the FlowId in `actionParams` |
+| `10001` ExecuteItemFlow | `FlowId` | `executeFlow` — see the FlowId mapping below |
 | `10002` SetItemFieldValue | `ItemData` (per-field values) | `setValue` — `ItemData` → our `actionInput` (the #212 multi-field form) |
 | `10003` DraftEmail | email props | `link` → `mailto:` (best-effort; some fidelity lost) |
 | `10004` StartTeamsChat | `TeamsRecipients`… | `link` → `https://teams.microsoft.com/l/chat/…` deep link |
-| `10006` ExecuteListFlow | `FlowId` | `executeFlow`-style (list-scoped; verify semantics) |
+| `10006` ExecuteListFlow | `FlowId` | `executeFlow`-style, same FlowId mapping (list-scoped; verify semantics) |
+
+**Exact `FlowId` → `executeFlow` mapping (don't get this wrong — it's
+lint-gated).** FormatFX's `executeFlow` does NOT take a bare flow id. Our
+`actionParams` is a **JSON *string*** shaped `{"id":"<FlowId>"}`, and the
+`flow-missing-id` linter rule (`src/core/linter.ts`) rejects anything without a
+`"id":"…"` — so a copy/paste of the raw Quick Step `FlowId` would fail the
+linter and the deploy gate. Concretely, a Quick Step's `ActionParams.FlowId`
+becomes:
+
+```jsonc
+"customRowAction": {
+  "action": "executeFlow",
+  "actionParams": "{\"id\":\"<the FlowId value from the Quick Step>\"}"
+}
+```
+
+(This is what `applyTriggerAt` already emits via `JSON.stringify({ id })` —
+`src/editor/triggerBind.ts`. The reproduction must reuse that, not hand-build
+the string.)
 
 Why reproduce beats reference:
 - **Refuse-don't-guess / definitely-works.** The reproduction depends only on
@@ -205,8 +235,9 @@ CONNECTIVITY §3.6 one-time on-tenant checklist):
 
 ## 7. House-rule fit
 
-- **Extraction stays GET-only in spirit.** `GetAllRules()` reads; any
-  `CreateRuleEx()` write is a separate, later, confirm-first + lint-gated
+- **Reads mutate nothing.** `GetAllRules()` is a read-only call (a read-POST —
+  see the §3 note on keeping it out of the literal GET-only extract snippet);
+  any `CreateRuleEx()` write is a separate, later, confirm-first + lint-gated
   motion (§5).
 - **No new auth surface.** Everything inside the closed CONNECTIVITY §1 model:
   the user's authenticated session, the extension under `activeTab`.
