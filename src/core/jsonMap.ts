@@ -7,7 +7,13 @@
  * `JSON.stringify(payload, null, 2)` formatting — the tracked stringifier
  * below replicates it byte-for-byte, leaning on JSON.stringify for every
  * leaf so string escaping can never drift) while recording the character
- * range [start, end) of every ELEMENT object in the tree. That yields a
+ * range of every ELEMENT object in the tree: `start` is the opening `{` and
+ * `end` is the offset just PAST the closing `}`, so the half-open span
+ * [start, end) covers exactly the element's characters. Caret mapping is
+ * deliberately end-INCLUSIVE, though — pathAtOffset resolves a caret resting
+ * right after the closing `}` (offset === end) to that element, which reads
+ * naturally when the caret sits at a line's end. Keep both sides in step:
+ * ranges stay half-open, caret lookups stay inclusive. That yields a
  * deterministic mapping both ways:
  *
  *     caret offset  → innermost element path   (pathAtOffset)

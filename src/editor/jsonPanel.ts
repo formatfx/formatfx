@@ -180,8 +180,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     bar.className = 'wb-code-flashbar';
     bar.dataset.lines = `${first + 1}-${last + 1}`; // 1-based, for humans + tests
     bar.setAttribute('aria-hidden', 'true');
-    bar.style.top = `${textEl.offsetTop + y}px`;
-    bar.style.left = `${textEl.offsetLeft}px`;
+    // offsetTop/Left resolve to the textarea's BORDER box; its text content
+    // sits inside the border, so add clientTop/Left (the border width) to keep
+    // the flash bar aligned with the content rather than overlapping the border
+    bar.style.top = `${textEl.offsetTop + textEl.clientTop + y}px`;
+    bar.style.left = `${textEl.offsetLeft + textEl.clientLeft}px`;
     bar.style.width = textEl.clientWidth ? `${textEl.clientWidth}px` : '100%';
     bar.style.height = `${h}px`;
     host.appendChild(bar);
