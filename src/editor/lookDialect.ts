@@ -15,24 +15,32 @@
 
 import type { SPElement } from '../core/types';
 
-/** Deep-clone a tree, rewriting every string-valued expression with `fn`. */
+/** Rewrite every string LEAF of an expression value — SPExpr is either a
+ *  plain string or the AST object form ({ operator, operands }), and real
+ *  imported formatters use both, nested arbitrarily. */
+function mapExpr<T>(value: T, fn: (s: string) => string): T {
+  if (typeof value === 'string') return fn(value) as unknown as T;
+  if (Array.isArray(value)) return value.map((v) => mapExpr(v, fn)) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = mapExpr(v, fn);
+    return out as unknown as T;
+  }
+  return value;
+}
+
+/** Deep-clone a tree, rewriting every expression-bearing slot with `fn` —
+ *  string and AST ({ operator, operands }) forms alike. */
 function transformRefs(tree: SPElement, fn: (s: string) => string): SPElement {
   const clone = JSON.parse(JSON.stringify(tree)) as SPElement;
   const visit = (node: SPElement): void => {
-    if (typeof node.txtContent === 'string') node.txtContent = fn(node.txtContent);
-    if (node.style) {
-      for (const k of Object.keys(node.style)) {
-        const v = node.style[k];
-        if (typeof v === 'string') node.style[k] = fn(v);
-      }
+    if (node.txtContent !== undefined) node.txtContent = mapExpr(node.txtContent, fn);
+    if (node.style) node.style = mapExpr(node.style, fn);
+    if (node.attributes) node.attributes = mapExpr(node.attributes, fn);
+    if (node.forEach !== undefined) node.forEach = mapExpr(node.forEach, fn);
+    if (node.customRowAction?.actionInput !== undefined) {
+      node.customRowAction.actionInput = mapExpr(node.customRowAction.actionInput, fn);
     }
-    if (node.attributes) {
-      for (const k of Object.keys(node.attributes)) {
-        const v = node.attributes[k];
-        if (typeof v === 'string') node.attributes[k] = fn(v);
-      }
-    }
-    if (typeof node.forEach === 'string') node.forEach = fn(node.forEach);
     node.children?.forEach(visit);
     if (node.customCardProps?.formatter) visit(node.customCardProps.formatter);
   };

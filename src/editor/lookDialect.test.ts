@@ -147,3 +147,31 @@ describe('the two converters are inverses', () => {
     expect(toColumnFormatter(look, 'Owner')).toEqual(recipe);
   });
 });
+
+describe('AST (object-form SPExpr) rewriting — PR #213 Copilot regression', () => {
+  it('inlineColumnFormatter rewrites @currentField inside AST operands', () => {
+    const tree = {
+      elmType: 'div',
+      txtContent: { operator: '+', operands: ['@currentField', { operator: 'toString()', operands: ['@currentField.title'] }] },
+      style: { 'background-color': { operator: '?', operands: [{ operator: '==', operands: ['@currentField', 'Done'] }, '#107c10', '#d13438'] } },
+    } as unknown as import('../core/types').SPElement;
+    const out = inlineColumnFormatter(tree, 'Status');
+    expect(JSON.stringify(out)).not.toContain('@currentField');
+    expect(JSON.stringify(out.txtContent)).toContain('[$Status]');
+    expect(JSON.stringify(out.txtContent)).toContain('[$Status.title]');
+    expect(JSON.stringify(out.style)).toContain('[$Status]');
+  });
+
+  it('toColumnFormatter rewrites [$Field] inside AST operands (round-trip)', () => {
+    const tree = {
+      elmType: 'div',
+      txtContent: { operator: '+', operands: ['[$Due]', { operator: 'toString()', operands: ['[$Due.title]'] }] },
+    } as unknown as import('../core/types').SPElement;
+    const back = toColumnFormatter(tree, 'Due');
+    expect(JSON.stringify(back)).not.toContain('[$Due');
+    expect(JSON.stringify(back.txtContent)).toContain('@currentField');
+    expect(JSON.stringify(back.txtContent)).toContain('@currentField.title');
+    // full round-trip: inline again restores the explicit refs
+    expect(JSON.stringify(inlineColumnFormatter(back, 'Due').txtContent)).toContain('[$Due.title]');
+  });
+});
