@@ -33,7 +33,7 @@ import {
 import { toColumnFormatter } from './lookDialect';
 import {
   BUILTIN_COMPONENTS, bestGuessMapping, mappingComplete,
-  isSingleColumnComponent, componentKind, type ComponentDef,
+  isSingleColumnComponent, componentKind, flattenComponent, type ComponentDef,
 } from './components';
 import {
   customComponents, openSaveColumnAsComponent,
@@ -67,9 +67,12 @@ function typeName(t: FieldType): string {
 
 /** Every offered element component whose single slot fits a `type` column —
  *  the "Apply a component…" catalog (multi-slot defs arrive by DROP, where
- *  the mapper can fill their remaining slots). */
+ *  the mapper can fill their remaining slots). Defs resolve (inline-flatten,
+ *  #225) FIRST, so the single-slot test and the eventual bind both see what
+ *  an embed-carrying component really asks for. */
 function fittingComponents(type: FieldType): ComponentDef[] {
-  return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customComponents()]
+  const all = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customComponents()];
+  return all.map((def) => flattenComponent(def, all))
     .filter((def) => isSingleColumnComponent(def, type));
 }
 

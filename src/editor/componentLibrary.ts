@@ -54,6 +54,7 @@ import {
   bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
   deriveSlots, containsCfr, componentId, widenType, componentKind,
   componentFromFormatterDoc, componentInsertTarget, uniqueName,
+  flattenComponent, componentsEmbedding,
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
@@ -148,11 +149,26 @@ export function customComponents(): ComponentDef[] {
 /** Drag payload for component cards → the canvas (carries the def id). */
 export const COMPONENT_MIME = 'application/x-wb-component';
 
-/** Look a component up across every offering: built-ins, the palette
- *  derivations, and the maker's saved customs. */
+/** Every offering: built-ins, the palette derivations, the maker's customs. */
+function allOfferings(): ComponentDef[] {
+  return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customComponents()];
+}
+
+/** Look a component up across every offering, RESOLVED for use: a def that
+ *  embeds other components (#225) arrives inline-flattened — the plain shape
+ *  every consumer (mapper, inspector re-binds, drops) already speaks. Plain
+ *  defs pass through untouched. The workshop edits the STORED shape instead —
+ *  that's rawComponentById. */
 export function componentById(id: string): ComponentDef | undefined {
-  return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customComponents()]
-    .find((d) => d.id === id);
+  const all = allOfferings();
+  const def = all.find((d) => d.id === id);
+  return def && flattenComponent(def, all);
+}
+
+/** The stored def as-is, embeds unresolved — what the workshop stages so a
+ *  save never bakes the nesting away. Everyone else wants componentById. */
+export function rawComponentById(id: string): ComponentDef | undefined {
+  return allOfferings().find((d) => d.id === id);
 }
 
 /** The typed mapping dialog, openable from outside the library — the canvas
@@ -278,6 +294,10 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
    * different visual language than the Columns/Views inventories.
    */
   const componentRow = (def: ComponentDef, inUse?: ComponentUsage[]): HTMLElement => {
+    // what the row/drawer DISPLAYS and binds is the resolved (inline-
+    // flattened) shape — embedded components' surfaced slots included; the
+    // edit/delete actions keep the stored def so nesting survives a save
+    const shown = flattenComponent(def, allDefs);
     const node = document.createElement('div');
     node.className = 'wb-comp-node';
 
@@ -305,7 +325,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       vt.title = 'A one-off frozen from an older recipe when its usages were pinned "keep as-found"';
       label.appendChild(vt);
     }
-    const hint = rowHint(def);
+    const hint = rowHint(shown);
     if (hint) {
       const h = document.createElement('span');
       h.className = 'wb-tree-elmtype-dim';
@@ -347,6 +367,13 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     () => openComponentEditor(def, onToast, rerender));
     if (!def.builtin) {
       act('wb-comp-rowdel', '✕', `Delete the ${def.name} component`, () => {
+        // blast-radius guard (#225): a def other components EMBED can't be
+        // deleted out from under them — refuse and point at the parents
+        const embedders = componentsEmbedding(def.id, allDefs);
+        if (embedders.length) {
+          onToast(`“${def.name}” is embedded inside ${embedders.map((d) => `“${d.name}”`).join(', ')} — remove it there first, then delete it here.`);
+          return;
+        }
         if (!writeCustom(removeComponent(readCustom(), def.id))) {
           onToast('Could not delete the component — browser storage is blocked, so it would just come back');
           return; // don't rerender a deletion that didn't persist
@@ -392,8 +419,11 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     return node;
   };
 
-  /** The expanded row: everything the old card showed, on demand. */
+  /** The expanded row: everything the old card showed, on demand. `def` is
+   *  the STORED shape (lineage, edit); slots + preview speak the RESOLVED
+   *  one, so an embed-carrying def shows what it really asks for and bakes. */
   const detailsDrawer = (def: ComponentDef, inUse?: ComponentUsage[]): HTMLElement => {
+    const shown = flattenComponent(def, allDefs);
     const box = document.createElement('div');
     box.className = 'wb-comp-details';
 
@@ -407,15 +437,32 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       box.appendChild(line);
     }
 
+    // nesting lineage (#225), both directions: what this def embeds, and the
+    // blast radius — which components embed IT (edits reach their next bakes)
+    if (def.embeds?.length) {
+      const line = document.createElement('div');
+      line.className = 'wb-comp-lineage';
+      line.textContent = `Embeds ${def.embeds.map((e) => `“${e.name}”`).join(', ')} — bakes as one flattened formatter`;
+      box.appendChild(line);
+    }
+    const embedders = componentsEmbedding(def.id, allDefs);
+    if (embedders.length) {
+      const line = document.createElement('div');
+      line.className = 'wb-comp-lineage';
+      line.textContent = `Used by ${embedders.length} component${embedders.length === 1 ? '' : 's'}: ${embedders.map((d) => `“${d.name}”`).join(', ')}`;
+      line.title = 'Editing this component changes what those bake the next time they are applied';
+      box.appendChild(line);
+    }
+
     const desc = document.createElement('div');
     desc.className = 'wb-comp-desc';
     desc.textContent = def.description;
     box.appendChild(desc);
 
-    if (def.slots.length) {
+    if (shown.slots.length) {
       const slots = document.createElement('div');
       slots.className = 'wb-comp-slots';
-      for (const slot of def.slots) {
+      for (const slot of shown.slots) {
         const chip = document.createElement('span');
         chip.className = 'wb-comp-slot';
         chip.textContent = `${slot.label} · ${slotTypesLabel(slot.types)}`;
@@ -426,9 +473,9 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     }
 
     // live preview with the best-guess binding against the current schema
-    const guess = bestGuessMapping(def, state.fields);
-    if (mappingComplete(def, guess)) {
-      box.appendChild(previewBox(bindComponent(def, guess), 'wb-comp-preview'));
+    const guess = bestGuessMapping(shown, state.fields);
+    if (mappingComplete(shown, guess)) {
+      box.appendChild(previewBox(bindComponent(shown, guess), 'wb-comp-preview'));
     } else {
       const miss = document.createElement('div');
       miss.className = 'wb-complib-empty';
@@ -671,6 +718,11 @@ function openMappingDialog(
   onInserted?: () => void,
   opts: { applyToColumn?: string } = {},
 ): void {
+  // resolve nesting FIRST (#225): everything below — slots, previews, the
+  // insert — speaks the inline-flattened shape, so what the maker maps is
+  // exactly what bakes. Plain defs pass through untouched (identity), and
+  // flatten is idempotent, so an already-resolved def is safe to re-enter.
+  def = flattenComponent(def, allOfferings());
   // where the insert lands is decided by what's OPEN on the canvas — pinned
   // here so the button copy and the insert can never disagree
   const target = componentInsertTarget(state.doc.kind);

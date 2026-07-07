@@ -16,11 +16,13 @@ import {
   componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
+  MAX_COMPONENT_DEPTH, embedNamespace, embedClosure, componentDepth,
+  embedRefusal, withEmbed, withoutEmbed, componentsEmbedding, flattenComponent,
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel } from './componentUsage';
 import { stylePlainValue, styleIsFormula } from './componentEditor';
-import { importJson } from '../core/serializer';
+import { importJson, exportJson } from '../core/serializer';
 import { bindFragmentToSchema } from './presets';
 import { renderElement, type RenderIssue } from '../core/renderer';
 import { defaultFields, defaultRows, state } from './state';
@@ -495,6 +497,234 @@ describe('instance provenance + the usage scan (the ⬡ inventory)', () => {
     expect(componentInsertTarget('grid')).toEqual({ grid: true });
     expect(componentInsertTarget('row')).toEqual({ grid: false });
     expect(componentInsertTarget('tile')).toEqual({ grid: false });
+  });
+});
+
+describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', () => {
+  // the classic pitch: a Status pill, reused inside a Task card
+  const PILL: ComponentDef = {
+    id: 'c-pill', name: 'Status pill', description: 'a pill',
+    slots: [{ key: 'Status', label: 'The status', types: ['choice'] }],
+    root: {
+      elmType: 'div',
+      _elmName: 'Status pill',
+      txtContent: '[$Status]',
+      style: { 'background-color': "=if([$Status]=='Done','#107c10','#0078d4')", 'color': '#ffffff' },
+    },
+  };
+  const CARD_BASE: ComponentDef = {
+    id: 'c-card', name: 'Task card', description: 'a card',
+    slots: [{ key: 'Title', label: 'The task', types: ['text', 'note'] }],
+    root: { elmType: 'div', children: [{ elmType: 'span', txtContent: '[$Title]' }] },
+  };
+
+  it('withEmbed records the reference and appends a placeholder node — pure', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    expect(card.embeds).toEqual([{ ns: 'Statuspill', of: 'c-pill', name: 'Status pill' }]);
+    expect(card.root.children).toHaveLength(2);
+    expect(card.root.children![1]).toEqual({ elmType: 'div', _embed: 'Statuspill' });
+    // the input def is untouched (deep-clone contract)
+    expect(CARD_BASE.embeds).toBeUndefined();
+    expect(CARD_BASE.root.children).toHaveLength(1);
+    // a second embed of the SAME child gets its own namespace
+    const twice = withEmbed(card, PILL);
+    expect(twice.embeds!.map((e) => e.ns)).toEqual(['Statuspill', 'Statuspill2']);
+  });
+
+  it('embedNamespace: field-ref-safe ([A-Za-z0-9_] only), deduped, never empty', () => {
+    expect(embedNamespace('Status pill', [])).toBe('Statuspill');
+    expect(embedNamespace('Status pill', ['Statuspill'])).toBe('Statuspill2');
+    expect(embedNamespace('⬡ ✕ —', [])).toBe('Part');
+    expect(embedNamespace('a_b9', [])).toBe('a_b9');
+  });
+
+  it('flattenComponent surfaces the child\'s unbound slots NAMESPACED and grafts its tree over the placeholder', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    const flat = flattenComponent(card, [PILL, card]);
+    expect(flat.embeds).toBeUndefined();
+    expect(flat.slots).toEqual([
+      { key: 'Title', label: 'The task', types: ['text', 'note'] },
+      // parent's slot set = own slots ∪ the child's unbound slots, namespaced
+      { key: 'Statuspill_Status', label: 'Status pill · The status', types: ['choice'] },
+    ]);
+    const graft = flat.root.children![1];
+    expect(graft._elmName).toBe('Status pill');
+    expect(graft.txtContent).toBe('[$Statuspill_Status]');
+    expect(graft.style?.['background-color']).toContain('[$Statuspill_Status]');
+    // no placeholder survives a flatten — the tree is ONE plain document
+    expect(JSON.stringify(flat)).not.toContain('_embed');
+    // a def without embeds passes through AS-IS (identity — zero behavior
+    // change for every pre-nesting component)
+    expect(flattenComponent(PILL, [PILL])).toBe(PILL);
+  });
+
+  it('bound child slots stay bound (embed.map) — no surfaced slot, straight rewrite', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    card.embeds![0].map = { Status: 'Title' }; // pill shows the card's own Title slot
+    const flat = flattenComponent(card, [PILL, card]);
+    expect(flat.slots.map((s) => s.key)).toEqual(['Title']);
+    expect(flat.root.children![1].txtContent).toBe('[$Title]');
+    // binding the parent slot now rewrites the graft too — one mapping drives both
+    const bound = bindComponent(flat, { Title: 'Status' });
+    expect(bound.children![0].txtContent).toBe('[$Status]');
+    expect(bound.children![1].txtContent).toBe('[$Status]');
+  });
+
+  it('the flattened + bound tree bakes to schema-valid, definitely-works SP JSON (the generated-formatter bar)', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    const flat = flattenComponent(card, [PILL, card]);
+    const mapping = bestGuessMapping(flat, defaultFields());
+    expect(mappingComplete(flat, mapping)).toBe(true);
+    const bound = bindComponentInstance(flat, mapping);
+    expect(bound._component).toEqual({ id: 'c-card', map: mapping }); // stamps keep the PARENT's id
+    // every ref resolved to a real column — no leftover slot or namespaced keys
+    const fields = new Set(defaultFields().map((f) => f.name));
+    for (const ref of fieldRefsIn(bound)) expect(fields.has(ref)).toBe(true);
+    // renders through the real engine without a single runtime complaint
+    for (let i = 0; i < defaultRows().length; i++) {
+      const issues: RenderIssue[] = [];
+      const el = renderElement(bound, {
+        row: defaultRows()[i], rowIndex: i, currentFieldName: 'Status', me: state.me,
+        iterators: {}, iteratorIndex: {}, displayNames: {}, now: new Date(),
+      }, { issues });
+      expect(el).toBeTruthy();
+      expect(issues).toEqual([]);
+    }
+    // schema-pristine export carries none of the meta family and no bare `!`
+    const json = exportJson({ kind: 'row', root: bound }, { keepMeta: false });
+    expect(json).not.toContain('_embed');
+    expect(json).not.toContain('_component');
+    expect(json.replace(/!=/g, '').replace(/\[!/g, '')).not.toContain('!');
+  });
+
+  it('recursion: a child\'s own embeds flatten too, namespacing all the way down', () => {
+    const badge: ComponentDef = {
+      id: 'c-badge', name: 'Badge', description: 'b', slots: [],
+      root: { elmType: 'div', children: [] },
+    };
+    const mid = withEmbed(badge, PILL); // Badge embeds Status pill
+    const outer = withEmbed(CARD_BASE, mid); // Task card embeds Badge
+    const flat = flattenComponent(outer, [PILL, mid, outer]);
+    expect(flat.slots.map((s) => s.key)).toEqual(['Title', 'Badge_Statuspill_Status']);
+    expect(flat.slots[1].label).toBe('Badge · Status pill · The status');
+    const graft = flat.root.children![1]; // the Badge graft
+    expect(graft.children![0].txtContent).toBe('[$Badge_Statuspill_Status]');
+    expect(JSON.stringify(flat)).not.toContain('_embed');
+  });
+
+  it('cycle refusal at author time: self, direct, and transitive — with teaching messages', () => {
+    const a = withEmbed(CARD_BASE, PILL); // A(c-card) uses B(c-pill)
+    const defs = [a, PILL];
+    expect(embedRefusal(PILL, PILL, defs)).toMatch(/inside itself/);
+    // B may not embed A back — A already uses B
+    expect(embedRefusal(PILL, a, defs)).toMatch(/create a loop/);
+    // transitive: A→B, B→C … C may not embed A
+    const c: ComponentDef = { id: 'c-c', name: 'C', description: '', slots: [], root: { elmType: 'div' } };
+    const b2 = withEmbed({ ...PILL }, c); // B uses C
+    const defs2 = [a, b2, c];
+    expect(embedRefusal(c, a, defs2)).toMatch(/create a loop/);
+    // the happy path stays open
+    expect(embedRefusal(a, c, defs2)).toBeNull();
+    expect(embedClosure(a, defs2)).toEqual(new Set(['c-pill', 'c-c']));
+  });
+
+  it(`depth cap: chains refuse past ${MAX_COMPONENT_DEPTH} levels, in addition to cycle detection`, () => {
+    // build a legal maximal chain: d1 ← d2 ← … ← d5
+    const defs: ComponentDef[] = [];
+    let prev: ComponentDef | null = null;
+    for (let i = 1; i <= MAX_COMPONENT_DEPTH; i++) {
+      const plain: ComponentDef = {
+        id: `c-d${i}`, name: `D${i}`, description: '', slots: [],
+        root: { elmType: 'div', children: [] },
+      };
+      const def: ComponentDef = prev ? withEmbed(plain, prev) : plain;
+      defs.push(def);
+      prev = def;
+    }
+    expect(componentDepth(prev!, defs)).toBe(MAX_COMPONENT_DEPTH);
+    // one more level on top is refused with the teaching message…
+    const roof: ComponentDef = { id: 'c-roof', name: 'Roof', description: '', slots: [], root: { elmType: 'div' } };
+    expect(embedRefusal(roof, prev!, defs)).toMatch(/cap is 5/);
+    // …while embedding the one-shorter chain is fine
+    expect(embedRefusal(roof, defs[MAX_COMPONENT_DEPTH - 2], defs)).toBeNull();
+  });
+
+  it('flatten NEVER bakes a cycle or an over-deep chain — a hand-corrupted store degrades, not explodes', () => {
+    // A↔B written straight into the store shape (author-time refusal bypassed)
+    const a: ComponentDef = {
+      id: 'c-a', name: 'A', description: '', slots: [],
+      embeds: [{ ns: 'B', of: 'c-b', name: 'B' }],
+      root: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'a' }, { elmType: 'div', _embed: 'B' }] },
+    };
+    const b: ComponentDef = {
+      id: 'c-b', name: 'B', description: '', slots: [],
+      embeds: [{ ns: 'A', of: 'c-a', name: 'A' }],
+      root: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'b' }, { elmType: 'div', _embed: 'A' }] },
+    };
+    const flat = flattenComponent(a, [a, b]); // terminates — the cycle guard stops the walk
+    const json = JSON.stringify(flat);
+    expect(json).not.toContain('_embed'); // the cyclic placeholder dropped out
+    expect(json).toContain('"b"'); // B expanded once…
+    expect(json.match(/"a"/g)).toHaveLength(1); // …but never re-imported A
+    // a dangling reference (child deleted) drops out the same way
+    const dangling = flattenComponent(a, [a]);
+    expect(JSON.stringify(dangling)).not.toContain('_embed');
+    expect(dangling.slots).toEqual([]);
+    expect(dangling.root.children).toHaveLength(1);
+  });
+
+  it('withoutEmbed removes the reference AND its placeholder — pure', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    const back = withoutEmbed(card, 'Statuspill');
+    expect(back.embeds).toBeUndefined();
+    expect(back.root.children).toHaveLength(1);
+    expect(card.embeds).toHaveLength(1); // input untouched
+    // removing an unknown ns is a no-op
+    expect(withoutEmbed(card, 'Nope').embeds).toHaveLength(1);
+  });
+
+  it('componentsEmbedding: the "used by N components" blast radius, self excluded', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    expect(componentsEmbedding('c-pill', [PILL, card]).map((d) => d.id)).toEqual(['c-card']);
+    expect(componentsEmbedding('c-card', [PILL, card])).toEqual([]);
+  });
+
+  it('persistence: embeds round-trip the store; pre-nesting shapes load unchanged; corrupt embeds strip, not sink', () => {
+    const card = withEmbed(CARD_BASE, PILL);
+    card.embeds![0].map = { Status: 'Title' };
+    const back = loadComponents(serializeComponents([card]));
+    expect(back).toHaveLength(1);
+    expect(back[0].embeds).toEqual([{ ns: 'Statuspill', of: 'c-pill', name: 'Status pill', map: { Status: 'Title' } }]);
+    expect(back[0].root.children![1]._embed).toBe('Statuspill');
+    // an OLD store (no embeds anywhere) loads exactly as before — additive field
+    const old = loadComponents(JSON.stringify({ version: 1, components: [CARD_BASE] }));
+    expect(old).toHaveLength(1);
+    expect(old[0].embeds).toBeUndefined();
+    // a non-array embeds field strips without sinking the entry
+    const notArray = loadComponents(JSON.stringify({ version: 1, components: [{ ...CARD_BASE, embeds: 'nope' }] }));
+    expect(notArray).toHaveLength(1);
+    expect(notArray[0].embeds).toBeUndefined();
+    // corrupt records drop one by one; valid siblings survive
+    const mixed = loadComponents(JSON.stringify({
+      version: 1,
+      components: [{
+        ...CARD_BASE,
+        embeds: [
+          { ns: 'Ok', of: 'c-pill', name: 'Status pill' },
+          { ns: 'bad ns!', of: 'c-pill', name: 'x' }, // ns outside the field-ref grammar
+          { ns: 'NoOf', name: 'x' }, // missing target
+          { ns: 'BadMap', of: 'c-pill', name: 'x', map: { Status: 7 } }, // non-string binding
+          'junk',
+        ],
+      }],
+    }));
+    expect(mixed).toHaveLength(1);
+    expect(mixed[0].embeds).toEqual([{ ns: 'Ok', of: 'c-pill', name: 'Status pill' }]);
+    // all-corrupt → the field disappears entirely (back to the plain shape)
+    const allBad = loadComponents(JSON.stringify({
+      version: 1, components: [{ ...CARD_BASE, embeds: [{ nope: 1 }] }],
+    }));
+    expect(allBad[0].embeds).toBeUndefined();
   });
 });
 

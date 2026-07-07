@@ -22,7 +22,7 @@
  */
 
 import { state, tabKey, type CanvasTab } from './state';
-import { componentById, COMPONENT_MIME } from './componentLibrary';
+import { componentById, rawComponentById, COMPONENT_MIME } from './componentLibrary';
 import { FIELD_MIME } from './templateUi';
 import {
   mountComponentWorkshop,
@@ -104,7 +104,9 @@ export function mountCanvasTabs(
       if (canvas) canvas.hidden = false;
       return;
     }
-    const def = componentById(active);
+    // the workshop edits the STORED shape — embeds stay references there, so
+    // saving never silently bakes a nested design flat (#225)
+    const def = rawComponentById(active);
     if (!def) return; // render() already queued this tab's drop
     if (canvas) canvas.hidden = true;
     workshopHost.hidden = false;
