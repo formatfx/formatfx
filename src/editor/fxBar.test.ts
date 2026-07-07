@@ -2,6 +2,12 @@
  * fxBar DOM integration (happy-dom): the bar mounts, the slot picker drives
  * what's edited, Excel input is transpiled to SP in one undoable mutation, and
  * refuse-don't-guess input is rejected without ever touching the document.
+ *
+ * Each test opens the element under test as a view sheet's ROOT and selects
+ * it — kind-'column' canvas documents left the model (COLUMNS-COMPONENTS-
+ * VIEWS §1: a column's look is a component instance, not a document), and
+ * loadDocument('column') now registers an imported LOOK instead of putting
+ * the tree on the canvas.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountFxBar } from './fxBar';
@@ -19,8 +25,8 @@ const $ = <T extends Element>(host: HTMLElement, sel: string): T => {
 const mountWith = (root: SPElement): HTMLElement => {
   const host = document.createElement('div');
   mountFxBar(host);
-  state.loadDocument({ kind: 'column', root });
-  state.select([]);
+  state.createView({ kind: 'row', root });
+  state.select([]); // the element under test IS the view root
   return host;
 };
 
@@ -45,8 +51,7 @@ const openMenu = (host: HTMLElement): HTMLButtonElement[] => {
 
 describe('fxBar', () => {
   beforeEach(() => {
-    state.loadDocument({ kind: 'column', root: { elmType: 'div' } });
-    state.select([]);
+    state.resetAll(); // fresh workspace + empty undo stack per test
   });
 
   // the detached editor + the on-focus value menu live on document.body — sweep

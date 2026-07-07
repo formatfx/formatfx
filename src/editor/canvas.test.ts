@@ -1,7 +1,9 @@
 /**
- * canvas.ts: the column-preview header must render the current field name
- * (an imported internal name) as text, never as HTML — see the matching
- * textContent treatment of the body cells right below it.
+ * canvas.ts DOM contracts. The kind-'column' single-cell preview left the
+ * canvas with the model-B migration (COLUMNS-COMPONENTS-VIEWS §1 — the canvas
+ * renders grid/row/tile only), so the DOM-XSS guard it pinned moves to the
+ * surviving field-name surface: grid column HEADERS render imported names as
+ * text, never as HTML (gridView's textContent treatment).
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { mountCanvas } from './canvas';
@@ -21,20 +23,21 @@ afterEach(() => {
   });
 });
 
-describe('canvas column preview', () => {
-  it('renders the current field name as text, not HTML (no DOM-XSS)', () => {
-    state.doc = { kind: 'column', root: { elmType: 'div', txtContent: 'x' } };
-    state.currentFieldName = '<img src=x onerror="globalThis.__xss=1">';
-    state.selection = null;
+describe('grid column headers (the surviving field-name surface)', () => {
+  it('renders an imported field name as text, not HTML (no DOM-XSS)', () => {
+    state.resetAll(); // the floor grid — kind 'grid', Title placed first
+    const payload = '<img src=x onerror="globalThis.__xss=1">';
+    state.fields.find((f) => f.name === 'Title')!.displayName = payload;
     const host = document.createElement('div');
     document.body.appendChild(host);
 
     mountCanvas(host, () => {});
 
-    // the payload is inert text in the header, never a parsed <img> element
-    expect(host.querySelector('.wb-mock-header img')).toBeNull();
-    const fmt = host.querySelector('.wb-mock-header .wb-mock-cell-fmt');
-    expect(fmt?.textContent).toBe('<img src=x onerror="globalThis.__xss=1"> (formatted)');
+    // the payload is inert text in the header label, never a parsed <img>
+    expect(host.querySelector('.wb-grid-header img')).toBeNull();
+    const labels = [...host.querySelectorAll('.wb-grid-header-label')].map((n) => n.textContent);
+    expect(labels).toContain(payload);
+    state.resetAll();
   });
 });
 
@@ -53,8 +56,9 @@ describe('row-view toolbar', () => {
 });
 
 describe('simulate-hover pin (issue #203)', () => {
+  // kind 'tile' — 'column' documents are never a canvas surface anymore
   const hoverDoc = () => ({
-    kind: 'column' as const,
+    kind: 'tile' as const,
     root: {
       elmType: 'div' as const,
       attributes: { class: 'sp-card-showOnHoverParent' },
@@ -64,7 +68,7 @@ describe('simulate-hover pin (issue #203)', () => {
 
   it('offers the pin only when the document uses the hover-child class', () => {
     state.resetAll();
-    state.doc = { kind: 'column', root: { elmType: 'div', txtContent: 'x' } };
+    state.doc = { kind: 'tile', root: { elmType: 'div', txtContent: 'x' } };
     state.selection = null;
     const host = document.createElement('div');
     document.body.appendChild(host);

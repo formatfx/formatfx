@@ -41,7 +41,11 @@ import type { ImportedView } from '../core/schemaImport';
 import { buildGridRoot, gridCellForField, gridColumnField, isPureGrid } from './gridScaffold';
 import { addGroup, sanitizeGroups, type ColumnGroup } from './colGroups';
 import { inlineColumnFormatter } from './lookDialect';
-import { bindComponentInstance, bestGuessMapping, type ComponentDef } from './components';
+import {
+  bindComponentInstance, bestGuessMapping,
+  BUILTIN_COMPONENTS, COMPONENTS_KEY, loadComponents,
+  type ComponentDef,
+} from './components';
 import { paletteComponents } from './paletteComponents';
 import {
   buildRowView, rowDensityOf,
@@ -67,6 +71,31 @@ export interface SheetDoc {
   name: string;
   /** The view document — kind 'row' | 'tile' only. */
   doc: FormatterDocument;
+}
+
+/** One CANVAS TAB (COLUMNS-COMPONENTS-VIEWS §2): the standing Grid tab, a
+ *  named view, or a component workshop. Tabs are presentational project
+ *  metadata (the renameView rule — off the undo stack, autosaved). */
+export type CanvasTab =
+  | { kind: 'grid' }
+  | { kind: 'view'; id: string }
+  | { kind: 'component'; defId: string };
+
+/** Stable identity key for a canvas tab ('grid' | 'view:v1' | 'component:c-…'). */
+export function tabKey(t: CanvasTab): string {
+  if (t.kind === 'grid') return 'grid';
+  if (t.kind === 'view') return `view:${t.id}`;
+  return `component:${t.defId}`;
+}
+
+/** Every component id the stores currently know: built-ins, the palette
+ *  derivations, and the maker's saved customs (raw read — sanitize only). */
+function knownComponentIds(): Set<string> {
+  let customs: ComponentDef[] = [];
+  try {
+    customs = loadComponents(localStorage.getItem(COMPONENTS_KEY));
+  } catch { /* private mode — customs just read as absent */ }
+  return new Set([...BUILTIN_COMPONENTS, ...paletteComponents(), ...customs].map((d) => d.id));
 }
 
 type Listener = (reason: ChangeReason) => void;
@@ -191,6 +220,15 @@ export class EditorState {
    *  this phase — the canvas component tabs re-target it in a later phase
    *  (COLUMNS-COMPONENTS-VIEWS §2). */
   activeDocKey = 'main';
+  /** The CANVAS TABS (§2): every surface/workshop opened from the left pane,
+   *  in open order, rearrangeable. The Grid tab is always present. Tab
+   *  bookkeeping only — `doc` keeps aliasing the active SURFACE; which tab
+   *  reads active derives from `activeViewId` / `activeComponentTab`. */
+  openTabs: CanvasTab[] = [{ kind: 'grid' }];
+  /** The active COMPONENT tab's defId, or null when the surface is showing.
+   *  UI state like the lens: a component tab COVERS the canvas with the
+   *  workshop; the surface (and `doc`) waits untouched underneath. */
+  activeComponentTab: string | null = null;
   /** The sheet last on the canvas — session-local memory for the VIEWS tab's
    *  return target (the grid lives on the COLUMNS tab since Stage 2, so the
    *  VIEWS tab needs to know which sheet to come back to). Never persisted. */
@@ -428,12 +466,24 @@ export class EditorState {
    */
   openView(id: string): void {
     const v = this.viewById(id);
-    if (!v || this.activeViewId === id) return;
+    if (!v) return;
+    // the navigation chokepoint doubles as the tab chokepoint (§2): every
+    // opened view has a tab, appended in open order
+    const appended = this.ensureTab({ kind: 'view', id });
+    if (this.activeViewId === id) {
+      // already the active surface — just make sure it's SHOWING (a
+      // component tab may be covering the canvas)
+      const covered = this.activeComponentTab !== null;
+      this.activeComponentTab = null;
+      if (appended || covered) this.emit('data');
+      return;
+    }
     if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
     if (this.activeDocKey === 'main') this.swapSelections(id);
     this.activeViewId = id;
     this.lastOpenViewId = id;
+    this.activeComponentTab = null; // surface navigation always shows the surface
     if (this.activeDocKey === 'main') this.doc = v.doc;
     this.emit('load');
     this.emit('data');
@@ -442,12 +492,20 @@ export class EditorState {
   /** Drop back to the floor. NAVIGATION — the sheet is untouched and waits in
    *  the view list; nothing lands on the undo stack. */
   minimizeView(): void {
-    if (this.activeViewId === null) return;
+    if (this.activeViewId === null) {
+      // already the floor — just uncover it if a component tab is up
+      if (this.activeComponentTab !== null) {
+        this.activeComponentTab = null;
+        this.emit('data');
+      }
+      return;
+    }
     if (!this.inGoBack) this.pushNav();
     this.flushActiveDoc();
     this.lastOpenViewId = this.activeViewId;
     if (this.activeDocKey === 'main') this.swapSelections('floor');
     this.activeViewId = null;
+    this.activeComponentTab = null; // surface navigation always shows the surface
     if (this.activeDocKey === 'main') this.doc = this.floorDoc;
     this.emit('load');
     this.emit('data');
@@ -485,9 +543,14 @@ export class EditorState {
     this.snapshot();
     const sheet: SheetDoc = { id: this.nextViewId(), name: name?.trim() || this.nextViewName(), doc };
     this.views.push(sheet);
+    // sheets are born open — every open view has a canvas tab (§2). The tab
+    // itself is presentational (outside the snapshot above): undoing the
+    // creation drops it on the restore-side sanitize.
+    this.ensureTab({ kind: 'view', id: sheet.id });
     this.swapSelections(sheet.id);
     this.activeViewId = sheet.id;
     this.lastOpenViewId = sheet.id;
+    this.activeComponentTab = null;
     this.doc = sheet.doc;
     this.selection = [];
     // the canvas surface changed — emit 'load' like every other navigation so
@@ -505,6 +568,100 @@ export class EditorState {
     const v = this.viewById(id);
     if (!v) return;
     v.name = name.trim() || v.name;
+    this.emit('data');
+  }
+
+  // ─── Canvas tabs (COLUMNS-COMPONENTS-VIEWS §2 — the renameView rule) ───────
+  // Tab open/close/reorder are PRESENTATIONAL: off the undo stack, autosaved
+  // ('data'). The active tab DERIVES from existing state — a component tab is
+  // active while `activeComponentTab` is set; otherwise the active surface's
+  // tab is (activeViewId's view, or the Grid).
+
+  /** The active tab's stable key — what the strip marks aria-current. */
+  get activeTabKey(): string {
+    if (this.activeComponentTab !== null) return `component:${this.activeComponentTab}`;
+    return this.activeViewId !== null ? `view:${this.activeViewId}` : 'grid';
+  }
+
+  /** Append `tab` unless one with its key is already open. True if appended. */
+  private ensureTab(tab: CanvasTab): boolean {
+    const k = tabKey(tab);
+    if (this.openTabs.some((t) => tabKey(t) === k)) return false;
+    this.openTabs.push(tab);
+    return true;
+  }
+
+  /** Drop dead tabs (a view undone away, a def gone from the stores when
+   *  `defIds` is supplied), dedupe, and re-assert the invariants: the Grid
+   *  tab is always present, the active view always has a tab. Silent —
+   *  presentational bookkeeping; callers own any notification. */
+  private sanitizeTabs(defIds?: Set<string>): void {
+    const seen = new Set<string>();
+    this.openTabs = this.openTabs.filter((t) => {
+      const alive = t.kind === 'grid'
+        || (t.kind === 'view' && Boolean(this.viewById(t.id)))
+        || (t.kind === 'component' && (defIds ? defIds.has(t.defId) : true));
+      if (!alive) return false;
+      const k = tabKey(t);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if (!this.openTabs.some((t) => t.kind === 'grid')) this.openTabs.unshift({ kind: 'grid' });
+    if (this.activeViewId !== null
+      && !this.openTabs.some((t) => t.kind === 'view' && t.id === this.activeViewId)) {
+      this.openTabs.push({ kind: 'view', id: this.activeViewId });
+    }
+    if (this.activeComponentTab !== null
+      && !this.openTabs.some((t) => t.kind === 'component' && t.defId === this.activeComponentTab)) {
+      this.activeComponentTab = null;
+    }
+  }
+
+  /** Open (or focus) a component's WORKSHOP tab. The workshop covers the
+   *  canvas; the surface — and `doc` — waits untouched underneath. */
+  openComponentTab(defId: string): void {
+    const appended = this.ensureTab({ kind: 'component', defId });
+    if (!appended && this.activeComponentTab === defId) return; // already up
+    this.activeComponentTab = defId;
+    this.emit('data');
+  }
+
+  /** Bring the active SURFACE back onto the canvas (leave the workshop
+   *  showing-wise; its tab and staged state stay put). No-op when no
+   *  component tab is active. */
+  deactivateComponentTab(): void {
+    if (this.activeComponentTab === null) return;
+    this.activeComponentTab = null;
+    this.emit('data');
+  }
+
+  /** Close a tab by key. The Grid tab refuses (it's the standing tab);
+   *  closing the ACTIVE view's tab minimizes to the grid (navigation only —
+   *  the view itself waits in the views list); closing the active component
+   *  tab uncovers the surface. Returns whether anything closed. */
+  closeTab(key: string): boolean {
+    if (key === 'grid') return false;
+    const i = this.openTabs.findIndex((t) => tabKey(t) === key);
+    if (i < 0) return false;
+    const [closed] = this.openTabs.splice(i, 1);
+    if (closed.kind === 'view' && this.activeViewId === closed.id) {
+      this.minimizeView(); // navigation — emits 'load' + 'data' itself
+    } else if (closed.kind === 'component' && this.activeComponentTab === closed.defId) {
+      this.activeComponentTab = null;
+    }
+    this.emit('data');
+    return true;
+  }
+
+  /** Rearrange tabs: move the tab at `fromIndex` to sit at `toIndex`
+   *  (post-removal index, clamped). Presentational, like every tab gesture. */
+  moveTab(fromIndex: number, toIndex: number): void {
+    if (fromIndex < 0 || fromIndex >= this.openTabs.length) return;
+    const to = Math.max(0, Math.min(toIndex, this.openTabs.length - 1));
+    if (to === fromIndex) return;
+    const [t] = this.openTabs.splice(fromIndex, 1);
+    this.openTabs.splice(to, 0, t);
     this.emit('data');
   }
 
@@ -597,6 +754,9 @@ export class EditorState {
       columnLooks: this.columnLooks,
       ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
       ...(this.floorGroups.length ? { floorGroups: this.floorGroups } : {}),
+      // ADDITIVE key (like floorGroups): only written once there's more than
+      // the standing Grid tab; absent → the loader reseeds the default
+      ...(this.openTabs.length > 1 ? { openTabs: this.openTabs } : {}),
       themeMode: this.themeMode,
       customTheme: this.customTheme,
     }, null, 2);
@@ -639,6 +799,19 @@ export class EditorState {
     this.columnLooks = p.columnLooks;
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
     this.floorGroups = sanitizeGroups(p.floorGroups); // additive key: absent → none
+    // openTabs is ADDITIVE and outside the strict guard: malformed entries
+    // and tabs whose view/def no longer exists just drop (custom defs live in
+    // localStorage — a dangling component tab is normal across machines);
+    // sanitize re-asserts the Grid tab + the active view's tab.
+    const tabOk = (t: unknown): t is CanvasTab => {
+      const x = t as { kind?: unknown; id?: unknown; defId?: unknown };
+      return Boolean(x) && (x.kind === 'grid'
+        || (x.kind === 'view' && typeof x.id === 'string')
+        || (x.kind === 'component' && typeof x.defId === 'string'));
+    };
+    this.openTabs = Array.isArray(p.openTabs) ? (p.openTabs as unknown[]).filter(tabOk) : [];
+    this.activeComponentTab = null;
+    this.sanitizeTabs(knownComponentIds());
     this.activeDocKey = 'main';
     this.doc = this.surfaceDoc();
     this.lastOpenViewId = this.activeViewId;
@@ -681,6 +854,8 @@ export class EditorState {
     this.columnLooks = defaultColumnLooks();
     this.importedViews = [];
     this.floorGroups = [];
+    this.openTabs = [{ kind: 'grid' }];
+    this.activeComponentTab = null;
     this.activeDocKey = 'main';
     this.lastOpenViewId = null;
     this.customTheme = null;
@@ -809,6 +984,9 @@ export class EditorState {
     this.activeDocKey = 'main';
     this.doc = this.surfaceDoc();
     if (parsed.selections) this._selections = parsed.selections;
+    // tabs are OFF the snapshot (presentational) — but a restore can remove
+    // the view a tab pointed at (undoing a createView), so drop dead ones
+    this.sanitizeTabs();
   }
 
   private pushUndo(state: string): void {
@@ -1259,6 +1437,7 @@ export class EditorState {
     if (this.activeViewId && !this.views.some((v) => v.id === this.activeViewId)) {
       this.activeViewId = null; // the sheet you stood on isn't in this capture
     }
+    this.sanitizeTabs(); // the capture may predate (or postdate) some views' tabs
     this.doc = this.surfaceDoc();
     if (this.snapState() !== before) this.pushUndo(before);
     this.selection = [];

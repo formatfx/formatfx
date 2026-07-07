@@ -877,7 +877,12 @@ function parseItemWidth(el: SPElement, flow: ZoneFlow): ItemWidth {
 }
 
 function parseItem(el: SPElement, flow: ZoneFlow, fields: MockField[]): ZoneItem | null {
-  if (el._component) {
+  // The _field stamp wins over _component: a look-embedded FIELD cell is a
+  // baked component instance too (gridCellForField clones the look, whose
+  // root carries the look's _component stamp, and adds _field), and must
+  // reopen as the field item that built it. Only a deliberately placed
+  // component (stamped, but no column identity) parses as a component item.
+  if (el._component && !el._field) {
     return { kind: 'component', componentId: el._component.id, map: { ...el._component.map }, width: parseItemWidth(el, flow) };
   }
   // a NESTED zone: the builder names every zone "<label> zone" — recurse.

@@ -1,15 +1,23 @@
 /**
- * editor/componentEditor.ts — the component EDITOR: open a component from the
- * ⬡ library (inventory card or browse card) and edit the DEFINITION itself —
- * its name/description, what each slot ASKS for (labels/tooltips; slot KEYS
- * are immutable, they're the tree's field refs), and its elements visually
- * (click the live preview or the mini structure list to select, restyle with
- * the compact Format-cells vocabulary). Everything stages into a deep copy;
- * nothing commits until a Save button.
+ * editor/componentEditor.ts — the component WORKSHOP: edit a component
+ * DEFINITION itself — its name/description, what each slot ASKS for
+ * (labels/tooltips; slot KEYS are immutable, they're the tree's field refs),
+ * and its elements visually (click the live preview or the mini structure
+ * list to select, restyle with the compact Format-cells vocabulary).
+ * Everything stages into a deep copy; nothing commits until a Save button.
  *
- * Saving:
+ * COLUMNS-COMPONENTS-VIEWS §2 (Phase B): the workshop is a CANVAS TAB, not a
+ * modal. `mountComponentWorkshop` renders the editor into a host the canvas
+ * tab strip owns (canvasTabs.ts swaps it over #wb-canvas while a component
+ * tab is active); the old `openComponentEditor` entry stays as a thin wrapper
+ * that opens the def's tab, so the library's ✎/Edit… buttons keep working
+ * unchanged. Staged state survives tab switches — the strip keeps each def's
+ * staging alive and resumes it on re-mount.
+ *
+ * Saving (the tab stays open; the strip re-stages on the saved def):
  *   · "Save as new component" — a fresh def (new id); never touches usages.
- *     The ONLY option for built-ins (they can't be overwritten).
+ *     The ONLY option for built-ins (they can't be overwritten). The tab
+ *     swaps onto the copy (onSaved carries the new id).
  *   · "Save and apply to N places" — replaces the def (keeps its id) and
  *     re-bakes every current usage to the new recipe, EXCEPT usages pinned
  *     "keep as-found": those get a one-off variant def frozen from the OLD
@@ -17,16 +25,11 @@
  *     view subtree replacements, column-look re-bakes (store + floor cell),
  *     variant restamps — rides state.batchProjectUpdate, so ONE Ctrl+Z
  *     reverts everything.
- *
- * The modal covers the CANVAS pane only (the Left Edit Pane stays visible) —
- * createOverlay supplies the wb-esc-owner/Esc/backdrop conventions and the
- * overlay is positioned over `.wb-pane-canvas` on open + window resize.
  */
 
 import { state, CARD_SEGMENT } from './state';
 import { renderElement } from '../core/renderer';
 import { ctxForRow } from './previewCtx';
-import { createOverlay } from './overlay';
 import { gridColumnField, gridCellForField } from './gridScaffold';
 import { FONT_SIZES, RADII, INK_SWATCHES, HAIRLINE } from './formatCells';
 import { COND_COLORS } from './condRules';
@@ -91,22 +94,86 @@ export function styleIsFormula(style: Record<string, SPExpr | undefined> | undef
   return typeof v === 'object'; // the legacy {operator, operands} form
 }
 
+/** A workshop's live staging — what the tab strip keeps alive across tab
+ *  switches so flipping away and back never loses un-saved edits. */
+export interface WorkshopStaging {
+  staged: ComponentDef;
+  dirty: boolean;
+}
+
+/** What mountComponentWorkshop hands back to the tab strip. */
+export interface WorkshopHandle {
+  /** Deep snapshot of the current staging (for keep-alive on unmount). */
+  staging(): WorkshopStaging;
+  /** Detach document-level listeners (the modal-undo keys). Call on unmount. */
+  destroy(): void;
+}
+
+export interface WorkshopOpts {
+  onToast: (m: string) => void;
+  /** A save landed. `newDefId` is the id the tab should now show — the same
+   *  id for save/save-and-apply, a FRESH id when a builtin (or save-as-new)
+   *  produced a copy. The strip re-stages the tab on the saved def. */
+  onSaved: (newDefId: string) => void;
+  /** Staged-edits dirt flipped — drives the tab's dirty dot. */
+  onDirtyChange: (dirty: boolean) => void;
+  /** Resume a previous mount's staging (tab switch keep-alive). */
+  resume?: WorkshopStaging;
+}
+
+/** The library list's refresh hook — remembered from the last ✎/Edit… click
+ *  so a workshop save redraws the open library pane (the old modal called it
+ *  onSaved; the tab decouples open-time from save-time). */
+let libraryRefresh: (() => void) | null = null;
+
+/**
+ * The old modal entry, now a thin wrapper (§2: "the modal dies") — opening a
+ * component for editing opens (or focuses) its CANVAS TAB. Kept
+ * signature-compatible with the library's call sites. Custom defs are
+ * id-addressed; every def reaching here (built-in / palette / custom) is
+ * resolvable via componentById, so the tab carries only the id.
+ */
 export function openComponentEditor(
   def: ComponentDef,
   onToast: (m: string) => void,
-  onSaved: () => void,
+  onSaved?: () => void,
 ): void {
+  void onToast; // the workshop tab owns its own toasts
+  if (onSaved) libraryRefresh = onSaved;
+  state.openComponentTab(def.id);
+}
+
+/**
+ * Mount the workshop for `def` into `host` (a canvas-region div the tab strip
+ * owns). Re-housed from the modal — same staged tree, modal-local undo, slot
+ * editing, live preview, style panel and Save machinery; only the overlay
+ * chrome (Esc/backdrop/close) is gone, because the TAB is the chrome now.
+ */
+export function mountComponentWorkshop(
+  host: HTMLElement,
+  def: ComponentDef,
+  opts: WorkshopOpts,
+): WorkshopHandle {
+  const { onToast } = opts;
   // ── staged copy: every edit lands here; Save commits ──
-  const staged: ComponentDef = JSON.parse(JSON.stringify(def)) as ComponentDef;
-  let dirty = false;
+  const staged: ComponentDef = JSON.parse(
+    JSON.stringify(opts.resume ? opts.resume.staged : def),
+  ) as ComponentDef;
+  let dirty = opts.resume?.dirty ?? false;
+  const setDirty = (v: boolean): void => {
+    if (dirty === v) return;
+    dirty = v;
+    opts.onDirtyChange(dirty);
+  };
   let sel: NodePath = [];
 
   // modal-local undo (§2.3, Stage 4): the ELEMENT edits — the destructive
-  // gestures — bottom out at the moment the editor opened. Name/description/
-  // slot text fields stay on native input undo (the builder rule), so the
-  // bag is the staged TREE only. Save still commits ONE app-level step.
-  // (muRestore is a function declaration on purpose: it runs only after the
-  // render fns below are assigned, but the head's buttons wire up first.)
+  // gestures — bottom out at the moment the workshop (re)mounted. Name/
+  // description/slot text fields stay on native input undo (the builder
+  // rule), so the bag is the staged TREE only. Save still commits ONE
+  // app-level step. (muRestore is a function declaration on purpose: it runs
+  // only after the render fns below are assigned, but the head's buttons
+  // wire up first.)
   const mu = createModalUndo({ root: staged.root });
   function muRestore(bag: { root: SPElement } | null): void {
     if (!bag) return;
@@ -120,40 +187,16 @@ export function openComponentEditor(
   const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
   const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
 
-  // usages, scanned once at open (the active surface doc + the column looks);
-  // built-ins can be in use too, but they only ever save-as-new
+  // usages, scanned once at mount (the active surface doc + the column
+  // looks); built-ins can be in use too, but they only ever save-as-new
   const usages: ComponentUsage[] = def.builtin
     ? []
     : scanComponentUsages([def], state.doc.root, state.columnLooks).get(def.id) ?? [];
   const pinned = new Set<number>();
 
-  const confirmClose = (): void => {
-    if (dirty && !window.confirm('Discard your staged component edits?')) return;
-    close();
-  };
-  const { overlay, close: closeOverlay } = createOverlay('wb-compedit-overlay', confirmClose);
-  const place = (): void => {
-    // cover the CANVAS pane, not the screen — the Left Edit Pane stays visible
-    const pane = document.querySelector('.wb-pane-canvas');
-    if (!pane) return; // CSS inset:0 fallback (full screen)
-    const r = pane.getBoundingClientRect();
-    overlay.style.top = `${r.top}px`;
-    overlay.style.left = `${r.left}px`;
-    overlay.style.width = `${r.width}px`;
-    overlay.style.height = `${r.height}px`;
-    overlay.style.right = 'auto';
-    overlay.style.bottom = 'auto';
-  };
-  window.addEventListener('resize', place);
-  const close = (): void => {
-    window.removeEventListener('resize', place);
-    detachMuKeys();
-    closeOverlay();
-  };
-
   const panel = document.createElement('div');
-  panel.className = 'wb-ce';
-  overlay.appendChild(panel);
+  panel.className = 'wb-ce wb-ce-workshop';
+  host.replaceChildren(panel);
 
   // ── staged-tree addressing (local mirror of state's path convention) ──
   const nodeAtStaged = (path: NodePath): SPElement | null => {
@@ -175,15 +218,8 @@ export function openComponentEditor(
   sub.className = 'wb-ce-sub';
   sub.textContent = def.builtin
     ? 'built-ins can\'t be overwritten — saving creates your own copy'
-    : 'nothing changes until you save';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'wb-ce-close';
-  closeBtn.textContent = '✕';
-  closeBtn.title = 'Close (Esc) — discards staged edits';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.addEventListener('click', confirmClose);
-  head.append(title, sub, muButtons.root, closeBtn);
+    : 'nothing changes until you save — close the tab (✕) to discard';
+  head.append(title, sub, muButtons.root);
   panel.appendChild(head);
 
   const body = document.createElement('div');
@@ -195,14 +231,14 @@ export function openComponentEditor(
   right.className = 'wb-ce-col';
   body.append(left, right);
 
-  const section = (host: HTMLElement, label: string): HTMLElement => {
+  const section = (sectionHost: HTMLElement, label: string): HTMLElement => {
     const h = document.createElement('div');
     h.className = 'wb-ce-seclab';
     h.textContent = label;
-    host.appendChild(h);
+    sectionHost.appendChild(h);
     const s = document.createElement('div');
     s.className = 'wb-ce-sec';
-    host.appendChild(s);
+    sectionHost.appendChild(s);
     return s;
   };
 
@@ -218,7 +254,7 @@ export function openComponentEditor(
     input.type = 'text';
     input.className = `wb-ce-input ${cls}`;
     input.value = value;
-    input.addEventListener('input', () => { commit(input.value); dirty = true; });
+    input.addEventListener('input', () => { commit(input.value); setDirty(true); });
     row.append(lab, input);
     ident.appendChild(row);
   };
@@ -246,7 +282,7 @@ export function openComponentEditor(
     lab.value = slot.label;
     lab.title = 'The question the mapping dialog asks for this slot';
     lab.setAttribute('aria-label', `Label for the ${slot.key} slot`);
-    lab.addEventListener('input', () => { slot.label = lab.value; dirty = true; });
+    lab.addEventListener('input', () => { slot.label = lab.value; setDirty(true); });
     const desc = document.createElement('input');
     desc.type = 'text';
     desc.className = 'wb-ce-input wb-ce-slotdesc';
@@ -256,7 +292,7 @@ export function openComponentEditor(
     desc.addEventListener('input', () => {
       if (desc.value.trim()) slot.description = desc.value;
       else delete slot.description;
-      dirty = true;
+      setDirty(true);
     });
     row.append(key, lab, desc);
     slotsSec.appendChild(row);
@@ -335,7 +371,7 @@ export function openComponentEditor(
     if (value === null) delete node.style[prop];
     else node.style[prop] = value;
     if (Object.keys(node.style).length === 0) delete node.style;
-    dirty = true;
+    setDirty(true);
     mu.commit({ root: staged.root }); // one gesture = one ↶ step
     muButtons.refresh();
     renderPreview();
@@ -481,15 +517,16 @@ export function openComponentEditor(
       jump.textContent = u.kind === 'view'
         ? mainUsageLabel(u)
         : `${fieldLabel(u.field)} — column look`;
-      jump.title = 'Jump there (closes this editor)';
+      // jumping is NAVIGATION now: the surface shows, this tab (and its
+      // staged edits) waits in the strip — no discard prompt needed
+      jump.title = 'Jump there — this workshop tab stays open with your staged edits';
       jump.addEventListener('click', () => {
-        if (dirty && !window.confirm('Jumping closes the editor — discard your staged component edits?')) return;
-        close();
         if (u.kind === 'view') {
+          state.deactivateComponentTab(); // uncover the surface the scan saw
           state.select(u.path);
         } else {
           // the look renders embedded in the floor's grid cell — go select it
-          if (!state.onFloor) state.minimizeView();
+          state.minimizeView(); // clears the component-tab cover either way
           const i = (state.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === u.field);
           if (i >= 0) state.select([i]);
         }
@@ -524,18 +561,18 @@ export function openComponentEditor(
       onToast('Could not save the component — browser storage is full or blocked');
       return;
     }
-    dirty = false;
-    close();
-    onSaved();
+    setDirty(false);
     onToast(`Saved “${fresh.name}” as a new component — nothing already on the canvas changed`);
+    libraryRefresh?.();
+    opts.onSaved(fresh.id); // the tab swaps onto the copy (may remount us)
   };
 
   /** Replace the subtree at `path` in the LIVE main doc (root/card aware). */
   const replaceInDoc = (path: NodePath, node: SPElement): void => {
     if (path.length === 0) { state.doc.root = node; return; }
     if (path[path.length - 1] === CARD_SEGMENT) {
-      const host = state.nodeAt(path.slice(0, -1));
-      if (host?.customCardProps) host.customCardProps.formatter = node;
+      const cardHost = state.nodeAt(path.slice(0, -1));
+      if (cardHost?.customCardProps) cardHost.customCardProps.formatter = node;
       return;
     }
     const p = state.parentOf(path);
@@ -610,13 +647,13 @@ export function openComponentEditor(
       for (const u of unpinnedList) applyUsage(u, newDef);
       if (variant) for (const u of pinnedList) pinUsage(u, variant.id);
     });
-    dirty = false;
-    close();
-    onSaved();
+    setDirty(false);
     const parts = [`Replaced “${newDef.name}”`];
     if (unpinnedList.length) parts.push(`updated ${unpinnedList.length} place${unpinnedList.length === 1 ? '' : 's'}`);
     if (variant) parts.push(`kept ${pinnedList.length} as-found via “${variant.name}”`);
     onToast(`${parts.join(', ')}${usages.length ? ' — one Ctrl+Z reverts the whole apply' : ''}`);
+    libraryRefresh?.();
+    opts.onSaved(def.id); // the tab re-stages on the saved def (remounts us)
   };
 
   const saveReplaceOnly = (): void => {
@@ -629,10 +666,10 @@ export function openComponentEditor(
       onToast('Could not save the component — browser storage is full or blocked');
       return;
     }
-    dirty = false;
-    close();
-    onSaved();
+    setDirty(false);
     onToast(`Saved “${newDef.name}” — it's not used anywhere yet, so nothing on the canvas changed`);
+    libraryRefresh?.();
+    opts.onSaved(def.id);
   };
 
   // ── footer ──
@@ -641,17 +678,12 @@ export function openComponentEditor(
   panel.appendChild(foot);
   const refreshFoot = (): void => {
     foot.replaceChildren();
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', confirmClose);
-    foot.appendChild(cancel);
     const saveNew = document.createElement('button');
     saveNew.type = 'button';
     saveNew.className = 'wb-ce-savenew' + (def.builtin ? ' wb-ce-save' : '');
     saveNew.textContent = 'Save as new component';
     saveNew.title = def.builtin
-      ? 'Built-ins can\'t be overwritten — this saves your edited copy to the library'
+      ? 'Built-ins can\'t be overwritten — this saves your edited copy to the library (this tab becomes the copy\'s)'
       : 'Save these edits as a separate component — every current usage stays untouched';
     saveNew.addEventListener('click', saveAsNew);
     foot.appendChild(saveNew);
@@ -679,7 +711,13 @@ export function openComponentEditor(
   renderStruct();
   renderStylePanel();
   refreshFoot();
-  place();
-  document.body.appendChild(overlay);
-  panel.querySelector<HTMLElement>('.wb-ce-name')?.focus();
+  if (!opts.resume) panel.querySelector<HTMLElement>('.wb-ce-name')?.focus();
+
+  return {
+    staging: (): WorkshopStaging => ({
+      staged: JSON.parse(JSON.stringify(staged)) as ComponentDef,
+      dirty,
+    }),
+    destroy: (): void => { detachMuKeys(); },
+  };
 }

@@ -338,6 +338,19 @@ describe('row view builder — reopen as zones (the round trip)', () => {
     expect((document.querySelector('[data-edit-item="0:0"]') as HTMLElement).dataset.fieldName).toBe('Title');
   });
 
+  it('a look-wearing column reopens as a FIELD item — its baked _component stamp never reads as a component drop', () => {
+    // state.resetAll() leaves Status wearing a STAMPED look (a baked component
+    // instance); lead-detail seeds Status into Details. The built cell embeds
+    // the look clone (stamped _component AND _field) — on reopen the _field
+    // column identity must win, or the rebuild-verify gate refuses the layout.
+    reopenAfterApply();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    const statusItem = [...document.querySelectorAll<HTMLElement>('[data-edit-item]')]
+      .find((el) => el.dataset.fieldName === 'Status');
+    expect(statusItem).toBeTruthy();
+    expect(document.querySelector('[data-component-id]')).toBeNull(); // no phantom component items
+  });
+
   it('Save from the floor NEVER asks an overwrite confirm — it creates a second view instead', () => {
     enterEditor();
     (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // view 1 created
