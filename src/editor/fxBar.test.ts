@@ -401,5 +401,39 @@ describe('fxBar', () => {
       expect(ta.value).toBe('');
       expect(state.selectedNode!.style).toBeUndefined();
     });
+
+    it('Escape applies the current text and closes (like clicking away)', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'ink');
+      const panel = openFloat(host);
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      ta.value = '#0078d4';
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(state.selectedNode!.style!['color']).toBe('#0078d4'); // committed
+      expect(document.querySelector('.wb-fx-float')).toBeNull();    // and closed
+    });
+
+    it('Escape on an invalid formula refuses and keeps the window open', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      ta.value = '=NOPE([Status]';
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(state.selectedNode!.style).toBeUndefined();             // nothing written
+      expect(document.querySelector('.wb-fx-float')).not.toBeNull(); // stays open
+      expect($(panel, '.wb-fx-feedback').getAttribute('data-tone')).toBe('error');
+    });
+
+    it('Escape on an untouched suggestion-draft closes without committing it', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill'); // a draftable slot: the editor opens pre-filled
+      const panel = openFloat(host);
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      expect(ta.value).not.toBe(''); // a muted best-default draft was pre-filled
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(state.selectedNode!.style).toBeUndefined();          // draft never writes
+      expect(document.querySelector('.wb-fx-float')).toBeNull();  // just closes
+    });
   });
 });

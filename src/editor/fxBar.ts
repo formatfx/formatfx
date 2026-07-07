@@ -485,8 +485,14 @@ function openFloat(
   ta.addEventListener('input', clearError);
   ta.addEventListener('change', commit);
   ta.addEventListener('keydown', (e) => {
-    // a roomy multiline editor: Enter inserts a new line; Escape closes.
-    if (e.key === 'Escape') { e.preventDefault(); closeWin(); }
+    // a roomy multiline editor: Enter inserts a new line. Escape applies the
+    // current text (like clicking away) and closes — but a refused (invalid)
+    // formula keeps the window open so its error is never lost silently, and an
+    // untouched suggestion-draft is not committed (click-only safety).
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (ta.value === initial || applyText(ta.value, setFb)) closeWin();
+    }
   });
 
   // ── drop a column chip (FIELD_MIME) to insert its reference at the drop point ──
