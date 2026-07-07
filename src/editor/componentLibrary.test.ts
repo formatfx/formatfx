@@ -6,8 +6,15 @@
  * one undoable mutation, robust pattern by construction).
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { renderComponentLibrary, mountComponentLibrary, openComponentMapper, customComponents } from './componentLibrary';
-import { BUILTIN_COMPONENTS } from './components';
+import {
+  renderComponentLibrary, mountComponentLibrary, openComponentMapper,
+  customComponents, componentById, rawComponentById,
+} from './componentLibrary';
+import {
+  BUILTIN_COMPONENTS, COMPONENTS_KEY, serializeComponents, withEmbed,
+  type ComponentDef,
+} from './components';
+import { mountComponentWorkshop } from './componentEditor';
 import { mountCanvas } from './canvas';
 import { state } from './state';
 import type { SPElement } from '../core/types';
@@ -343,5 +350,109 @@ describe('mapper — applyToColumn mode (a column gets its look by wearing a com
     const no = panel.querySelector('.wb-compmap-foot .wb-complib-empty')!;
     expect(no.textContent).toContain('no slot that takes a text column');
     expect(no.textContent).toContain('Title');
+  });
+});
+
+describe('component nesting (#225): library resolution, delete guard, workshop compose', () => {
+  const PILL: ComponentDef = {
+    id: 'c-pill', name: 'My pill', description: 'a pill',
+    slots: [{ key: 'Status', label: 'The status', types: ['choice'] }],
+    root: { elmType: 'div', _elmName: 'My pill', txtContent: '[$Status]' },
+  };
+  const CARD_BASE: ComponentDef = {
+    id: 'c-card', name: 'My card', description: 'a card',
+    slots: [{ key: 'Title', label: 'The task', types: ['text', 'note'] }],
+    root: { elmType: 'div', children: [{ elmType: 'span', txtContent: '[$Title]' }] },
+  };
+
+  /** Persist pill + card-embedding-pill as the maker's customs. */
+  const seedPair = (): ComponentDef => {
+    const card = withEmbed(CARD_BASE, PILL);
+    localStorage.setItem(COMPONENTS_KEY, serializeComponents([PILL, card]));
+    return card;
+  };
+
+  beforeEach(() => { localStorage.clear(); });
+
+  it('componentById resolves embeds (inline-flatten); rawComponentById returns the stored shape', () => {
+    seedPair();
+    const resolved = componentById('c-card')!;
+    expect(resolved.embeds).toBeUndefined();
+    expect(resolved.slots.map((s) => s.key)).toEqual(['Title', 'Mypill_Status']);
+    expect(JSON.stringify(resolved)).not.toContain('_embed');
+    const raw = rawComponentById('c-card')!;
+    expect(raw.embeds).toHaveLength(1);
+    expect(raw.root.children![1]._embed).toBe('Mypill');
+    // plain defs resolve to themselves either way
+    expect(componentById('c-pill')!.slots).toEqual(PILL.slots);
+  });
+
+  it('deleting a component that another component embeds is refused with a teaching toast', () => {
+    seedPair();
+    const toasts: string[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    renderComponentLibrary(host, (m) => toasts.push(m));
+    const pillRow = [...host.querySelectorAll<HTMLElement>('.wb-comp-row')]
+      .find((r) => r.querySelector('.wb-comp-rowname')?.textContent === 'My pill')!;
+    pillRow.querySelector<HTMLButtonElement>('.wb-comp-rowdel')!.click();
+    expect(toasts[0]).toContain('embedded inside');
+    expect(toasts[0]).toContain('My card');
+    expect(customComponents().some((c) => c.id === 'c-pill')).toBe(true); // still there
+    // the parent itself deletes fine (nothing embeds IT)
+    const cardRow = [...host.querySelectorAll<HTMLElement>('.wb-comp-row')]
+      .find((r) => r.querySelector('.wb-comp-rowname')?.textContent === 'My card')!;
+    cardRow.querySelector<HTMLButtonElement>('.wb-comp-rowdel')!.click();
+    expect(customComponents().some((c) => c.id === 'c-card')).toBe(false);
+  });
+
+  it('the workshop embeds a component in ONE gesture (↶-able) and removes it the same way', () => {
+    seedPair();
+    const toasts: string[] = [];
+    const dirt: boolean[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const handle = mountComponentWorkshop(host, rawComponentById('c-pill')!, {
+      onToast: (m) => toasts.push(m),
+      onSaved: () => {},
+      onDirtyChange: (d) => dirt.push(d),
+    });
+    const pick = host.querySelector<HTMLSelectElement>('.wb-ce-embedpick')!;
+    // offer excludes the def being edited itself
+    expect([...pick.options].map((o) => o.value)).not.toContain('c-pill');
+    pick.value = BUILTIN_COMPONENTS[0].id; // Deadline chip
+    host.querySelector<HTMLButtonElement>('.wb-ce-embedadd')!.click();
+    expect(dirt).toEqual([true]);
+    expect(toasts[0]).toContain('Embedded');
+    const staged = handle.staging().staged;
+    expect(staged.embeds).toEqual([{ ns: 'Deadlinechip', of: BUILTIN_COMPONENTS[0].id, name: 'Deadline chip' }]);
+    expect(staged.root.children!.at(-1)!._embed).toBe('Deadlinechip');
+    // the struct list shows the embed as the component it stands in for
+    expect([...host.querySelectorAll('.wb-ce-struct-row')].some((r) => r.textContent === '⬡ Deadline chip')).toBe(true);
+    // remove: the ✕ on the embed row takes reference + placeholder together
+    host.querySelector<HTMLButtonElement>('.wb-ce-embeddel')!.click();
+    const after = handle.staging().staged;
+    expect(after.embeds).toBeUndefined();
+    expect(JSON.stringify(after.root)).not.toContain('_embed');
+    handle.destroy();
+  });
+
+  it('the workshop refuses a cycle at author time with the teaching message — nothing mutates', () => {
+    seedPair(); // Task card already embeds Status pill
+    const toasts: string[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const handle = mountComponentWorkshop(host, rawComponentById('c-pill')!, {
+      onToast: (m) => toasts.push(m),
+      onSaved: () => {},
+      onDirtyChange: () => {},
+    });
+    const pick = host.querySelector<HTMLSelectElement>('.wb-ce-embedpick')!;
+    pick.value = 'c-card';
+    host.querySelector<HTMLButtonElement>('.wb-ce-embedadd')!.click();
+    expect(toasts[0]).toMatch(/create a loop/);
+    expect(handle.staging().staged.embeds).toBeUndefined();
+    expect(handle.staging().dirty).toBe(false);
+    handle.destroy();
   });
 });

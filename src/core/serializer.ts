@@ -79,7 +79,7 @@ export function importJson(text: string): FormatterDocument {
 function cloneTree(el: SPElement, opts: ExportOptions): SPElement {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(el)) {
-    if (opts.keepMeta === false && (key === '_elmName' || key === '_factory' || key === '_debug' || key === '_component')) continue;
+    if (opts.keepMeta === false && (key === '_elmName' || key === '_factory' || key === '_debug' || key === '_component' || key === '_embed')) continue;
     if (key === 'children' && Array.isArray(value)) {
       out.children = value.map((c) => cloneTree(c as SPElement, opts));
     } else if (key === 'customCardProps' && value && typeof value === 'object') {
