@@ -56,12 +56,9 @@ export function mountColumnShelf(host: HTMLElement, onToast: (m: string) => void
   const render = (): void => {
     host.replaceChildren();
 
-    const head = document.createElement('div');
-    head.className = 'wb-colshelf-head';
-    head.textContent = 'Columns — your data';
-    head.title = 'Your list\'s columns — drag one onto the canvas or the tree, or click to insert it into the open surface. Formatting lives in components, not here.';
-    host.appendChild(head);
-
+    // The "Columns" title + fold control live on the pane-section header
+    // (leftPane.ts) now — a column is still just data; formatting lives in
+    // components, not here.
     const rack = document.createElement('div');
     rack.className = 'wb-colshelf-rack';
     for (const field of state.fields.filter((f) => !f.protected)) {

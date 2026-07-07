@@ -456,3 +456,42 @@ describe('component nesting (#225): library resolution, delete guard, workshop c
     handle.destroy();
   });
 });
+
+describe('the library folds its own groups (In this project / Add components)', () => {
+  const foldHead = (host: HTMLElement, title: string): HTMLButtonElement =>
+    [...host.querySelectorAll<HTMLButtonElement>('.wb-complib-foldhead')]
+      .find((b) => b.querySelector('.wb-lp-sec-title')?.textContent === title)!;
+
+  beforeEach(() => localStorage.removeItem('wb-lp-sections.v1'));
+
+  it('renders both H1 groups as fold buttons, expanded, wrapping their content', () => {
+    const host = mountLibrary();
+    const project = foldHead(host, 'In this project');
+    const add = foldHead(host, 'Add components');
+    expect(project).toBeTruthy();
+    expect(add).toBeTruthy();
+    expect(project.getAttribute('aria-expanded')).toBe('true');
+    // the browser rows live inside the "Add components" group's body
+    const addGroup = add.closest('.wb-complib-fold')!;
+    expect(addGroup.querySelectorAll('.wb-comp-row').length).toBeGreaterThan(0);
+  });
+
+  it('clicking a group header folds it (class + aria) and persists', () => {
+    const host = mountLibrary();
+    const add = foldHead(host, 'Add components');
+    add.click();
+    expect(add.closest('.wb-complib-fold')!.classList.contains('wb-collapsed')).toBe(true);
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+    // the sibling group is untouched
+    expect(foldHead(host, 'In this project').closest('.wb-complib-fold')!.classList.contains('wb-collapsed')).toBe(false);
+  });
+
+  it('restores a folded group across a full re-render (persisted state, read each render)', () => {
+    const host = mountLibrary();
+    foldHead(host, 'Add components').click(); // fold + persist
+    renderComponentLibrary(host, () => {}); // the library re-renders on every state change
+    const add = foldHead(host, 'Add components');
+    expect(add.getAttribute('aria-expanded')).toBe('false');
+    expect(add.closest('.wb-complib-fold')!.classList.contains('wb-collapsed')).toBe(true);
+  });
+});

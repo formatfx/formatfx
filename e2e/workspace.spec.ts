@@ -360,8 +360,9 @@ test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) =
 test('the left pane frames the active surface: tree + shelf + library + views list, no retired chrome', async ({ page }) => {
   // the structure tree renders the active tab's document
   await expect(page.locator('#wb-tree-body .wb-tree-row').first()).toBeVisible();
-  // the shelf and the library are standing sections; the views list closes the pane
-  await expect(page.locator('.wb-colshelf-head')).toHaveText('Columns — your data');
+  // the shelf and the library are standing (collapsible) sections; the views list closes the pane
+  await expect(page.locator('.wb-lp-sec[data-sec="columns"] .wb-lp-sec-title')).toHaveText('Columns');
+  await expect(page.locator('#wb-lp-shelf .wb-colchip').first()).toBeVisible();
   await expect(page.locator('#wb-lp-library')).toBeVisible();
   await expect(page.locator('.wb-viewslist-head')).toContainText('Views');
   // the formatter tablist and the document pill died with the drill-in model
@@ -369,6 +370,34 @@ test('the left pane frames the active surface: tree + shelf + library + views li
   await expect(page.locator('#wb-doc-pill')).toHaveCount(0);
   // the This-view card hides on the grid (no view-scoped behavior to show)
   await expect(page.locator('#wb-lp-viewcard')).toBeHidden();
+});
+
+test('the pane sections fold away and back (Columns · Components · Inspector), per-section', async ({ page }) => {
+  const shelf = page.locator('#wb-lp-shelf');
+  const library = page.locator('#wb-lp-library');
+  const inspector = page.locator('#wb-lp-inspector');
+  const headFor = (id: string) => page.locator(`.wb-lp-sec-head[data-sec-head="${id}"]`);
+
+  // everything starts expanded — the section bodies are visible
+  await expect(shelf).toBeVisible();
+  await expect(library).toBeVisible();
+  await expect(inspector).toBeVisible();
+  await expect(headFor('components')).toHaveAttribute('aria-expanded', 'true');
+
+  // fold Components: its body truly hides (real CSS), the neighbours stay put
+  await headFor('components').click();
+  await expect(library).toBeHidden();
+  await expect(headFor('components')).toHaveAttribute('aria-expanded', 'false');
+  await expect(shelf).toBeVisible();
+  await expect(inspector).toBeVisible();
+
+  // folds are independent — collapse Columns too, then bring Components back
+  await headFor('columns').click();
+  await expect(shelf).toBeHidden();
+  await expect(library).toBeHidden(); // Components still folded
+  await headFor('components').click();
+  await expect(library).toBeVisible();
+  await expect(shelf).toBeHidden(); // Columns still folded
 });
 
 test('the This-view card: density + row class + scanned behaviors with jump-to-element', async ({ page }) => {

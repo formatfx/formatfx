@@ -61,6 +61,7 @@ import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './comp
 import { paletteComponents } from './paletteComponents';
 import { openComponentEditor } from './componentEditor';
 import { candidateHostPaths, hostLabel, applyTriggerAt } from './triggerBind';
+import { isSectionCollapsed, setSectionCollapsed } from './paneSections';
 import { DIRECTIONAL_HINTS } from '../core/schema';
 
 function readCustom(): ComponentDef[] {
@@ -250,25 +251,61 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   const allDefs = [...BUILTIN_COMPONENTS, ...fromPalette, ...customs];
   const usages = scanComponentUsages(allDefs, state.doc.root, state.columnLooks);
 
-  const heading = (title: string, cls: string): void => {
+  const heading = (title: string, cls: string, parent: HTMLElement = host): void => {
     const head = document.createElement('div');
     head.className = cls;
     head.textContent = title;
-    host.appendChild(head);
+    parent.appendChild(head);
   };
-  const emptyNote = (text: string): void => {
+  const emptyNote = (text: string, parent: HTMLElement = host): void => {
     const none = document.createElement('div');
     none.className = 'wb-complib-empty';
     none.textContent = text;
-    host.appendChild(none);
+    parent.appendChild(none);
   };
-  const section = (title: string, defs: ComponentDef[], empty?: string): void => {
-    heading(title, 'wb-complib-group');
+  const section = (title: string, defs: ComponentDef[], empty?: string, parent: HTMLElement = host): void => {
+    heading(title, 'wb-complib-group', parent);
     if (!defs.length) {
-      if (empty) emptyNote(empty);
+      if (empty) emptyNote(empty, parent);
       return;
     }
-    for (const def of defs) host.appendChild(componentRow(def));
+    for (const def of defs) parent.appendChild(componentRow(def));
+  };
+
+  // A foldable top-level group ("In this project" / "Add components"): the header
+  // is a real <button> that folds its body away — same caret/aria idiom as the
+  // pane's outer sections. State persists (paneSections, its own key) and is read
+  // fresh each render, so it survives the library's full re-renders. Returns the
+  // body element to append the group's content into.
+  const foldGroup = (title: string, key: string): HTMLElement => {
+    const collapsed = isSectionCollapsed(key);
+    const group = document.createElement('div');
+    group.className = 'wb-complib-fold';
+    group.classList.toggle('wb-collapsed', collapsed);
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'wb-lp-sec-head wb-complib-foldhead';
+    head.setAttribute('aria-expanded', String(!collapsed));
+    head.title = collapsed ? `Show ${title}` : `Hide ${title}`;
+    const caret = document.createElement('span');
+    caret.className = 'wb-lp-sec-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    const titleEl = document.createElement('span');
+    titleEl.className = 'wb-lp-sec-title';
+    titleEl.textContent = title;
+    head.append(caret, titleEl);
+    const body = document.createElement('div');
+    body.className = 'wb-lp-sec-body wb-complib-foldbody';
+    head.addEventListener('click', () => {
+      const next = !group.classList.contains('wb-collapsed');
+      group.classList.toggle('wb-collapsed', next);
+      head.setAttribute('aria-expanded', String(!next));
+      head.title = next ? `Show ${title}` : `Hide ${title}`;
+      setSectionCollapsed(key, next);
+    });
+    group.append(head, body);
+    host.appendChild(group);
+    return body;
   };
 
   const addLabel = (def: ComponentDef): string =>
@@ -538,10 +575,10 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   // ── the inventory: what this project already uses ─────────────────────────
   // As-found variants nest (indented) under their parent's card when it's
   // shown; a variant whose parent is unused/deleted renders top-level.
-  heading('In this project', 'wb-complib-h1');
+  const projectBody = foldGroup('In this project', 'lib:in-project');
   const used = allDefs.filter((d) => (usages.get(d.id)?.length ?? 0) > 0);
   if (!used.length) {
-    emptyNote('Nothing in use yet — add a component from the sections below and it shows up here.');
+    emptyNote('Nothing in use yet — add a component from the sections below and it shows up here.', projectBody);
   } else {
     // the display parent is the ROOT (non-variant) ancestor: editing an
     // as-found one-off and pinning again yields a variant-of-a-variant, which
@@ -564,21 +601,21 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     };
     for (const def of used) {
       if (parentOf(def)) continue; // rendered nested under its parent below
-      host.appendChild(componentRow(def, usages.get(def.id)!));
+      projectBody.appendChild(componentRow(def, usages.get(def.id)!));
       for (const v of used.filter((x) => parentOf(x)?.id === def.id)) {
         const nested = componentRow(v, usages.get(v.id)!);
         nested.classList.add('wb-comp-variantnode');
-        host.appendChild(nested);
+        projectBody.appendChild(nested);
       }
     }
   }
 
   // ── the browser: everything addable (used ones simply also appear above) ──
-  heading('Add components', 'wb-complib-h1');
-  section('Built-in', BUILTIN_COMPONENTS.filter((c) => componentKind(c) === 'element'));
-  section('From the palette', fromPalette.filter((c) => componentKind(c) === 'element'));
+  const addBody = foldGroup('Add components', 'lib:add');
+  section('Built-in', BUILTIN_COMPONENTS.filter((c) => componentKind(c) === 'element'), undefined, addBody);
+  section('From the palette', fromPalette.filter((c) => componentKind(c) === 'element'), undefined, addBody);
   section('Yours', customs.filter((c) => componentKind(c) === 'element'),
-    'Nothing saved yet — right-click an element and “Save as component…” to package it.');
+    'Nothing saved yet — right-click an element and “Save as component…” to package it.', addBody);
 
   // "＋ New component…" — start from a BLANK def and build it in the workshop
   // (§3.5). The def persists immediately (a workshop tab needs a stored def
@@ -606,30 +643,30 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     state.openComponentTab(def.id); // emits 'data' → the library re-renders
     onToast(`Started “${def.name}” — build it in the workshop and Save when it's ready`);
   });
-  host.appendChild(newComp);
+  addBody.appendChild(newComp);
 
   // ── the row-scoped siblings: whole-row components + New rowview ───────────
-  section('Whole rows', customs.filter((c) => componentKind(c) === 'row'));
+  section('Whole rows', customs.filter((c) => componentKind(c) === 'row'), undefined, addBody);
   const rowCard = document.createElement('button');
   rowCard.type = 'button';
   rowCard.className = 'wb-comp-rowlink';
   rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New rowview…</span>';
   rowCard.title = 'Start the whole row from a pre-built layout (the same templates as the View dropdown); save a row you like as a component (right-click its root) to see it here.';
   rowCard.addEventListener('click', () => openTemplateModal(onToast));
-  host.appendChild(rowCard);
+  addBody.appendChild(rowCard);
 
   // ── the pnp/List-Formatting bridge: paste any formatter JSON ──────────────
   const importHead = document.createElement('div');
   importHead.className = 'wb-complib-group';
   importHead.textContent = 'Bring your own';
-  host.appendChild(importHead);
+  addBody.appendChild(importHead);
   const importCard = document.createElement('button');
   importCard.type = 'button';
   importCard.className = 'wb-comp-rowlink';
   importCard.innerHTML = '<span class="wb-comp-rowlink-name">⤓ Import from formatter JSON…</span>';
   importCard.title = 'Paste any column or view formatter — a pnp/List-Formatting sample, a teammate’s copy — and it becomes a mappable component with typed slots.';
   importCard.addEventListener('click', () => openImportComponentDialog(() => renderComponentLibrary(host, onToast), onToast));
-  host.appendChild(importCard);
+  addBody.appendChild(importCard);
 }
 
 /**
