@@ -192,6 +192,17 @@ describe('#222 — SharePoint context tokens pass through both dialects', () => 
     expect(ok(ex('=@me.email'))).toBe('=@me.email'); // a dotted @me keeps its prop
   });
 
+  it('a bare head that only exists dotted is NOT a token — @window refuses both ways', () => {
+    // exact tokens and dotted-on-a-real-base pass; a head like @window that
+    // only appears dotted in SPECIAL_TOKENS is nothing SP would resolve
+    const exq = ex('=@window');
+    expect(exq.ok).toBe(false);
+    if (!exq.ok) expect(exq.reason).toMatch(/doesn’t translate/);
+    expect(sp('=@window').ok).toBe(false);
+    expect(sp('=@window.zoom').ok).toBe(false); // dotted, but the base isn't a token
+    expect(ok(sp('=@window.innerWidth > 0'))).toBe('=@window.innerWidth > 0');
+  });
+
   it('stored tokens render back verbatim, so the round-trip is stable', () => {
     for (const s of ['=@currentField', '=@rowIndex', "=@currentWeb + '/Lists'", '=@window.innerHeight']) {
       expect(ok(excelToSp(ok(ex(s)), FIELDS))).toBe(s);

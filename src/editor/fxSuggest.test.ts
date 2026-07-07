@@ -297,6 +297,9 @@ describe('#222 — system token catalog (grounded in the engine)', () => {
       expect(item.doc, item.insert).toBeTruthy();
     }
     const byInsert = new Map(systemTokenItems().map((i) => [i.insert, i]));
+    // …except @currentField with no known column: it can be ANY type, so the
+    // honest badge is no badge (a type appears once opts.current is known)
+    expect(byInsert.get('@currentField')!.type).toBeUndefined();
     expect(byInsert.get('@now')!.type).toBe('date');
     expect(byInsert.get('@rowIndex')!.type).toBe('number');
     expect(byInsert.get('@isSelected')!.type).toBe('boolean');

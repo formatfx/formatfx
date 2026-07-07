@@ -217,8 +217,10 @@ function clip(s: string): string {
 
 /** Docs for every token in the engine's SPECIAL_TOKENS list — keyed by the
  *  exact token so the catalog can never drift ahead of what core resolves. */
-const TOKEN_DOCS: Record<string, { type: SuggestValueType; doc: string }> = {
-  '@currentField': { type: 'string', doc: 'The value of the column this formatter paints' },
+const TOKEN_DOCS: Record<string, { type?: SuggestValueType; doc: string }> = {
+  // no type badge: @currentField is whatever the current column is — when the
+  // column is unknown (no opts.current) an honest badge is no badge at all
+  '@currentField': { doc: 'The value of the column this formatter paints' },
   '@me': { type: 'string', doc: 'The signed-in viewer’s email address' },
   '@now': { type: 'date', doc: 'The current date and time' },
   '@rowIndex': { type: 'number', doc: 'The row’s position in the view (first row is 0)' },

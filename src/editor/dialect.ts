@@ -33,8 +33,17 @@ import { parseExpression, type AstNode } from '../core/expressions';
 import { SPECIAL_TOKENS } from '../core/schema';
 import type { FieldType, MockField } from '../core/types';
 
-/** Token heads the engine resolves — the only @tokens either dialect accepts. */
-const KNOWN_TOKEN_HEADS = new Set(SPECIAL_TOKENS.map((t) => t.split('.')[0]));
+/** Exactly the engine's tokens — plus a dotted property on a BASE token the
+ *  engine resolves on its own (e.g. @currentField.email, @me.email). A head
+ *  that only ever appears dotted in SPECIAL_TOKENS (@window) is NOT itself a
+ *  token: never accept or render what SharePoint wouldn't resolve. */
+const EXACT_TOKENS = new Set<string>(SPECIAL_TOKENS);
+const DOTTED_BASES = new Set<string>(SPECIAL_TOKENS.filter((t) => !t.includes('.')));
+const knownToken = (name: string): boolean => {
+  if (EXACT_TOKENS.has(name)) return true;
+  const dot = name.indexOf('.');
+  return dot > 0 && DOTTED_BASES.has(name.slice(0, dot));
+};
 
 // ─── public surface ──────────────────────────────────────────────────────────
 
@@ -264,7 +273,7 @@ function renderExcel(node: AstNode, idx: FieldIndex): string {
         if (n.name === '@me') return 'ME()';
         // every other engine-known token (and a dotted @me.prop / @now.prop)
         // reads the same in both dialects — pass it through verbatim (#222)
-        if (KNOWN_TOKEN_HEADS.has(n.name.split('.')[0])) return n.name;
+        if (knownToken(n.name)) return n.name;
         throw new Refusal(`This formula uses ${n.name}, which the Sheet bar doesn’t translate — edit it in Advanced mode (it shows the raw SharePoint formula).`);
       case 'ident':
         if (n.name === 'true') return 'TRUE';
@@ -448,7 +457,7 @@ class ExcelParser {
     if (t.type === 'attok') {
       this.eat();
       // only the tokens the engine actually resolves — refuse-don't-guess
-      if (!KNOWN_TOKEN_HEADS.has(t.value.split('.')[0])) {
+      if (!knownToken(t.value)) {
         throw new Refusal(`“${t.value}” isn’t a SharePoint context token. The tokens are: ${SPECIAL_TOKENS.join(', ')}.`);
       }
       return { kind: 'token', name: t.value };
