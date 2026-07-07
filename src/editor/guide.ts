@@ -34,7 +34,7 @@ function renderColorWall(host: HTMLElement): void {
   const note = document.createElement('div');
   note.className = 'wb-guide-iconwall-note';
   const copy = (cls: string): void => {
-    void navigator.clipboard?.writeText(cls).catch(() => { /* clipboard blocked */ });
+    void navigator.clipboard?.writeText(cls)?.catch(() => { /* clipboard blocked */ });
     note.textContent = `Copied “${cls}” — paste it into attributes.class.`;
   };
   const swatch = (cls: string, kind: 'bg' | 'fg' | 'bd', text = ''): HTMLButtonElement => {

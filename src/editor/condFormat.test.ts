@@ -1,8 +1,9 @@
 /**
- * Conditional formatting (happy-dom) — the classes-first theme mode. A fresh
- * dialog defaults to emitting a theme-class =if() chain onto attributes.class
- * (survives dark mode + tenant re-theming); a mode toggle falls back to the
- * fixed-hex style looks. Generated class chains reopen into editable rules.
+ * Conditional formatting (happy-dom) — the theme-class look mode added for theme
+ * style classes. A fresh dialog opens in the familiar hex/style look mode (all
+ * five looks); the ✨ mode toggle flips to emitting a theme-class =if() chain onto
+ * attributes.class (survives dark mode + tenant themes). Generated class chains
+ * reopen into editable rules in theme mode.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openCondFormat, closeCondFormat } from './condFormat';
@@ -21,6 +22,7 @@ function byText<T extends HTMLElement>(sel: string, text: string): T {
 }
 const cond = (t: string) => byText<HTMLButtonElement>('.wb-cf-cond', t);
 const look = (t: string) => byText<HTMLButtonElement>('.wb-cf-look', t);
+const modeBtn = () => panel().querySelector<HTMLButtonElement>('.wb-cf-mode')!;
 const addBtn = () => panel().querySelector<HTMLButtonElement>('.wb-cf-addbtn')!;
 const applyBtn = () => panel().querySelector<HTMLButtonElement>('.wb-cf-apply')!;
 const open = () => openCondFormat({ kind: 'element', path: [0] }, () => {});
@@ -28,11 +30,11 @@ const open = () => openCondFormat({ kind: 'element', path: [0] }, () => {});
 beforeEach(() => { document.body.innerHTML = ''; localStorage.clear(); state.resetAll(); });
 afterEach(() => { closeCondFormat(); document.body.innerHTML = ''; });
 
-describe('conditional formatting — theme-aware (classes-first) mode', () => {
-  it('defaults to theme mode and applies a severity-class chain to attributes.class', () => {
+describe('conditional formatting — hex by default, theme classes as a toggle', () => {
+  it('the ✨ mode toggle emits a severity-class chain to attributes.class', () => {
     setup();
     open();
-    expect(byText('.wb-cf-mode', 'Theme-aware')).toBeTruthy(); // classes-first default
+    modeBtn().click();              // hex → theme-aware classes
     cond('is Done').click();        // choice eq → suggests green
     look('Soft fill').click();      // fill look → severity for a status color
     addBtn().click();
@@ -41,9 +43,10 @@ describe('conditional formatting — theme-aware (classes-first) mode', () => {
     expect(node0().style).toBeUndefined();
   });
 
-  it('a text look emits ms-fontColor and reopens back into editable rules', () => {
+  it('a text look emits ms-fontColor and reopens back into editable theme rules', () => {
     setup();
     open();
+    modeBtn().click();
     cond('is Blocked').click();     // suggests red
     look('Color the text').click(); // text look → ms-fontColor-redDark
     addBtn().click();
@@ -52,13 +55,12 @@ describe('conditional formatting — theme-aware (classes-first) mode', () => {
     // reopen: the generated class chain parses back into one rule, theme mode
     open();
     expect(panel().querySelectorAll('.wb-cf-rule').length).toBe(1);
-    expect(byText('.wb-cf-mode', 'Theme-aware')).toBeTruthy();
+    expect(modeBtn().textContent).toContain('Theme-aware');
   });
 
-  it('toggling to fixed-hex mode writes style, not a class', () => {
+  it('defaults to hex/style mode: a rule writes style, not a class', () => {
     setup();
     open();
-    byText<HTMLButtonElement>('.wb-cf-mode', 'Theme-aware').click(); // → fixed hex
     cond('is Done').click();
     look('Solid pill').click();     // pill exists only in hex mode
     addBtn().click();

@@ -138,13 +138,16 @@ export function parseThemeClass(token: string): ClassMeaning | null {
   return null;
 }
 
-/** The element's active theme class for a role — the first literal token that governs that slot. */
+/** The element's active theme class for a role — the token that actually governs
+ *  the slot. When several same-slot tokens are present the LAST one wins, matching
+ *  the precedence engine's CSS-source-order rule (governedProperties). */
 export function activeThemeClass(el: SPElement, role: ColorRole): ClassMeaning | null {
+  let match: ClassMeaning | null = null;
   for (const token of classTokens(el.attributes?.class)) {
     const info = parseThemeClass(token);
-    if (info && info.role === role) return info;
+    if (info && info.role === role) match = info;
   }
-  return null;
+  return match;
 }
 
 const BORDER_ALL = /^sp-field-borderAll/.source;

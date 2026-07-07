@@ -1,8 +1,9 @@
 /**
  * Format cells (happy-dom) — the theme-aware color picking added for theme
- * style classes. The dialog defaults to emitting a theme class (classes-first);
- * a per-tab toggle falls back to the fixed-hex swatches, and a formula-valued
- * class forces hex mode. Apply is one undoable document mutation.
+ * style classes. The dialog opens in the familiar hex/style mode; a per-tab
+ * "Theme-aware" toggle flips to emitting a theme class (survives dark mode +
+ * tenant themes). A formula-valued class forces hex mode. Apply is one
+ * undoable document mutation.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openFormatCells, closeFormatCells } from './formatCells';
@@ -35,54 +36,57 @@ beforeEach(() => {
 });
 afterEach(() => { closeFormatCells(); document.body.innerHTML = ''; });
 
-describe('Format cells — theme-aware color picking', () => {
-  it('a theme Fill swatch applies a class and clears the inline background, in one undo step', () => {
-    selectNode({ style: { 'background-color': '#d13438' } });
+describe('Format cells — hex by default, theme-aware as a toggle', () => {
+  it('opens in hex mode: a Fill swatch writes style (not a class), in one undo step', () => {
+    selectNode();
     openFormatCells([0], () => {});
     clickTab('Fill');
     const before = undoDepth();
+    swatch('#107c10').click(); // COND green strong (hex)
+    apply();
+    expect(node0().style?.['background-color']).toBe('#107c10');
+    expect(node0().attributes?.class).toBeUndefined();
+    expect(undoDepth()).toBe(before + 1);
+  });
+
+  it('the Theme-aware toggle emits a fill class and clears the conflicting inline background', () => {
+    selectNode({ style: { 'background-color': '#d13438' } });
+    openFormatCells([0], () => {});
+    clickTab('Fill');
+    themeToggle().click(); // → theme mode
     swatch('ms-bgColor-green').click();
     apply();
     expect(node0().attributes?.class).toBe('ms-bgColor-green');
     expect(node0().style?.['background-color']).toBeUndefined();
-    expect(undoDepth()).toBe(before + 1);
   });
 
-  it('a Status swatch emits a severity class', () => {
+  it('a Status swatch (theme mode) emits a severity class', () => {
     selectNode();
     openFormatCells([0], () => {});
     clickTab('Fill');
+    themeToggle().click();
     swatch('sp-field-severity--blocked').click();
     apply();
     expect(node0().attributes?.class).toBe('sp-field-severity--blocked');
   });
 
-  it('the Font tab emits a text color class', () => {
+  it('the Font tab (theme mode) emits a text color class', () => {
     selectNode();
     openFormatCells([0], () => {});
     clickTab('Font');
+    themeToggle().click();
     swatch('ms-fontColor-themePrimary').click();
     apply();
     expect(node0().attributes?.class).toBe('ms-fontColor-themePrimary');
   });
 
-  it('toggling Theme-aware off falls back to hex swatches (writes style, not class)', () => {
-    selectNode();
-    openFormatCells([0], () => {});
-    clickTab('Fill');
-    themeToggle().click(); // → hex mode
-    swatch('#107c10').click(); // COND green strong
-    apply();
-    expect(node0().style?.['background-color']).toBe('#107c10');
-    expect(node0().attributes?.class).toBeUndefined();
-  });
-
-  it('a formula-valued class forces hex mode and disables the toggle', () => {
+  it('a formula-valued class keeps hex mode and disables the Theme-aware toggle', () => {
     selectNode({ attributes: { class: "=if([$x]=='a','ms-bgColor-green','')" } });
     openFormatCells([0], () => {});
     clickTab('Fill');
     expect(themeToggle().disabled).toBe(true);
-    // hex swatches are shown, not theme-class swatches
+    // the familiar hex swatches are shown, not theme-class swatches
+    expect(swatch('#dff6dd')).toBeTruthy(); // COND green soft (hex)
     expect(swatches().some((b) => b.title.includes('ms-bgColor-green'))).toBe(false);
   });
 });

@@ -1678,6 +1678,7 @@ function themeColorsSection(node: SPElement, toast: (m: string) => void): HTMLEl
     b.className = 'wb-fc-swatch' + (has(token) ? ' active' : '');
     b.style.background = bg;
     b.title = title;
+    b.setAttribute('aria-label', title);
     b.addEventListener('click', () => pick(role, token));
     return b;
   };

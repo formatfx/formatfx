@@ -102,7 +102,10 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
   const classPatch: Partial<Record<ColorRole, string | null>> = {};
   const classIsFormula = typeof node.attributes?.class === 'string'
     && (node.attributes.class as string).trim().startsWith('=');
-  const themeAware: Record<'font' | 'fill', boolean> = { font: !classIsFormula, fill: !classIsFormula };
+  // Opt-in: the dialog opens in the familiar hex/style mode; the per-tab
+  // "Theme-aware" toggle flips to emitting theme classes. (The inspector's Theme
+  // colors section is the primary classes-first surface.)
+  const themeAware: Record<'font' | 'fill', boolean> = { font: false, fill: false };
   const ROLE_OF_PROP: Partial<Record<string, ColorRole>> = { color: 'text', 'background-color': 'fill' };
 
   const staged = (prop: string): string => {
@@ -224,6 +227,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     const s = document.createElement('button');
     s.className = 'wb-fc-swatch' + (active ? ' active' : '');
     s.title = title;
+    s.setAttribute('aria-label', title);
     s.style.background = color;
     s.addEventListener('click', fn);
     return s;

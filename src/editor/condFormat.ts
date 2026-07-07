@@ -135,7 +135,10 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   // the mode from what's on the element — the conditional-CLASS chain
   // (attributes.class) first, then the style chains. Anything hand-edited or
   // foreign fails the gate and the dialog starts fresh (refuse-and-teach).
-  let themeAware = true;
+  // Opt-in: a fresh dialog opens in the familiar hex/style look mode (all five
+  // looks). A class-chain reopen flips to theme mode to match what's on the
+  // element; the ✨ toggle switches modes. (Inspector stays primary classes-first.)
+  let themeAware = false;
   let parsedClass = false;
   let parsedFallbacks: Record<string, string> | null = null;
   const classParsed = parseClassRules(existingClass(), state.fields);
@@ -146,6 +149,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       field = watched;
       rules.push(...mapped);
       parsedClass = true;
+      themeAware = true; // reopened a conditional-class look
     }
   }
   if (!parsedClass) {

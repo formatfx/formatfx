@@ -84,6 +84,9 @@ describe('activeThemeClass', () => {
     expect(activeThemeClass(el({ class: 'sp-field-severity--warning' }), 'fill'))
       .toMatchObject({ role: 'fill', severity: 'warning' });
   });
+  it('returns the LAST same-slot token, matching the precedence engine (later wins)', () => {
+    expect(activeThemeClass(el({ class: 'ms-bgColor-red ms-bgColor-green' }), 'fill')?.colorId).toBe('green');
+  });
   it('is null when no class governs the role, or the class is a formula', () => {
     expect(activeThemeClass(el(), 'fill')).toBeNull();
     expect(activeThemeClass(el({ class: "=if([$x]=='a','ms-bgColor-green','')" }), 'fill')).toBeNull();
