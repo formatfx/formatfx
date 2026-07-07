@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/rowTemplates.ts — Pure brain for the ROW VIEW BUILDER: pre-built
  * wireframe layouts whose ZONES hold fields and components.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/colGroups.ts — column TAB GROUPS for the grid floor (owner brief,
  * 2026-07-05): group columns the way a browser groups tabs — a named,

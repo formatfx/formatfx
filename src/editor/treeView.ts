@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/treeView.ts — Structure tree: selection, drag-reorder/reparent,
  * duplicate/delete/move, and a card-formatter affordance for customCardProps.

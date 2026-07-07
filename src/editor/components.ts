@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/components.ts — the component brain: a COMPONENT is the one unit of
  * packaged formatting (COLUMNS-COMPONENTS-VIEWS model B). Where a column is

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * bridge/extractSnippet.ts — generates the "⚡ Live from SharePoint" extract
  * snippet: a commented, unminified, GET-only script the user pastes into
