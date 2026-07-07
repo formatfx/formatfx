@@ -23,7 +23,8 @@ import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
 import { openTemplateModal } from './templateModal';
 import { HOVER_CHILD_CLASS } from './hoverReveal';
 import {
-  ZOOM_MIN, ZOOM_MAX, clampZoom, stepZoom, zoomLabel, sanitizeViewPrefs,
+  ZOOM_MIN, ZOOM_MAX, clampZoom, stepZoom, zoomLabel,
+  VIEWPORT_PRESETS, clampDragWidth, commitDragWidth, sanitizeViewPrefs,
   type CanvasViewPrefs,
 } from './viewport';
 
@@ -162,15 +163,19 @@ function describeNode(el: SPElement | null): string {
 export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, viewPrefs?: CanvasViewPrefsIO): CanvasApi {
   let runtimeIssues: RenderIssue[] = [];
 
-  // ── #216 view controls: zoom (magnify — a READ-ONLY view knob) ────────────
-  // Zoom is CSS transform scale on the zoom box wrapping everything the canvas
-  // renders (toolbars stay outside — chrome never zooms). Direct style writes,
-  // no state.emit: changing zoom re-renders nothing and mutates nothing —
+  // ── #216/#224 view controls: zoom (magnify) ⊥ viewport width (reflow) ─────
+  // Both are READ-ONLY view knobs. Zoom is CSS transform scale on the zoom
+  // box wrapping everything the canvas renders (toolbars stay outside —
+  // chrome never zooms); the viewport width constrains the STAGE's layout
+  // width inside it so real CSS reflow happens. Direct style writes, no
+  // state.emit: changing either re-renders nothing and mutates nothing —
   // no undo entry, no document autosave (persisted via wb-ui-prefs only).
   const view = sanitizeViewPrefs(viewPrefs?.get());
   let zoomBox: HTMLElement | null = null;
+  let stageEl: HTMLElement | null = null;
   let viewBar: {
     out: HTMLButtonElement; pct: HTMLButtonElement; zin: HTMLButtonElement;
+    presets: HTMLButtonElement[]; px: HTMLElement;
   } | null = null;
   const persistView = (): void => viewPrefs?.set({ ...view });
 
@@ -182,14 +187,24 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
       : 'Reset zoom to 100%';
     viewBar.out.disabled = view.zoom <= ZOOM_MIN;
     viewBar.zin.disabled = view.zoom >= ZOOM_MAX;
+    for (const b of viewBar.presets) {
+      const on = b.dataset.viewportWidth === String(view.viewportWidth);
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    // the ≈ readout keeps the honesty on screen: simulated width, not gospel
+    viewBar.px.textContent = view.viewportWidth === null ? '' : `≈${view.viewportWidth}px`;
   };
 
-  /** Paint the current zoom onto the wrappers + toolbar (no re-render). */
+  /** Paint the current zoom + viewport onto the wrappers + toolbar (no re-render). */
   const applyView = (): void => {
-    if (!zoomBox) return;
+    if (!zoomBox || !stageEl) return;
     zoomBox.style.transform = view.zoom === 1 ? '' : `scale(${view.zoom})`;
     // inverse-scale helper for chrome INSIDE the zoom box (the width handle)
     zoomBox.style.setProperty('--wb-canvas-zoom', String(view.zoom));
+    const w = view.viewportWidth;
+    stageEl.classList.toggle('wb-canvas-stage--framed', w !== null);
+    stageEl.style.width = w === null ? '' : `${w}px`;
     refreshViewBar();
   };
 
@@ -199,15 +214,18 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     persistView();
   };
 
-  /** The zoom cluster on the canvas toolbar: − / current % (reset) / +. */
+  const setViewportWidth = (w: number | null): void => {
+    view.viewportWidth = w;
+    applyView();
+    persistView();
+  };
+
+  /** The view-controls cluster on the canvas toolbar: zoom (− / % / ＋) and
+   *  the clearly-separated Width presets — zoom magnifies, width reflows. */
   const viewControlsBar = (): HTMLElement => {
     const bar = document.createElement('div');
     bar.className = 'wb-canvas-viewbar';
-    const seg = document.createElement('div');
-    seg.className = 'wb-canvas-zoomseg';
-    seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', 'Preview zoom (magnifies pixels only)');
-    const mk = (cls: string, text: string, title: string, fn: () => void): HTMLButtonElement => {
+    const mk = (seg: HTMLElement, cls: string, text: string, title: string, fn: () => void): HTMLButtonElement => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = cls;
@@ -217,19 +235,90 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
       seg.appendChild(b);
       return b;
     };
-    const out = mk('wb-canvas-zoombtn', '−',
+
+    const zoomSeg = document.createElement('div');
+    zoomSeg.className = 'wb-canvas-zoomseg';
+    zoomSeg.setAttribute('role', 'group');
+    zoomSeg.setAttribute('aria-label', 'Preview zoom (magnifies pixels only)');
+    const out = mk(zoomSeg, 'wb-canvas-zoombtn', '−',
       'Zoom out (Ctrl+scroll) — shrinks pixels only, the layout never reflows',
       () => setZoom(stepZoom(view.zoom, -1)));
     out.dataset.zoom = 'out';
-    const pct = mk('wb-canvas-zoompct', zoomLabel(view.zoom), '', () => setZoom(1));
-    const zin = mk('wb-canvas-zoombtn', '＋',
+    const pct = mk(zoomSeg, 'wb-canvas-zoompct', zoomLabel(view.zoom), '', () => setZoom(1));
+    const zin = mk(zoomSeg, 'wb-canvas-zoombtn', '＋',
       'Zoom in (Ctrl+scroll) — magnifies pixels only, the layout never reflows',
       () => setZoom(stepZoom(view.zoom, 1)));
     zin.dataset.zoom = 'in';
-    bar.appendChild(seg);
-    viewBar = { out, pct, zin };
+    bar.appendChild(zoomSeg);
+
+    // #224: the viewport WIDTH presets — a separate, labeled control so
+    // "small because zoomed out" never masquerades as "small because narrow"
+    const vpSeg = document.createElement('div');
+    vpSeg.className = 'wb-canvas-vpseg';
+    vpSeg.setAttribute('role', 'group');
+    vpSeg.setAttribute('aria-label', 'Preview width — reflows the layout like a real screen (approximate)');
+    const vpLabel = document.createElement('span');
+    vpLabel.className = 'wb-canvas-vplabel';
+    vpLabel.textContent = 'Width';
+    vpLabel.title = 'Constrain the preview\'s layout width so wrapping and truncation happen for real — approximate device room, not a pixel-perfect tenant';
+    vpSeg.appendChild(vpLabel);
+    const presets = VIEWPORT_PRESETS.map((p) => {
+      const b = mk(vpSeg, 'wb-canvas-vpbtn', p.label, p.hint, () => setViewportWidth(p.width));
+      b.dataset.viewport = p.id;
+      b.dataset.viewportWidth = String(p.width);
+      return b;
+    });
+    const px = document.createElement('span');
+    px.className = 'wb-canvas-vppx';
+    px.title = 'Approximate — the sandbox squeezes layout width; real tenant chrome differs (see the preset tooltips)';
+    vpSeg.appendChild(px);
+    bar.appendChild(vpSeg);
+
+    viewBar = { out, pct, zin, presets, px };
     refreshViewBar();
     return bar;
+  };
+
+  /** The draggable right edge of the stage — the power-user path past the
+   *  presets (#224): live-squeeze while dragging (direct style writes, no
+   *  rerender churn), commit once on release; reaching full width dissolves
+   *  the constraint. Shares its math with the template modal's scrubber
+   *  handle (viewport.ts). */
+  const widthHandle = (): HTMLElement => {
+    const handle = document.createElement('div');
+    handle.className = 'wb-canvas-widthhandle';
+    handle.title = 'Drag to squeeze the preview and watch the layout reflow (double-click = full width)';
+    handle.addEventListener('dblclick', () => setViewportWidth(null));
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add('wb-dragging');
+      const widthAt = (clientX: number): number => {
+        // the stage lives INSIDE the zoom transform: rects come back in
+        // visual (scaled) px, so divide by the scale factor to get layout px
+        const rect = stageEl!.getBoundingClientRect();
+        return clampDragWidth((clientX - rect.left) / view.zoom, zoomBox!.clientWidth);
+      };
+      const move = (ev: PointerEvent): void => {
+        stageEl!.classList.add('wb-canvas-stage--framed');
+        stageEl!.style.width = `${widthAt(ev.clientX)}px`;
+      };
+      const end = (ev: PointerEvent): void => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', end);
+        handle.removeEventListener('pointercancel', end);
+        handle.classList.remove('wb-dragging');
+        // pointercancel carries no useful coordinates — commit what's on screen
+        const w = ev.type === 'pointercancel'
+          ? Math.round(stageEl!.getBoundingClientRect().width / view.zoom)
+          : widthAt(ev.clientX);
+        setViewportWidth(commitDragWidth(w, zoomBox!.clientWidth));
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+    });
+    return handle;
   };
 
   // Ctrl/Cmd + mouse wheel over the preview zooms (and must NOT page-zoom
@@ -272,13 +361,17 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     modebar.prepend(viewControlsBar());
     host.appendChild(modebar);
 
-    // #216: everything the canvas renders lives inside the ZOOM BOX (scale =
-    // magnify) wrapping the STAGE. Toolbars stay outside — chrome never zooms.
+    // #216/#224: everything the canvas renders lives inside the ZOOM BOX
+    // (scale = magnify) wrapping the STAGE (width = reflow) — so the two
+    // axes compose and work in every canvas mode (grid columns, row view,
+    // tiles, components-in-cells). Toolbars stay outside — chrome never zooms.
     zoomBox = document.createElement('div');
     zoomBox.className = 'wb-canvas-zoombox';
     const stage = document.createElement('div');
     stage.className = 'wb-canvas-stage';
+    stageEl = stage;
     zoomBox.appendChild(stage);
+    zoomBox.appendChild(widthHandle());
 
     const kind = state.doc.kind;
     if (kind === 'grid') {

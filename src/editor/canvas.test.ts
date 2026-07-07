@@ -231,6 +231,80 @@ describe('canvas zoom (#216) — a read-only VIEW control', () => {
   });
 });
 
+describe('viewport width presets + drag handle (#224) — width reflows, zoom magnifies', () => {
+  const mount = (prefs?: unknown) => {
+    const sets: unknown[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {}, { get: () => prefs, set: (p) => sets.push({ ...p }) });
+    return { host, sets };
+  };
+
+  it('offers Fit/Monitor/Half/Phone and a resize handle in every canvas kind', () => {
+    state.resetAll(); // the floor grid
+    for (const make of [
+      () => {},
+      () => state.createView({ kind: 'row', root: { elmType: 'div', children: [] } }),
+      () => state.createView({ kind: 'tile', root: { elmType: 'div', children: [] } }),
+    ]) {
+      make();
+      const { host } = mount();
+      expect([...host.querySelectorAll('[data-viewport]')].map((b) => b.getAttribute('data-viewport')))
+        .toEqual(['fit', 'monitor', 'half', 'phone']);
+      expect(host.querySelector('.wb-canvas-widthhandle')).toBeTruthy();
+    }
+    state.resetAll();
+  });
+
+  it('a preset constrains the STAGE layout width (real reflow), shows ≈px, persists — and mutates nothing', () => {
+    state.resetAll();
+    const { host, sets } = mount();
+    const stage = host.querySelector('.wb-canvas-stage') as HTMLElement;
+    const doc = JSON.stringify(state.doc.root);
+    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+
+    (host.querySelector('[data-viewport="phone"]') as HTMLButtonElement).click();
+    expect(stage.style.width).toBe('360px');
+    expect(stage.classList.contains('wb-canvas-stage--framed')).toBe(true);
+    expect(host.querySelector('.wb-canvas-vppx')?.textContent).toBe('≈360px'); // honesty on screen
+    expect(host.querySelector('[data-viewport="phone"]')?.classList.contains('active')).toBe(true);
+    expect(sets.at(-1)).toEqual({ zoom: 1, viewportWidth: 360 });
+    // read-only view control: no undo entry, no document change
+    expect(JSON.stringify(state.doc.root)).toBe(doc);
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
+
+    (host.querySelector('[data-viewport="fit"]') as HTMLButtonElement).click();
+    expect(stage.style.width).toBe('');
+    expect(stage.classList.contains('wb-canvas-stage--framed')).toBe(false);
+    expect(sets.at(-1)).toEqual({ zoom: 1, viewportWidth: null });
+    state.resetAll();
+  });
+
+  it('zoom and width COMPOSE (phone width and zoomed in) and restore together at mount', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 1.5, viewportWidth: 860 });
+    expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(1.5)');
+    const stage = host.querySelector('.wb-canvas-stage') as HTMLElement;
+    expect(stage.style.width).toBe('860px'); // layout width unscathed by zoom
+    expect(host.querySelector('[data-viewport="half"]')?.classList.contains('active')).toBe(true);
+    state.resetAll();
+  });
+
+  it('a custom (dragged) width shows the ≈px readout with no preset active', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 1, viewportWidth: 500 });
+    expect((host.querySelector('.wb-canvas-stage') as HTMLElement).style.width).toBe('500px');
+    expect(host.querySelector('.wb-canvas-vppx')?.textContent).toBe('≈500px');
+    expect(host.querySelector('.wb-canvas-vpbtn.active')).toBeNull();
+    // double-clicking the handle dissolves the constraint back to Fit
+    (host.querySelector('.wb-canvas-widthhandle') as HTMLElement)
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect((host.querySelector('.wb-canvas-stage') as HTMLElement).style.width).toBe('');
+    expect(host.querySelector('[data-viewport="fit"]')?.classList.contains('active')).toBe(true);
+    state.resetAll();
+  });
+});
+
 describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
   it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
     state.resetAll();

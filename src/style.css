@@ -1051,19 +1051,24 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 /* ── FLOOR-AND-SHEETS Stage 3: the Select/Live canvas toggle ──────────────── */
 .wb-canvas-modebar { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; justify-content: flex-end; margin: 0 0 6px; }
 
-/* ── #216 canvas view controls: zoom (magnify — never reflows) ───────────── */
+/* ── #216/#224 canvas view controls: zoom (magnify) ⊥ width (reflow) ─────── */
 .wb-canvas-viewbar { display: flex; align-items: center; gap: 10px; margin-right: auto; flex-wrap: wrap; }
-.wb-canvas-zoomseg {
+.wb-canvas-zoomseg, .wb-canvas-vpseg {
   display: inline-flex; align-items: center; gap: 2px; padding: 2px;
   border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface);
 }
-.wb-canvas-zoombtn, .wb-canvas-zoompct {
+.wb-canvas-zoombtn, .wb-canvas-zoompct, .wb-canvas-vpbtn {
   padding: 2px 8px; font-size: 11.5px; font-weight: 600; cursor: pointer;
   border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
 }
-.wb-canvas-zoombtn:hover:not(:disabled), .wb-canvas-zoompct:hover { color: var(--wb-accent); }
+.wb-canvas-zoombtn:hover:not(:disabled), .wb-canvas-zoompct:hover,
+.wb-canvas-vpbtn:hover { color: var(--wb-accent); }
 .wb-canvas-zoombtn:disabled { opacity: 0.4; cursor: default; }
 .wb-canvas-zoompct { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+.wb-canvas-vpbtn.active { background: var(--wb-accent); color: var(--wb-accent-text); }
+.wb-canvas-vplabel { font-size: 11px; color: var(--wb-text-2); padding: 0 4px 0 6px; cursor: default; }
+.wb-canvas-vppx { font-size: 11px; color: var(--wb-text-2); padding: 0 6px 0 2px; font-variant-numeric: tabular-nums; cursor: default; }
+.wb-canvas-vppx:empty { display: none; }
 
 /* the zoom box scales rendered pixels (a transform NEVER reflows layout);
    origin top-left so zoomed-in content extends into the canvas scroll area */
@@ -1072,6 +1077,25 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   transform-origin: 0 0;
 }
 .wb-canvas-stage { flex: 1 1 auto; min-width: 0; }
+/* a simulated viewport (#224): the stage carries a real LAYOUT width so CSS
+   reflow is honest; overflow scrolls inside the frame like a real screen */
+.wb-canvas-stage--framed {
+  flex: 0 0 auto; min-width: 240px; box-sizing: border-box;
+  padding-right: 14px; border-right: 2px solid var(--wb-border);
+  overflow-x: auto;
+}
+/* the free-drag resize edge (the power-user path beside the presets);
+   inverse-scaled so the grab strip stays ~14px on screen at any zoom */
+.wb-canvas-widthhandle {
+  flex: 0 0 auto; cursor: ew-resize; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+  width: calc(14px / var(--wb-canvas-zoom, 1));
+  margin-left: calc(-14px / var(--wb-canvas-zoom, 1));
+}
+.wb-canvas-widthhandle::before {
+  content: ''; width: 4px; height: 42px; border-radius: 2px; background: var(--wb-border);
+}
+.wb-canvas-widthhandle:hover::before, .wb-canvas-widthhandle.wb-dragging::before { background: var(--wb-accent); }
 .wb-canvas-modeseg {
   display: inline-flex; padding: 2px; gap: 2px;
   border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface);

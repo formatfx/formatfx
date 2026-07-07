@@ -31,6 +31,7 @@ import {
   FIELD_MIME, COMPONENT_MIME, NODE_MIME,
   type ModalUI, type ModalApi, type DropPos, type Selection,
 } from './templateUi';
+import { clampDragWidth, commitDragWidth } from './viewport';
 
 // ─── path plumbing ───────────────────────────────────────────────────────────
 
@@ -380,7 +381,9 @@ function widthPresets(ui: ModalUI, api: ModalApi): HTMLElement {
 }
 
 /** The draggable right edge of the stage: live-squeeze while dragging (direct
- *  style writes — no rerender churn), commit once on release. */
+ *  style writes — no rerender churn), commit once on release. The clamp and
+ *  snap-to-full math is shared with the main canvas's viewport handle
+ *  (viewport.ts — #224's one width→reflow module). */
 function widthHandle(stage: HTMLElement, api: ModalApi): HTMLElement {
   const handle = el('div', 'wb-template-widthhandle');
   handle.title = 'Drag to squeeze the row and watch it respond';
@@ -390,7 +393,7 @@ function widthHandle(stage: HTMLElement, api: ModalApi): HTMLElement {
     handle.classList.add('wb-dragging');
     const widthAt = (clientX: number): number => {
       const rect = stage.getBoundingClientRect();
-      return Math.round(Math.min(Math.max(clientX - rect.left, 240), stage.parentElement!.clientWidth));
+      return clampDragWidth(clientX - rect.left, stage.parentElement!.clientWidth);
     };
     const move = (ev: PointerEvent): void => { stage.style.width = `${widthAt(ev.clientX)}px`; };
     const end = (ev: PointerEvent): void => {
@@ -402,8 +405,7 @@ function widthHandle(stage: HTMLElement, api: ModalApi): HTMLElement {
       const w = ev.type === 'pointercancel'
         ? Math.round(stage.getBoundingClientRect().width)
         : widthAt(ev.clientX);
-      const full = stage.parentElement!.clientWidth;
-      api.setStageWidth(w >= full - 8 ? null : w);
+      api.setStageWidth(commitDragWidth(w, stage.parentElement!.clientWidth));
     };
     handle.addEventListener('pointermove', move);
     handle.addEventListener('pointerup', end);
