@@ -47,4 +47,14 @@ describe('paneSections', () => {
     setSectionCollapsed('columns', true);
     expect(isSectionCollapsed('columns')).toBe(true);
   });
+
+  it('treats a stored JSON array as malformed — a flag set over it still persists', () => {
+    // an array is typeof 'object'; naively kept, a named flag written onto it
+    // would vanish on re-serialize (JSON.stringify([]) drops named props)
+    localStorage.setItem(PANE_SECTIONS_KEY, '[]');
+    expect(isSectionCollapsed('columns')).toBe(false);
+    setSectionCollapsed('columns', true);
+    expect(isSectionCollapsed('columns')).toBe(true); // recovered into a plain map
+    expect(Array.isArray(JSON.parse(localStorage.getItem(PANE_SECTIONS_KEY)!))).toBe(false);
+  });
 });

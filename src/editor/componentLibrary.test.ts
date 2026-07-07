@@ -474,6 +474,10 @@ describe('the library folds its own groups (In this project / Add components)', 
     // the browser rows live inside the "Add components" group's body
     const addGroup = add.closest('.wb-complib-fold')!;
     expect(addGroup.querySelectorAll('.wb-comp-row').length).toBeGreaterThan(0);
+    // aria-controls points the header at the body it folds (a11y association)
+    const bodyId = add.getAttribute('aria-controls');
+    expect(bodyId).toBeTruthy();
+    expect(addGroup.querySelector(`#${bodyId}`)?.classList.contains('wb-complib-foldbody')).toBe(true);
   });
 
   it('clicking a group header folds it (class + aria) and persists', () => {

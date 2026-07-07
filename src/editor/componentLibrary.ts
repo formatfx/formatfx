@@ -279,6 +279,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   // body element to append the group's content into.
   const foldGroup = (title: string, key: string): HTMLElement => {
     const collapsed = isSectionCollapsed(key);
+    const bodyId = `wb-lp-fold-${key.replace(/[^a-z0-9]+/gi, '-')}`;
     const group = document.createElement('div');
     group.className = 'wb-complib-fold';
     group.classList.toggle('wb-collapsed', collapsed);
@@ -286,6 +287,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     head.type = 'button';
     head.className = 'wb-lp-sec-head wb-complib-foldhead';
     head.setAttribute('aria-expanded', String(!collapsed));
+    head.setAttribute('aria-controls', bodyId);
     head.title = collapsed ? `Show ${title}` : `Hide ${title}`;
     const caret = document.createElement('span');
     caret.className = 'wb-lp-sec-caret';
@@ -295,6 +297,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     titleEl.textContent = title;
     head.append(caret, titleEl);
     const body = document.createElement('div');
+    body.id = bodyId;
     body.className = 'wb-lp-sec-body wb-complib-foldbody';
     head.addEventListener('click', () => {
       const next = !group.classList.contains('wb-collapsed');

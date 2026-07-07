@@ -24,7 +24,10 @@ type CollapseMap = Record<string, boolean>;
 function read(): CollapseMap {
   try {
     const raw = JSON.parse(localStorage.getItem(PANE_SECTIONS_KEY) ?? '{}');
-    return raw && typeof raw === 'object' ? (raw as CollapseMap) : {};
+    // must be a plain object: an array is also typeof 'object', but writing a
+    // named flag onto it and re-serializing (JSON.stringify) would silently
+    // drop it — treat it (and any non-object) as malformed → "all expanded".
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as CollapseMap) : {};
   } catch {
     // malformed JSON or storage blocked — behave as "all expanded"
     return {};
