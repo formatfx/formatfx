@@ -24,8 +24,12 @@ import {
 import {
   COND_COLORS, COND_EFFECTS, condColor, condEffect, condExpr, condLabel,
   conditionOptionsFor, escapeCondValue, rulesToStyle, parseRulesFromStyle,
-  type CondOption, type CondRule, type EffectId,
+  rulesToClass, parseClassRules,
+  type CondOption, type CondRule, type EffectId, type Condition, type CondClassRule,
 } from './condRules';
+import {
+  paletteClass, severityClass, parseThemeClass, themeColor, type SeverityLevel,
+} from './themeClasses';
 import { elementRefChip } from './elmRef';
 import { createOverlay } from './overlay';
 import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
@@ -56,6 +60,38 @@ function defaultEffectFor(field: MockField): EffectId {
   if (field.type === 'choice' || field.type === 'choiceMulti' || field.type === 'lookup') return 'pill';
   if (field.type === 'date') return 'text';
   return 'fill';
+}
+
+// ── theme-aware look vocabulary (classes-first): the two looks with a single-
+//    class form, mapped to/from a (effect,color) rule so the whole rule pipeline
+//    (composer, preview, reorder, reopen) is reused. Fill uses SharePoint's
+//    severity class for the status colors and a palette fill for the rest.
+const THEME_LOOKS: EffectId[] = ['text', 'fill'];
+const COLOR_SEVERITY: Record<string, SeverityLevel> = { green: 'good', amber: 'warning', red: 'blocked' };
+const SEVERITY_COLOR: Partial<Record<SeverityLevel, string>> = { good: 'green', warning: 'amber', blocked: 'red' };
+
+/** A theme-mode rule → its single class token (null for looks with no class form). */
+function condRuleToClassToken(rule: CondRule): string | null {
+  const c = themeColor(rule.color);
+  if (rule.effect === 'text') return paletteClass('text', c);
+  if (rule.effect === 'fill') {
+    const sev = COLOR_SEVERITY[rule.color];
+    return sev ? severityClass(sev) : paletteClass('fill', c);
+  }
+  return null; // pill / stripe / strike have no single-class form
+}
+
+/** A parsed class token → the (effect,color) rule the composer edits (null if foreign). */
+function classTokenToCondRule(cond: Condition, token: string): CondRule | null {
+  const info = parseThemeClass(token);
+  if (!info) return null;
+  if (info.role === 'text' && info.colorId) return { cond, effect: 'text', color: info.colorId };
+  if (info.role === 'fill' && info.severity) {
+    const color = SEVERITY_COLOR[info.severity];
+    return color ? { cond, effect: 'fill', color } : null;
+  }
+  if (info.role === 'fill' && info.colorId) return { cond, effect: 'fill', color: info.colorId };
+  return null;
 }
 
 /** Friendly type names — the picker must SAY what kind of column it is. */
@@ -90,23 +126,52 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   /** Style object the generated chains will fall back to (the "else" look). */
   const existingStyle = (): Record<string, SPExpr | undefined> | undefined =>
     state.nodeAt(target.path)?.style;
+  const existingClass = (): SPExpr | undefined => state.nodeAt(target.path)?.attributes?.class;
 
-  // Reopen, don't restart (§6 1.7's "obvious next step", built 2026-07-05):
-  // `=if()` chains this dialog generated parse back into editable rules —
-  // gated by regenerating the chains and requiring byte-identical output, so
-  // a lossy reopen is structurally impossible. A hand-edited or foreign
-  // formula fails the gate and the dialog starts fresh over the current
-  // style, exactly as before (refuse-and-teach, never a guessed rule).
-  const parsed = parseRulesFromStyle(existingStyle(), state.fields);
+  // Reopen, don't restart (§6 1.7's "obvious next step"): `=if()` chains this
+  // dialog generated parse back into editable rules — gated by regenerating and
+  // requiring byte-identical output, so a lossy reopen is structurally
+  // impossible. Classes-first: a fresh dialog emits theme classes; reopen picks
+  // the mode from what's on the element — the conditional-CLASS chain
+  // (attributes.class) first, then the style chains. Anything hand-edited or
+  // foreign fails the gate and the dialog starts fresh (refuse-and-teach).
+  let themeAware = true;
+  let parsedClass = false;
   let parsedFallbacks: Record<string, string> | null = null;
-  if (parsed) {
-    const watched = state.fields.find((f) => f.name === parsed.fieldName);
-    if (watched) {
-      field = watched; // the chains may watch a different column than they paint
-      rules.push(...parsed.rules);
-      parsedFallbacks = parsed.fallbacks;
+  const classParsed = parseClassRules(existingClass(), state.fields);
+  if (classParsed) {
+    const watched = state.fields.find((f) => f.name === classParsed.fieldName);
+    const mapped = watched ? classParsed.rules.map((r) => classTokenToCondRule(r.cond, r.token)) : null;
+    if (watched && mapped && mapped.every((r): r is CondRule => r !== null)) {
+      field = watched;
+      rules.push(...mapped);
+      parsedClass = true;
     }
   }
+  if (!parsedClass) {
+    const parsed = parseRulesFromStyle(existingStyle(), state.fields);
+    if (parsed) {
+      const watched = state.fields.find((f) => f.name === parsed.fieldName);
+      if (watched) {
+        field = watched; // the chains may watch a different column than they paint
+        rules.push(...parsed.rules);
+        parsedFallbacks = parsed.fallbacks;
+        themeAware = false; // reopened a fixed-hex style look
+      }
+    }
+  }
+  // theme mode exposes only the two looks with a single-class form
+  if (themeAware && !THEME_LOOKS.includes(effectId)) effectId = 'fill';
+
+  /** The generated conditional-class chain for attributes.class (null = no rules). */
+  const classChain = (): string | null => {
+    const cr: CondClassRule[] = [];
+    for (const r of rules) {
+      const token = condRuleToClassToken(r);
+      if (token) cr.push({ cond: r.cond, token });
+    }
+    return rulesToClass(field, cr, '');
+  };
 
   /** The style the rules layer over. With a parsed reopen, each managed
    *  chain reads as its pre-rules FALLBACK (plain value, or absent), so
@@ -142,13 +207,14 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   // every gesture that reshapes the rules is exactly one ↶ step. Composer
   // picks (condition/effect/color before "Add") are pre-gesture config and
   // deliberately outside the bag. Apply still lands as ONE app-level step.
-  const muBag = (): { fieldName: string; rules: CondRule[] } =>
-    ({ fieldName: field.name, rules });
+  const muBag = (): { fieldName: string; rules: CondRule[]; themeAware: boolean } =>
+    ({ fieldName: field.name, rules, themeAware });
   const mu = createModalUndo(muBag());
-  const muRestore = (bag: { fieldName: string; rules: CondRule[] } | null): void => {
+  const muRestore = (bag: { fieldName: string; rules: CondRule[]; themeAware: boolean } | null): void => {
     if (!bag) return;
     field = state.fields.find((f) => f.name === bag.fieldName) ?? field;
     pendingField = null;
+    themeAware = bag.themeAware;
     rules.length = 0;
     rules.push(...bag.rules);
     render();
@@ -266,7 +332,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     // When the builder opens on an element that already has formula-driven styles
     // (e.g. from a previous condFormat apply), show an upfront notice so the user
     // knows the empty rules list is expected — not that their rules were lost.
-    if (!rules.length) {
+    if (!rules.length && !themeAware) {
       const st = existingStyle();
       const hasFormulas = st && Object.values(st).some(
         (v) => v !== undefined && (
@@ -317,8 +383,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     if (!rules.length) {
       const empty = document.createElement('div');
       empty.className = 'wb-cf-empty';
-      empty.textContent = parsedFallbacks
-        ? 'All rules removed — Apply now clears the conditional formatting (each property returns to its pre-rules look).'
+      empty.textContent = (parsedFallbacks || parsedClass)
+        ? 'All rules removed — Apply now clears the conditional formatting.'
         : 'No rules yet — pick a condition below'
           + (field.type === 'choice' ? ', or let ✨ color every choice at once.' : '.');
       rulesBox.appendChild(empty);
@@ -448,7 +514,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
 
     const lookRow = document.createElement('div');
     lookRow.className = 'wb-cf-row';
-    for (const eff of COND_EFFECTS) {
+    const lookEffects = themeAware ? COND_EFFECTS.filter((e) => THEME_LOOKS.includes(e.id)) : COND_EFFECTS;
+    for (const eff of lookEffects) {
       const b = document.createElement('button');
       b.className = 'wb-cf-look' + (eff.id === effectId ? ' active' : '');
       b.title = eff.hint;
@@ -505,15 +572,42 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     });
     lookRow.appendChild(addHint);
     lookRow.appendChild(addBtn);
-    panel.appendChild(group('…make it look like', lookRow));
+
+    // classes-first mode toggle: theme classes (dark-mode + tenant safe) vs fixed hex
+    const modeRow = document.createElement('div');
+    modeRow.className = 'wb-cf-row wb-cf-thememode';
+    const themeBtn = document.createElement('button');
+    themeBtn.type = 'button';
+    themeBtn.className = 'wb-cf-look wb-cf-mode' + (themeAware ? ' active' : '');
+    themeBtn.textContent = themeAware ? '🎨 Theme-aware classes' : '🎨 Fixed hex styles';
+    themeBtn.title = themeAware
+      ? 'Emitting SharePoint theme classes onto attributes.class — they survive dark mode and tenant re-theming. Click to switch to fixed-hex looks (adds Solid pill / Edge stripe / Strike out).'
+      : 'Emitting fixed hex onto style. Click to emit theme-aware classes (survive dark mode + tenant themes) instead.';
+    themeBtn.addEventListener('click', () => {
+      themeAware = !themeAware;
+      if (themeAware) {
+        for (const r of rules) if (!THEME_LOOKS.includes(r.effect)) r.effect = 'fill';
+        if (!THEME_LOOKS.includes(effectId)) effectId = 'fill';
+      }
+      render();
+    });
+    modeRow.appendChild(themeBtn);
+    panel.appendChild(group('…make it look like', modeRow, lookRow));
 
     // ── the receipts: every mock row through the real renderer ──
     if (rules.length && state.rows.length) {
       const strip = document.createElement('div');
       strip.className = 'wb-cf-preview';
-      const gen = rulesToStyle(field, rules, priorStyle());
       // the preview wears the WATCHED column's plain content, styled by the rules
-      const sample: SPElement = { ...defaultColumnFormatter(field), style: gen.style };
+      let sample: SPElement;
+      if (themeAware) {
+        const cls = classChain();
+        const b = defaultColumnFormatter(field);
+        sample = cls ? { ...b, attributes: { ...(b.attributes ?? {}), class: cls } } : b;
+      } else {
+        const gen = rulesToStyle(field, rules, priorStyle());
+        sample = { ...defaultColumnFormatter(field), style: gen.style };
+      }
       state.rows.forEach((row, i) => {
         const item = document.createElement('div');
         item.className = 'wb-cf-preview-item';
@@ -541,10 +635,19 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     foot.className = 'wb-cf-foot';
     const note = document.createElement('span');
     note.className = 'wb-cf-note';
-    const replaced = rules.length ? rulesToStyle(field, rules, priorStyle()).replacedFormulas : [];
-    note.textContent = replaced.length
-      ? `⚠ replaces the formula currently on ${replaced.join(', ')}`
-      : (parsedFallbacks ? '↻ editing the rules already on it — parsed back from its formulas' : '');
+    if (themeAware) {
+      const cur = existingClass();
+      note.textContent = parsedClass
+        ? '↻ editing the conditional classes already on it — parsed back from its formula'
+        : (rules.length && typeof cur === 'string' && cur !== ''
+          ? '⚠ replaces the class currently set on this element'
+          : '');
+    } else {
+      const replaced = rules.length ? rulesToStyle(field, rules, priorStyle()).replacedFormulas : [];
+      note.textContent = replaced.length
+        ? `⚠ replaces the formula currently on ${replaced.join(', ')}`
+        : (parsedFallbacks ? '↻ editing the rules already on it — parsed back from its formulas' : '');
+    }
     foot.appendChild(note);
     const cancel = document.createElement('button');
     cancel.textContent = 'Cancel';
@@ -552,12 +655,12 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     foot.appendChild(cancel);
     const apply = document.createElement('button');
     apply.className = 'wb-cf-apply';
-    const removing = !rules.length && parsedFallbacks !== null;
+    const removing = !rules.length && (themeAware ? parsedClass : parsedFallbacks !== null);
     const targetLabel = nameOf(targetNode);
     apply.textContent = removing ? `Remove the rules from ${targetLabel}` : `Apply to ${targetLabel}`;
     apply.title = removing
-      ? 'Every managed property returns to its pre-rules look (undoable with Ctrl+Z)'
-      : 'Merge the generated conditional styles (undoable with Ctrl+Z)';
+      ? (themeAware ? 'Clears the conditional class (undoable with Ctrl+Z)' : 'Every managed property returns to its pre-rules look (undoable with Ctrl+Z)')
+      : (themeAware ? 'Set the generated conditional class (undoable with Ctrl+Z)' : 'Merge the generated conditional styles (undoable with Ctrl+Z)');
     apply.disabled = !rules.length && !removing;
     apply.addEventListener('click', () => {
       applyToElement(target.path);
@@ -570,6 +673,24 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   const applyToElement = (path: NodePath): void => {
     const node = state.nodeAt(path);
     if (!node) return;
+    if (themeAware) {
+      // classes-first: the conditional look is one =if() chain on attributes.class
+      if (!rules.length && parsedClass) {
+        state.mutateDocument(() => {
+          if (node.attributes) {
+            delete node.attributes.class;
+            if (Object.keys(node.attributes).length === 0) delete node.attributes;
+          }
+        });
+        toast(`Conditional classes removed from ${nameOf(node)} (Ctrl+Z undoes)`);
+        return;
+      }
+      const cls = classChain();
+      if (!cls) return;
+      state.mutateDocument(() => { node.attributes = { ...(node.attributes ?? {}), class: cls }; });
+      toast(`${rules.length} rule${rules.length === 1 ? '' : 's'} applied to ${nameOf(node)} — Ctrl+Z undoes`);
+      return;
+    }
     if (!rules.length && parsedFallbacks) {
       state.mutateDocument(() => removeRulesFrom(node));
       toast(`Conditional rules removed from ${nameOf(node)} — the pre-rules look is back (Ctrl+Z undoes)`);

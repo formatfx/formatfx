@@ -5,6 +5,7 @@ import {
   condExpr, condLabel, conditionOptionsFor, rulesToStyle, suggestChoiceColors,
   escapeCondValue, condColor, parseRulesFromStyle, type CondRule,
   mapOperatorsFor, mapRulesToExpr, parseMapFromExpr,
+  rulesToClass, parseClassRules,
   type Condition, type CondKind, type MapRule,
 } from './condRules';
 import type { FormatterDocument, MockField, MockRow } from '../core/types';
@@ -464,5 +465,68 @@ describe('parseMapFromExpr — the round trip', () => {
   it('REFUSES an in-vocabulary chain that is not byte-identical to a rebuild', () => {
     // hand-typed without the generator's spacing — the rebuild gate refuses
     expect(parseMapFromExpr("=if([$Status]=='Done','a','b')", ALL)).toBeNull();
+  });
+});
+
+describe('rulesToClass / parseClassRules — conditional theme classes', () => {
+  const ALL = Object.values(FIELDS);
+
+  it('compiles a first-match-wins theme-class chain for attributes.class', () => {
+    const expr = rulesToClass(FIELDS.Status, [
+      { cond: { kind: 'eq', value: 'Done' }, token: 'sp-field-severity--good' },
+      { cond: { kind: 'eq', value: 'Blocked' }, token: 'sp-field-severity--blocked' },
+    ], '');
+    expect(expr).toBe(
+      "=if([$Status] == 'Done', 'sp-field-severity--good', if([$Status] == 'Blocked', 'sp-field-severity--blocked', ''))",
+    );
+  });
+
+  it('returns null for no rules', () => {
+    expect(rulesToClass(FIELDS.Status, [], '')).toBeNull();
+  });
+
+  it('round-trips every condition kind, byte-identical', () => {
+    const cases: Array<[MockField, Condition]> = [
+      [FIELDS.Status, { kind: 'eq', value: 'Done' }],
+      [FIELDS.Status, { kind: 'empty' }],
+      [FIELDS.DueDate, { kind: 'overdue' }],
+      [FIELDS.DueDate, { kind: 'soon', days: 3 }],
+      [FIELDS.Progress, { kind: 'gte', value: '80' }],
+      [FIELDS.Title, { kind: 'contains', value: 'draft' }],
+      [FIELDS.Owner, { kind: 'isMe' }],
+      [FIELDS.Approved, { kind: 'isTrue' }],
+    ];
+    for (const [field, cond] of cases) {
+      const expr = rulesToClass(field, [{ cond, token: 'ms-fontColor-green' }], '')!;
+      const parsed = parseClassRules(expr, ALL);
+      expect(parsed, JSON.stringify(cond)).not.toBeNull();
+      expect(parsed!.fieldName).toBe(field.name);
+      expect(parsed!.rules).toEqual([{ cond, token: 'ms-fontColor-green' }]);
+      expect(rulesToClass(field, parsed!.rules, parsed!.elseToken)).toBe(expr);
+    }
+  });
+
+  it('round-trips a non-empty else class', () => {
+    const expr = rulesToClass(
+      FIELDS.Status,
+      [{ cond: { kind: 'eq', value: 'Done' }, token: 'sp-field-severity--good' }],
+      'ms-bgColor-neutralQuaternary',
+    )!;
+    expect(parseClassRules(expr, ALL)!.elseToken).toBe('ms-bgColor-neutralQuaternary');
+  });
+
+  it('refuses a foreign token that is not theme-class vocabulary', () => {
+    expect(parseClassRules("=if([$Status] == 'Done', 'my-custom-class', '')", ALL)).toBeNull();
+  });
+
+  it('refuses a chain whose rules watch more than one field (single spine only)', () => {
+    const raw = "=if([$Status] == 'Done', 'ms-fontColor-green', if([$Title] == 'x', 'ms-fontColor-red', ''))";
+    expect(parseClassRules(raw, ALL)).toBeNull();
+  });
+
+  it('refuses non-chains, plain literals, and unknown fields', () => {
+    expect(parseClassRules(undefined, ALL)).toBeNull();
+    expect(parseClassRules('sp-field-severity--good', ALL)).toBeNull();
+    expect(parseClassRules("=if([$Ghost] == 'x', 'ms-fontColor-green', '')", ALL)).toBeNull();
   });
 });

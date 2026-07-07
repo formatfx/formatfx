@@ -18,6 +18,11 @@ import { COND_COLORS } from './condRules';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { elementRefChip } from './elmRef';
 import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
+import { themePalette } from '../core/theme';
+import {
+  THEME_COLORS, SEVERITY_LEVELS, ROLE_PROP, type ColorRole, type ThemeColor,
+  paletteClass, severityClass, activeThemeClass, setThemeClass, clearThemeClass,
+} from './themeClasses';
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
@@ -90,6 +95,15 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
   // ── staged state, initialized from the element's plain values ──
   let tab: Tab = _lastTab;
   const patch: Record<string, string | null> = {};
+  // Theme-aware color picking (classes-first): the Font/Fill tabs default to
+  // emitting a theme class onto attributes.class (survives dark mode + tenant
+  // themes) instead of a hex onto style. classPatch stages those by role; a
+  // formula-valued class can't be statically edited, so it forces hex mode.
+  const classPatch: Partial<Record<ColorRole, string | null>> = {};
+  const classIsFormula = typeof node.attributes?.class === 'string'
+    && (node.attributes.class as string).trim().startsWith('=');
+  const themeAware: Record<'font' | 'fill', boolean> = { font: !classIsFormula, fill: !classIsFormula };
+  const ROLE_OF_PROP: Partial<Record<string, ColorRole>> = { color: 'text', 'background-color': 'fill' };
 
   const staged = (prop: string): string => {
     const p = patch[prop];
@@ -103,6 +117,21 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     } else {
       patch[prop] = value;
     }
+    render();
+  };
+  // A hex pick supersedes any staged theme class on the same slot (last action wins).
+  const setHex = (prop: string, value: string | null): void => {
+    const role = ROLE_OF_PROP[prop];
+    if (role) delete classPatch[role];
+    set(prop, value);
+  };
+  const stagedClass = (role: ColorRole): string | null =>
+    role in classPatch ? classPatch[role]! : (activeThemeClass(node, role)?.token ?? null);
+  // A theme pick supersedes any staged hex on the same slot (last action wins).
+  const setClass = (role: ColorRole, token: string | null): void => {
+    delete patch[ROLE_PROP[role]];
+    const current = activeThemeClass(node, role)?.token ?? null;
+    if (token === current) delete classPatch[role]; else classPatch[role] = token;
     render();
   };
 
@@ -147,13 +176,15 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
   // render() is the commit chokepoint (every chip/toggle ends there); tab
   // switches stay free because the tab isn't in the bag. OK still applies
   // the whole session as ONE app-level mutation.
-  interface FcBag { patch: Record<string, string | null>; line: { width: string; style: string; color: string }; sidesOn: Side[] }
-  const muBag = (): FcBag => ({ patch, line, sidesOn: [...sidesOn] });
+  interface FcBag { patch: Record<string, string | null>; classPatch: Partial<Record<ColorRole, string | null>>; line: { width: string; style: string; color: string }; sidesOn: Side[] }
+  const muBag = (): FcBag => ({ patch, classPatch, line, sidesOn: [...sidesOn] });
   const mu = createModalUndo(muBag());
   const muRestore = (bag: FcBag | null): void => {
     if (!bag) return;
     for (const k of Object.keys(patch)) delete patch[k];
     Object.assign(patch, bag.patch);
+    for (const k of Object.keys(classPatch)) delete classPatch[k as ColorRole];
+    Object.assign(classPatch, bag.classPatch);
     Object.assign(line, bag.line);
     sidesOn.clear();
     for (const s of bag.sidesOn) sidesOn.add(s);
@@ -197,14 +228,50 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     s.addEventListener('click', fn);
     return s;
   };
-  const swatchRow = (label: string, prop: string, colors: string[], extraTitle?: (c: string) => string): HTMLElement => {
+  // A hex swatch strip (the "custom color" fallback when Theme-aware is off).
+  const hexColorStrip = (prop: string, colors: string[]): HTMLElement => {
     const wrap = document.createElement('span');
     wrap.className = 'wb-fc-swatches';
-    wrap.appendChild(chip('auto', staged(prop) === '', () => set(prop, null), 'No explicit color — the theme decides'));
+    wrap.appendChild(chip('auto', staged(prop) === '', () => setHex(prop, null), 'No explicit color — the theme decides'));
     for (const c of colors) {
-      wrap.appendChild(swatch(c, staged(prop) === c, () => set(prop, c), extraTitle?.(c) ?? c));
+      wrap.appendChild(swatch(c, staged(prop) === c, () => setHex(prop, c), c));
     }
-    return row(label, wrap);
+    return wrap;
+  };
+  const roleHex = (role: ColorRole, c: ThemeColor): string =>
+    themePalette(state.themeMode)[role === 'text' ? c.text : role === 'fill' ? c.fill : c.border] ?? '#888';
+  // A theme-class swatch strip: each swatch is painted the live emulated color it
+  // will apply, so it shows what SharePoint renders (and re-tints with a pasted
+  // tenant palette). Clicking writes a class token, not a hex.
+  const themeStrip = (role: ColorRole): HTMLElement => {
+    const wrap = document.createElement('span');
+    wrap.className = 'wb-fc-swatches';
+    const cur = stagedClass(role);
+    wrap.appendChild(chip('none', cur === null, () => setClass(role, null), 'No theme color for this slot'));
+    for (const c of THEME_COLORS) {
+      const token = paletteClass(role, c);
+      wrap.appendChild(swatch(roleHex(role, c), cur === token, () => setClass(role, token), `${c.label} — ${token}`));
+    }
+    return wrap;
+  };
+  const severityStrip = (): HTMLElement => {
+    const wrap = document.createElement('span');
+    wrap.className = 'wb-fc-swatches';
+    const cur = stagedClass('fill');
+    for (const s of SEVERITY_LEVELS) {
+      const token = severityClass(s.level);
+      wrap.appendChild(swatch(s.bg, cur === token, () => setClass('fill', token), `${s.label} — ${token}`));
+    }
+    return wrap;
+  };
+  const themeToggleChip = (tabKey: 'font' | 'fill'): HTMLElement => {
+    const t = toggle('Theme-aware', themeAware[tabKey], () => { themeAware[tabKey] = !themeAware[tabKey]; render(); },
+      'Emit a theme-aware SharePoint class (survives dark mode + tenant themes) instead of a fixed hex');
+    if (classIsFormula) {
+      (t as HTMLButtonElement).disabled = true;
+      t.title = 'This element’s class is a formula — edit it in the Function Bar';
+    }
+    return t;
   };
 
   const render = (): void => {
@@ -251,7 +318,9 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     tabs.className = 'wb-fc-tabs';
     for (const t of ['font', 'border', 'fill', 'alignment'] as Tab[]) {
       const b = document.createElement('button');
-      const hasPending = TAB_PROPS[t].some((p) => p in patch);
+      const hasPending = TAB_PROPS[t].some((p) => p in patch)
+        || (t === 'font' && 'text' in classPatch)
+        || (t === 'fill' && 'fill' in classPatch);
       b.className = 'wb-fc-tab' + (t === tab ? ' active' : '') + (hasPending ? ' wb-fc-tab-dirty' : '');
       b.textContent = t[0].toUpperCase() + t.slice(1);
       if (hasPending) {
@@ -273,8 +342,15 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     preview.className = 'wb-fc-preview';
     preview.textContent = 'AaBbCc 123';
     for (const prop of MANAGED) {
+      const role = ROLE_OF_PROP[prop];
+      if (role && stagedClass(role)) continue; // a staged theme class paints this slot instead
       const v = staged(prop);
       if (v) { try { preview.style.setProperty(prop, v); } catch { /* invalid staged value */ } }
+    }
+    // the emulated theme CSS is document-global, so a class on the preview paints live
+    for (const role of ['text', 'fill'] as ColorRole[]) {
+      const token = stagedClass(role);
+      if (token) preview.classList.add(token);
     }
     previewWrap.appendChild(preview);
     panel.appendChild(previewWrap);
@@ -308,7 +384,9 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
       styleRow.appendChild(toggle('Strikethrough', strike, () => writeDeco(under, !strike)));
       body.appendChild(row('Style', styleRow));
 
-      body.appendChild(swatchRow('Color', 'color', INK_SWATCHES));
+      body.appendChild(row('Color',
+        themeAware.font ? themeStrip('text') : hexColorStrip('color', INK_SWATCHES),
+        themeToggleChip('font')));
     }
 
     if (tab === 'border') {
@@ -363,30 +441,39 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     }
 
     if (tab === 'fill') {
-      const soft = document.createElement('span');
-      soft.className = 'wb-fc-swatches';
-      soft.appendChild(chip('no fill', staged('background-color') === '', () => set('background-color', null)));
-      for (const c of COND_COLORS) {
-        soft.appendChild(swatch(c.soft, staged('background-color') === c.soft, () => set('background-color', c.soft), c.soft));
+      if (themeAware.fill) {
+        body.appendChild(row('Fill', themeStrip('fill'), themeToggleChip('fill')));
+        body.appendChild(row('Status', severityStrip()));
+        const hint = document.createElement('div');
+        hint.className = 'wb-fc-hint';
+        hint.textContent = 'Palette fills recolor with the tenant theme and dark mode; Status fills carry SharePoint’s severity semantics (and its own padding).';
+        body.appendChild(hint);
+      } else {
+        const soft = document.createElement('span');
+        soft.className = 'wb-fc-swatches';
+        soft.appendChild(chip('no fill', staged('background-color') === '', () => setHex('background-color', null)));
+        for (const c of COND_COLORS) {
+          soft.appendChild(swatch(c.soft, staged('background-color') === c.soft, () => setHex('background-color', c.soft), c.soft));
+        }
+        body.appendChild(row('Soft fill', soft, themeToggleChip('fill')));
+        const strong = document.createElement('span');
+        strong.className = 'wb-fc-swatches';
+        for (const c of COND_COLORS) {
+          strong.appendChild(swatch(c.strong, staged('background-color') === c.strong, () => setHex('background-color', c.strong), c.strong));
+        }
+        strong.appendChild(swatch('#ffffff', staged('background-color') === '#ffffff', () => setHex('background-color', '#ffffff'), '#ffffff'));
+        body.appendChild(row('Solid fill', strong));
+        const hint = document.createElement('div');
+        hint.className = 'wb-fc-hint';
+        hint.append('Solid fills usually want white text — ');
+        const fontLink = document.createElement('button');
+        fontLink.type = 'button';
+        fontLink.className = 'wb-fc-hint-link';
+        fontLink.textContent = 'set it on the Font tab';
+        fontLink.addEventListener('click', () => { tab = 'font'; _lastTab = 'font'; render(); });
+        hint.append(fontLink, '. For fills that follow the value, use Conditional formatting instead.');
+        body.appendChild(hint);
       }
-      body.appendChild(row('Soft fill', soft));
-      const strong = document.createElement('span');
-      strong.className = 'wb-fc-swatches';
-      for (const c of COND_COLORS) {
-        strong.appendChild(swatch(c.strong, staged('background-color') === c.strong, () => set('background-color', c.strong), c.strong));
-      }
-      strong.appendChild(swatch('#ffffff', staged('background-color') === '#ffffff', () => set('background-color', '#ffffff'), '#ffffff'));
-      body.appendChild(row('Solid fill', strong));
-      const hint = document.createElement('div');
-      hint.className = 'wb-fc-hint';
-      hint.append('Solid fills usually want white text — ');
-      const fontLink = document.createElement('button');
-      fontLink.type = 'button';
-      fontLink.className = 'wb-fc-hint-link';
-      fontLink.textContent = 'set it on the Font tab';
-      fontLink.addEventListener('click', () => { tab = 'font'; _lastTab = 'font'; render(); });
-      hint.append(fontLink, '. For fills that follow the value, use Conditional formatting instead.');
-      body.appendChild(hint);
     }
 
     if (tab === 'alignment') {
@@ -421,7 +508,12 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     foot.className = 'wb-fc-foot';
     const note = document.createElement('span');
     note.className = 'wb-fc-note';
-    const replaced = Object.keys(patch).filter((k) => patch[k] !== undefined && isFormula(base, k));
+    const replacedStyle = Object.keys(patch).filter((k) => patch[k] !== undefined && isFormula(base, k));
+    // a theme class clears the inline value on its slot — flag when that slot holds a formula
+    const replacedClass = (Object.keys(classPatch) as ColorRole[])
+      .filter((role) => classPatch[role] != null && isFormula(base, ROLE_PROP[role]))
+      .map((role) => ROLE_PROP[role]);
+    const replaced = [...new Set([...replacedStyle, ...replacedClass])];
     note.textContent = replaced.length
       ? `⚠ replaces the formula currently on ${replaced.join(', ')}`
       : '';
@@ -433,7 +525,7 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
     const ok = document.createElement('button');
     ok.className = 'wb-fc-ok';
     ok.textContent = 'Apply';
-    const hasChanges = Object.keys(patch).length > 0;
+    const hasChanges = Object.keys(patch).length > 0 || Object.keys(classPatch).length > 0;
     ok.title = hasChanges ? 'Apply everything staged here as one undoable change' : 'No changes to apply yet';
     ok.disabled = !hasChanges;
     ok.addEventListener('click', () => {
@@ -443,7 +535,11 @@ export function openFormatCells(path: NodePath, onToast: (m: string) => void): v
           if (v === null) delete node.style[k];
           else node.style[k] = v;
         }
-        if (Object.keys(node.style).length === 0) delete node.style;
+        // theme classes AFTER styles, so setThemeClass's inline-clear wins the slot
+        for (const [role, token] of Object.entries(classPatch) as [ColorRole, string | null][]) {
+          if (token) setThemeClass(node, role, token); else clearThemeClass(node, role);
+        }
+        if (node.style && Object.keys(node.style).length === 0) delete node.style;
       });
       closeFormatCells();
       onToast(`Format applied to ${nameOf(node)} (Ctrl+Z undoes)`);
