@@ -317,6 +317,9 @@ export function applyConfirmEditAt(
   const draft = spec.draftField.trim();
   if (!real || !draft || real === draft) return null;
   if (!canHostTrigger(host)) return null;
+  // like applyTriggerAt: never stack a second inline editor — a host that
+  // already edits inline would fight the draft edit surface we're adding
+  if (host.inlineEditField) return null;
 
   const draftRef = `[$${draft}]`;
   const editSurface: SPElement = {

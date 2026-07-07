@@ -330,6 +330,19 @@ describe('the "Editable with confirm" recipe (#212 part 2b)', () => {
     expect([...draft.options].find((o) => o.value === 'Tags')!.disabled).toBe(false);
   });
 
+  it('a protected displayed column never rides into the recipe as the default real target', () => {
+    viewShowing('[$ID]'); // the element shows a protected system column
+    const host = mount();
+    pickKind(host, 'confirmEdit');
+    // the picker only offers writable columns, so the seed stays empty …
+    expect(host.querySelector<HTMLSelectElement>('.wb-cs-real')!.value).toBe('');
+    const draft = host.querySelector<HTMLSelectElement>('.wb-cs-draft')!;
+    draft.value = 'Tags';
+    draft.dispatchEvent(new Event('change', { bubbles: true }));
+    // … and Generate stays off until the maker deliberately picks one
+    expect(host.querySelector<HTMLButtonElement>('.wb-cs-gen')!.disabled).toBe(true);
+  });
+
   it('refuses and TEACHES when the schema has no scratch Text column — never writes straight to the real field', () => {
     state.fields = state.fields.filter((f) => f.type !== 'text');
     viewShowing('[$Status]');

@@ -358,7 +358,10 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       const svRows: Array<{ field: string; value: string }> = [{ field: '', value: '' }];
       let ieField = dispEditable ? dispName! : '';
       let ieDiff = false; // 2a: "write to a different column than the one shown"
-      let ceReal = dispName ?? '';
+      // seed only with a column the picker actually offers — a protected
+      // displayed field must not ride into the recipe via the default
+      let ceReal = dispName && state.fields.some((f) => f.name === dispName && !f.protected)
+        ? dispName : '';
       let ceDraft = '';
 
       const form = document.createElement('div');
@@ -382,8 +385,10 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
           const f = state.fields.find((x) => x.name === ieField);
           return !node.inlineEditField && !!f && inlineEditBlockReason(f) === null;
         }
-        // confirmEdit: real + draft chosen, different, draft is a scratch Text column
+        // confirmEdit: real + draft chosen, different, draft is a scratch Text
+        // column, and the real column is one the picker offers (not protected)
         return ceReal !== '' && ceDraft !== '' && ceReal !== ceDraft
+          && state.fields.some((f) => f.name === ceReal && !f.protected)
           && draftCols().some((f) => f.name === ceDraft);
       };
       const specFor = (): TriggerSpec => {

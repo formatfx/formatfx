@@ -269,6 +269,13 @@ describe('applyConfirmEditAt — the draft-column confirm & commit recipe (#212)
     // a leaf host refuses too — nothing to wrap as the edit surface
     const leaf = div([span('x')]);
     expect(applyConfirmEditAt(leaf, [0], { realField: 'Status', draftField: 'Draft' })).toBeNull();
+    // a host that already edits inline refuses — never stack a second editor
+    // (mirrors applyTriggerAt's inlineEdit guard)
+    const editing = div([div([span('a')])]);
+    editing.children![0].inlineEditField = '[$Title]';
+    const editingSnap = JSON.stringify(editing);
+    expect(applyConfirmEditAt(editing, [0], { realField: 'Status', draftField: 'Draft' })).toBeNull();
+    expect(JSON.stringify(editing)).toBe(editingSnap);
   });
 });
 
