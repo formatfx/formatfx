@@ -324,9 +324,9 @@ kindSel.addEventListener('change', () => {
     : `Same element tree, new wrapper: this view now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 
-// the wrapper kind only makes sense on a surface (floor or sheet); examples
-// route themselves (column → register + drill, row/tile → a new view), so
-// they stay loadable even while drilled into a column formatter
+// the wrapper kind only makes sense on a surface (floor or sheet). The
+// activeDocKey guard keeps compiling for the canvas-tabs phase, where a
+// component tab re-targets the canvas doc key; it's always 'main' today.
 const refreshStudioDisabled = () => {
   kindSel.disabled = state.activeDocKey !== 'main';
 };
@@ -342,10 +342,8 @@ state.subscribe((reason) => {
 document.getElementById('wb-copy')!.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
-    toast(state.activeDocKey !== 'main'
-      ? `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`
-      : state.doc.kind === 'grid'
-      ? 'View (row) formatter JSON copied — the grid ships as a row layout; for one column\'s JSON use its header menu'
+    toast(state.doc.kind === 'grid'
+      ? 'View (row) formatter JSON copied — the grid ships as a row layout; per-column JSON comes from the column\'s header menu'
       : 'Main formatter JSON copied — paste into the view\'s Format pane');
   } catch {
     toast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
@@ -363,10 +361,10 @@ exampleSel.addEventListener('change', () => {
   const root = instantiate(item, state.fields);
   const kind: DocumentKind = id === 'row-card' ? 'row' : id === 'tile-card' ? 'tile' : 'column';
   if (kind === 'column') {
-    // a column example becomes the CURRENT field's registered formatter and
-    // opens its drill-in — the main surface is always the floor or a view now
-    state.loadColumnDocument(root);
-    toast(`Loaded example: ${item.label} — editing it as the ${state.currentFieldName} column formatter`);
+    // a column example becomes the CURRENT field's LOOK — the grid renders
+    // it embedded, with that column selected (one undoable step)
+    state.loadDocument({ kind: 'column', root });
+    toast(`Loaded example: ${item.label} — applied as the ${state.currentFieldName} column's look`);
   } else {
     state.loadViewDocument({ kind, root }, item.label);
     toast(`Loaded example: ${item.label} — added as its own view`);

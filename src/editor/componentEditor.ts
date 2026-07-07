@@ -14,8 +14,9 @@
  *     re-bakes every current usage to the new recipe, EXCEPT usages pinned
  *     "keep as-found": those get a one-off variant def frozen from the OLD
  *     recipe (variantOf lineage) and are restamped onto it. The whole apply —
- *     view subtree replacements, registry re-bakes, tag restamps — rides
- *     state.batchProjectUpdate, so ONE Ctrl+Z reverts everything.
+ *     view subtree replacements, column-look re-bakes (store + floor cell),
+ *     variant restamps — rides state.batchProjectUpdate, so ONE Ctrl+Z
+ *     reverts everything.
  *
  * The modal covers the CANVAS pane only (the Left Edit Pane stays visible) —
  * createOverlay supplies the wb-esc-owner/Esc/backdrop conventions and the
@@ -26,7 +27,7 @@ import { state, CARD_SEGMENT } from './state';
 import { renderElement } from '../core/renderer';
 import { ctxForRow } from './previewCtx';
 import { createOverlay } from './overlay';
-import { toColumnFormatter } from './cfr';
+import { gridColumnField, gridCellForField } from './gridScaffold';
 import { FONT_SIZES, RADII, INK_SWATCHES, HAIRLINE } from './formatCells';
 import { COND_COLORS } from './condRules';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
@@ -119,14 +120,11 @@ export function openComponentEditor(
   const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
   const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
 
-  // usages, scanned once at open (same live-doc merge as the library render);
+  // usages, scanned once at open (the active surface doc + the column looks);
   // built-ins can be in use too, but they only ever save-as-new
-  const refs = state.activeDocKey !== 'main'
-    ? { ...state.columnRefs, [state.activeDocKey]: state.doc.root }
-    : state.columnRefs;
   const usages: ComponentUsage[] = def.builtin
     ? []
-    : scanComponentUsages([def], state.mainRootForScope, refs, state.fields).get(def.id) ?? [];
+    : scanComponentUsages([def], state.doc.root, state.columnLooks).get(def.id) ?? [];
   const pinned = new Set<number>();
 
   const confirmClose = (): void => {
@@ -286,10 +284,7 @@ export function openComponentEditor(
     try {
       const bound = bindComponent(staged, previewMapping());
       // binding rewrites refs only — paths in the bound tree match staged.root
-      previewHost.appendChild(renderElement(bound, ctxForRow(0), {
-        resolveColumnRef: () => null, // components are self-contained by contract
-        tagPaths: true,
-      }));
+      previewHost.appendChild(renderElement(bound, ctxForRow(0), { tagPaths: true }));
     } catch {
       previewHost.textContent = '—';
     }
@@ -466,8 +461,6 @@ export function openComponentEditor(
     note.className = 'wb-ce-note';
     note.textContent = 'Save and apply updates every place below. Pin “keep as-found” to leave a place on the OLD look — it gets a one-off variant instead.';
     useSec.appendChild(note);
-    const mainIsColumn = state.activeDocKey === 'main' && state.doc.kind === 'column';
-    const mainField = fieldLabel(state.currentFieldName);
     usages.forEach((u, i) => {
       const row = document.createElement('div');
       row.className = 'wb-ce-usage';
@@ -486,17 +479,19 @@ export function openComponentEditor(
       jump.type = 'button';
       jump.className = 'wb-ce-jump';
       jump.textContent = u.kind === 'view'
-        ? mainUsageLabel(u, mainIsColumn, mainField)
-        : `${fieldLabel(u.field)} — column formatter`;
+        ? mainUsageLabel(u)
+        : `${fieldLabel(u.field)} — column look`;
       jump.title = 'Jump there (closes this editor)';
       jump.addEventListener('click', () => {
         if (dirty && !window.confirm('Jumping closes the editor — discard your staged component edits?')) return;
         close();
         if (u.kind === 'view') {
-          state.openMain();
           state.select(u.path);
         } else {
-          state.openColumnRef(u.field);
+          // the look renders embedded in the floor's grid cell — go select it
+          if (!state.onFloor) state.minimizeView();
+          const i = (state.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === u.field);
+          if (i >= 0) state.select([i]);
         }
       });
       row.append(jump, pin);
@@ -547,6 +542,15 @@ export function openComponentEditor(
     if (p?.parent.children) p.parent.children[p.index] = node;
   };
 
+  /** Mirror a column's (re)written look back onto its placed floor cell —
+   *  the store and the embedded clone must never disagree. */
+  const rewriteFloorCell = (fieldName: string): void => {
+    const f = state.fields.find((x) => x.name === fieldName);
+    const children = state.floorDoc.root.children;
+    const i = children?.findIndex((c) => gridColumnField(c) === fieldName) ?? -1;
+    if (f && children && i >= 0) children[i] = gridCellForField(f, state.columnLooks);
+  };
+
   const applyUsage = (u: ComponentUsage, newDef: ComponentDef): void => {
     if (u.kind === 'view') {
       const el = state.nodeAt(u.path);
@@ -555,27 +559,18 @@ export function openComponentEditor(
       if (next) replaceInDoc(u.path, next);
       return;
     }
-    const tree = Object.hasOwn(state.columnRefs, u.field) ? state.columnRefs[u.field] : undefined;
-    if (!tree) return;
-    if (tree._component?.id === def.id) {
-      // the whole registered format IS the instance (the Format-this-column
-      // catalog path): re-bind with its own map, back into @currentField terms
-      const re = rebindInstance(newDef, tree, def.name);
-      if (re) state.columnRefs[u.field] = toColumnFormatter(re, u.field);
-      return;
-    }
-    // stamped subtrees INSIDE the registered tree keep explicit [$Field] refs —
-    // that's how the mapping dialog inserted them into an open column formatter
-    let next = replaceStampedIn(tree, def.id, (el) => rebindInstance(newDef, el, def.name) ?? el);
-    const f = state.fields.find((x) => x.name === u.field);
-    if (f?.subtype === def.id && newDef.slots.length === 1
-      && JSON.stringify(next) === JSON.stringify(tree)) {
-      // tag-only legacy column (no stamp to carry a map): the single-slot
-      // identity re-bake, same shape as the replace-and-push save
-      const key = newDef.slots[0].key;
-      next = toColumnFormatter(bindComponent(newDef, { [key]: key }), key);
-    }
-    state.columnRefs[u.field] = next;
+    // column wearer: the look IS a stamped instance — re-bind it with its own
+    // stored slot map (looks stay in explicit-[$Field] dialect) and mirror the
+    // floor cell. An imported (unstamped-root) look can still carry stamped
+    // subtrees; those re-bind in place.
+    const look = Object.hasOwn(state.columnLooks, u.field) ? state.columnLooks[u.field] : undefined;
+    if (!look) return;
+    const next = look._component?.id === def.id
+      ? rebindInstance(newDef, look, def.name)
+      : replaceStampedIn(look, def.id, (el) => rebindInstance(newDef, el, def.name) ?? el);
+    if (!next) return;
+    state.columnLooks[u.field] = next;
+    rewriteFloorCell(u.field);
   };
 
   const pinUsage = (u: ComponentUsage, variantId: string): void => {
@@ -584,10 +579,10 @@ export function openComponentEditor(
       if (el?._component?.id === def.id) el._component = { ...el._component, id: variantId };
       return;
     }
-    const tree = Object.hasOwn(state.columnRefs, u.field) ? state.columnRefs[u.field] : undefined;
-    if (tree) state.columnRefs[u.field] = restampIn(tree, def.id, variantId);
-    const f = state.fields.find((x) => x.name === u.field);
-    if (f?.subtype === def.id) f.subtype = variantId; // tags ride snapState → undoable
+    const look = Object.hasOwn(state.columnLooks, u.field) ? state.columnLooks[u.field] : undefined;
+    if (!look) return;
+    state.columnLooks[u.field] = restampIn(look, def.id, variantId);
+    rewriteFloorCell(u.field); // same content, new stamp — keep the mirror true
   };
 
   const saveAndApply = (): void => {

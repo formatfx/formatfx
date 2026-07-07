@@ -34,8 +34,7 @@ export const GROUP_LABELS: Record<SearchGroup, string> = {
 /** Which canvas surface a document entry lives on — the UI's navigation key. */
 export type SearchSurface =
   | { kind: 'floor' }
-  | { kind: 'view'; id: string }
-  | { kind: 'column'; fieldName: string };
+  | { kind: 'view'; id: string };
 
 /** Data-only descriptor of what activating a result should do. */
 export type SearchAction =
@@ -146,29 +145,29 @@ export function indexElements(root: SPElement, surface: SearchSurface, surfaceLa
 // ─── columns & rules index ───────────────────────────────────────────────────
 
 /**
- * One entry per schema column (formatted or not), plus one per conditional
- * rule parsed back out of the column's generated `=if()` chains — the same
- * rebuild-verified parse the conditional-formatting dialog reopens with, so
- * a hand-edited formula never shows up as a guessed rule.
+ * One entry per schema column (a look applied or not), plus one per
+ * conditional rule parsed back out of the look's generated `=if()` chains —
+ * the same rebuild-verified parse the conditional-formatting dialog reopens
+ * with, so a hand-edited formula never shows up as a guessed rule.
  */
 export function indexColumns(
   fields: MockField[],
-  columnRefs: Record<string, SPElement | undefined>,
+  columnLooks: Record<string, SPElement | undefined>,
 ): SearchEntry[] {
   const out: SearchEntry[] = [];
 
   for (const field of fields) {
     const label = field.displayName ?? field.name;
-    const registered = Object.hasOwn(columnRefs, field.name) ? columnRefs[field.name] : undefined;
-    const parsed = registered ? parseRulesFromStyle(registered.style, fields) : null;
+    const look = Object.hasOwn(columnLooks, field.name) ? columnLooks[field.name] : undefined;
+    const parsed = look ? parseRulesFromStyle(look.style, fields) : null;
 
     const bits: string[] = [field.type];
-    if (registered) bits.push('formatted');
+    if (look) bits.push('formatted');
     if (parsed?.rules.length) bits.push(`${parsed.rules.length} rule${parsed.rules.length === 1 ? '' : 's'}`);
 
     out.push({
       group: 'columns',
-      icon: '§',
+      icon: '▦',
       label,
       trail: bits.join(' · '),
       text: `${label} ${field.name} ${field.type}`.toLowerCase(),

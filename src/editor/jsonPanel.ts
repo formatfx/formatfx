@@ -120,7 +120,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       clearDirty();
       clearImportError();
       state.loadDocument(doc);
-      onToast(`Imported ${doc.kind} formatter`);
+      // a column payload doesn't replace the surface — it becomes the current
+      // field's LOOK, rendered embedded in its grid cell
+      onToast(doc.kind === 'column'
+        ? `Imported column formatter — applied as the ${state.currentFieldName} column's look`
+        : `Imported ${doc.kind} formatter`);
     } catch (e) {
       const msg = `Import failed: ${(e as Error).message}`;
       onToast(msg);
@@ -135,21 +139,19 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const deployViewEl = host.querySelector('#wb-deploy-view') as HTMLInputElement;
   const deployListEl = host.querySelector('#wb-deploy-list') as HTMLInputElement;
 
-  /** Where the formatter lands, derived from what's being edited. */
-  const deployTarget = (): { target: 'field' | 'view'; name: string; label: string } => {
-    if (state.doc.kind === 'column') {
-      const field = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
-      return { target: 'field', name: field, label: `→ the [$${field}] column's CustomFormatter` };
-    }
-    // row/grid/tile all ship as view formatting
-    return { target: 'view', name: deployViewEl.value.trim() || 'All Items', label: '→ a view\'s CustomFormatter (row/tile formatting):' };
-  };
+  /** Where the formatter lands: the canvas doc is always a surface now
+   *  (grid/row/tile), shipping as a view's row/tile formatting. Per-column
+   *  JSON comes from the column's header menu, not the deploy panel. */
+  const deployTarget = (): { target: 'view'; name: string; label: string } => ({
+    target: 'view',
+    name: deployViewEl.value.trim() || 'All Items',
+    label: '→ a view\'s CustomFormatter (row/tile formatting):',
+  });
 
   const refreshDeployPanel = () => {
     if (deployPanel.hidden) return;
-    const t = deployTarget();
-    deployTargetEl.textContent = `Deploys ${t.label}`;
-    deployViewEl.hidden = t.target !== 'view';
+    deployTargetEl.textContent = `Deploys ${deployTarget().label}`;
+    deployViewEl.hidden = false;
   };
 
   host.querySelector('#wb-json-deploy')!.addEventListener('click', () => {
@@ -187,7 +189,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     });
     try {
       await navigator.clipboard.writeText(snippet);
-      onToast(`Deploy snippet copied for ${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`} — run it in the console on your list page; it confirms before writing`);
+      onToast(`Deploy snippet copied for the "${t.name}" view — run it in the console on your list page; it confirms before writing`);
     } catch {
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
@@ -207,7 +209,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     const t = deployTarget();
     try {
       await navigator.clipboard.writeText(serializeApplyPayload(payload));
-      onToast(`Copied for the extension (${t.target === 'field' ? `[$${t.name}]` : `the "${t.name}" view`}) — on your list tab, click the FormatFX extension → Apply from clipboard`);
+      onToast(`Copied for the extension (the "${t.name}" view) — on your list tab, click the FormatFX extension → Apply from clipboard`);
     } catch {
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }

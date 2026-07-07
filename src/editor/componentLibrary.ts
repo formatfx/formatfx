@@ -12,9 +12,9 @@
  *
  *   · "In this project" — one row per component in use (built-in or custom):
  *     usage-count chip; the drawer lists one jump row per place — a view
- *     instance selects it on the canvas, a column usage opens that column
- *     formatter. Usage data comes from the pure componentUsage.ts scan over
- *     the instance stamps + field subtype tags.
+ *     instance selects it on the canvas, a column usage jumps to that
+ *     column's cell on the grid. Usage data comes from the pure
+ *     componentUsage.ts scan over the instance stamps (view docs + looks).
  *   · "Add components" — Built-in / From the palette / Yours / Whole rows /
  *     Bring your own, same rows; previews render in the drawer with a
  *     best-guess binding against the CURRENT schema
@@ -23,14 +23,15 @@
  *     this appear?" — issue #204, docs/specs/TRIGGER-MODEL.md §3): inline in
  *     the layout (default), or as a hover/click card opening from a candidate
  *     division (triggerBind.ts generates the robust pattern). Insert binds +
- *     STAMPS the instance (bindComponentInstance) and lands it as ONE
- *     undoable step wherever the canvas points: the OPEN column formatter
- *     when one is active (componentInsertTarget), else the view (a new root
- *     column on the grid)
+ *     STAMPS the instance (bindComponentInstance) and lands it in the active
+ *     view as ONE undoable step (a new root column on the grid). Aimed at a
+ *     grid column instead (openComponentMapper's applyToColumn mode) it
+ *     APPLIES the component as that column's look —
+ *     state.applyComponentToColumn, the one way a column gets formatting.
  *   · "Save as component…" (reached from the element context menu) — derives
- *     typed slots from the fields a subtree references; refuses subtrees
+ *     typed slots from the fields a subtree references; refuses trees
  *     carrying a columnFormatterReference (components are self-contained —
- *     that content lives in the registry; detach from the style first)
+ *     § left the model, nothing resolves references anymore)
  *
  * Persistence: localStorage under COMPONENTS_KEY via the pure components.ts
  * store helpers. Built-ins never persist.
@@ -40,10 +41,10 @@ import { state } from './state';
 import { renderElement } from '../core/renderer';
 import { importJson } from '../core/serializer';
 import type { EvalContext } from '../core/expressions';
-import type { SPElement, NodePath, MockField } from '../core/types';
+import type { SPElement, NodePath, MockField, FieldType } from '../core/types';
 import { createOverlay } from './overlay';
-import { inlineColumnFormatter, toColumnFormatter } from './cfr';
-import { listSubtypes } from './subtypes';
+import { inlineColumnFormatter } from './lookDialect';
+import { gridColumnField, gridCellForField } from './gridScaffold';
 import { openTemplateModal } from './templateModal';
 import {
   COMPONENTS_KEY, BUILTIN_COMPONENTS,
@@ -51,7 +52,7 @@ import {
   bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
   deriveSlots, containsCfr, componentId, widenType, componentKind,
   componentFromFormatterDoc, componentInsertTarget,
-  type ComponentDef, type ComponentInsertTarget,
+  type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
 import { paletteComponents } from './paletteComponents';
@@ -72,12 +73,45 @@ function readCustom(): ComponentDef[] {
  * saved as a "reusable subtype" (wb-subtypes) becomes a single-slot component
  * — the ONE "yours" concept. The old key is left untouched (it's the maker's
  * data and the rollback path); a flag key stops the migration re-running.
+ * The store is read RAW here (the subtype engine is deleted): the same
+ * version-1 envelope + per-record shape its loader accepted, nothing more.
  */
 const SUBTYPES_MIGRATED_FLAG = 'wb-components.subtypes-migrated.v1';
+
+/** What the migration needs of a stored subtype record. */
+interface RetiredSubtype { id: string; name: string; baseTypes: FieldType[]; formatter: SPElement }
+
+function readRetiredSubtypes(): RetiredSubtype[] {
+  try {
+    const raw = localStorage.getItem('wb-subtypes');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { version?: unknown; subtypes?: unknown } | null;
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.subtypes)) return [];
+    // the shape guard subtypes.ts enforced, verbatim — a corrupt record can't
+    // poison the migration, and only maker-authored ('custom') records exist
+    const isRecord = (s: unknown): s is RetiredSubtype => {
+      if (!s || typeof s !== 'object') return false;
+      const o = s as Record<string, unknown>;
+      const vocab = o.vocab as { refs?: unknown; values?: unknown } | undefined;
+      return typeof o.id === 'string'
+        && typeof o.name === 'string'
+        && o.origin === 'custom'
+        && Array.isArray(o.baseTypes) && o.baseTypes.every((t) => typeof t === 'string')
+        && !!o.formatter && typeof o.formatter === 'object'
+        && Array.isArray(o.knobs) && o.knobs.every((k) => !!k && typeof k === 'object')
+        && !!vocab && typeof vocab === 'object'
+        && Array.isArray(vocab.refs) && Array.isArray(vocab.values);
+    };
+    return (parsed.subtypes as unknown[]).filter(isRecord);
+  } catch {
+    return [];
+  }
+}
+
 function migrateCustomSubtypes(): void {
   try {
     if (localStorage.getItem(SUBTYPES_MIGRATED_FLAG)) return;
-    const customs = listSubtypes();
+    const customs = readRetiredSubtypes();
     if (customs.length) {
       let list = readCustom();
       for (const st of customs) {
@@ -120,9 +154,16 @@ export function componentById(id: string): ComponentDef | undefined {
 }
 
 /** The typed mapping dialog, openable from outside the library — the canvas
- *  drop path uses it when the best guess can't complete a mapping. */
-export function openComponentMapper(def: ComponentDef, onToast: (m: string) => void): void {
-  openMappingDialog(def, onToast);
+ *  drop path uses it when the best guess can't complete a mapping, and the
+ *  grid's column gestures aim it at a column: with `applyToColumn`, the first
+ *  slot fitting that column's type is FORCED to it and the insert becomes
+ *  state.applyComponentToColumn (the column's look, one undoable step). */
+export function openComponentMapper(
+  def: ComponentDef,
+  onToast: (m: string) => void,
+  opts: { applyToColumn?: string } = {},
+): void {
+  openMappingDialog(def, onToast, undefined, opts);
 }
 
 function writeCustom(components: ComponentDef[]): boolean {
@@ -152,16 +193,14 @@ function previewBox(tree: SPElement, className: string): HTMLElement {
   const box = document.createElement('div');
   box.className = className;
   try {
-    box.appendChild(renderElement(tree, previewCtx(0), {
-      resolveColumnRef: () => null, // components are self-contained by contract
-    }));
+    box.appendChild(renderElement(tree, previewCtx(0)));
   } catch {
     box.textContent = '—';
   }
   return box;
 }
 
-/** A field's display name for copy ("Add to the Due date column formatter"). */
+/** A field's display name for copy ("Apply to the Due date column"). */
 function fieldLabel(name: string): string {
   return state.fields.find((f) => f.name === name)?.displayName ?? name;
 }
@@ -191,14 +230,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   // allDefs so the usage scan and lineage resolution can see their instances
   const fromPalette = paletteComponents();
   const allDefs = [...BUILTIN_COMPONENTS, ...fromPalette, ...customs];
-  // the active column doc's LIVE root wins over its registry copy (they're
-  // synced on emit, but the merge keeps the scan honest mid-edit)
-  const refs = state.activeDocKey !== 'main'
-    ? { ...state.columnRefs, [state.activeDocKey]: state.doc.root }
-    : state.columnRefs;
-  const usages = scanComponentUsages(allDefs, state.mainRootForScope, refs, state.fields);
-  // where would an element insert land right now? (drives every "Add" label)
-  const target = componentInsertTarget(state.activeDocKey, state.doc.kind, state.currentFieldName);
+  const usages = scanComponentUsages(allDefs, state.doc.root, state.columnLooks);
 
   const heading = (title: string, cls: string): void => {
     const head = document.createElement('div');
@@ -222,15 +254,11 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   };
 
   const addLabel = (def: ComponentDef): string =>
-    componentKind(def) === 'row' ? 'Use as the row layout…'
-      : target.kind === 'column' ? `Add to the ${fieldLabel(target.field)} column formatter…`
-        : 'Add to view…';
+    componentKind(def) === 'row' ? 'Use as the row layout…' : 'Add to view…';
   const addTitle = (def: ComponentDef): string =>
     componentKind(def) === 'row'
       ? 'Map your columns into this layout and make it THE row layout for this view (one undoable step)'
-      : target.kind === 'column'
-        ? `Map your columns into this component and add it to the open ${fieldLabel(target.field)} column formatter`
-        : 'Map your columns into this component and add it to the canvas';
+      : 'Map your columns into this component and add it to the canvas';
 
   /** Dim hint after the name, tree-style: what the component asks a schema
    *  for ("date · person"), or its scope for row kinds. */
@@ -414,28 +442,23 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       box.appendChild(usesHead);
       const list = document.createElement('div');
       list.className = 'wb-comp-usages';
-      // main-doc usages normally read "View — X", but the MAIN doc can itself
-      // be a column formatter (a JSON-tab import) — then the rows must speak
-      // the same column-formatter noun the insert copy does
-      const mainIsColumn = state.activeDocKey === 'main' && state.doc.kind === 'column';
-      const mainField = fieldLabel(state.currentFieldName);
       for (const u of inUse) {
         const jump = document.createElement('button');
         jump.type = 'button';
         jump.className = 'wb-comp-usage';
         if (u.kind === 'view') {
-          jump.textContent = mainUsageLabel(u, mainIsColumn, mainField);
-          jump.title = mainIsColumn
-            ? `Jump to this instance in the ${mainField} column formatter`
-            : 'Jump to this instance in the view formatter';
-          jump.addEventListener('click', () => {
-            state.openMain(); // no-op when the main doc is already on the canvas
-            state.select(u.path);
-          });
+          jump.textContent = mainUsageLabel(u);
+          jump.title = 'Jump to this instance in the view formatter';
+          jump.addEventListener('click', () => state.select(u.path));
         } else {
-          jump.textContent = `${fieldLabel(u.field)} — column formatter`;
-          jump.title = `Open the ${fieldLabel(u.field)} column formatter`;
-          jump.addEventListener('click', () => state.openColumnRef(u.field));
+          jump.textContent = `${fieldLabel(u.field)} — column look`;
+          jump.title = `Jump to the ${fieldLabel(u.field)} column on the grid`;
+          jump.addEventListener('click', () => {
+            // the look renders embedded in the floor's grid cell — select it
+            if (!state.onFloor) state.minimizeView();
+            const i = (state.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === u.field);
+            if (i >= 0) state.select([i]);
+          });
         }
         list.appendChild(jump);
       }
@@ -582,13 +605,29 @@ function beginHostPick(hostPaths: NodePath[], done: (idx: number | null) => void
   document.addEventListener('keydown', onKey, true);
 }
 
-// ─── the typed mapping dialog (context-aware: view OR open column formatter) ─
+// ─── the typed mapping dialog (add to the view, or apply to a column) ────────
 
-function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onInserted?: () => void): void {
+function openMappingDialog(
+  def: ComponentDef,
+  onToast: (m: string) => void,
+  onInserted?: () => void,
+  opts: { applyToColumn?: string } = {},
+): void {
   // where the insert lands is decided by what's OPEN on the canvas — pinned
   // here so the button copy and the insert can never disagree
-  const target: ComponentInsertTarget = componentInsertTarget(state.activeDocKey, state.doc.kind, state.currentFieldName);
-  const targetLabel = target.kind === 'column' ? fieldLabel(target.field) : '';
+  const target = componentInsertTarget(state.doc.kind);
+  // apply-to-column mode (grid header menu / column drop): the insert doesn't
+  // land in the view — the bound instance becomes the column's LOOK
+  const applyField: MockField | null = opts.applyToColumn
+    ? state.fields.find((f) => f.name === opts.applyToColumn) ?? null
+    : null;
+  if (opts.applyToColumn && !applyField) return; // schema changed underneath — nothing to aim at
+  const applyLabel = applyField ? fieldLabel(applyField.name) : '';
+  // a look must render the column it's applied to: the FIRST slot whose types
+  // fit the column is forced to it (rows can't be looks — they're a layout)
+  const forcedSlot = applyField && componentKind(def) === 'element'
+    ? def.slots.find((s) => s.types.includes(applyField.type)) ?? null
+    : null;
   const { overlay, close } = createOverlay('wb-compmap-overlay', () => close());
 
   const panel = document.createElement('div');
@@ -599,7 +638,7 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
   head.className = 'wb-compmap-head';
   const title = document.createElement('span');
   title.className = 'wb-compmap-title';
-  title.textContent = `Add ${def.name}`;
+  title.textContent = applyField ? `Apply ${def.name} to ${applyLabel}` : `Add ${def.name}`;
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'wb-compmap-close';
@@ -615,10 +654,13 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
   panel.appendChild(note);
 
   const mapping = bestGuessMapping(def, state.fields);
+  if (forcedSlot && applyField) mapping[forcedSlot.key] = applyField.name;
   const preview = document.createElement('div');
   // slots with NO acceptable column at all — "pick one" would be impossible
+  // (the forced slot is filled by the column itself, so it never counts)
   const unfillable = def.slots.filter(
-    (slot) => !state.fields.some((f) => !f.protected && slot.types.includes(f.type)),
+    (slot) => slot !== forcedSlot
+      && !state.fields.some((f) => !f.protected && slot.types.includes(f.type)),
   );
 
   const refreshPreview = (): void => {
@@ -645,6 +687,20 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     const sel = document.createElement('select');
     sel.className = 'wb-compmap-select';
     sel.dataset.slot = slot.key;
+    if (slot === forcedSlot && applyField) {
+      // the slot the component is being applied THROUGH — pinned to the
+      // column, not a choice (the other slots stay free)
+      const opt = document.createElement('option');
+      opt.value = applyField.name;
+      opt.textContent = `${applyLabel} — ${slotTypesLabel([applyField.type])}`;
+      sel.appendChild(opt);
+      sel.value = applyField.name;
+      sel.disabled = true;
+      sel.title = `This slot is the ${applyLabel} column — the component is being applied to it`;
+      row.append(lab, sel);
+      panel.appendChild(row);
+      continue;
+    }
     const candidates = state.fields.filter((f) => !f.protected && slot.types.includes(f.type));
     if (!candidates.length) {
       const opt = document.createElement('option');
@@ -672,20 +728,19 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
   // ── "Where should this appear?" — the trigger picker (issue #204) ─────────
   // A component stays trigger-agnostic content; applying binds it to a host
   // division + event (TRIGGER-MODEL §2-3). Default = the plain inline insert,
-  // so a no-trigger apply stays exactly one click. Element components only:
-  // a row component IS the row layout, there is nothing to trigger.
+  // so a no-trigger apply stays exactly one click. Element inserts only: a row
+  // component IS the row layout, and a column APPLY is always inline — the
+  // look lives in the cell, there is nothing to trigger.
   const isRow = componentKind(def) === 'row';
   // candidates come from whatever is on the canvas — the same doc the inline
   // branches write to, so the two paths can never disagree about the target
-  const hosts = isRow ? [] : candidateHostPaths(state.doc.root);
+  const hosts = isRow || applyField ? [] : candidateHostPaths(state.doc.root);
   type AppearMode = 'inline' | 'hover-card' | 'click-card';
   let appear: AppearMode = 'inline';
   let hostIdx = 0;
   let cardHint = 'bottomCenter';
 
-  const inlineLabel = target.kind === 'column'
-    ? `In the layout — add to the ${targetLabel} column formatter`
-    : 'In the layout — add to the view';
+  const inlineLabel = 'In the layout — add to the view';
 
   const whereRow = document.createElement('label');
   whereRow.className = 'wb-compmap-row';
@@ -785,7 +840,7 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     + 'triggers never collide. Click cards get a full-surface overlay button, so child elements '
     + 'can\'t swallow the click; hover-reveal classes on the same element compose fine.';
 
-  if (!isRow) {
+  if (!isRow && !applyField) {
     panel.append(whereRow, hostRow, hintRow, beakRow, fine);
     if (!hosts.length) {
       whereSel.disabled = true;
@@ -801,8 +856,8 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
   const insert = document.createElement('button');
   insert.type = 'button';
   insert.className = 'wb-compmap-insert';
-  const inlineButtonText = isRow ? 'Use as the row layout'
-    : target.kind === 'column' ? `Add to the ${targetLabel} column formatter`
+  const inlineButtonText = applyField ? `Apply to the ${applyLabel} column`
+    : isRow ? 'Use as the row layout'
       : 'Add to the view';
   const refreshAppear = (): void => {
     const card = appear !== 'inline';
@@ -819,21 +874,25 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
   });
   refreshAppear();
   insert.disabled = !mappingComplete(def, mapping);
-  insert.title = isRow
-    ? (target.kind === 'column'
-      // honest copy: a row component IS the row layout, so with a column
-      // formatter open it still replaces the VIEW's body, not the column
-      ? 'This replaces the VIEW\'s row layout (not the open column formatter) — one undoable step'
-      : 'Replace this view\'s row layout with the bound component — one undoable step')
-    : target.kind === 'column'
-      ? `Insert the bound component into the open ${targetLabel} column formatter at the selection — one undoable step`
+  insert.title = applyField
+    ? `Bake the mapped component and make it the ${applyLabel} column's look — one undoable step`
+    : isRow
+      ? 'Replace this view\'s row layout with the bound component — one undoable step'
       : 'Insert the bound component — one undoable step';
   insert.addEventListener('click', () => {
+    if (applyField) {
+      // the column-apply gesture: bake + store the look + rewrite the placed
+      // grid cell, ONE undoable step inside state
+      state.applyComponentToColumn(applyField.name, def, mapping);
+      close();
+      onInserted?.();
+      onToast(`${def.name} is now the ${applyLabel} column's look — Ctrl+Z undoes`);
+      return;
+    }
     // bind AND stamp — insertions carry instance provenance for the inventory
     const bound = bindComponentInstance(def, mapping);
     if (isRow) {
       // a row component IS the view body — same apply as a row template
-      if (state.activeDocKey !== 'main') state.openMain();
       state.applyRowTemplate(bound, def.additionalRowClass);
       close();
       onInserted?.();
@@ -867,16 +926,6 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
       onToast(`${def.name} now opens as a ${appear === 'hover-card' ? 'hover' : 'click'} card from ${where} — Ctrl+Z undoes it`);
       return;
     }
-    if (target.kind === 'column') {
-      // into the OPEN column formatter, at the selection like a palette drop —
-      // components in column formatters/CFRs are allowed (owner decision):
-      // the bound tree references explicit [$Field]s, valid there
-      state.insertNode(bound);
-      close();
-      onInserted?.();
-      onToast(`Added ${def.name} to the ${targetLabel} column formatter — Ctrl+Z removes it`);
-      return;
-    }
     // on the grid, root children ARE the view columns — arrive as a new one;
     // elsewhere insert at the selection like a palette drop
     const at = target.grid ? [] : undefined;
@@ -885,7 +934,17 @@ function openMappingDialog(def: ComponentDef, onToast: (m: string) => void, onIn
     onInserted?.();
     onToast(`Added ${def.name}${target.grid ? ' as a new grid column' : ''} — Ctrl+Z removes it`);
   });
-  foot.appendChild(insert);
+  if (applyField && !forcedSlot) {
+    // refuse and teach: nothing in this component can render the column
+    const no = document.createElement('div');
+    no.className = 'wb-complib-empty';
+    no.textContent = componentKind(def) === 'row'
+      ? `${def.name} is a whole-row layout — it can't be a single column's look. Use it from the view side instead (“Use as the row layout…”).`
+      : `${def.name} has no slot that takes a ${slotTypesLabel([applyField.type])} column, so it can't become the ${applyLabel} column's look. Pick a component with a ${slotTypesLabel([applyField.type])} slot.`;
+    foot.appendChild(no);
+  } else {
+    foot.appendChild(insert);
+  }
   panel.appendChild(foot);
 
   document.body.appendChild(overlay);
@@ -977,39 +1036,39 @@ function openImportComponentDialog(onSaved: () => void, onToast: (m: string) => 
 
 /**
  * Package the subtree at `path` as a reusable component: derive typed slots
- * from the fields it references and stash it in the library. Refuses subtrees
- * carrying a columnFormatterReference (refuse-and-teach, like the linter).
+ * from the fields it references and stash it in the library. Refuses trees
+ * carrying a raw columnFormatterReference key (a foreign paste — nothing in
+ * this workspace resolves references anymore; refuse-and-teach).
  */
 export function openSaveAsComponent(path: NodePath, onToast: (m: string) => void): void {
   const node = state.nodeAt(path);
   if (!node) return;
   if (containsCfr(node)) {
-    onToast('This element renders a shared column formatter (§) — components must be self-contained. Detach from the style first, then save it as a component.');
+    onToast('This element references another column\'s formatter (columnFormatterReference) — components must be self-contained. Inline that content first, then save it as a component.');
     return;
   }
-  // written inside a column formatter, @currentField IS that column — make the
-  // reference explicit so the component is portable
-  const inColumn = state.activeDocKey !== 'main' || state.doc.kind === 'column';
-  const tree = inColumn ? inlineColumnFormatter(node, state.currentFieldName)
-    : JSON.parse(JSON.stringify(node)) as SPElement;
+  const tree = JSON.parse(JSON.stringify(node)) as SPElement;
   // the ROOT of an explicit row view is the whole row layout — save it as a
   // row component (applying one replaces a view's body, template-style)
-  const isRowRoot = path.length === 0 && state.activeDocKey === 'main' && state.doc.kind === 'row';
+  const isRowRoot = path.length === 0 && state.doc.kind === 'row';
   const arc = state.doc.viewExtras?.additionalRowClass;
   openSaveDialog(tree, node._elmName ?? (isRowRoot ? 'My row layout' : 'My component'), onToast,
     isRowRoot ? { kind: 'row', ...(typeof arc === 'string' ? { additionalRowClass: arc } : {}) } : {});
 }
 
 /**
- * Package a column's registered format as a component (the surface that
- * swallowed "Save as reusable subtype…"): the recipe is written in
- * @currentField terms in the registry, so it inlines to an explicit reference
- * first and derives its one typed slot from there.
+ * Package a column's LOOK as a component: the stored tree is already in
+ * explicit-[$Field] dialect, so its typed slots derive straight from it.
+ * This is the one-gesture lift for IMPORTED (unstamped) looks — they aren't
+ * silently editable, but saving one as a component makes it a def you can
+ * edit and re-apply (refuse-and-teach).
  */
 export function openSaveColumnAsComponent(field: MockField, onToast: (m: string) => void): void {
-  const formatter = Object.hasOwn(state.columnRefs, field.name) ? state.columnRefs[field.name] : undefined;
-  if (!formatter) { onToast('Format this column first, then save it as a component.'); return; }
-  openSaveDialog(inlineColumnFormatter(formatter, field.name), `${field.displayName ?? field.name} look`, onToast);
+  const look = Object.hasOwn(state.columnLooks, field.name) ? state.columnLooks[field.name] : undefined;
+  if (!look) { onToast('This column has no look yet — apply a component to it first, then save that as your own.'); return; }
+  const tree = JSON.parse(JSON.stringify(look)) as SPElement;
+  delete tree._component; // the def stands on its own — stamps belong to instances
+  openSaveDialog(tree, `${field.displayName ?? field.name} look`, onToast);
 }
 
 /** The shared save dialog: name it, see its derived slots and preview, save.
@@ -1109,14 +1168,24 @@ function openSaveDialog(
       return;
     }
     close();
-    // replace + push: columns wearing this component (tagged by its id via the
-    // Format-this-column catalog) re-bake to the new recipe as ONE undo step
-    if (existing && componentKind(def) === 'element' && def.slots.length === 1) {
-      const key = def.slots[0].key;
-      const pushed = state.pushSubtypeUpdate(def.id, () =>
-        toColumnFormatter(bindComponent(def, { [key]: key }), key));
-      if (pushed > 0) {
-        onToast(`Replaced “${name}” and updated the ${pushed} column${pushed === 1 ? '' : 's'} wearing it — one Ctrl+Z reverts them`);
+    // replace + push: columns WEARING this component (their look's root stamp
+    // carries its id) re-bake to the new recipe — the look store and every
+    // placed floor cell rewrite together as ONE undoable step
+    if (existing && componentKind(def) === 'element') {
+      const wearing = Object.entries(state.columnLooks)
+        .filter(([, look]) => look._component?.id === def.id);
+      if (wearing.length) {
+        state.mutateDocument(() => {
+          for (const [fieldName, look] of wearing) {
+            state.columnLooks[fieldName] = bindComponentInstance(def, look._component!.map);
+            const f = state.fields.find((x) => x.name === fieldName);
+            const children = state.floorDoc.root.children;
+            const i = children?.findIndex((c) => gridColumnField(c) === fieldName) ?? -1;
+            if (f && children && i >= 0) children[i] = gridCellForField(f, state.columnLooks);
+          }
+        });
+        state.emit('data'); // look changes show up in pickers/tree/inventory
+        onToast(`Replaced “${name}” and re-baked the ${wearing.length} column${wearing.length === 1 ? '' : 's'} wearing it — one Ctrl+Z reverts them`);
         return;
       }
     }

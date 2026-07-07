@@ -729,6 +729,9 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   background: var(--wb-surface); color: var(--wb-text);
 }
 .wb-tree-hint { color: var(--wb-text-2); }
+/* instance binding tag: "← Column" on a ⬡ component instance row */
+.wb-tree-bindtag { margin-left: auto; flex: 0 0 auto; font-size: 10px; color: var(--wb-text-2); padding-right: 2px; }
+.wb-tree-row.selected .wb-tree-bindtag { color: inherit; opacity: .85; }
 .wb-tree-row.selected .wb-tree-hint { color: inherit; opacity: .85; }
 .wb-chip {
   font-size: 9px; border-radius: 3px; padding: 0 3px; line-height: 1.4;
@@ -908,6 +911,14 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   outline: 2px dashed var(--wb-accent); outline-offset: -2px;
   background: color-mix(in srgb, var(--wb-accent) 12%, transparent);
 }
+/* a ⬡ component dragged over a column: the whole column reads "drop applies
+   the look here" in the component channel's teal */
+.wb-grid-drop-look {
+  outline: 2px dashed var(--wb-component); outline-offset: -2px;
+  background: color-mix(in srgb, var(--wb-component) 10%, transparent);
+}
+/* header marker: this column wears a component look */
+.wb-grid-look { color: var(--wb-component); font-size: 11px; font-weight: 700; margin-left: 4px; flex: 0 0 auto; }
 /* per-column header menu (anchored under the header, like the ☰ panel) */
 .wb-grid-menu {
   position: fixed; z-index: 1000; min-width: 200px; max-height: 60vh; overflow-y: auto;

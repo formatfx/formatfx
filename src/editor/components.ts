@@ -382,7 +382,7 @@ export function createVariant(oldDef: ComponentDef, id: string, takenNames: stri
  * Re-bind a stamped INSTANCE to a (new) recipe using ITS OWN stored slot map —
  * the save-and-apply re-bake. Preserves the maker's rename (an `_elmName` that
  * differs from the name the old def gave it) and the instance's grid-layout
- * artifacts (flex/min-width — the forkCfr convention). Returns null for an
+ * artifacts (flex/min-width — the grid-cell convention). Returns null for an
  * unstamped element (nothing to re-bind). Pure.
  */
 export function rebindInstance(def: ComponentDef, el: SPElement, oldDefName: string): SPElement | null {

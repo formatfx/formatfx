@@ -13,10 +13,11 @@
 import { state } from './state';
 import { importSchema, buildSampleRows, sampleValue, FIELD_TYPE_OPTIONS, CSV_HELP } from '../core/schemaImport';
 import { buildGridRoot, isPureGrid } from './gridScaffold';
-import { importJson, exportJson } from '../core/serializer';
+import { inlineColumnFormatter } from './lookDialect';
+import { importJson } from '../core/serializer';
 import { parseThemeJson } from '../core/theme';
 import { buildExtractSnippet } from '../bridge/extractSnippet';
-import type { CellValue, FieldType, MockField, PersonValue, LookupValue, SPElement } from '../core/types';
+import type { CellValue, FieldType, MockField, PersonValue, LookupValue } from '../core/types';
 import type { FormatterDocument } from '../core/types';
 import exportScript from '../../tools/Export-ListSchema.ps1?raw';
 
@@ -38,10 +39,13 @@ export function applyImportedSchema(
     state.fields = schema.fields;
     state.rows = schema.rows ?? buildSampleRows(schema.fields, 3);
     const drop = new Set(opts.dropColumnFormatters ?? []);
-    for (const name of drop) delete state.columnRefs[name];
+    for (const name of drop) delete state.columnLooks[name];
     if (schema.columnFormatters) {
       for (const [name, tree] of Object.entries(schema.columnFormatters)) {
-        if (!drop.has(name)) state.columnRefs[name] = tree;
+        // a live CustomFormatter speaks @currentField — register it as an
+        // explicit-dialect LOOK (unstamped: imports are one "Save as
+        // component" gesture from editability, never silently editable)
+        if (!drop.has(name)) state.columnLooks[name] = inlineColumnFormatter(tree, name);
       }
     }
     state.importedViews = schema.views ?? [];
@@ -55,7 +59,7 @@ export function applyImportedSchema(
     let loadedView: string | null = null;
     if (isPureGrid(state.floorDoc.root)) {
       state.mutateDocument(() => {
-        state.floorDoc.root = buildGridRoot(state.fields, state.columnRefs);
+        state.floorDoc.root = buildGridRoot(state.fields, state.columnLooks);
       });
     }
     const dv = schema.views?.find((v) => v.isDefault && v.customFormatter);
@@ -72,7 +76,7 @@ export function applyImportedSchema(
     const vCount = schema.views?.length ?? 0;
     toast(`Imported ${schema.fields.length} fields${schema.listName ? ` from "${schema.listName}"` : ''}`
       + `${schema.rows ? ` + ${schema.rows.length} rows` : ''}`
-      + `${cfCount ? ` + ${cfCount} live column formatters (registered as references)` : ''}`
+      + `${cfCount ? ` + ${cfCount} column look${cfCount === 1 ? '' : 's'}` : ''}`
       + `${vCount ? ` + ${vCount} views` : ''}`
       + `${loadedView ? ` — "${loadedView}" opened as its own view (Ctrl+Z removes it; the grid is untouched)` : ''}`);
     return true;
@@ -80,11 +84,6 @@ export function applyImportedSchema(
     toast(`Schema import failed: ${(e as Error).message}`);
     return false;
   }
-}
-
-/** Accept a bare element or any wrapper shape and return the element tree. */
-function importSchemaJsonToTree(text: string): SPElement {
-  return importJson(text).root;
 }
 
 // ─── cell value ⇄ text ───────────────────────────────────────────────────────
@@ -148,14 +147,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     const bar = document.createElement('div');
     bar.className = 'wb-data-toolbar';
 
-    if (state.activeDocKey !== 'main') {
-      // editing a column formatter — @currentField IS that column, not a choice
-      const chip = document.createElement('span');
-      chip.className = 'wb-current-chip';
-      chip.textContent = `@currentField → ${state.currentFieldName} (the column being edited)`;
-      chip.title = 'While a column formatter is open, @currentField always resolves to that column — exactly like on a real list. Switch back to the main formatter to change which field a column-kind preview targets.';
-      bar.appendChild(chip);
-    } else if (state.doc.kind === 'column') {
+    if (state.doc.kind === 'column') {
       const fieldSel = document.createElement('select');
       fieldSel.title = 'Which column this formatter is applied to — @currentField resolves to this field\'s value in the preview';
       for (const f of state.fields) {
@@ -198,7 +190,6 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
 
     host.appendChild(dataGrid());
     if (state.importedViews.length) host.appendChild(viewsSection());
-    host.appendChild(columnRefsSection());
     host.appendChild(tenantThemeSection());
   };
 
@@ -231,8 +222,10 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
               state.loadViewDocument(doc, view.title);
               onToast(`"${view.title}" opened as its own view — Ctrl+Z removes it again`);
             } else {
-              state.loadColumnDocument(doc.root);
-              onToast(`"${view.title}" holds a column formatter — editing it on the ${state.currentFieldName} column`);
+              // a column payload becomes the current field's LOOK — the grid
+              // renders it embedded, with that column selected
+              state.loadDocument(doc);
+              onToast(`"${view.title}" holds a column formatter — applied as the ${state.currentFieldName} column's look (Ctrl+Z undoes)`);
             }
           } catch (e) {
             onToast(`Couldn't load "${view.title}": ${(e as Error).message}`);
@@ -328,80 +321,6 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     return wrap;
   };
 
-  // ── columnFormatterReference registry ──
-  const columnRefsSection = (): HTMLElement => {
-    const wrap = document.createElement('div');
-    // advanced — but revealed in basic when the view references a column the
-    // workspace doesn't have (the tree's "missing" note sends people here)
-    const missingRef = [...state.referencedColumns()].some((n) => !(n in state.columnRefs));
-    wrap.className = 'wb-schema-form wb-adv' + (missingRef ? ' wb-adv-active' : '');
-
-    const heading = document.createElement('div');
-    heading.className = 'wb-data-fieldname';
-    heading.textContent = 'Column formatter references';
-    heading.title = 'Register a column\'s formatter here and every columnFormatterReference to it renders inline on the canvas (on a real list the column just has to be in the view).';
-    wrap.appendChild(heading);
-
-    for (const [name, tree] of Object.entries(state.columnRefs)) {
-      const row = document.createElement('div');
-      row.className = 'wb-data-toolbar';
-      const label = document.createElement('span');
-      label.textContent = `[$${name}] → <${tree.elmType}> formatter`;
-      label.style.flex = '1';
-      const edit = document.createElement('button');
-      edit.textContent = state.activeDocKey === name ? 'editing…' : 'edit';
-      edit.title = 'Open this column formatter on the canvas (also in the topbar "Editing" switcher)';
-      edit.disabled = state.activeDocKey === name;
-      edit.addEventListener('click', () => state.openColumnRef(name));
-      const copy = document.createElement('button');
-      copy.textContent = 'copy';
-      copy.title = "Copy this column formatter's JSON for SharePoint's Format pane";
-      copy.addEventListener('click', async () => {
-        const json = exportJson({ kind: 'column', root: state.activeDocKey === name ? state.doc.root : tree }, { sanitizeWhitespace: true });
-        try {
-          await navigator.clipboard.writeText(json);
-          onToast(`[$${name}] formatter JSON copied`);
-        } catch {
-          onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
-        }
-      });
-      const del = document.createElement('button');
-      del.textContent = 'remove';
-      del.title = 'Remove this formatter from the workspace (asks first)';
-      del.addEventListener('click', () => {
-        if (!confirm(`Remove [$${name}] from the workspace?\n\nIts formatter JSON will be gone unless it's saved in a project file. CFRs to it will show a placeholder chip again.`)) return;
-        if (state.activeDocKey === name) state.openMain();
-        delete state.columnRefs[name];
-        state.emit('data');
-      });
-      row.append(label, edit, copy, del);
-      wrap.appendChild(row);
-    }
-
-    const name = document.createElement('input');
-    name.placeholder = 'Column name (e.g. StatusUI)';
-    const json = document.createElement('textarea');
-    json.rows = 3;
-    json.placeholder = "Paste that column's formatter JSON";
-    const add = document.createElement('button');
-    add.textContent = 'Register reference';
-    add.addEventListener('click', () => {
-      const n = name.value.trim().replace(/^\[\$?/, '').replace(/\]$/, '');
-      if (!n) { onToast('Give the reference a column name first.'); return; }
-      try {
-        const doc = importSchemaJsonToTree(json.value);
-        state.columnRefs[n] = doc;
-        name.value = ''; json.value = '';
-        state.emit('data');
-        onToast(`Registered [$${n}] — CFRs to it now render on the canvas`);
-      } catch (e) {
-        onToast(`Couldn't parse formatter: ${(e as Error).message}`);
-      }
-    });
-    wrap.append(name, json, add);
-    return wrap;
-  };
-
   // ── add-field form ──
   const addFieldForm = (done: () => void): HTMLElement => {
     const form = document.createElement('div');
@@ -456,7 +375,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       // a pure floor grows the new column right away, even while a sheet is up
       if (isPureGrid(state.floorDoc.root)) {
         state.mutateDocument(() => {
-          state.floorDoc.root = buildGridRoot(state.fields, state.columnRefs);
+          state.floorDoc.root = buildGridRoot(state.fields, state.columnLooks);
         });
       }
       done();
@@ -639,7 +558,7 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
         }
         if (isPureGrid(state.floorDoc.root)) {
           state.mutateDocument(() => {
-            state.floorDoc.root = buildGridRoot(state.fields, state.columnRefs);
+            state.floorDoc.root = buildGridRoot(state.fields, state.columnLooks);
           });
         }
         state.emit('data');
