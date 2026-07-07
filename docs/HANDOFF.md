@@ -719,9 +719,9 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    this vision: advanced-mode hover-card creation from the grid surface.
 1.6. ~~Playground polish backlog~~ **DONE 2026-06-12**: panel top-anchored
    (no recentering between family tabs), breathing room around the family
-   story, CFR slots labeled "name ⤷ [$Field]" on their overlays with a
-   confirm-and-enter button that switches the workspace to the referenced
-   column formatter and reopens the playground there, and a soft confirm
+   story, CFR slot overlays with a confirm-and-enter button (that whole
+   enter-the-column-formatter affordance left the product 2026-07-07 with
+   the CFR model — nothing to enter), and a soft confirm
    on Apply-to-canvas when name-less JSON would replace a named design.
 1.7. **Preview context menus + playground restructure + conditional
    formatting — BUILT 2026-06-12** (owner's voice-memo brief). Three parts:
@@ -732,7 +732,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    (b) playground reorganized into labeled groups: QUICK_LOOKS macro
    bundles (pill/card/stripe/ellipsis…, toggle on/off as picks), the nav
    "road" replaced by a mini structure tree beside the stage (ancestors +
-   children, stash dots, CFR enter row keeps `wb-pg-navcfr`), the family
+   children, stash dots; the CFR enter row died with the CFR model), the family
    story restyled as a tagged callout, the selected property rendered as a
    formatted card with self-applying examples, and an "already on X"
    current-styles list (expressions shown as 𝑓x; picks strike the old
@@ -743,10 +743,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    first-match-
    wins via per-property =if() chains threaded through every rule; an
    existing PLAIN value on a managed property becomes the no-match
-   fallback, an existing FORMULA is replaced (UI warns first). Column route
-   = "Format this column" semantics (register scaffold, CFR-swap the cell
-   as one doc mutation, openColumnRef switches the workspace, then the
-   style merge is the undoable step). The old "one-way generator" gap
+   fallback, an existing FORMULA is replaced (UI warns first). The
+   per-COLUMN route (a `{kind:'column'}` target reachable from the grid
+   header menu) was RETIRED 2026-07-07 with the migration — `CondTarget`
+   is element-only now; conditional formatting is element styling inside
+   a view or the workshop, reached via the context menu.
+   The old "one-way generator" gap
    CLOSED 2026-07-05: `parseRulesFromStyle` (condRules.ts — the contract
    tests pin it) parses generated =if() chains back into editable rules,
    so reopening the dialog lands on the applied rules with the WATCHED
@@ -897,45 +899,64 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 950 vitest unit tests across 52 files (engine semantics incl.
+- `npm test` — 950 vitest unit tests across 51 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
-  incl. the List Snapshot edges, workspace/state, preset binding, grid
-  scaffolding + grid mutations, conditional-formatting codegen evaluated
+  incl. the List Snapshot edges, workspace/state incl. the looks model —
+  `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
+  `lookDialect` ref-dialect converters, preset binding, grid scaffolding +
+  grid mutations, conditional-formatting codegen evaluated
   through the real engine — that test file is the contract for
   generated-condition semantics — the bridge's EXECUTED-snippet round trips
-  against stubbed fetch, and the collaborative-hub contracts: the share
+  against stubbed fetch, the collaborative-hub contracts (the share
   codec byte-exact round trips, the stress-test variant catalog incl.
-  threshold mining, the Explain visitor over both expression syntaxes, and
-  the autosave-pause never-clobber guarantee, the Stage-2 chrome: the view
-  strip, the column tab-groups brain, the pure-grid Apply-to-canvas
-  guard, the palette-derived components' definitely-renders contract, and
-  the Select/Live canvas mode). Run headlessly anywhere.
+  threshold mining, the Explain visitor over both expression syntaxes, the
+  autosave-pause never-clobber guarantee), the Mockup-B left-pane sections
+  (shelf, library, view card, views list), the column tab-groups brain,
+  the pure-grid Apply-to-canvas guard, the palette-derived components'
+  definitely-renders contract, and the Select/Live canvas mode). Run
+  headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 150 Playwright specs across `sandbox.spec.ts`
-  (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
-  snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
-  box model, flex editor, playground incl. quick looks/structure tree/property
-  card, pane modes, dark-mode probe), `grid.spec.ts` (grid-first workspace:
-  header menus, right-click context menus, conditional formatting incl.
-  cross-column watching, the Format cells dialog, format-column round trip,
-  hide/add, drag-to-group/reorder), `guide.spec.ts` (field guide),
-  `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
-  row-view builder, CFR linked instances, Studio/Advanced toggle),
-  `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
-  document dropdown + the Stage-2 view strip and grid-under-COLUMNS
-  semantics), `snapshots.spec.ts` (snapshots + navigation back),
-  `components.spec.ts` (the ⬡ tab: inventory + usage jumps, typed mapping
-  into the view OR an open column formatter, the component editor incl.
-  save-and-apply with as-found pinning, save-as, CFR refusal),
-  `share.spec.ts` (the collaborative hub: real-browser
+- `npm run test:ui` — 136 Playwright tests across 15 spec files:
+  `sandbox.spec.ts` (core smoke flows: the grid-first landing with dressed
+  columns, palette insert, JSON round trip, lint teaching, hover cards,
+  dark mode, the one unified surface), `canvasTabs.spec.ts` (the canvas
+  tab strip — the one navigation surface: the standing ▦ Grid tab,
+  open/focus/close/inline-rename/drag-reorder, reload persistence, the
+  workshop covering the canvas with keep-alive staged edits),
+  `grid.spec.ts` (the grid-first workspace: the header menu's LOOK
+  gestures — apply/change/remove a component, the reuse loop — hide/add,
+  drag to reorder/group, column tab groups, compiled column-JSON export,
+  element right-click menus, element-level Format cells + conditional
+  formatting incl. cross-column watching and the parse-back round trip),
+  `import.spec.ts` (schema import + the List Snapshot: imported
+  CustomFormatters register as column looks, the review opt-out, captured
+  views opening as canvas tabs, the lint-gated deploy panel),
+  `workspace.spec.ts` (the workspace loop: shelf chip inserts + field
+  drags, the instance card's re-bind/detach, workshop saves re-baking worn
+  columns, compiled copy, element naming, style doc cards, the playground,
+  box-model/alignment editors, the This-view card, the dark-mode engine
+  probe, Select/Live), `components.spec.ts` (the always-on library:
+  project inventory + usage jumps, the typed mapping dialog + the trigger
+  picker, Save as component…, replace-and-push re-baking, Bring your own
+  incl. the CFR-import refusal, the legacy-subtypes migration),
+  `lookLegibility.spec.ts` ("teal ⬡ = a component at work": header marks,
+  the tree's binding rows, accept-gated drops, the instance card — and no
+  violet § channel anywhere in the DOM), `areas.spec.ts` (Ctrl-click
+  multi-select → "make a row view" as a NEW canvas tab, the density knob,
+  explicit tile), `maker.spec.ts` (the maker-first shell: grid landing,
+  the single Advanced door, the tab strip as the where-am-I),
+  `snapshots.spec.ts` (snapshots + navigation back), `templates.spec.ts`
+  (the row/tile builder: wireframe gallery, zone editor, field/component
+  drags into zones, width presets, in-place reopen), `share.spec.ts`
+  (the collaborative hub: real-browser
   share round trips with fresh-context recipients, the never-clobber/backup/
   restore flows, Explain, Stress Test), `search.spec.ts` (the universal
   search overlay: Ctrl+F/🔎, grouped results, navigate-never-mutate, the
   explicit Insert card, the no-logical-NOT teaching no-match),
-  `styleLegibility.spec.ts`
-  ("violet = shared"), `icons.spec.ts`, `subtypes.spec.ts` and
-  `templates.spec.ts`.
+  `guide.spec.ts` (the field guide reader) and `icons.spec.ts` (the
+  Fluent icon gallery: the fx bar's Icon slot + the guide's icon wall).
+  (The same keep-the-count-honest rule applies here.)
   Shared mechanics (fresh-app reset, `header()`, `openJson()`,
   `openPalette()`, `loadExample()`, the Data-dock schema-import steps) live
   in `e2e/helpers.ts` — navigation only, never assertions; each spec keeps
