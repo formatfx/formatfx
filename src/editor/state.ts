@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/state.ts — Single store for the editor: the workspace (floor grid +
  * named view sheets + per-column looks), mock data, selection (by node

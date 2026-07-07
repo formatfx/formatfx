@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/columnShelf.ts — the COLUMNS SHELF (COLUMNS-COMPONENTS-VIEWS §3.4):
  * "Columns — your data". One typed chip per non-protected field. A column is

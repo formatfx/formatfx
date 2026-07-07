@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/viewMenu.ts — the VIEWS LIST section of the Left Edit Pane
  * (COLUMNS-COMPONENTS-VIEWS §2-3: "viewMenu becomes the views list in the

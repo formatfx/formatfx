@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/paletteComponents.ts — the palette, offered as COMPONENTS (owner
  * brief 2026-07-05: "views are made up of columns and components — and the

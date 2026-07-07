@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/viewport.ts — the pure brain behind the canvas VIEW controls:
  * zoom (#216) and the simulated viewport width (#224). Two separate,

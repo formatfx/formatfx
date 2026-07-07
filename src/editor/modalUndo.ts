@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/modalUndo.ts — the modal-local undo brain (FLOOR-AND-SHEETS §2.3,
  * Stage 4's second half). Every tier-1/2 editor keeps a LOCAL ↶↷ stack that

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * core/stressTest.ts — the edge-case matrix: pathological-but-REAL data
  * variants generated from the current schema, so a maker can see "will this

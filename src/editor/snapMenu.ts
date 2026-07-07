@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0 (see LICENSE) or a commercial license (see LICENSING.md).
+
 /**
  * editor/snapMenu.ts — the snapshot menu (issue #140), anchored under the 🕘
  * history button on the Left Edit Pane's Formatters bar.
