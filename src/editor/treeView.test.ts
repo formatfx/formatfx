@@ -51,6 +51,46 @@ describe('tree action buttons (a11y)', () => {
   });
 });
 
+describe('elemType far-right + hover-actions swap slot (#219, #220)', () => {
+  it('moves elemType out of the label into a far-right meta slot shared with the hover actions', () => {
+    const host = mountDoc({ elmType: 'div', children: [{ elmType: 'span', txtContent: 'x' }] });
+    const row = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1]; // the child span row
+    const label = row.querySelector('.wb-tree-label');
+    const meta = row.querySelector('.wb-tree-meta');
+    expect(meta).not.toBeNull();
+    // elemType left the label — it's metadata, out of the way until hovered
+    expect(label?.querySelector('.wb-tree-elmtype')).toBeNull();
+    const elmtype = meta!.querySelector('.wb-tree-elmtype');
+    expect(elmtype?.textContent).toBe('span');
+    // the hover actions share the SAME slot as elemType — CSS swaps one for
+    // the other on row hover without any reflow, since both are always here
+    expect(elmtype?.parentElement).toBe(meta);
+    const actions = meta!.querySelector('.wb-tree-actions');
+    expect(actions?.parentElement).toBe(meta);
+    expect(actions?.querySelectorAll('button').length).toBeGreaterThan(0);
+    // the meta slot is the row's last child — the far-right position
+    expect(row.lastElementChild).toBe(meta);
+  });
+
+  it('keeps the meta slot far-right even on rows with a binding tag and eye toggle', () => {
+    const host = mountDoc({
+      elmType: 'div',
+      children: [
+        {
+          elmType: 'div',
+          _elmName: 'Deadline chip',
+          _component: { id: 'builtin-deadline-chip', map: { Due: 'DueDate' } },
+          txtContent: '=toLocaleDateString([$DueDate])',
+        },
+      ],
+    });
+    const row = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1];
+    expect(row.querySelector('.wb-tree-bindtag')).not.toBeNull();
+    expect(row.querySelector('.wb-tree-eye')).not.toBeNull();
+    expect(row.lastElementChild).toBe(row.querySelector('.wb-tree-meta'));
+  });
+});
+
 describe('component-instance rows (the "⬡ Name ← Column" binding language)', () => {
   /** A row view whose second child is a bound component instance. */
   const mountInstance = (map: Record<string, string>): HTMLElement =>

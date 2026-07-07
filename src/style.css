@@ -2899,6 +2899,63 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   background: var(--wb-lp-selected); border-radius: 5px; color: var(--wb-lp-text);
 }
 
+/* ── #219: elemType far-right, swapped for hover actions in the same slot ──── */
+/* elemType and the hover actions share ONE grid cell (stacked + right-
+   anchored), so the slot's width is whichever is wider — no reflow when one
+   fades out and the other fades in. The actions stay display:inline-flex at
+   rest (only opacity/transform/pointer-events toggle), so the grid cell —
+   and therefore the row's height — already accounts for their (bigger, see
+   #220 below) footprint even before the row is hovered. */
+.wb-lp-tree .wb-tree-meta {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  align-items: center;
+  justify-items: end;
+}
+.wb-lp-tree .wb-tree-meta > * { grid-area: 1 / 1; }
+.wb-lp-tree .wb-tree-meta .wb-tree-elmtype {
+  transition: opacity .12s ease, transform .12s ease;
+}
+.wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-elmtype {
+  opacity: 0;
+  transform: translateX(4px);
+  pointer-events: none;
+}
+.wb-lp-tree .wb-tree-meta .wb-tree-actions {
+  display: inline-flex;
+  opacity: 0;
+  transform: translateX(4px);
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+}
+.wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-actions,
+.wb-lp-tree .wb-tree-row:focus-within .wb-tree-meta .wb-tree-actions {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* ── #220: bigger hover-action hit targets in the structure tree ──────────── */
+/* Was font-size 10px with ~1px of padding — a near-unclickable sliver. Scaled
+   the glyph up and gave each button real padding (a proper hit target),
+   scoped to the Left Edit Pane's tree only — the Component Library and Views
+   list reuse .wb-tree-actions too and keep their own (already-tuned) sizing. */
+.wb-lp-tree .wb-tree-actions { gap: 3px; }
+.wb-lp-tree .wb-tree-actions button {
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.wb-lp-tree .wb-tree-actions button:hover,
+.wb-lp-tree .wb-tree-actions button:focus-visible {
+  color: var(--wb-accent);
+}
+.wb-lp-tree .wb-tree-actions button:focus-visible {
+  outline: 1.5px solid var(--wb-accent);
+  outline-offset: -1px;
+}
+
 /* ── class-precedence: inline-override badge on a governed Style row ────────── */
 .wb-governed-badge {
   flex: 0 0 auto; font-size: 10px; font-weight: 600; line-height: 1;

@@ -134,7 +134,9 @@ export function mountTree(
     const typeName = document.createElement('span');
     typeName.className = 'wb-tree-elmtype' + (primaryName ? ' wb-tree-elmtype-dim' : '');
     typeName.textContent = el.elmType ?? '?';
-    label.append(typeName, ...nodeChips(el));
+    // elemType does NOT join the label — it lives in the far-right "meta"
+    // slot built below, swapped for the hover actions on row hover (#219).
+    label.append(...nodeChips(el));
     const hint = primaryName ? '' : nodeHint(el);
     if (hint) {
       const h = document.createElement('span');
@@ -224,7 +226,15 @@ export function mountTree(
       row.appendChild(tag);
     }
     row.appendChild(eye);
-    row.appendChild(actions);
+    // far-right "meta" slot (#219): elemType and the hover actions share the
+    // same space, stacked in a CSS grid cell — at rest elemType shows, and
+    // hovering the row fades/slides it out while the actions fade/slide in
+    // (see .wb-tree-meta in style.css), so metadata stays out of the way
+    // until the row is actually being acted on.
+    const meta = document.createElement('span');
+    meta.className = 'wb-tree-meta';
+    meta.append(typeName, actions);
+    row.appendChild(meta);
 
     // selection: plain click = single-select; Ctrl/Cmd/Shift = add/remove
     row.addEventListener('click', (e) => {
