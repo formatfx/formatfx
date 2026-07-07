@@ -1,7 +1,7 @@
 /**
  * editor/state.ts — Single store for the editor: the workspace (floor grid +
- * named view sheets + registered column formatters), mock data, selection
- * (by node path), undo/redo, and change notification.
+ * named view sheets + per-column looks), mock data, selection (by node
+ * path), undo/redo, and change notification.
  *
  * FLOOR-AND-SHEETS Stage 1 — the state model:
  *   · The FLOOR is its own columns-only grid document (`floorDoc`, kind
@@ -11,27 +11,38 @@
  *     sheet slides it over the floor; minimizing drops back to the floor
  *     WITHOUT touching the sheet. Leaving/opening is navigation, never a
  *     document mutation — it pushes nothing onto the undo stack.
- *   · `doc` stays the live canvas document every consumer reads. While
- *     `activeDocKey === 'main'` it IS the active surface's slot object
- *     (floorDoc or a sheet's doc); drilled into a column formatter it is
- *     that column's tree, kind 'column'.
+ *   · `doc` stays the live canvas document every consumer reads — the
+ *     active surface's slot object (floorDoc or a sheet's doc),
+ *     write-through.
+ *
+ * COLUMNS-COMPONENTS-VIEWS (model B) — the column-look model:
+ *   · A column's look = a component applied to it. `columnLooks` stores the
+ *     BAKED bound instance (root stamped `_component`) in explicit-[$Field]
+ *     dialect; imported looks are the same trees, unstamped. The floor's
+ *     grid cells EMBED clones of the look (gridScaffold) — no reference
+ *     element, no per-column editing surface, no drill-in. Applying,
+ *     removing or importing a look rewrites the store AND the floor cell
+ *     as one undoable step.
+ *   · The per-column SharePoint export compiles on demand —
+ *     toColumnFormatter(look, field); imports come back through
+ *     inlineColumnFormatter (both in lookDialect.ts).
  *   · Undo is ONE GLOBAL app-level stack (FLOOR-AND-SHEETS §2.3): every
  *     snapshot captures the whole workspace plus where the mutation
  *     happened, so undo/redo also navigate back to the surface they change
  *     — the spreadsheet-workbook convention. Modal editors keep their own
  *     local stacks and commit as one app step (template builder,
- *     batchProjectUpdate, Format cells); the canvas-inline CFR drill-in is
- *     a surface, so its gestures are app-level steps.
+ *     batchProjectUpdate, Format cells).
  */
 
 import type {
   FormatterDocument, SPElement, NodePath, MockField, MockRow, PersonValue, DocumentKind,
 } from '../core/types';
 import type { ImportedView } from '../core/schemaImport';
-import { cfrFieldName } from '../core/refs';
 import { buildGridRoot, gridCellForField, gridColumnField, isPureGrid } from './gridScaffold';
 import { addGroup, sanitizeGroups, type ColumnGroup } from './colGroups';
-import { inlineColumnFormatter, toColumnFormatter } from './cfr';
+import { inlineColumnFormatter } from './lookDialect';
+import { bindComponentInstance, bestGuessMapping, type ComponentDef } from './components';
+import { paletteComponents } from './paletteComponents';
 import {
   buildRowView, rowDensityOf,
   setRowDensity as applyRowDensity,
@@ -66,61 +77,36 @@ const ME: PersonValue = {
 
 function defaultFloor(): FormatterDocument {
   // the grid-first workspace: the floor starts as a Microsoft-Lists style
-  // grid — one column per view column, each rendered with its current
-  // formatter (Status/Progress arrive formatted; Owner stays registered but
-  // unplaced so "+ column" demonstrates adding an already-formatted column).
+  // grid — one column per view column, each cell embedding its column's look
+  // (Status/Progress arrive wearing components; Owner's look is registered
+  // but unplaced so "+ column" demonstrates adding an already-dressed column).
   return {
     kind: 'grid',
-    root: buildGridRoot(defaultFields(), defaultColumnRefs(),
+    root: buildGridRoot(defaultFields(), defaultColumnLooks(),
       ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project']),
   };
 }
 
-/** Showcase column formatters — referenced by the default floor (Owner is registered but unused, on purpose). */
-function defaultColumnRefs(): Record<string, SPElement> {
-  return {
-    Status: {
-      elmType: 'div',
-      _elmName: 'Status pill',
-      txtContent: "=if([$Status]=='','None',[$Status])",
-      style: {
-        'display': 'inline-flex', 'align-items': 'center', 'justify-content': 'center',
-        'border-radius': '12px', 'padding': '2px 10px',
-        'font-size': '12px', 'font-weight': '600', 'color': '#ffffff',
-        'background-color': "=if([$Status]=='Done','#107c10',if([$Status]=='Blocked','#d13438',if([$Status]=='In Progress','#0078d4','#737a7f')))",
-      },
-    },
-    Progress: {
-      elmType: 'div',
-      _elmName: 'Progress bar',
-      attributes: { class: 'ms-bgColor-neutralLighter' },
-      style: { 'width': '120px', 'border-radius': '3px', 'overflow': 'hidden' },
-      children: [{
-        elmType: 'div',
-        _elmName: 'Fill',
-        txtContent: "=@currentField+'%'",
-        style: {
-          'width': "=@currentField+'%'", 'min-width': '24px',
-          'background-color': "=if(@currentField>=100,'#107c10','#0078d4')",
-          'color': '#ffffff', 'font-size': '11px', 'padding': '2px 4px', 'box-sizing': 'border-box',
-        },
-      }],
-    },
-    Owner: {
-      elmType: 'div',
-      _elmName: 'Owner persona',
-      style: { 'display': 'flex', 'align-items': 'center' },
-      children: [
-        {
-          elmType: 'img',
-          _elmName: 'Avatar',
-          attributes: { src: "=getUserImage([$Owner.email],'S')", title: '=[$Owner.title]' },
-          style: { 'width': '24px', 'height': '24px', 'border-radius': '50%', 'margin-right': '6px' },
-        },
-        { elmType: 'span', txtContent: '[$Owner.title]', style: { 'font-size': '13px' } },
-      ],
-    },
+/** Showcase looks — REAL stamped instances of palette-derived components
+ *  (COLUMNS-COMPONENTS-VIEWS §1), so the default workspace demonstrates the
+ *  model it teaches: a column's look IS a component applied to it. Owner is
+ *  dressed but unplaced, on purpose. */
+function defaultColumnLooks(): Record<string, SPElement> {
+  const fields = defaultFields();
+  const looks: Record<string, SPElement> = {};
+  const wear = (defId: string, fieldName: string): void => {
+    const def = paletteComponents().find((d) => d.id === defId);
+    const field = fields.find((f) => f.name === fieldName);
+    if (!def || !field) return; // defensive: a retired preset just skips its look
+    const mapping = bestGuessMapping(def, fields);
+    const slot = def.slots.find((s) => s.types.includes(field.type));
+    if (slot) mapping[slot.key] = field.name; // the wearer wins its fitting slot
+    looks[fieldName] = bindComponentInstance(def, mapping);
   };
+  wear('palette-status-pill', 'Status');
+  wear('palette-data-bar', 'Progress');
+  wear('palette-persona', 'Owner');
+  return looks;
 }
 
 export function defaultFields(): MockField[] {
@@ -181,19 +167,19 @@ export class EditorState {
   views: SheetDoc[] = [];
   /** Which sheet is up on the canvas; null = standing on the floor. */
   activeViewId: string | null = null;
-  /** The live canvas document. While `activeDocKey === 'main'` this IS the
-   *  active surface's slot object (write-through); drilled into a column
-   *  formatter it is that column's tree with kind 'column'. */
+  /** The live canvas document — the active surface's slot object (floorDoc
+   *  or a sheet's doc), write-through. */
   doc: FormatterDocument = this.floorDoc;
   fields: MockField[] = defaultFields();
   rows: MockRow[] = defaultRows();
   /** Field the column formatter targets (@currentField). */
   currentFieldName = 'Status';
-  /** Registered column formatters for columnFormatterReference resolution:
-   *  field name → tree. Owned by the WORKSPACE — column formatters render on
-   *  the floor's cells and on sheets via CFR alike, so the registry sits
-   *  above both surfaces. */
-  columnRefs: Record<string, SPElement> = defaultColumnRefs();
+  /** Column LOOKS: field name → the column's baked look — a bound component
+   *  instance (root stamped `_component`, explicit-[$Field] dialect), or an
+   *  unstamped imported tree. Owned by the WORKSPACE — the floor's cells and
+   *  view drops EMBED clones of these; the per-column SharePoint export
+   *  compiles them on demand (toColumnFormatter). */
+  columnLooks: Record<string, SPElement> = defaultColumnLooks();
   /** Views captured by a List Snapshot import (formatters kept as raw text). */
   importedViews: ImportedView[] = [];
   /** Column TAB GROUPS on the grid floor (owner brief 2026-07-05): named,
@@ -201,15 +187,14 @@ export class EditorState {
    *  metadata like sheet names — never a document mutation, never an undo
    *  step; the exported floor is identical with or without them. */
   floorGroups: ColumnGroup[] = [];
-  /** Which formatter is on the canvas: 'main' or a columnRefs key. */
+  /** Which document key is on the canvas. Always 'main' (the active surface)
+   *  this phase — the canvas component tabs re-target it in a later phase
+   *  (COLUMNS-COMPONENTS-VIEWS §2). */
   activeDocKey = 'main';
   /** The sheet last on the canvas — session-local memory for the VIEWS tab's
    *  return target (the grid lives on the COLUMNS tab since Stage 2, so the
    *  VIEWS tab needs to know which sheet to come back to). Never persisted. */
   lastOpenViewId: string | null = null;
-  /** The maker's data-tab field pick, stashed while a drill-in overrides
-   *  currentFieldName, restored on the way back out. */
-  private drillFieldStash: string | null = null;
   /**
    * Selection backing store. Figma-style multi-select: the array holds every
    * selected node path; `selection` (below) is the backward-compatible primary
@@ -241,8 +226,8 @@ export class EditorState {
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private saveTimer = 0;
-  /** Per-surface selection memory (pure view state): 'floor', a view id, or a
-   *  column name → the selection that was live when you navigated away. */
+  /** Per-surface selection memory (pure view state): 'floor' or a view id →
+   *  the selection that was live when you navigated away. */
   private surfaceSelections: Record<string, NodePath[]> = {};
   /** Monotonic view-id source, seeded past any loaded ids. */
   private viewIdCounter = 0;
@@ -275,11 +260,6 @@ export class EditorState {
   }
 
   emit(reason: ChangeReason): void {
-    // keep the registry live while a column formatter is being edited, so
-    // CFRs on the floor and sheets pick up edits the moment you switch back
-    if (this.activeDocKey !== 'main' && (reason === 'document' || reason === 'load')) {
-      this.columnRefs[this.activeDocKey] = this.doc.root;
-    }
     for (const fn of this.listeners) fn(reason);
     // 'selection' and 'lens' are pure view state — neither autosaves (the lens
     // is not part of the project file; it lives in wb-ui-prefs).
@@ -316,8 +296,8 @@ export class EditorState {
   markSavepoint(): void { this._savepoint = this.snapState(); }
 
   /** Whether there are unsaved mutations since the last Save checkpoint.
-   *  Compares CONTENT (floor + sheets + registry + tags) — navigation and
-   *  selection are view state and never count as dirt. */
+   *  Compares CONTENT (floor + sheets + looks) — navigation and selection
+   *  are view state and never count as dirt. */
   get isDirtySinceSave(): boolean {
     if (this._savepoint == null) return false;
     const clean = (snap: string) => {
@@ -344,9 +324,9 @@ export class EditorState {
     this.emit('selection');
   }
 
-  // ─── Workspace: the floor, the sheets, and the drill-in ────────────────────
+  // ─── Workspace: the floor and the sheets ───────────────────────────────────
 
-  /** Whether the floor is the active surface (regardless of a column drill). */
+  /** Whether the floor is the active surface. */
   get onFloor(): boolean { return this.activeViewId === null; }
 
   /** The active sheet, or null when standing on the floor. */
@@ -362,24 +342,19 @@ export class EditorState {
   }
 
   /** The active SURFACE document slot (floor or the open sheet) — what
-   *  `doc` aliases while no column formatter is drilled into. */
+   *  `doc` aliases. */
   private surfaceDoc(): FormatterDocument {
     return this.activeView?.doc ?? this.floorDoc;
   }
 
   /** Selection-memory key for the current canvas document. */
   private surfaceKey(): string {
-    return this.activeDocKey !== 'main' ? this.activeDocKey : (this.activeViewId ?? 'floor');
+    return this.activeViewId ?? 'floor';
   }
 
   /** Write the live canvas document back into its slot. The surface slots are
-   *  write-through aliases already; this re-asserts the invariant (defensive)
-   *  and syncs a drilled column tree into the registry. */
+   *  write-through aliases already; this re-asserts the invariant (defensive). */
   private flushActiveDoc(): void {
-    if (this.activeDocKey !== 'main') {
-      this.columnRefs[this.activeDocKey] = this.doc.root;
-      return;
-    }
     const v = this.activeView;
     if (v) v.doc = this.doc;
     else this.floorDoc = this.doc;
@@ -407,13 +382,13 @@ export class EditorState {
 
   private navEntryValid(e: NavEntry): boolean {
     if (e.key === this.activeDocKey && e.view === this.activeViewId) return false;
-    if (e.key !== 'main' && !Object.hasOwn(this.columnRefs, e.key)) return false;
+    if (e.key !== 'main') return false; // no drilled/column surfaces exist this phase
     if (e.view !== null && !this.viewById(e.view)) return false;
     return true;
   }
 
-  /** Where goBack() would land ('main' or a column name), or null if nowhere.
-   *  Skips entries whose column/sheet has since been unregistered/removed. */
+  /** Where goBack() would land ('main' — the only doc key this phase), or
+   *  null if nowhere. Skips entries whose sheet has since been removed. */
   get backTarget(): string | null {
     for (let i = this.navStack.length - 1; i >= 0; i--) {
       if (this.navEntryValid(this.navStack[i])) return this.navStack[i].key;
@@ -438,10 +413,7 @@ export class EditorState {
         if (entry.view) this.openView(entry.view);
         else this.minimizeView();
       }
-      if (entry.key !== this.activeDocKey) {
-        if (entry.key === 'main') this.openMain();
-        else this.openColumnRef(entry.key);
-      }
+      if (entry.key !== this.activeDocKey) this.openMain(); // 'main' is the only valid key
     } finally {
       this.inGoBack = false;
     }
@@ -581,8 +553,7 @@ export class EditorState {
     if (this.floorGroups.length !== before) this.emit('data');
   }
 
-  /** The main (view) formatter root, even while drilled into a column style —
-   *  scope/blast-radius calculations need the active SURFACE. */
+  /** The active SURFACE's formatter root — what scope calculations read. */
   get mainRootForScope(): SPElement | undefined {
     return this.activeDocKey === 'main' ? this.doc.root : this.surfaceDoc().root;
   }
@@ -597,53 +568,15 @@ export class EditorState {
     }
   }
 
-  /** Column names the active surface references via columnFormatterReference. */
-  referencedColumns(): Set<string> {
-    const out = new Set<string>();
-    const root = this.mainRootForScope;
-    const walk = (el: SPElement | undefined): void => {
-      if (!el) return;
-      if (el.columnFormatterReference) {
-        out.add(cfrFieldName(el.columnFormatterReference));
-      }
-      el.children?.forEach(walk);
-      if (el.customCardProps?.formatter) walk(el.customCardProps.formatter);
-    };
-    walk(root);
-    return out;
-  }
+  // ─── Canvas doc key (always 'main' this phase) ─────────────────────────────
 
-  // ─── Drill-in: main surface ⇄ column formatters ────────────────────────────
-
-  /** Open a registered column formatter for editing. */
-  openColumnRef(name: string): void {
-    // own-key check: `in` would also match prototype members ('toString', …),
-    // and a registry read on such a name must never open a "formatter"
-    if (!Object.hasOwn(this.columnRefs, name) || this.activeDocKey === name) return;
-    if (!this.inGoBack) this.pushNav();
-    this.flushActiveDoc();
-    this.swapSelections(name);
-    if (this.activeDocKey === 'main') this.drillFieldStash = this.currentFieldName;
-    this.doc = { kind: 'column', root: this.columnRefs[name] };
-    this.activeDocKey = name;
-    // @currentField inside a column formatter is that column
-    if (this.fields.some((f) => f.name === name)) this.currentFieldName = name;
-    this.emit('load');
-    this.emit('data');
-  }
-
-  /** Return to the active surface (the floor or the open sheet). */
+  /** Return to the active surface. A no-op guard while 'main' is the only
+   *  canvas doc key — callers keep routing through it, and the canvas
+   *  component tabs re-target `activeDocKey` in a later phase. */
   openMain(): void {
     if (this.activeDocKey === 'main') return;
-    if (!this.inGoBack) this.pushNav();
-    this.flushActiveDoc();
-    this.swapSelections(this.activeViewId ?? 'floor');
     this.activeDocKey = 'main';
     this.doc = this.surfaceDoc();
-    if (this.drillFieldStash) {
-      this.currentFieldName = this.drillFieldStash;
-      this.drillFieldStash = null;
-    }
     this.emit('load');
     this.emit('data');
   }
@@ -655,14 +588,14 @@ export class EditorState {
   serializeProject(): string {
     this.flushActiveDoc();
     return JSON.stringify({
-      version: 2,
+      version: 3,
       floor: this.floorDoc,
       views: this.views,
       activeViewId: this.activeViewId,
       fields: this.fields,
       rows: this.rows,
-      currentFieldName: (this.activeDocKey !== 'main' && this.drillFieldStash) || this.currentFieldName,
-      columnRefs: this.columnRefs,
+      currentFieldName: this.currentFieldName,
+      columnLooks: this.columnLooks,
       ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
       ...(this.floorGroups.length ? { floorGroups: this.floorGroups } : {}),
       themeMode: this.themeMode,
@@ -671,10 +604,11 @@ export class EditorState {
   }
 
   /**
-   * Load a project payload. STRICT v2 shape guard: anything else — including
-   * every pre-Stage-1 payload — throws, and restore() falls back to the fresh
-   * default. That is a LOAD GUARD, not a converter: no migration code exists
-   * or is maintained (FLOOR-AND-SHEETS §3 Stage 1, owner call 2026-07-04).
+   * Load a project payload. STRICT v3 shape guard: anything else — including
+   * every pre-Stage-1 payload and the v2 `columnRefs` format — throws, and
+   * restore() falls back to the fresh default. That is a LOAD GUARD, not a
+   * converter: no migration code exists or is maintained (FLOOR-AND-SHEETS §3
+   * Stage 1, owner call 2026-07-04; COLUMNS-COMPONENTS-VIEWS §1).
    */
   loadProject(text: string): void {
     const p = JSON.parse(text);
@@ -692,8 +626,9 @@ export class EditorState {
     if (!p || typeof p !== 'object'
       || !p.floor?.root?.elmType
       || !Array.isArray(p.views) || !p.views.every(viewOk) || !idsUnique(p.views)
-      || !Array.isArray(p.fields) || !Array.isArray(p.rows)) {
-      throw new Error('Not a formatfx workspace file (expected floor/views/fields/rows).');
+      || !Array.isArray(p.fields) || !Array.isArray(p.rows)
+      || !p.columnLooks || typeof p.columnLooks !== 'object') {
+      throw new Error('Not a formatfx workspace file (expected floor/views/fields/rows/columnLooks).');
     }
     this.floorDoc = { ...p.floor, kind: 'grid' };
     this.views = p.views;
@@ -702,7 +637,7 @@ export class EditorState {
     this.fields = p.fields;
     this.rows = p.rows;
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
-    this.columnRefs = (p.columnRefs && typeof p.columnRefs === 'object') ? p.columnRefs : {};
+    this.columnLooks = p.columnLooks;
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
     this.floorGroups = sanitizeGroups(p.floorGroups); // additive key: absent → none
     this.activeDocKey = 'main';
@@ -710,7 +645,6 @@ export class EditorState {
     this.lastOpenViewId = this.activeViewId;
     if (p.themeMode === 'light' || p.themeMode === 'dark') this.themeMode = p.themeMode;
     this.customTheme = (p.customTheme && typeof p.customTheme === 'object') ? p.customTheme : null;
-    this.drillFieldStash = null;
     this.selection = [];
     this.undoStack = [];
     this.redoStack = [];
@@ -745,12 +679,11 @@ export class EditorState {
     this.fields = defaultFields();
     this.rows = defaultRows();
     this.currentFieldName = 'Status';
-    this.columnRefs = defaultColumnRefs();
+    this.columnLooks = defaultColumnLooks();
     this.importedViews = [];
     this.floorGroups = [];
     this.activeDocKey = 'main';
     this.lastOpenViewId = null;
-    this.drillFieldStash = null;
     this.customTheme = null;
     this.selection = [];
     this.undoStack = [];
@@ -833,13 +766,12 @@ export class EditorState {
     this.pushUndo(this.snapState());
   }
 
-  /** The undo snapshot: the WHOLE workspace — floor, sheets, the registered
-   *  column formatters, the per-field subtype tags — plus where the mutation
-   *  happened (surface + drill) and the selection. One global app-level stack
-   *  (FLOOR-AND-SHEETS §2.3): undo/redo restore content AND navigate back to
-   *  the surface they change. Structural field edits (add/remove/type, via
-   *  the data panel) deliberately live outside undo, so a later field edit is
-   *  never clobbered by an unrelated doc undo. */
+  /** The undo snapshot: the WHOLE workspace — floor, sheets, the column
+   *  looks — plus where the mutation happened (surface) and the selection.
+   *  One global app-level stack (FLOOR-AND-SHEETS §2.3): undo/redo restore
+   *  content AND navigate back to the surface they change. Structural field
+   *  edits (add/remove/type, via the data panel) deliberately live outside
+   *  undo, so a later field edit is never clobbered by an unrelated doc undo. */
   private snapState(): string {
     this.flushActiveDoc();
     return JSON.stringify({
@@ -847,18 +779,9 @@ export class EditorState {
       views: this.views,
       activeViewId: this.activeViewId,
       activeDocKey: this.activeDocKey,
-      tags: this.subtypeTags(),
-      refs: this.columnRefs,
+      looks: this.columnLooks,
       selections: this._selections,
     });
-  }
-
-  private subtypeTags(): Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }> {
-    const out: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }> = {};
-    for (const f of this.fields) {
-      if (f.subtype !== undefined || f.subtypeArgs !== undefined) out[f.name] = { subtype: f.subtype, subtypeArgs: f.subtypeArgs };
-    }
-    return out;
   }
 
   private restoreSnap(snap: string): void {
@@ -867,8 +790,7 @@ export class EditorState {
       views: SheetDoc[];
       activeViewId: string | null;
       activeDocKey: string;
-      tags?: Record<string, { subtype?: string; subtypeArgs?: Record<string, string | number | boolean> }>;
-      refs: Record<string, SPElement>;
+      looks: Record<string, SPElement>;
       selections?: NodePath[];
     };
     // sheet NAMES are project metadata, off the undo stack (the renameView
@@ -880,29 +802,14 @@ export class EditorState {
       const live = liveNames.get(v.id);
       if (live !== undefined) v.name = live;
     }
-    this.columnRefs = parsed.refs;
+    this.columnLooks = parsed.looks;
     this.activeViewId = (parsed.activeViewId && this.views.some((v) => v.id === parsed.activeViewId))
       ? parsed.activeViewId : null;
     if (this.activeViewId) this.lastOpenViewId = this.activeViewId;
-    this.activeDocKey = (parsed.activeDocKey !== 'main' && Object.hasOwn(this.columnRefs, parsed.activeDocKey))
-      ? parsed.activeDocKey : 'main';
-    if (this.activeDocKey !== 'main') {
-      this.doc = { kind: 'column', root: this.columnRefs[this.activeDocKey] };
-      if (this.fields.some((f) => f.name === this.activeDocKey)) this.currentFieldName = this.activeDocKey;
-    } else {
-      this.doc = this.surfaceDoc();
-      if (this.drillFieldStash) {
-        this.currentFieldName = this.drillFieldStash;
-        this.drillFieldStash = null;
-      }
-    }
+    // 'main' is the only canvas doc key this phase — coerce anything else
+    this.activeDocKey = 'main';
+    this.doc = this.surfaceDoc();
     if (parsed.selections) this._selections = parsed.selections;
-    const tags = parsed.tags ?? {};
-    for (const f of this.fields) {
-      const t = tags[f.name];
-      if (t && t.subtype !== undefined) f.subtype = t.subtype; else delete f.subtype;
-      if (t && t.subtypeArgs !== undefined) f.subtypeArgs = t.subtypeArgs; else delete f.subtypeArgs;
-    }
   }
 
   private pushUndo(state: string): void {
@@ -999,9 +906,6 @@ export class EditorState {
         return newPath;
       }
     }
-    // inserting into a solo-CFR host: split the reference into its own child
-    // so the fragment sits beside it, not swallowed by the CFR (see reparentNode).
-    this.materializeCfrHost(container);
     container.children = container.children ?? [];
     container.children.push(fragment);
     const newPath = [...target, container.children.length - 1];
@@ -1120,32 +1024,6 @@ export class EditorState {
     this.emit('document');
   }
 
-  /**
-   * A CFR host cell carries the columnFormatterReference DIRECTLY on a div, so
-   * the tree collapses it to a single "solo CFR" row — the wrapper div is noise
-   * when the reference is all it holds. The moment something else joins that
-   * div, that collapsed row would read as "the CFR absorbed the newcomer". Push
-   * the reference (and the column's throwaway name) down into its own child div
-   * so the container becomes a plain parent that HOSTS the CFR and the newcomer
-   * as siblings — the div earns its own tree row exactly when it stops being
-   * solo. Slot styles (flex/min-width) stay on the container: they position the
-   * cell within its row, not the reference within the cell. Mutates in place;
-   * callers snapshot first. No-op unless `container` carries a reference.
-   */
-  private materializeCfrHost(container: SPElement): void {
-    if (!container.columnFormatterReference) return;
-    const cfrCell: SPElement = {
-      elmType: container.elmType ?? 'div',
-      columnFormatterReference: container.columnFormatterReference,
-    };
-    if (container._elmName !== undefined) {
-      cfrCell._elmName = container._elmName;
-      delete container._elmName;
-    }
-    delete container.columnFormatterReference;
-    container.children = [cfrCell, ...(container.children ?? [])];
-  }
-
   /** Move a node to become a child of another container (drag & drop). */
   reparentNode(from: NodePath, toContainer: NodePath, index?: number): void {
     if (pathStartsWith(toContainer, from)) return; // can't drop into own subtree
@@ -1154,10 +1032,6 @@ export class EditorState {
     const container = this.nodeAt(toContainer);
     if (!node || !p || !container) return;
     this.snapshot();
-    // dropping onto a solo-CFR host: split the div out from the reference so
-    // both the reference and the dropped node become its children (siblings),
-    // instead of the newcomer vanishing "inside" the CFR.
-    this.materializeCfrHost(container);
     p.parent.children?.splice(p.index, 1);
     // adjust target path if removal shifted it
     const adjusted = [...toContainer];
@@ -1182,8 +1056,8 @@ export class EditorState {
    *   · on the floor, 'row'/'tile' creates a NEW sheet carrying a copy of the
    *     floor's tree (the old lossless relabel, into its own document — the
    *     floor is untouched). 'grid' is a no-op.
-   *   · 'column' main documents no longer exist; drilled docs are read-only
-   *     'column' by construction, so setKind ignores that value.
+   *   · 'column' documents are never a canvas surface (a column's look is a
+   *     component instance, not a document), so setKind ignores that value.
    */
   setKind(kind: DocumentKind): void {
     if (this.activeDocKey !== 'main' || kind === 'column') return;
@@ -1278,52 +1152,59 @@ export class EditorState {
     this.mutateDocument(() => applyRowDensity(root, density));
   }
 
-  // ─── Stage 4: CFR linked instances (the Figma model) ───────────────────────
+  // ─── Column looks: apply, remove, import ───────────────────────────────────
+  // A column gets its look by having a component applied to it (COLUMNS-
+  // COMPONENTS-VIEWS §4) — there is no per-column editing surface. Every
+  // gesture below rewrites the STORE and the column's FLOOR CELL together as
+  // ONE undoable mutation, so the grid never goes stale and a single Ctrl+Z
+  // reverts both.
 
-  /** "Override in this view": fork a linked grid cell into a LOCAL copy of the
-   *  registered formatter, inlined into THIS view — its own to restyle, no
-   *  longer tied to the column's shared format. The cell keeps its grid layout
-   *  (flex/min-width) and name; @currentField becomes the explicit [$Field] ref
-   *  so it renders locally. */
-  forkCfr(path: NodePath): void {
-    const el = this.nodeAt(path);
-    if (!el?.columnFormatterReference) return;
-    const field = cfrFieldName(el.columnFormatterReference);
-    const registered = this.columnRefs[field];
-    if (!registered) return;
-    const local = inlineColumnFormatter(registered, field);
-    this.mutateDocument(() => {
-      local.style = { ...local.style, 'flex': el.style?.['flex'] ?? '1', 'min-width': el.style?.['min-width'] ?? '0' };
-      if (el._elmName) local._elmName = el._elmName;
-      delete local.columnFormatterReference;
-      const p = this.parentOf(path);
-      if (p?.parent.children) p.parent.children[p.index] = local;
-      else this.doc.root = local;
-    });
+  /** Re-embed `fieldName`'s floor cell from the current look store (or the
+   *  plain-value cell once the look is gone). Mutates in place — callers own
+   *  the undo step. A floor without that column (unplaced) is left alone. */
+  private refreshFloorCell(fieldName: string): void {
+    const field = this.fields.find((f) => f.name === fieldName);
+    const children = this.floorDoc.root.children;
+    if (!field || !children) return;
+    const i = children.findIndex((c) => gridColumnField(c) === fieldName);
+    if (i >= 0) children[i] = gridCellForField(field, this.columnLooks);
   }
 
-  /** "Save as the column's format": promote a LOCAL single-field cell to the
-   *  column's shared formatter (registered, [$Field] → @currentField), then
-   *  relink this cell to it as a CFR — so the design is reusable everywhere.
-   *  Returns the field name promoted, or null if the cell isn't promotable. */
-  promoteToColumn(path: NodePath): string | null {
-    const el = this.nodeAt(path);
-    if (!el || el.columnFormatterReference) return null;
-    const field = gridColumnField(el);
-    if (!field) return null;
+  /** Apply a component to a column — the gesture that replaced "Format this
+   *  column": bake a stamped bound instance, store it as the column's look,
+   *  and re-embed the floor cell. ONE undoable step. */
+  applyComponentToColumn(fieldName: string, def: ComponentDef, mapping: Record<string, string>): void {
+    if (!this.fields.some((f) => f.name === fieldName)) return;
     this.mutateDocument(() => {
-      this.columnRefs[field] = toColumnFormatter(el, field);
-      const cell = gridCellForField(
-        this.fields.find((f) => f.name === field) ?? { name: field, type: 'text' },
-        this.columnRefs,
-      );
-      if (el._elmName) cell._elmName = el._elmName;
-      const p = this.parentOf(path);
-      if (p?.parent.children) p.parent.children[p.index] = cell;
-      else this.doc.root = cell;
+      this.columnLooks[fieldName] = bindComponentInstance(def, mapping);
+      this.refreshFloorCell(fieldName);
     });
-    this.emit('data'); // the new registered formatter shows up in pickers/tree
-    return field;
+    this.emit('data'); // the look shows up in pickers/library
+  }
+
+  /** Undress a column: delete its look and re-embed the plain-value cell.
+   *  ONE undoable step. */
+  removeColumnLook(fieldName: string): void {
+    if (!Object.hasOwn(this.columnLooks, fieldName)) return;
+    this.mutateDocument(() => {
+      delete this.columnLooks[fieldName];
+      this.refreshFloorCell(fieldName);
+    });
+    this.emit('data');
+  }
+
+  /** Register an imported column-dialect formatter (a schema import, pasted
+   *  column JSON, a share link) as `fieldName`'s look: @currentField becomes
+   *  the explicit [$Field] store dialect. UNSTAMPED — no def backs it; the
+   *  instance card offers "Save as component" to lift it into one
+   *  (refuse-and-teach: an imported look is one gesture from editable, never
+   *  silently editable). ONE undoable step, floor cell included. */
+  registerImportedLook(fieldName: string, columnDialectRoot: SPElement): void {
+    this.mutateDocument(() => {
+      this.columnLooks[fieldName] = inlineColumnFormatter(columnDialectRoot, fieldName);
+      this.refreshFloorCell(fieldName);
+    });
+    this.emit('data');
   }
 
   // ─── Snapshots (issue #140): capture & restore a formatter's state ─────────
@@ -1333,24 +1214,16 @@ export class EditorState {
   // whole workspace, so even "restore everything" is a single Ctrl+Z).
 
   /** Capture what `scope` describes right now, or null if there's nothing to
-   *  capture (e.g. a column scope naming an unregistered, un-open column). */
+   *  capture (e.g. a column scope naming a look-less column). */
   captureSnapshot(scope: SnapshotScope, now: Date = new Date()): Snapshot | null {
     let payload: Snapshot['payload'] | null = null;
     if (scope.kind === 'column') {
-      // the open column's live tree wins; then the registry (own keys only —
-      // 'toString' etc. must not read as a formatter)
-      const root = this.activeDocKey === scope.field
-        ? this.doc.root
-        : (Object.hasOwn(this.columnRefs, scope.field) ? this.columnRefs[scope.field] : undefined);
-      if (!root) return null;
-      payload = { root: clone(root) };
+      // own keys only — 'toString' etc. must never read as a look
+      if (!Object.hasOwn(this.columnLooks, scope.field)) return null;
+      payload = { root: clone(this.columnLooks[scope.field]) };
     } else {
-      // read-only capture: overlay the open column's live tree on a CLONE of
-      // the registry instead of flushing it back into editor state
-      const refs = clone(this.columnRefs);
-      if (this.activeDocKey !== 'main') refs[this.activeDocKey] = clone(this.doc.root);
       payload = {
-        all: { floor: clone(this.floorDoc), views: clone(this.views), columnRefs: refs },
+        all: { floor: clone(this.floorDoc), views: clone(this.views), columnLooks: clone(this.columnLooks) },
       };
     }
     return {
@@ -1369,27 +1242,21 @@ export class EditorState {
       const root = snap.payload.root;
       if (!root) return false;
       const field = snap.scope.field;
-      const restored = clone(root);
-      if (this.activeDocKey === field) {
-        // open on the canvas — emit('document') live-syncs the registry
-        this.mutateDocument(() => { this.doc.root = restored; });
-      } else {
-        // registered, or unregistered-and-not-open: the snapshot IS the format
-        this.mutateDocument(() => { this.columnRefs[field] = restored; });
-      }
+      this.mutateDocument(() => {
+        // the look AND the floor cell together — the grid must not go stale
+        this.columnLooks[field] = clone(root);
+        this.refreshFloorCell(field);
+      });
       this.selection = [];
-      this.emit('data'); // tree/gallery/grid pick up the registry change
+      this.emit('data'); // tree/library/grid pick up the look change
       return true;
     }
     const all = snap.payload.all;
     if (!all?.floor?.root || !Array.isArray(all.views)) return false;
-    // restoring everything replaces the surfaces — leave a drilled column
-    // first (navigation, not a mutation; it also feeds the Back trail)
-    if (this.activeDocKey !== 'main') this.openMain();
     const before = this.snapState();
     this.floorDoc = { ...clone(all.floor), kind: 'grid' };
     this.views = clone(all.views);
-    this.columnRefs = clone(all.columnRefs);
+    this.columnLooks = clone(all.columnLooks);
     if (this.activeViewId && !this.views.some((v) => v.id === this.activeViewId)) {
       this.activeViewId = null; // the sheet you stood on isn't in this capture
     }

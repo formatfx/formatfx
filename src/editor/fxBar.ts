@@ -20,10 +20,8 @@
 import { state } from './state';
 import { slotsFor, readSlot, writeSlot, slotIdForProp, type FxSlot } from './fxSlots';
 import { fxSuggestions, completionAt } from './fxSuggest';
-import { resolveSubtype } from './subtypes';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
-import { scopeFor, scopeChipLabel } from './styleScope';
 import type { SPExpr } from '../core/types';
 
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
@@ -87,25 +85,6 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     closeAc();
     if (feedbackTimer) { clearTimeout(feedbackTimer); feedbackTimer = null; }
     host.innerHTML = '';
-    const scope = scopeFor(
-      state.activeDocKey,
-      state.doc.kind,
-      state.currentFieldName,
-      state.selectedNode,
-      state.mainRootForScope,
-      state.columnRefs,
-    );
-    const chip = document.createElement('span');
-    chip.className = `wb-scope-chip wb-scope-${scope.kind}`;
-    chip.textContent = scopeChipLabel(scope, (n) => state.fields.find((f) => f.name === n)?.displayName ?? n);
-    chip.title = scope.kind === 'style'
-      ? "Edits here change the shared style everywhere it's used"
-      : scope.kind === 'host'
-        ? `The host cell is selected — box edits (width, borders, padding) stay in this ${scope.surface}; the content inside belongs to the style`
-        : scope.kind === 'grid'
-          ? "Edits apply to this list's grid — no row or tile view has been made yet"
-          : 'Edits apply to this view formatter only';
-    host.appendChild(chip);
     const node = state.selectedNode;
     if (!node) {
       host.appendChild(message('Select a cell to format it.'));
@@ -155,11 +134,7 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     // ── the editor (Excel dialect) ──
     const stored = readSlot(node, slot);
     const view = toEditorView(stored);
-    // US-8: when @currentField's column wears a subtype, the bar offers that
-    // subtype's vocab instead of the broad all-columns padding.
-    const current = state.fields.find((f) => f.name === state.currentFieldName);
-    const vocab = current?.subtype ? resolveSubtype(current.subtype)?.vocab : undefined;
-    const suggestions = fxSuggestions(slot, state.fields, { current, vocab });
+    const suggestions = fxSuggestions(slot, state.fields);
     const placeholder = slotPlaceholder(slot, suggestions);
     // a literal icon name currently on the cell (so the menu marks it selected)
     const currentIcon = typeof stored === 'string' && !stored.startsWith('=') ? stored : undefined;

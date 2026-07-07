@@ -2,15 +2,12 @@
  * editor/treeView.ts — Structure tree: selection, drag-reorder/reparent,
  * duplicate/delete/move, and a card-formatter affordance for customCardProps.
  *
- * Renders the ACTIVE document only (state.doc) — which formatter that is
- * (the view, or one of the column formatters) is chosen by the Left Edit
- * Pane's formatter tabs + document dropdown, not by headers in this tree.
+ * Renders the ACTIVE document only (state.doc) — which document that is
+ * is chosen by the Left Edit Pane's navigation, not by headers in this tree.
  */
 
 import type { SPElement, NodePath } from '../core/types';
 import { state, samePath, CARD_SEGMENT } from './state';
-import { cfrFieldName } from '../core/refs';
-import { cfrBlastRadius } from './cfr';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { openElementMenu } from './contextMenu';
@@ -27,9 +24,9 @@ function nodeHint(el: SPElement): string {
 }
 
 /**
- * Small colored chips for behaviors attached to the element. A host cell (one
- * carrying a columnFormatterReference) is marked by the inline § mark and the
- * right-aligned "reference" tag on its own row, not a chip here.
+ * Small colored chips for behaviors attached to the element. A bound component
+ * instance is marked by the inline ⬡ mark and the right-aligned "← Column"
+ * binding tag on its own row, not a chip here.
  */
 function nodeChips(el: SPElement): HTMLElement[] {
   const chips: HTMLElement[] = [];
@@ -60,12 +57,6 @@ export function mountTree(
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click
   let renamePath: NodePath | null = null;
-
-  // Open + select another column's formatter. If the column isn't registered,
-  // openColumnRef is a no-op — the reference row for that case is inert.
-  const jumpToColumn = (name: string) => {
-    state.openColumnRef(name);
-  };
 
   const render = () => {
     host.innerHTML = '';
@@ -106,14 +97,13 @@ export function mountTree(
     row.tabIndex = 0;
     row.dataset.path = path.join('.');
 
-    // "violet = shared" collapsed into the host row: a CFR host renders as ONE
-    // normal tree row (every reference has an inherent wrapper div, so a child
-    // row was noise) — the § ink + a right-aligned "reference" tag carry the
-    // lesson, and the tag is the explicit door into the shared formatter.
-    const cfrName = el.columnFormatterReference ? cfrFieldName(el.columnFormatterReference) : null;
-    const cfrDisplay = cfrName === null
-      ? null
-      : state.fields.find((f) => f.name === cfrName)?.displayName ?? cfrName;
+    // the binding language: a bound component instance reads "⬡ Name ← Column"
+    // — the teal ⬡ mark says "this is a component", the right-aligned tag says
+    // which column(s) its slots are bound to (from the _component provenance).
+    const boundColumns = el._component
+      ? [...new Set(Object.values(el._component.map).filter(Boolean))]
+        .map((n) => state.fields.find((f) => f.name === n)?.displayName ?? n)
+      : [];
 
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
@@ -121,24 +111,23 @@ export function mountTree(
     const typeIcon = document.createElement('i');
     typeIcon.className = `ms-Icon ms-Icon--${elmIconName(el.elmType)} wb-tree-elmicon`;
     label.appendChild(typeIcon);
+    if (el._component) {
+      const mark = document.createElement('span');
+      mark.className = 'wb-comp-mark';
+      mark.textContent = '⬡';
+      mark.setAttribute('aria-hidden', 'true');
+      label.appendChild(mark);
+    }
     // _elmName (the throwaway-name convention SP ignores) is the primary
-    // label when present; a nameless CFR host borrows the referenced column's
-    // display name — either way the elmType steps back to a dim suffix.
+    // label when present — the elmType steps back to a dim suffix.
     // (The grid root and its pre-stamped 'Row layout' name never render here
     // at all — Columns mode lists the columns themselves, see render().)
-    const primaryName = el._elmName ?? cfrDisplay;
+    const primaryName = el._elmName;
     if (primaryName) {
       const nm = document.createElement('span');
       nm.className = 'wb-tree-name';
       nm.textContent = primaryName;
       label.appendChild(nm);
-    }
-    if (cfrName !== null) {
-      const mark = document.createElement('span');
-      mark.className = 'wb-style-mark';
-      mark.textContent = '§';
-      mark.setAttribute('aria-hidden', 'true');
-      label.appendChild(mark);
     }
     const typeName = document.createElement('span');
     typeName.className = 'wb-tree-elmtype' + (primaryName ? ' wb-tree-elmtype-dim' : '');
@@ -223,32 +212,14 @@ export function mountTree(
         }
       });
     });
-    // the explicit drill-in affordance: a small "reference" tag-button that
-    // opens the shared column formatter (row click stays host-select). An
-    // unregistered reference keeps the teaching tooltip but opens nothing.
-    if (cfrName !== null) {
-      // own keys only — a column named 'toString' etc. must not read as registered
-      const registered = Object.hasOwn(state.columnRefs, cfrName);
-      if (registered) {
-        const blast = cfrBlastRadius(cfrName, state.mainRootForScope, state.columnRefs);
-        const places = Math.max(blast.count, 1);
-        const open = document.createElement('button');
-        open.type = 'button'; // never a submit button, wherever the tree mounts
-        open.className = 'wb-tree-cfr-open';
-        open.textContent = 'reference';
-        open.title = `This element renders the shared ${cfrDisplay} column formatter (used in ${places} place${places === 1 ? '' : 's'}). Open it to edit — changes apply everywhere it's used.`;
-        open.setAttribute('aria-label', `Open the ${cfrDisplay} column formatter — changes apply everywhere it's used`);
-        open.addEventListener('click', (e) => { e.stopPropagation(); jumpToColumn(cfrName); });
-        // a double-click on the button must not trip the row's rename
-        open.addEventListener('dblclick', (e) => e.stopPropagation());
-        row.appendChild(open);
-      } else {
-        const tag = document.createElement('span');
-        tag.className = 'wb-tree-cfr-open wb-tree-cfr-missing';
-        tag.textContent = 'reference';
-        tag.title = `The formatter references [$${cfrName}], but that column formatter isn't registered. Import the list export or register it in the Data tab.`;
-        row.appendChild(tag);
-      }
+    // the binding tag: which column(s) this component instance is bound to —
+    // read-only provenance; remapping lives on the inspector's instance card.
+    if (boundColumns.length) {
+      const tag = document.createElement('span');
+      tag.className = 'wb-tree-bindtag';
+      tag.textContent = `← ${boundColumns.join(' · ')}`;
+      tag.title = `This component instance is bound to ${boundColumns.join(', ')} — remap it from the inspector`;
+      row.appendChild(tag);
     }
     row.appendChild(eye);
     row.appendChild(actions);
@@ -286,6 +257,10 @@ export function mountTree(
       e.dataTransfer!.effectAllowed = 'move';
     });
     row.addEventListener('dragover', (e) => {
+      // accept-gating: only highlight payloads this row will act on — an
+      // unconditional preventDefault false-advertised drops it would ignore
+      const types = e.dataTransfer?.types;
+      if (!types?.includes('application/x-wb-palette') && !types?.includes('application/x-wb-node')) return;
       e.preventDefault();
       e.stopPropagation();
       row.classList.add('droptarget');

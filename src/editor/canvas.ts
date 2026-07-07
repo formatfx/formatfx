@@ -1,10 +1,10 @@
 /**
  * editor/canvas.ts — Interactive preview surface. Renders the formatter
- * against every mock row in a context matching the document kind (column
- * cell, full-width row, or gallery tile), supports click-to-select (incl.
+ * against every mock row in a context matching the document kind (columns
+ * grid, full-width row, or gallery tile), supports click-to-select (incl.
  * inside customCardProps flyouts), per-element drop targeting with live
- * highlight, columnFormatterReference resolution from the registry, an
- * inspect-outlines mode, and surfaces runtime evaluation issues.
+ * highlight, an inspect-outlines mode, and surfaces runtime evaluation
+ * issues.
  */
 
 import { state } from './state';
@@ -17,11 +17,8 @@ import { installPreviewContextMenu } from './contextMenu';
 import { COMPONENT_MIME, componentById, openComponentMapper } from './componentLibrary';
 import { bestGuessMapping, mappingComplete, bindComponentInstance } from './components';
 import type { NodePath, SPElement } from '../core/types';
-import { cfrFieldName } from '../core/refs';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
 import { openTemplateModal } from './templateModal';
-import { styleBannerLabel } from './styleScope';
-import { cfrBlastRadius } from './cfr';
 import { HOVER_CHILD_CLASS } from './hoverReveal';
 
 /** The Stage-3 row-view toolbar: density (Roomy/Compact) + Templates.
@@ -63,13 +60,8 @@ function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
   return bar;
 }
 
-/** Where "Done"/Escape lands from a drilled column: the active surface. */
-function surfaceLabel(): string {
-  return state.onFloor ? 'the grid' : `the ${state.activeViewName} view formatter`;
-}
-
 /** Stage 3: the Select/Live segmented toggle — shared canvas chrome on every
- *  surface (floor, sheets, column drill). Select = clicks pick elements for
+ *  surface (floor and sheets). Select = clicks pick elements for
  *  editing; Live = clicks behave like real SharePoint (customRowAction fires,
  *  nothing selects). The builder preview ships its own always-live rows —
  *  the same idea, already built in. */
@@ -136,7 +128,7 @@ function usesHoverReveal(el: SPElement): boolean {
 export interface CanvasApi {
   getRuntimeIssues: () => RenderIssue[];
   setOutlines: (on: boolean) => void;
-  /** Show/hide the Title context column in the column-formatter preview. */
+  /** Toggles the wb-no-titlecol class (a CSS-only preference the topbar wires). */
   setTitleColumn: (show: boolean) => void;
 }
 
@@ -155,11 +147,6 @@ function describeNode(el: SPElement | null): string {
 export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): CanvasApi {
   let runtimeIssues: RenderIssue[] = [];
 
-  const resolveColumnRef = (fieldRef: string): SPElement | null => {
-    const name = cfrFieldName(fieldRef);
-    return state.columnRefs[name] ?? null;
-  };
-
   const ctxForRow = (rowIndex: number): EvalContext => ({
     row: state.rows[rowIndex] ?? {},
     rowIndex,
@@ -175,7 +162,6 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     closeFlyout();
     host.innerHTML = '';
     runtimeIssues = [];
-    host.classList.toggle('wb-style-editing', state.doc.kind === 'column' && state.activeDocKey !== 'main');
     host.classList.toggle('wb-canvas-live', state.canvasMode === 'live');
     // simulate-hover pin: Select mode only — Live must behave like real SP
     host.classList.toggle('wb-simulate-hover', state.simulateHover && state.canvasMode === 'select');
@@ -183,7 +169,6 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     const opts = {
       issues,
       tagPaths: true,
-      resolveColumnRef,
       // Stage 3: in Select mode the renderer skips the customRowAction
       // handlers, so those clicks select instead of firing
       interactive: state.canvasMode === 'live',
@@ -192,61 +177,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     host.appendChild(canvasModeBar(onToast));
 
     const kind = state.doc.kind;
-    if (kind === 'column') {
-      // drilled into a column formatter → the banner names it and offers Done
-      if (state.activeDocKey !== 'main') {
-        const fieldName = state.activeDocKey;
-        const display = state.fields.find((f) => f.name === fieldName)?.displayName ?? fieldName;
-        const blast = cfrBlastRadius(fieldName, state.mainRootForScope, state.columnRefs);
-        const banner = document.createElement('div');
-        banner.className = 'wb-style-banner';
-        const mark = document.createElement('span');
-        mark.className = 'wb-style-mark';
-        mark.textContent = '§';
-        const text = document.createElement('span');
-        text.textContent = styleBannerLabel(display, Math.max(blast.count, 1));
-        const done = document.createElement('button');
-        done.type = 'button';
-        done.className = 'wb-style-done';
-        done.textContent = 'Done';
-        done.title = `Back to ${surfaceLabel()}`;
-        done.addEventListener('click', () => { state.openMain(); onToast(`Back to ${surfaceLabel()}`); });
-        banner.append(mark, text, done);
-        host.appendChild(banner);
-      }
-      const table = document.createElement('div');
-      table.className = 'wb-mock-list';
-      const header = document.createElement('div');
-      header.className = 'wb-mock-row wb-mock-header';
-      const headTitle = document.createElement('div');
-      headTitle.className = 'wb-mock-cell';
-      headTitle.textContent = 'Title';
-      const headFmt = document.createElement('div');
-      headFmt.className = 'wb-mock-cell wb-mock-cell-fmt';
-      // textContent, not innerHTML — currentFieldName is an imported internal
-      // name and must never be parsed as HTML (matches the body cells below).
-      headFmt.textContent = `${state.currentFieldName} (formatted)`;
-      header.append(headTitle, headFmt);
-      table.appendChild(header);
-      state.rows.forEach((row, i) => {
-        const tr = document.createElement('div');
-        tr.className = 'wb-mock-row';
-        const title = document.createElement('div');
-        title.className = 'wb-mock-cell';
-        title.textContent = String(row.Title ?? `Item ${i + 1}`);
-        const cell = document.createElement('div');
-        cell.className = 'wb-mock-cell wb-mock-cell-fmt';
-        try {
-          cell.appendChild(renderElement(state.doc.root, ctxForRow(i), opts));
-        } catch (e) {
-          cell.textContent = `⚠ ${(e as Error).message}`;
-          cell.classList.add('wb-render-error');
-        }
-        tr.append(title, cell);
-        table.appendChild(tr);
-      });
-      host.appendChild(table);
-    } else if (kind === 'grid') {
+    if (kind === 'grid') {
       // the grid-first workspace: root children as Lists-style view columns
       renderGrid(host, { opts, ctxForRow, onToast });
     } else if (kind === 'row') {
@@ -314,28 +245,6 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     if (inFlyout) selectFrom(e, inFlyout as HTMLElement);
   };
   document.addEventListener('click', onDocClick);
-
-  const onDocKeydown = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || state.activeDocKey === 'main') return;
-    const t = e.target as HTMLElement;
-    if (t.closest('input, textarea, select, [contenteditable], dialog')) return;
-    // Convention: any overlay/popover that closes ITSELF on a document-level
-    // Escape keydown carries the `wb-esc-owner` marker class on its root —
-    // added either by the shared `createOverlay` chokepoint (overlay.ts) or,
-    // for a popover that builds its own root, by hand at the point it sets
-    // className (the marker IS the convention — deliberately no list of
-    // owners here; the old enumeration went stale). `.wb-flyout` does NOT
-    // carry it — it has no Escape handler of its own, so it can't race with
-    // this guard. If a document Escape would hit one of those owners first,
-    // let it close on its own turn rather than also exiting the drilled
-    // style — otherwise one Esc press does both at once. `:not([hidden])`
-    // matters: owners that hide instead of removing themselves (the
-    // inspector's doc cards) must stop owning Escape once dismissed.
-    if (document.querySelector('.wb-esc-owner:not([hidden])')) return;
-    state.openMain();
-    onToast(`Back to ${surfaceLabel()}`);
-  };
-  document.addEventListener('keydown', onDocKeydown);
 
   // right-click an element (or a grid cell) for the common actions
   installPreviewContextMenu(host, onToast);
@@ -407,7 +316,6 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   (host as any)._unsub = () => {
     unsub();
     document.removeEventListener('click', onDocClick);
-    document.removeEventListener('keydown', onDocKeydown);
   };
   render();
 

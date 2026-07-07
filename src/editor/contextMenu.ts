@@ -15,29 +15,13 @@ import { openFormatCells } from './formatCells';
 import { copyNodes, pasteNodes } from './clipboard';
 import { openSaveAsComponent } from './componentLibrary';
 import { elementRefChip } from './elmRef';
-import { cfrFieldName } from '../core/refs';
 
-/** A CFR host borrows the referenced column's display name in the Structure
- *  tree; mirror that here so the menu header and toasts read like the row. */
-function cfrDisplayName(el: SPElement): string | null {
-  const cfrName = el.columnFormatterReference ? cfrFieldName(el.columnFormatterReference) : null;
-  if (cfrName === null) return null;
-  return state.fields.find((f) => f.name === cfrName)?.displayName ?? cfrName;
-}
-
-/** The element's user-facing name — its _elmName, else a CFR host's borrowed
- *  column name, else `<elmType>`. The single naming rule the menu header, the
- *  parent-crumb tooltip and the action toasts all share, so "Status" in the
- *  header never disagrees with "<div> removed" in a toast. */
+/** The element's user-facing name — its _elmName, else `<elmType>`. The single
+ *  naming rule the menu header, the parent-crumb tooltip and the action toasts
+ *  all share, so "Status" in the header never disagrees with "<div> removed"
+ *  in a toast. */
 const displayNameOf = (el: SPElement): string =>
-  el._elmName ?? cfrDisplayName(el) ?? `<${el.elmType}>`;
-
-/** The element's tree-style reference token — the same icon + name + dim type
- *  the Structure tree shows for this row (editor/elmRef.ts is the shared
- *  source of truth), including the CFR borrowed-name behaviour. */
-function treeStyleRef(el: SPElement): HTMLElement {
-  return elementRefChip({ _elmName: el._elmName ?? cfrDisplayName(el) ?? undefined, elmType: el.elmType });
-}
+  el._elmName ?? `<${el.elmType}>`;
 
 /** The shared "works on most things" action set for one element. */
 export function elementMenuItems(
@@ -196,7 +180,7 @@ function elementMenuTitle(
     const crumb = document.createElement('button');
     crumb.type = 'button'; // never a submit button, wherever the menu mounts
     crumb.className = 'wb-elmmenu-parent';
-    crumb.appendChild(treeStyleRef(parent));
+    crumb.appendChild(elementRefChip(parent));
     crumb.title = `Select the parent element (${displayNameOf(parent)})`;
     crumb.setAttribute('aria-label', crumb.title);
     crumb.addEventListener('click', (e) => {
@@ -217,7 +201,7 @@ function elementMenuTitle(
     crumbWrap.append(crumb, sep);
     head.append(crumbWrap);
   }
-  head.appendChild(treeStyleRef(node));
+  head.appendChild(elementRefChip(node));
   return head;
 }
 
