@@ -1,7 +1,7 @@
 /**
  * editor/inspector.ts — Property editor for the selected node: elmType,
  * txtContent, forEach, attributes, style (with the SP allow-list as
- * suggestions), row actions, hover cards, inline edit and CFRs.
+ * suggestions), row actions, hover cards and inline edit.
  *
  * Edits commit on change/blur and go through the state store (undoable).
  */
@@ -134,16 +134,9 @@ export function mountInspector(host: HTMLElement): void {
     if (pro && state.selection && state.selection.length === 0) {
       const kids: HTMLElement[] = [];
       const doc = state.doc;
-      if (doc.kind === 'column') {
-        const note = document.createElement('div');
-        note.className = 'wb-inspector-empty';
-        note.textContent = 'Column formatters have no wrapper options — the root element is the formatter.';
-        kids.push(note);
-      } else {
-        kids.push(labeled('hideSelection', checkbox(doc.hideSelection ?? false, (v) => {
-          state.mutateDocument(() => { state.doc.hideSelection = v; });
-        })));
-      }
+      kids.push(labeled('hideSelection', checkbox(doc.hideSelection ?? false, (v) => {
+        state.mutateDocument(() => { state.doc.hideSelection = v; });
+      })));
       if (doc.kind === 'row') {
         kids.push(labeled('hideColumnHeader', checkbox(doc.hideColumnHeader ?? false, (v) => {
           state.mutateDocument(() => { state.doc.hideColumnHeader = v; });
@@ -499,9 +492,6 @@ export function mountInspector(host: HTMLElement): void {
       labeled('inlineEditField', input(node.inlineEditField ?? '', (v) => commit((n) => {
         if (v === '') delete n.inlineEditField; else n.inlineEditField = v;
       }), '[$Title] — Text & Person fields only', 'wb-dl-fieldrefs')),
-      labeled('columnFormatterReference', input(node.columnFormatterReference ?? '', (v) => commit((n) => {
-        if (v === '') delete n.columnFormatterReference; else n.columnFormatterReference = v;
-      }), '[$StatusUI] — referenced column must be in the view', 'wb-dl-fieldrefs')),
       labeled('defaultHoverField', input(node.defaultHoverField ?? '', (v) => commit((n) => {
         if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
       }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),

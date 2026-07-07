@@ -330,11 +330,6 @@ function walkExplain(el: SPElement, path: NodePath, ctx: ExplainContext, entries
     }
   }
 
-  if (el.columnFormatterReference !== undefined) {
-    const ref = String(el.columnFormatterReference).replace(/^\[?\$?/, '').replace(/\]$/, '');
-    lines.push({ text: `Shows the ${displayOf(ref, ctx)} column here, rendered with that column’s own registered formatter.` });
-  }
-
   if (el.txtContent !== undefined) {
     say(el.txtContent, (t) => `Shows ${t}.`, 'The text');
   }

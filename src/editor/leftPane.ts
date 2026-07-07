@@ -22,7 +22,6 @@ import { mountCodeEditor } from './codeEditor';
 import { mountPalette } from './palette';
 import { openIconPicker } from './iconPicker';
 import { openViewMenu } from './viewMenu';
-import { openColumnGallery } from './columnGallery';
 import { openSnapMenu } from './snapMenu';
 import { renderComponentLibrary } from './componentLibrary';
 import type { FieldType, SPElement } from '../core/types';
@@ -210,12 +209,10 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     refreshFmtNav();
   });
   colsTab.addEventListener('click', () => {
-    const wasLibrary = libraryOpen;
     libraryOpen = false;
     // COLUMNS opens the GRID — the floor is columns mode's canvas (owner call
     // 2026-07-05). From a drill: back to the surface first; from a sheet:
-    // minimize (navigation — the sheet waits in the strip). Clicking it when
-    // the grid is already up browses the formatted-columns gallery instead.
+    // minimize (navigation — the sheet waits in the strip).
     const wasDrilled = state.activeDocKey !== 'main';
     if (wasDrilled) state.openMain();
     if (!state.onFloor) {
@@ -226,7 +223,6 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     }
     if (wasDrilled) { toast('Back to the grid'); refreshFmtNav(); return; }
     refreshFmtNav();
-    if (!wasLibrary) openColumnGallery(pill, toast);
   });
   compTab.addEventListener('click', () => {
     if (libraryOpen) return;
@@ -236,10 +232,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   });
   pill.addEventListener('click', (e) => {
     e.stopPropagation();
-    // the grid is columns mode, so its pill browses the column gallery; the
-    // view menu is the pill's job only while a sheet is up
-    if (isColumnDoc() || state.onFloor) openColumnGallery(pill, toast);
-    else openViewMenu(pill, toast);
+    // the view menu is the pill's job only while a sheet is up; on the floor
+    // the pill just names the grid
+    if (!state.onFloor) openViewMenu(pill, toast);
   });
 
   // ── navigation back (retrace doc switches — not undo) ──────────────────────

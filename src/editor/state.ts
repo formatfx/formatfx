@@ -424,8 +424,7 @@ export class EditorState {
 
   /**
    * Open a sheet over the floor. NAVIGATION: never a document mutation, never
-   * an undo step (FLOOR-AND-SHEETS §2.2). Works while drilled into a column
-   * formatter — the surface underneath switches, the drill stays put.
+   * an undo step (FLOOR-AND-SHEETS §2.2).
    */
   openView(id: string): void {
     const v = this.viewById(id);
@@ -833,7 +832,7 @@ export class EditorState {
   }
 
   /** Restore a snapshot and notify: emits 'load' too when the restore moved
-   *  the canvas to another surface or drill (undo navigates to its change). */
+   *  the canvas to another surface (undo navigates to its change). */
   private applyRestore(snap: string): void {
     const navBefore = `${this.activeDocKey}·${this.activeViewId}`;
     this.restoreSnap(snap);
@@ -1268,75 +1267,11 @@ export class EditorState {
     return true;
   }
 
-  // ─── Column subtypes: snapshot apply ───────────────────────────────────────
-
-  /** Apply a subtype to a column as ONE undoable mutation: register the
-   *  already-baked formatter, tag the field (subtype id + baked args), and
-   *  CFR-wire the grid cell so the grid renders it — ALL inside the snapshot
-   *  (snapState captures the registry + tags + docs), so a single undo reverts
-   *  the render, the tag, AND the registry entry. This makes even a re-apply
-   *  over an already-CFR cell fully reversible (no lingering/mismatched entry).
-   *  Stays on the grid (no doc switch — that would move the canvas away and
-   *  defeat the gesture). */
-  applyColumnSubtype(
-    fieldName: string,
-    baked: SPElement,
-    subtypeId: string,
-    args: Record<string, string | number | boolean>,
-    path: NodePath,
-  ): void {
-    const field = this.fields.find((f) => f.name === fieldName);
-    if (!field) return;
-    this.mutateDocument(() => {
-      this.columnRefs[fieldName] = baked; // captured by snapState → reverts on undo
-      field.subtype = subtypeId;
-      field.subtypeArgs = args;
-      const el = this.nodeAt(path);
-      if (el && !el.columnFormatterReference && path.length > 0) {
-        const p = this.parentOf(path);
-        if (p?.parent.children) {
-          const cell = gridCellForField(field, this.columnRefs);
-          if (el._elmName) cell._elmName = el._elmName;
-          p.parent.children[p.index] = cell;
-        }
-      }
-    });
-  }
-
-  /** Columns currently wearing `subtypeId` (and registered) — the push count. */
-  columnsUsingSubtype(subtypeId: string): MockField[] {
-    return this.fields.filter((f) => f.subtype === subtypeId && (f.name in this.columnRefs));
-  }
-
-  /**
-   * Push a refined subtype to every column using it (US-7): re-bake each tagged,
-   * registered column from its OWN stored `subtypeArgs` and overwrite its
-   * formatter (hand-edits included), as ONE batched undoable mutation — a single
-   * undo reverts every column (the registry is captured by snapState). `rebake`
-   * is supplied by the caller (gridView, which holds bakeSubtype) so state never
-   * imports the subtypes/editor graph. Returns how many columns were re-baked.
-   */
-  pushSubtypeUpdate(
-    subtypeId: string,
-    rebake: (args: Record<string, string | number | boolean>) => SPElement,
-  ): number {
-    const targets = this.columnsUsingSubtype(subtypeId);
-    if (targets.length === 0) return 0;
-    this.mutateDocument(() => {
-      for (const f of targets) {
-        this.columnRefs[f.name] = rebake(f.subtypeArgs ?? {});
-      }
-    });
-    return targets.length;
-  }
-
   /**
    * Batched cross-cutting apply (the component editor's Save-and-apply): view
-   * subtree replacements, registry re-bakes and field-tag restamps together as
-   * ONE undoable step. Leaves a drilled column first (navigation, not a
-   * mutation — the applySnapshot precedent) so the active SURFACE is live and
-   * inside snapState. A single Ctrl+Z reverts everything `fn` touched (docs +
-   * columnRefs + subtype tags); a no-op `fn` leaves ZERO trace.
+   * subtree replacements and look re-bakes together as ONE undoable step. A
+   * single Ctrl+Z reverts everything `fn` touched (docs + columnLooks); a
+   * no-op `fn` leaves ZERO trace.
    */
   batchProjectUpdate(_touchedColumns: string[], fn: () => void): void {
     if (this.activeDocKey !== 'main') this.openMain();
@@ -1345,26 +1280,7 @@ export class EditorState {
     if (this.snapState() === before) return; // no-op: zero trace
     this.pushUndo(before);
     this.emit('document');
-    this.emit('data'); // registry/tag changes show up in pickers/tree/gallery
-  }
-
-  /** Register a column formatter for `field` (default: the current field) and
-   *  open its drill-in — how a standalone column-formatter document (example,
-   *  pasted JSON) enters the workspace now that the main surface is always the
-   *  floor or a sheet. Registration is ONE undoable step; the drill rides along. */
-  loadColumnDocument(root: SPElement, field?: string): void {
-    const name = field ?? this.currentFieldName;
-    if (this.activeDocKey !== 'main' && this.activeDocKey !== name) this.openMain();
-    if (this.activeDocKey === name) {
-      this.mutateDocument(() => { this.doc.root = root; });
-      this.selection = [];
-      this.emit('data');
-      return;
-    }
-    this.mutateDocument(() => { this.columnRefs[name] = root; });
-    this.openColumnRef(name);
-    this.selection = [];
-    this.emit('data');
+    this.emit('data'); // look changes show up in pickers/tree/library
   }
 
   /** Register a row/tile document as a NEW named sheet and open it — how
@@ -1376,30 +1292,28 @@ export class EditorState {
   /**
    * "Apply to canvas": replace whatever is being edited with `doc` — the JSON
    * tab's contract. Routing per surface:
-   *   · drilled into a column → that column's tree (any payload kind);
+   *   · a COLUMN payload (from ANY surface) becomes the current field's LOOK
+   *     (registerImportedLook — @currentField → [$Field]); the canvas lands
+   *     on the floor with that column selected. No drill surface exists.
    *   · a sheet up → the sheet's document (kind follows the payload);
    *   · on the floor → a PURE-GRID row payload (every root child still a
    *     single-field column — the schema-import guard) replaces the FLOOR
    *     ROOT, kind stays 'grid', so the floor's own export round-trips
    *     losslessly; a row LAYOUT (zones/composites) becomes a NEW sheet —
    *     the floor never renders pseudo-columns (FLOOR-AND-SHEETS Stage 2);
-   *     a tile payload becomes a NEW sheet (a tile can never be a floor);
-   *     a column payload registers to the current field and drills in.
+   *     a tile payload becomes a NEW sheet (a tile can never be a floor).
    */
   loadDocument(doc: FormatterDocument): void {
-    if (this.activeDocKey !== 'main') {
-      // the JSON tab edits whichever formatter is on the canvas — a drilled
-      // column; emit('load') live-syncs it back into columnRefs (see e2e
-      // workspace.spec "CFR round-trip" / grid.spec "header menu formats an
-      // unformatted column").
-      this.snapshot();
-      this.doc = { kind: 'column', root: doc.root };
-      this.selection = [];
+    if (doc.kind === 'column') {
+      const field = this.currentFieldName;
+      this.registerImportedLook(field, doc.root);
+      if (!this.onFloor) this.minimizeView(); // navigation — the look lives on the grid
+      const i = (this.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === field);
+      this.selection = i >= 0 ? [i] : [];
       this.emit('load');
       return;
     }
     if (this.onFloor) {
-      if (doc.kind === 'column') { this.loadColumnDocument(doc.root); return; }
       if (doc.kind === 'tile') { this.createView(doc); return; }
       if (doc.root.children?.length && !isPureGrid(doc.root)) {
         // a LAYOUT can never be the floor — the floor renders columns only.
@@ -1416,7 +1330,6 @@ export class EditorState {
       this.emit('load');
       return;
     }
-    if (doc.kind === 'column') { this.loadColumnDocument(doc.root); return; }
     this.snapshot();
     const v = this.activeView!;
     const next: FormatterDocument = { ...doc, kind: doc.kind === 'tile' ? 'tile' : 'row' };

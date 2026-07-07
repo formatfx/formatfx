@@ -1,20 +1,18 @@
 /**
  * editor/componentUsage.ts — the pure inventory brain behind the ⬡ tab's
  * "In this project" section: where is each component USED in this project?
- * DOM- and state-free (node-tested), like gridScaffold/areas/cfr.
+ * DOM- and state-free (node-tested), like gridScaffold/areas/lookDialect.
  *
- * Two provenance channels feed the scan:
- *   · stamped instances — bindComponentInstance marks a bound root with
- *     `_component: { id, map }`; found anywhere in the main (view) doc, card
- *     content included, and inside registered column-formatter trees
- *   · the field tag — the Format-this-column catalog writes the component id
- *     to `field.subtype` when a column wears one (recipe in columnRefs)
- * A column counts ONCE per component even when both channels agree, and only
+ * One provenance channel feeds the scan: the instance stamp —
+ * bindComponentInstance marks a bound root with `_component: { id, map }`.
+ * Stamps are found anywhere in the main (view) doc, card content included,
+ * and inside each column's LOOK tree (state.columnLooks). A column counts
+ * ONCE per component no matter how many stamps its look carries, and only
  * ids an actual def carries are reported — a deleted component leaves no
  * ghost rows.
  */
 
-import type { SPElement, MockField, NodePath } from '../core/types';
+import type { SPElement, NodePath } from '../core/types';
 import type { ComponentDef } from './components';
 
 /** Mirrors state.ts's path convention: segment -1 descends into
@@ -29,8 +27,7 @@ export interface ComponentViewUsage {
   label: string;
 }
 
-/** One column whose registered formatter uses the component (via the field's
- *  subtype tag, a stamped subtree, or both — always a single usage). */
+/** One column whose LOOK uses the component (a stamped subtree in its tree). */
 export interface ComponentColumnUsage {
   kind: 'column';
   field: string;
@@ -39,18 +36,15 @@ export interface ComponentColumnUsage {
 export type ComponentUsage = ComponentViewUsage | ComponentColumnUsage;
 
 /**
- * Scan the project for component usages. `mainRoot` is the main (view) doc's
- * root (pass the stashed one while drilled into a column — state's
- * `mainRootForScope`), `columnRefs` the registered column formatters, and
- * `fields` the schema (subtype tags carry component ids). Returns usages per
- * component id; defs with no usage have NO entry, so the count is
- * `map.get(id)?.length ?? 0`.
+ * Scan the project for component usages. `mainRoot` is the active surface's
+ * document root, `columnLooks` the per-column look store (field name → baked
+ * look tree). Returns usages per component id; defs with no usage have NO
+ * entry, so the count is `map.get(id)?.length ?? 0`.
  */
 export function scanComponentUsages(
   defs: ComponentDef[],
   mainRoot: SPElement | undefined,
-  columnRefs: Record<string, SPElement>,
-  fields: MockField[],
+  columnLooks: Record<string, SPElement>,
 ): Map<string, ComponentUsage[]> {
   const byId = new Map(defs.map((d) => [d.id, d]));
   const out = new Map<string, ComponentUsage[]>();
@@ -69,30 +63,23 @@ export function scanComponentUsages(
   };
   if (mainRoot) walkView(mainRoot, []);
 
-  // column usages: the field tag + stamped subtrees in the registered tree,
+  // column usages: stamped subtrees in each look (normally the root itself),
   // collapsed to ONE usage per (component, column)
   const stampedIn = (el: SPElement, ids: Set<string>): void => {
     if (el._component && byId.has(el._component.id)) ids.add(el._component.id);
     el.children?.forEach((c) => stampedIn(c, ids));
     if (el.customCardProps?.formatter) stampedIn(el.customCardProps.formatter, ids);
   };
-  const subtypeByField = new Map(fields.map((f) => [f.name, f.subtype]));
-  for (const [name, tree] of Object.entries(columnRefs)) {
+  for (const [name, tree] of Object.entries(columnLooks)) {
     const ids = new Set<string>();
-    const tag = subtypeByField.get(name);
-    if (tag && byId.has(tag)) ids.add(tag);
     stampedIn(tree, ids);
     for (const id of ids) add(id, { kind: 'column', field: name });
   }
   return out;
 }
 
-/**
- * The jump-row label for a MAIN-doc usage. The main doc is normally the view
- * ("View — <label>"), but it can itself be a column formatter (a JSON-tab
- * import) — then the row must speak the column-formatter noun or it would
- * contradict the context-aware insert copy ("Add to the X column formatter").
- */
-export function mainUsageLabel(u: ComponentViewUsage, mainIsColumn: boolean, fieldLabel: string): string {
-  return mainIsColumn ? `${fieldLabel} column formatter — ${u.label}` : `View — ${u.label}`;
+/** The jump-row label for a MAIN-doc usage — the main doc is always a view
+ *  (or the grid) now, so the label is uniform. */
+export function mainUsageLabel(u: ComponentViewUsage): string {
+  return `View — ${u.label}`;
 }
