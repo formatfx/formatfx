@@ -72,21 +72,22 @@ const fields = [status, due];
 
 describe('indexColumns', () => {
   // a REAL generated style — the rules index must round-trip through the same
-  // parse-back contract condRules.test.ts pins for the dialog
+  // parse-back contract condRules.test.ts pins for the dialog. Looks live in
+  // explicit-[$Field] dialect, but the rules parse only reads the style.
   const gen = rulesToStyle(status, [
     { cond: { kind: 'eq', value: 'Done' }, effect: 'pill', color: 'green' },
     { cond: { kind: 'eq', value: 'Blocked' }, effect: 'pill', color: 'red' },
   ]);
-  const columnRefs: Record<string, SPElement> = {
-    Status: { elmType: 'div', txtContent: '@currentField', style: gen.style },
+  const columnLooks: Record<string, SPElement> = {
+    Status: { elmType: 'div', txtContent: '[$Status]', style: gen.style },
   };
-  const entries = indexColumns(fields, columnRefs);
+  const entries = indexColumns(fields, columnLooks);
 
-  it('lists every schema column, saying whether it is formatted and how many rules it has', () => {
-    const col = entries.find((e) => e.icon === '§' && e.label === 'Status');
+  it('lists every schema column, saying whether it wears a look and how many rules it has', () => {
+    const col = entries.find((e) => e.icon === '▦' && e.label === 'Status');
     expect(col!.trail).toContain('formatted');
     expect(col!.trail).toContain('2 rules');
-    const plain = entries.find((e) => e.icon === '§' && e.label === 'Due Date');
+    const plain = entries.find((e) => e.icon === '▦' && e.label === 'Due Date');
     expect(plain!.trail).toBe('date');
   });
 
