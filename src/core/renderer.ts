@@ -7,7 +7,6 @@
 
 import type { SPElement, SPExpr, NodePath } from './types';
 import { ALLOWED_STYLES, ALLOWED_ATTRIBUTES } from './schema';
-import { cfrFieldName } from './refs';
 import {
   evaluate, evaluateToString, toStr, parseForEach, evaluateForEachList,
   type EvalContext, type SPValue,
@@ -32,10 +31,6 @@ export interface RenderOptions {
   issues?: RenderIssue[];
   /** Stamp data-sp-path attributes for editor selection. */
   tagPaths?: boolean;
-  /** Resolve a columnFormatterReference to another formatter tree. */
-  resolveColumnRef?: (fieldRef: string) => SPElement | null;
-  /** Internal: CFR names currently being rendered (cycle protection). */
-  cfrStack?: string[];
 }
 
 function report(opts: RenderOptions, path: NodePath, message: string): void {
@@ -149,30 +144,6 @@ export function renderElement(
   if (el.inlineEditField) {
     node.classList.add('wb-inline-edit');
     node.setAttribute('title', `inlineEditField: ${el.inlineEditField}`);
-  }
-
-  // columnFormatterReference
-  if (el.columnFormatterReference) {
-    const refName = el.columnFormatterReference;
-    const stack = opts.cfrStack ?? [];
-    const cyclic = stack.includes(refName);
-    const refTree = cyclic ? null : opts.resolveColumnRef?.(refName) ?? null;
-    if (refTree) {
-      // inside the referenced formatter, @currentField is the REFERENCED column
-      const refField = cfrFieldName(refName);
-      const refCtx: EvalContext = { ...ctx, currentFieldName: refField };
-      node.appendChild(renderElement(refTree, refCtx, {
-        ...opts, tagPaths: false, cfrStack: [...stack, refName],
-      }, path));
-    } else {
-      const chip = document.createElement('span');
-      chip.className = 'wb-cfr-chip';
-      chip.textContent = `⤷ ${refName}`;
-      chip.title = cyclic
-        ? `Circular columnFormatterReference: ${[...stack, refName].join(' → ')}`
-        : 'columnFormatterReference — register this column\'s formatter in the Data tab ("Column formatter references") to render it inline. On a real list the referenced column must be present in the view.';
-      node.appendChild(chip);
-    }
   }
 
   // customRowAction — stub with toast (Select mode skips the handler so the

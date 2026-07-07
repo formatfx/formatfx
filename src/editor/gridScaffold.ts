@@ -12,6 +12,9 @@
 import type { SPElement, MockField } from '../core/types';
 import { cfrFieldName } from '../core/refs';
 
+/** Deep clone for embedding a stored look into a cell. */
+function clone<T>(v: T): T { return JSON.parse(JSON.stringify(v)) as T; }
+
 /** User-facing label for a field: display name when it differs. */
 export function fieldLabel(field: MockField): string {
   return field.displayName ?? field.name;
@@ -42,26 +45,33 @@ function plainCellContent(field: MockField): Partial<SPElement> {
 }
 
 /**
- * One grid column for a field: a CFR cell when the column has a registered
- * formatter (the grid renders "its current formatter", like a real list),
- * otherwise a plain-value cell. flex/min-width make the same tree lay out
+ * One grid column for a field: when the column has a LOOK (a component
+ * applied to it), the cell IS a clone of that look — embedded, not
+ * referenced — with the cell's layout styles (flex/min-width) merged onto
+ * its root; otherwise a plain-value cell. Either way the cell is stamped
+ * `_field` so its column identity survives multi-column looks, renames and
+ * graduation into a view. flex/min-width make the same tree lay out
  * sensibly the moment it's viewed as a row formatter.
  */
 export function gridCellForField(
   field: MockField,
-  columnRefs: Record<string, SPElement>,
+  columnLooks: Record<string, SPElement>,
 ): SPElement {
-  const cell: SPElement = {
-    elmType: field.type === 'hyperlink' && !(field.name in columnRefs) ? 'a' : 'div',
-    _elmName: fieldLabel(field),
-    style: { 'flex': '1', 'min-width': '0' },
-  };
-  if (field.name in columnRefs) {
-    cell.columnFormatterReference = ref(field.name);
-  } else {
-    Object.assign(cell, plainCellContent(field));
+  const look = Object.hasOwn(columnLooks, field.name) ? columnLooks[field.name] : undefined;
+  if (look) {
+    const cell = clone(look);
+    cell._field = field.name;
+    cell.style = { ...cell.style, 'flex': '1', 'min-width': '0' };
+    cell._elmName = cell._elmName ?? fieldLabel(field);
+    return cell;
   }
-  return cell;
+  return {
+    elmType: field.type === 'hyperlink' ? 'a' : 'div',
+    _elmName: fieldLabel(field),
+    _field: field.name,
+    style: { 'flex': '1', 'min-width': '0' },
+    ...plainCellContent(field),
+  };
 }
 
 /**
@@ -70,7 +80,7 @@ export function gridCellForField(
  */
 export function buildGridRoot(
   fields: MockField[],
-  columnRefs: Record<string, SPElement>,
+  columnLooks: Record<string, SPElement>,
   include?: string[],
 ): SPElement {
   const chosen = include
@@ -82,7 +92,7 @@ export function buildGridRoot(
     elmType: 'div',
     _elmName: 'Row layout',
     style: { 'display': 'flex', 'align-items': 'center', 'width': '100%', 'gap': '12px' },
-    children: chosen.map((f) => gridCellForField(f, columnRefs)),
+    children: chosen.map((f) => gridCellForField(f, columnLooks)),
   };
 }
 
@@ -109,7 +119,7 @@ export function defaultColumnFormatter(field: MockField): SPElement {
   return tree;
 }
 
-/** Every `[$Field]` reference (and CFR/inline-edit target) in a subtree. */
+/** Every `[$Field]` (and inline-edit/hover target) referenced in a subtree. */
 export function fieldRefsIn(el: SPElement): Set<string> {
   const out = new Set<string>();
   const scanString = (s: string): void => {
@@ -121,7 +131,6 @@ export function fieldRefsIn(el: SPElement): Set<string> {
     else if (v && typeof v === 'object') Object.values(v).forEach(scanValue);
   };
   const walk = (node: SPElement): void => {
-    if (node.columnFormatterReference) out.add(cfrFieldName(node.columnFormatterReference));
     if (node.inlineEditField) out.add(cfrFieldName(node.inlineEditField));
     if (node.defaultHoverField) out.add(cfrFieldName(node.defaultHoverField));
     scanValue(node.txtContent);
@@ -138,23 +147,25 @@ export function fieldRefsIn(el: SPElement): Set<string> {
 
 /**
  * The single field a grid column represents, or null for composites
- * (groups) — a column stays "column-ish" while it maps to exactly one field.
+ * (groups). The `_field` stamp is the identity when present (a look may
+ * reference several columns — its cell still IS one column); a hand-built
+ * cell stays "column-ish" while it references exactly one field.
  */
 export function gridColumnField(el: SPElement): string | null {
-  if (el.columnFormatterReference) return cfrFieldName(el.columnFormatterReference);
+  if (el._field) return el._field;
   const refs = fieldRefsIn(el);
   return refs.size === 1 ? [...refs][0] : null;
 }
 
-/** Header label for a grid column. */
+/** Header label for a grid column: the COLUMN's name — a look cell keeps its
+ *  own _elmName (the component's), so identity beats naming here. */
 export function gridColumnLabel(el: SPElement, fields: MockField[]): string {
-  if (el._elmName) return el._elmName;
   const fieldName = gridColumnField(el);
   if (fieldName) {
     const field = fields.find((f) => f.name === fieldName);
     return field ? fieldLabel(field) : fieldName;
   }
-  return `<${el.elmType}>`;
+  return el._elmName ?? `<${el.elmType}>`;
 }
 
 /** Roadmap-contract name for a generated group: "Status + DueDate group". */
@@ -172,8 +183,15 @@ export function isPureGrid(root: SPElement): boolean {
   return root.children.every((c) => gridColumnField(c) !== null);
 }
 
-/** Fields not yet represented anywhere in the grid (for "+ column"). */
+/** Fields not yet present as a grid COLUMN (for "+ column"). A column's
+ *  identity is what counts — a look that references other columns does not
+ *  "place" them; composites still place every field they reference. */
 export function unplacedFields(root: SPElement, fields: MockField[]): MockField[] {
-  const placed = fieldRefsIn(root);
+  const placed = new Set<string>();
+  for (const c of root.children ?? []) {
+    const one = gridColumnField(c);
+    if (one) placed.add(one);
+    else fieldRefsIn(c).forEach((n) => placed.add(n));
+  }
   return fields.filter((f) => !placed.has(f.name));
 }
