@@ -156,6 +156,81 @@ describe('field drops (§5: FIELD_MIME lands as the look-aware cell)', () => {
   });
 });
 
+describe('canvas zoom (#216) — a read-only VIEW control', () => {
+  const mount = (prefs?: unknown) => {
+    const sets: unknown[] = [];
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {}, { get: () => prefs, set: (p) => sets.push({ ...p }) });
+    return { host, sets };
+  };
+
+  it('renders −/%/＋ on the toolbar; stepping scales the zoom box and persists', () => {
+    state.resetAll();
+    const { host, sets } = mount();
+    const box = host.querySelector('.wb-canvas-zoombox') as HTMLElement;
+    expect(box.style.transform).toBe(''); // 100% = no transform (e2e-safe default)
+    expect(host.querySelector('.wb-canvas-zoompct')?.textContent).toBe('100%');
+
+    (host.querySelector('[data-zoom="in"]') as HTMLButtonElement).click();
+    expect(box.style.transform).toBe('scale(1.1)');
+    expect(host.querySelector('.wb-canvas-zoompct')?.textContent).toBe('110%');
+    expect(sets.at(-1)).toMatchObject({ zoom: 1.1 });
+
+    // the % readout is the reset button
+    (host.querySelector('.wb-canvas-zoompct') as HTMLButtonElement).click();
+    expect(box.style.transform).toBe('');
+    expect(sets.at(-1)).toMatchObject({ zoom: 1 });
+    state.resetAll();
+  });
+
+  it('clamps at 25%–200% (buttons disable at the ends)', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 2 });
+    const inBtn = host.querySelector('[data-zoom="in"]') as HTMLButtonElement;
+    expect(inBtn.disabled).toBe(true);
+    expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(2)');
+    state.resetAll();
+  });
+
+  it('Ctrl+wheel zooms; a bare wheel scrolls as usual', () => {
+    state.resetAll();
+    const { host } = mount();
+    const box = host.querySelector('.wb-canvas-zoombox') as HTMLElement;
+
+    host.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+    expect(box.style.transform).toBe(''); // no Ctrl → untouched
+
+    const zoomWheel = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+    // happy-dom's WheelEventInit drops modifier keys — stamp it on directly
+    Object.defineProperty(zoomWheel, 'ctrlKey', { value: true });
+    host.dispatchEvent(zoomWheel);
+    expect(zoomWheel.defaultPrevented).toBe(true); // never page-zooms the app
+    expect(box.style.transform).toBe('scale(1.1)');
+    state.resetAll();
+  });
+
+  it('zoom mutates nothing: no undo entry, document JSON untouched', () => {
+    state.resetAll();
+    const { host } = mount();
+    const doc = JSON.stringify(state.doc.root);
+    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+    (host.querySelector('[data-zoom="out"]') as HTMLButtonElement).click();
+    expect(JSON.stringify(state.doc.root)).toBe(doc);
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
+    state.resetAll();
+  });
+
+  it('restores a persisted zoom at mount (and sanitizes garbage)', () => {
+    state.resetAll();
+    const { host } = mount({ zoom: 1.5 });
+    expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(1.5)');
+    const { host: h2 } = mount({ zoom: 'huge' });
+    expect((h2.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('');
+    state.resetAll();
+  });
+});
+
 describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
   it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
     state.resetAll();

@@ -142,6 +142,10 @@ interface UiPrefs {
   /** Whether the right-hand validated-JSON pane (the Advanced escape hatch) is
    *  shown. Collapsed by default so the maker landing is left pane + canvas. */
   jsonOpen: boolean;
+  /** Canvas view controls (#216): the preview zoom factor (1 = 100%).
+   *  ADDITIVE field in this frozen blob — a read-only view pref, never part
+   *  of the project (no undo entry, no document autosave). */
+  canvasZoom: number;
 }
 const uiPrefs: UiPrefs = {
   cols: { side: 360 },
@@ -150,6 +154,7 @@ const uiPrefs: UiPrefs = {
   titleCol: true,
   activeLens: 'pro',
   jsonOpen: false,
+  canvasZoom: 1,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 const saveUiPrefs = () => {
@@ -454,7 +459,11 @@ state.subscribe((reason) => {
 
 // ─── panels ─────────────────────────────────────────────────────────────────
 mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
-const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast);
+// canvas view prefs (#216): zoom rides inside wb-ui-prefs (additive field)
+const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast, {
+  get: () => ({ zoom: uiPrefs.canvasZoom }),
+  set: (p) => { uiPrefs.canvasZoom = p.zoom; saveUiPrefs(); },
+});
 mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElementById('wb-titlecol-label')! });
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountExplainPanel(document.getElementById('wb-tab-explain')!);

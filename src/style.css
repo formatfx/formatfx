@@ -1049,7 +1049,29 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-mu-btn:disabled { opacity: .35; cursor: default; }
 
 /* ── FLOOR-AND-SHEETS Stage 3: the Select/Live canvas toggle ──────────────── */
-.wb-canvas-modebar { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.wb-canvas-modebar { display: flex; align-items: center; flex-wrap: wrap; row-gap: 4px; justify-content: flex-end; margin: 0 0 6px; }
+
+/* ── #216 canvas view controls: zoom (magnify — never reflows) ───────────── */
+.wb-canvas-viewbar { display: flex; align-items: center; gap: 10px; margin-right: auto; flex-wrap: wrap; }
+.wb-canvas-zoomseg {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface);
+}
+.wb-canvas-zoombtn, .wb-canvas-zoompct {
+  padding: 2px 8px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
+}
+.wb-canvas-zoombtn:hover:not(:disabled), .wb-canvas-zoompct:hover { color: var(--wb-accent); }
+.wb-canvas-zoombtn:disabled { opacity: 0.4; cursor: default; }
+.wb-canvas-zoompct { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* the zoom box scales rendered pixels (a transform NEVER reflows layout);
+   origin top-left so zoomed-in content extends into the canvas scroll area */
+.wb-canvas-zoombox {
+  display: flex; align-items: stretch; width: fit-content; min-width: 100%;
+  transform-origin: 0 0;
+}
+.wb-canvas-stage { flex: 1 1 auto; min-width: 0; }
 .wb-canvas-modeseg {
   display: inline-flex; padding: 2px; gap: 2px;
   border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface);

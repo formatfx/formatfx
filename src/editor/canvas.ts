@@ -22,6 +22,10 @@ import type { NodePath, SPElement } from '../core/types';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
 import { openTemplateModal } from './templateModal';
 import { HOVER_CHILD_CLASS } from './hoverReveal';
+import {
+  ZOOM_MIN, ZOOM_MAX, clampZoom, stepZoom, zoomLabel, sanitizeViewPrefs,
+  type CanvasViewPrefs,
+} from './viewport';
 
 /** The Stage-3 row-view toolbar: density (Roomy/Compact) + Templates.
  *  Area/zone sizing lives in the template builder's inspector (the old
@@ -134,6 +138,15 @@ export interface CanvasApi {
   setTitleColumn: (show: boolean) => void;
 }
 
+/** How the canvas reads/writes its persisted view prefs (#216) — main.ts
+ *  backs this with ADDITIVE fields inside the frozen `wb-ui-prefs` blob.
+ *  Pure view state: no undo entry, no document autosave, ever. */
+export interface CanvasViewPrefsIO {
+  /** The raw persisted value (mountCanvas sanitizes — never trust the blob). */
+  get(): unknown;
+  set(prefs: CanvasViewPrefs): void;
+}
+
 function pathFromAttr(raw: string | undefined): NodePath | undefined {
   if (raw === undefined) return undefined;
   return raw === '' ? [] : raw.split('.').map(Number);
@@ -146,8 +159,87 @@ function describeNode(el: SPElement | null): string {
   return `<${el.elmType}>${txt}`;
 }
 
-export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): CanvasApi {
+export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, viewPrefs?: CanvasViewPrefsIO): CanvasApi {
   let runtimeIssues: RenderIssue[] = [];
+
+  // ── #216 view controls: zoom (magnify — a READ-ONLY view knob) ────────────
+  // Zoom is CSS transform scale on the zoom box wrapping everything the canvas
+  // renders (toolbars stay outside — chrome never zooms). Direct style writes,
+  // no state.emit: changing zoom re-renders nothing and mutates nothing —
+  // no undo entry, no document autosave (persisted via wb-ui-prefs only).
+  const view = sanitizeViewPrefs(viewPrefs?.get());
+  let zoomBox: HTMLElement | null = null;
+  let viewBar: {
+    out: HTMLButtonElement; pct: HTMLButtonElement; zin: HTMLButtonElement;
+  } | null = null;
+  const persistView = (): void => viewPrefs?.set({ ...view });
+
+  const refreshViewBar = (): void => {
+    if (!viewBar) return;
+    viewBar.pct.textContent = zoomLabel(view.zoom);
+    viewBar.pct.title = view.zoom === 1
+      ? 'Zoom 100% — Ctrl+scroll over the preview also zooms'
+      : 'Reset zoom to 100%';
+    viewBar.out.disabled = view.zoom <= ZOOM_MIN;
+    viewBar.zin.disabled = view.zoom >= ZOOM_MAX;
+  };
+
+  /** Paint the current zoom onto the wrappers + toolbar (no re-render). */
+  const applyView = (): void => {
+    if (!zoomBox) return;
+    zoomBox.style.transform = view.zoom === 1 ? '' : `scale(${view.zoom})`;
+    // inverse-scale helper for chrome INSIDE the zoom box (the width handle)
+    zoomBox.style.setProperty('--wb-canvas-zoom', String(view.zoom));
+    refreshViewBar();
+  };
+
+  const setZoom = (z: number): void => {
+    view.zoom = clampZoom(z);
+    applyView();
+    persistView();
+  };
+
+  /** The zoom cluster on the canvas toolbar: − / current % (reset) / +. */
+  const viewControlsBar = (): HTMLElement => {
+    const bar = document.createElement('div');
+    bar.className = 'wb-canvas-viewbar';
+    const seg = document.createElement('div');
+    seg.className = 'wb-canvas-zoomseg';
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', 'Preview zoom (magnifies pixels only)');
+    const mk = (cls: string, text: string, title: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = cls;
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener('click', fn);
+      seg.appendChild(b);
+      return b;
+    };
+    const out = mk('wb-canvas-zoombtn', '−',
+      'Zoom out (Ctrl+scroll) — shrinks pixels only, the layout never reflows',
+      () => setZoom(stepZoom(view.zoom, -1)));
+    out.dataset.zoom = 'out';
+    const pct = mk('wb-canvas-zoompct', zoomLabel(view.zoom), '', () => setZoom(1));
+    const zin = mk('wb-canvas-zoombtn', '＋',
+      'Zoom in (Ctrl+scroll) — magnifies pixels only, the layout never reflows',
+      () => setZoom(stepZoom(view.zoom, 1)));
+    zin.dataset.zoom = 'in';
+    bar.appendChild(seg);
+    viewBar = { out, pct, zin };
+    refreshViewBar();
+    return bar;
+  };
+
+  // Ctrl/Cmd + mouse wheel over the preview zooms (and must NOT page-zoom
+  // the whole app — hence cancelable + passive:false).
+  const onWheel = (e: WheelEvent): void => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    setZoom(stepZoom(view.zoom, e.deltaY < 0 ? 1 : -1));
+  };
+  host.addEventListener('wheel', onWheel, { passive: false });
 
   const ctxForRow = (rowIndex: number): EvalContext => ({
     row: state.rows[rowIndex] ?? {},
@@ -176,12 +268,22 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
       interactive: state.canvasMode === 'live',
       onAction: (_el: unknown, summary: string) => onToast(summary),
     };
-    host.appendChild(canvasModeBar(onToast));
+    const modebar = canvasModeBar(onToast);
+    modebar.prepend(viewControlsBar());
+    host.appendChild(modebar);
+
+    // #216: everything the canvas renders lives inside the ZOOM BOX (scale =
+    // magnify) wrapping the STAGE. Toolbars stay outside — chrome never zooms.
+    zoomBox = document.createElement('div');
+    zoomBox.className = 'wb-canvas-zoombox';
+    const stage = document.createElement('div');
+    stage.className = 'wb-canvas-stage';
+    zoomBox.appendChild(stage);
 
     const kind = state.doc.kind;
     if (kind === 'grid') {
       // the grid-first workspace: root children as Lists-style view columns
-      renderGrid(host, { opts, ctxForRow, onToast });
+      renderGrid(stage, { opts, ctxForRow, onToast });
     } else if (kind === 'row') {
       host.appendChild(rowViewToolbar(onToast));
       state.rows.forEach((_row, i) => {
@@ -193,7 +295,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
           rowHost.textContent = `⚠ ${(e as Error).message}`;
           rowHost.classList.add('wb-render-error');
         }
-        host.appendChild(rowHost);
+        stage.appendChild(rowHost);
       });
     } else {
       host.appendChild(rowViewToolbar(onToast));
@@ -212,8 +314,10 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
         }
         deck.appendChild(tile);
       });
-      host.appendChild(deck);
+      stage.appendChild(deck);
     }
+    host.appendChild(zoomBox);
+    applyView();
 
     runtimeIssues = issues;
     highlightSelection();
@@ -334,6 +438,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   (host as any)._unsub = () => {
     unsub();
     document.removeEventListener('click', onDocClick);
+    host.removeEventListener('wheel', onWheel);
   };
   render();
 
