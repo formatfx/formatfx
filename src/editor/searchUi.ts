@@ -14,7 +14,6 @@ import { state } from './state';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { PALETTE, instantiate } from './presets';
 import { QUICK_LOOKS } from './playground';
-import { openCondFormat } from './condFormat';
 import { gridColumnForField } from './gridView';
 import { focusFxSlot } from './fxBar';
 import {
@@ -44,13 +43,8 @@ function recordRecent(q: string): void {
 // ─── navigation targets (close first, then move, then flash) ─────────────────
 
 /** Put the canvas on the surface a document hit lives on. Pure navigation —
- *  openView/minimizeView/openColumnRef/openMain never touch the undo stack. */
+ *  openView/minimizeView never touch the undo stack. */
 function goToSurface(surface: SearchSurface): void {
-  if (surface.kind === 'column') {
-    if (state.activeDocKey !== surface.fieldName) state.openColumnRef(surface.fieldName);
-    return;
-  }
-  if (state.activeDocKey !== 'main') state.openMain();
   if (surface.kind === 'view') {
     if (state.activeViewId !== surface.id) state.openView(surface.id);
   } else if (state.activeViewId !== null) {
@@ -97,10 +91,12 @@ function navigate(action: SearchAction, toast: (m: string) => void): void {
       flashPath(action.path);
       return;
     }
-    case 'column': {
+    // a rule lives inside the column's look, so both hits land the same way:
+    // on the grid, with the column's cell selected and flashed
+    case 'column':
+    case 'rules': {
       const field = state.fields.find((f) => f.name === action.fieldName);
       if (!field) return;
-      if (state.activeDocKey !== 'main') state.openMain();
       if (state.activeViewId !== null) state.minimizeView();
       const col = gridColumnForField(field);
       if (col.path.length) {
@@ -109,10 +105,6 @@ function navigate(action: SearchAction, toast: (m: string) => void): void {
       } else {
         toast(`${field.displayName ?? field.name} isn't placed on the grid — add it with “+ column”.`);
       }
-      return;
-    }
-    case 'rules': {
-      openCondFormat({ kind: 'column', fieldName: action.fieldName }, toast);
       return;
     }
     default:
@@ -132,12 +124,9 @@ export function openSearch(onToast?: (m: string) => void): void {
   const entries: SearchEntry[] = [
     ...indexElements(state.floorDoc.root, { kind: 'floor' }, 'Grid'),
     ...state.views.flatMap((v) => indexElements(v.doc.root, { kind: 'view', id: v.id }, v.name)),
-    ...Object.keys(state.columnRefs).flatMap((name) => {
-      const field = state.fields.find((f) => f.name === name);
-      const label = `${field?.displayName ?? name} column format`;
-      return indexElements(state.columnRefs[name], { kind: 'column', fieldName: name }, label);
-    }),
-    ...indexColumns(state.fields, state.columnRefs),
+    // column looks aren't indexed as a document of their own: they render
+    // EMBEDDED in the floor's cells, which the floor walk above already covers
+    ...indexColumns(state.fields, state.columnLooks),
     ...indexInsertables(
       PALETTE.map((p) => ({ id: p.id, label: p.label, description: p.description, group: p.group })),
       QUICK_LOOKS.map((q) => ({ label: q.label, hint: q.hint, props: q.props })),

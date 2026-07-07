@@ -2,15 +2,22 @@
  * editor/gridView.ts — The grid-first workspace canvas context (kind 'grid').
  *
  * Renders the document as a Microsoft-Lists-style grid: one column per root
- * child, real column headers, each cell rendered with the column's current
- * formatter (CFR cells resolve from the registry). Header interactions are
- * the on-ramp to row formatting:
- *   · click a header        → per-column menu (format / style / copy / hide)
+ * child, real column headers, each cell rendering its EMBEDDED content — a
+ * look-carrying column's cell IS a baked clone of the ⬡ component applied to
+ * it (no references to resolve). "Format this column" is not a gesture: a
+ * column gets its look by having a COMPONENT applied to it.
+ *   · click/right-click a header → per-column menu: apply / change / remove
+ *     the component look, save it as a component, copy the compiled column
+ *     JSON, hide the column
+ *   · drop a ⬡ component onto a header or any body cell of a single-field
+ *     column → apply it as the column's look (the mapper opens on holes;
+ *     refuse-and-teach when no slot fits the column's type)
  *   · drag header L/R edges → reorder columns
  *   · drop ONTO a header    → group both columns into row-formatter
  *                             scaffolding ("Status + DueDate group")
  * Every grid mutation maps to ONE undoable document mutation (state methods
- * moveNodeTo/groupNodes/unwrapNode/insertNode/removeNode).
+ * applyComponentToColumn/removeColumnLook/moveNodeTo/groupNodes/unwrapNode/
+ * insertNode/removeNode).
  */
 
 import { state } from './state';
@@ -18,24 +25,23 @@ import { renderElement, type RenderOptions } from '../core/renderer';
 import { parseForEach, evaluateForEachList, type EvalContext, type SPValue } from '../core/expressions';
 import { exportJson } from '../core/serializer';
 import { openElementPlayground } from './playground';
-import { openCondFormat } from './condFormat';
-import { openFormatCells } from './formatCells';
 import { openMenu, closeMenu, openRenamePopover, type MenuItem } from './menu';
 import {
-  gridCellForField, defaultColumnFormatter, gridColumnField, gridColumnLabel,
+  gridCellForField, gridColumnField, gridColumnLabel,
   groupName, unplacedFields, fieldLabel,
 } from './gridScaffold';
-import { cfrBlastRadius, toColumnFormatter } from './cfr';
-import { bindComponentInstance, isSingleColumnComponent } from './components';
-import { customComponents, openSaveColumnAsComponent } from './componentLibrary';
+import { toColumnFormatter } from './lookDialect';
 import {
-  subtypesForType, bakeSubtype, coerceKnob, knobError,
-} from './subtypes';
-import { paletteItemById } from './palette';
-import { createOverlay } from './overlay';
+  BUILTIN_COMPONENTS, bestGuessMapping, mappingComplete,
+  isSingleColumnComponent, componentKind, type ComponentDef,
+} from './components';
+import {
+  customComponents, openSaveColumnAsComponent,
+  openComponentMapper, componentById, COMPONENT_MIME,
+} from './componentLibrary';
+import { paletteComponents } from './paletteComponents';
 import { groupForField, GROUP_COLORS, type ColumnGroup } from './colGroups';
-import { cfrFieldName } from '../core/refs';
-import type { SPElement, NodePath, MockField, Subtype, Knob } from '../core/types';
+import type { SPElement, NodePath, MockField, FieldType } from '../core/types';
 
 interface GridDeps {
   opts: RenderOptions;
@@ -50,45 +56,59 @@ interface GridColumn {
 
 // ─── per-column actions ──────────────────────────────────────────────────────
 
-/** "Format this column": register a starter formatter (if none), make the
- *  grid cell render it via CFR (ONE document mutation), then open it. */
-function formatColumn(col: GridColumn, field: MockField, onToast: (m: string) => void): void {
-  const name = field.name;
-  const existed = name in state.columnRefs;
-  if (!existed) state.columnRefs[name] = defaultColumnFormatter(field);
-  if (!col.el.columnFormatterReference && col.path.length > 0) {
-    const p = state.parentOf(col.path);
-    if (p?.parent.children) {
-      state.mutateDocument(() => {
-        const cell = gridCellForField(field, state.columnRefs);
-        if (col.el._elmName) cell._elmName = col.el._elmName;
-        p.parent.children![p.index] = cell;
-      });
-    }
-  }
-  state.openColumnRef(name);
-  onToast(existed
-    ? `Editing the ${name} style — switch back via the topbar or Structure pane`
-    : `Started a formatter for ${name} — you're editing it now; the grid renders it live`);
+/** Human name for a column type in teaching copy ("multi-person", "yes/no"). */
+const TYPE_NAMES: Partial<Record<FieldType, string>> = {
+  note: 'multiline', choiceMulti: 'multi-choice', personMulti: 'multi-person',
+  boolean: 'yes/no', lookupMulti: 'multi-lookup',
+};
+function typeName(t: FieldType): string {
+  return TYPE_NAMES[t] ?? t;
 }
 
-/** Register `tree` as the column's formatter, CFR-wire the grid cell (ONE
- *  document mutation), then open it for editing. Shared by every "Format this
- *  column" path — the manual default and each preset. */
-function applyColumnFormatter(col: GridColumn, field: MockField, tree: SPElement, onToast: (m: string) => void, msg: string): void {
-  state.columnRefs[field.name] = tree;
-  if (!col.el.columnFormatterReference && col.path.length > 0) {
-    const p = state.parentOf(col.path);
-    if (p?.parent.children) {
-      state.mutateDocument(() => {
-        const cell = gridCellForField(field, state.columnRefs);
-        if (col.el._elmName) cell._elmName = col.el._elmName;
-        p.parent.children![p.index] = cell;
-      });
-    }
+/** Every offered element component whose single slot fits a `type` column —
+ *  the "Apply a component…" catalog (multi-slot defs arrive by DROP, where
+ *  the mapper can fill their remaining slots). */
+function fittingComponents(type: FieldType): ComponentDef[] {
+  return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...customComponents()]
+    .filter((def) => isSingleColumnComponent(def, type));
+}
+
+/**
+ * Apply `def` to `field` as its look — the ONE way a column gets formatting.
+ * The first slot fitting the column's type is forced to this field, the rest
+ * best-guessed; a complete mapping applies immediately (ONE undoable step via
+ * state.applyComponentToColumn), any hole opens the mapper aimed at the
+ * column. No fitting slot = refuse and teach.
+ */
+function applyComponentAsLook(def: ComponentDef, field: MockField, onToast: (m: string) => void): void {
+  const slot = componentKind(def) === 'element'
+    ? def.slots.find((s) => s.types.includes(field.type))
+    : undefined;
+  if (!slot) {
+    onToast(`"${def.name}" has no slot that takes a ${typeName(field.type)} column`);
+    return;
   }
-  state.openColumnRef(field.name);
-  onToast(msg);
+  const mapping = bestGuessMapping(def, state.fields);
+  mapping[slot.key] = field.name;
+  if (mappingComplete(def, mapping)) {
+    state.applyComponentToColumn(field.name, def, mapping);
+    onToast(`Applied ${def.name} to ${fieldLabel(field)} — Ctrl+Z undoes`);
+  } else {
+    openComponentMapper(def, onToast, { applyToColumn: field.name });
+  }
+}
+
+/** The "Apply a component…" submenu: single-slot element components fitting
+ *  the column's type — picking one applies it as the look in one step. */
+function openApplyComponentMenu(field: MockField, anchor: HTMLElement, onToast: (m: string) => void): void {
+  openMenu(anchor, `Apply a component to ${fieldLabel(field)}`,
+    fittingComponents(field.type).map((def) => ({
+      icon: 'Package',
+      label: def.name,
+      badge: def.builtin ? 'Built-in' : 'Yours',
+      title: def.description,
+      fn: () => applyComponentAsLook(def, field, onToast),
+    })));
 }
 
 /** The tab-group pill menu: collapse/expand, rename, recolor, ungroup — every
@@ -135,170 +155,9 @@ function groupMenu(group: ColumnGroup, anchor: HTMLElement, onToast: (m: string)
   ]);
 }
 
-/** Icon for a subtype entry: the palette icon for a preset-derived seed, else a
- *  sensible fallback (Money / a star for a maker's custom). */
-function subtypeIcon(st: Subtype): string {
-  return paletteItemById(st.id)?.icon ?? (st.id === 'money' ? 'AllCurrency' : 'Tag');
-}
-
-/** Bake `args` into the subtype and snapshot-apply it to the column, staying on
- *  the grid (so the cell renders it and a single Ctrl+Z reverts). */
-function commitSubtype(col: GridColumn, field: MockField, st: Subtype, args: Record<string, string | number | boolean>, onToast: (m: string) => void): void {
-  const baked = bakeSubtype(st, args);
-  baked._elmName = `${fieldLabel(field)} — ${st.name}`;
-  state.applyColumnSubtype(field.name, baked, st.id, args, col.path);
-  onToast(`Applied ${st.name} to ${field.name} — the grid renders it. Ctrl+Z to undo.`);
-}
-
-/** Pick a subtype: zero-knob applies in one click; a knob-bearing subtype opens
- *  the apply-time form first. */
-function applySubtype(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
-  if (st.knobs.length === 0) { commitSubtype(col, field, st, {}, onToast); return; }
-  openKnobForm(col, field, st, onToast);
-}
-
-/** One typed widget for a knob, pre-filled with its default; returns a reader. */
-function knobWidget(knob: Knob): { el: HTMLElement; read: () => string | boolean } {
-  if (knob.type === 'bool') {
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.dataset.knob = knob.label;
-    cb.checked = knob.default === true || knob.default === 'true';
-    return { el: cb, read: () => cb.checked };
-  }
-  if (knob.type === 'choice') {
-    const sel = document.createElement('select');
-    sel.dataset.knob = knob.label;
-    for (const c of knob.choices ?? []) {
-      const o = document.createElement('option');
-      o.value = c; o.textContent = c;
-      if (String(knob.default) === c) o.selected = true;
-      sel.appendChild(o);
-    }
-    return { el: sel, read: () => sel.value };
-  }
-  const inp = document.createElement('input');
-  inp.type = knob.type === 'number' ? 'number' : knob.type === 'color' ? 'color' : 'text';
-  inp.dataset.knob = knob.label;
-  inp.value = String(knob.default);
-  return { el: inp, read: () => inp.value };
-}
-
-/** The apply-time knob form: a dialog of typed widgets, refuse-and-teach
- *  validation (nothing bakes until valid), Apply = one undoable mutation. */
-function openKnobForm(col: GridColumn, field: MockField, st: Subtype, onToast: (m: string) => void): void {
-  const handle = createOverlay('wb-knobform-overlay', () => handle.close());
-  const panel = document.createElement('div');
-  panel.className = 'wb-knobform';
-  handle.overlay.appendChild(panel);
-
-  const head = document.createElement('div');
-  head.className = 'wb-knobform-head';
-  const title = document.createElement('span');
-  title.className = 'wb-knobform-title';
-  title.textContent = `Set up ${st.name} for ${fieldLabel(field)}`;
-  const sub = document.createElement('span');
-  sub.className = 'wb-knobform-sub';
-  sub.textContent = 'Nothing changes until you Apply (then Ctrl+Z undoes).';
-  head.append(title, sub);
-  panel.appendChild(head);
-
-  const rows: Array<{ knob: Knob; read: () => string | boolean; err: HTMLElement }> = [];
-  for (const knob of st.knobs) {
-    const row = document.createElement('label');
-    row.className = 'wb-knobform-row';
-    const lab = document.createElement('span');
-    lab.className = 'wb-knobform-label';
-    lab.textContent = knob.label;
-    const widget = knobWidget(knob);
-    const err = document.createElement('span');
-    err.className = 'wb-knobform-err';
-    row.append(lab, widget.el, err);
-    panel.appendChild(row);
-    rows.push({ knob, read: widget.read, err });
-  }
-
-  const foot = document.createElement('div');
-  foot.className = 'wb-knobform-foot';
-  const cancel = document.createElement('button');
-  cancel.className = 'wb-knobform-cancel';
-  cancel.textContent = 'Cancel';
-  cancel.addEventListener('click', () => handle.close());
-  const apply = document.createElement('button');
-  apply.className = 'wb-knobform-apply';
-  apply.textContent = 'Apply';
-  apply.addEventListener('click', () => {
-    const args: Record<string, string | number | boolean> = {};
-    let ok = true;
-    for (const { knob, read, err } of rows) {
-      const value = coerceKnob(knob, read());
-      const msg = knobError(knob, value);
-      err.textContent = msg ?? '';
-      if (msg) { ok = false; continue; }
-      args[knob.path] = value; // key by the STABLE literal path, not the editable label
-    }
-    if (!ok) return; // refuse-and-teach: nothing bakes until every knob is valid
-    handle.close();
-    commitSubtype(col, field, st, args, onToast);
-  });
-  foot.append(cancel, apply);
-  panel.appendChild(foot);
-
-  document.body.appendChild(handle.overlay);
-  (panel.querySelector('input, select') as HTMLElement | null)?.focus();
-}
-
-/** "Format this column" → the type-filtered catalog: built-in seeds (the
- *  subtype engine, knobs included) + YOUR components that fit (single-slot,
- *  type-compatible — the one "yours" concept; the old custom-subtype save was
- *  swallowed by Save as component…), then "format manually". */
-function openFormatColumnMenu(col: GridColumn, field: MockField, header: HTMLElement, onToast: (m: string) => void): void {
-  const catalog = subtypesForType(field.type).filter((st) => st.origin === 'builtin');
-  const yours = customComponents().filter((c) => isSingleColumnComponent(c, field.type));
-  const manual = (): void => applyColumnFormatter(col, field, defaultColumnFormatter(field), onToast,
-    `Started a formatter for ${field.name} — you're editing it now; the grid renders it live`);
-  if (catalog.length === 0 && yours.length === 0) { manual(); return; }
-  const items: MenuItem[] = catalog.map((st) => ({
-    icon: subtypeIcon(st),
-    label: st.name,
-    badge: 'Built-in',
-    title: `Apply the built-in ${st.name} look to ${field.name}`,
-    fn: () => applySubtype(col, field, st, onToast),
-  }));
-  for (const def of yours) {
-    items.push({
-      icon: 'Package',
-      label: def.name,
-      badge: 'Yours',
-      title: `Apply your ${def.name} component to ${field.name} — registers a copy as this column's format`,
-      fn: () => {
-        // same snapshot-apply semantics as a built-in seed: stay on the grid,
-        // one Ctrl+Z reverts (the recipe tag is the component id — harmless
-        // to the vocab lookup, which optional-chains unknown ids). The bound
-        // root is STAMPED so the ⬡ inventory sees the instance too (the scan
-        // dedupes it against the subtype tag — one usage per column).
-        const bound = bindComponentInstance(def, { [def.slots[0].key]: field.name });
-        const baked = toColumnFormatter(bound, field.name);
-        baked._elmName = `${fieldLabel(field)} — ${def.name}`;
-        state.applyColumnSubtype(field.name, baked, def.id, {}, col.path);
-        onToast(`Applied your ${def.name} component to ${field.name} — the grid renders it. Ctrl+Z to undo.`);
-      },
-    });
-  }
-  items.push({
-    icon: 'Brush',
-    label: 'Format this column manually',
-    title: 'Start from the plain value and style it yourself',
-    fn: manual,
-  });
-  openMenu(header, `Format ${fieldLabel(field)}`, items);
-}
-
 /** Resolve a field to its placed grid column in the active main grid, or a
- *  synthetic unplaced column (path []), so callers outside the grid (the
- *  Column Formatters menu) can reuse the header's Format-this-column flow for
- *  any field. An unplaced field's path-[] column makes applyColumnFormatter
- *  register + open without a grid mutation (the spec's "unplaced" branch). */
+ *  synthetic unplaced column (path []), so callers outside the grid (search)
+ *  can select and flash the column a field lives in. */
 export function gridColumnForField(field: MockField): GridColumn {
   if (state.activeDocKey === 'main' && state.doc.kind === 'grid') {
     const children = state.doc.root.children ?? [];
@@ -308,21 +167,18 @@ export function gridColumnForField(field: MockField): GridColumn {
   return { el: { elmType: 'div' }, path: [] };
 }
 
-/** Open the type-aware "Format this column" menu for a field that may be
- *  placed in the grid or only registered in the schema — the Column Formatters
- *  menu's "Not yet formatted" entry point. */
-export function openColumnFormatMenuFor(field: MockField, anchor: HTMLElement, onToast: (m: string) => void): void {
-  openFormatColumnMenu(gridColumnForField(field), field, anchor, onToast);
-}
-
+/** Copy the column's SharePoint formatter JSON: a look compiles on demand
+ *  (`[$Field]` → `@currentField` via toColumnFormatter); a plain cell copies
+ *  as-is — a column-formatter starting point. */
 async function copyColumnJson(col: GridColumn, fieldName: string | null, onToast: (m: string) => void): Promise<void> {
-  const registered = fieldName ? state.columnRefs[fieldName] : undefined;
-  const root = registered ?? col.el;
+  const look = fieldName && Object.hasOwn(state.columnLooks, fieldName)
+    ? state.columnLooks[fieldName] : undefined;
+  const root = look && fieldName ? toColumnFormatter(look, fieldName) : col.el;
   const json = exportJson({ kind: 'column', root }, { sanitizeWhitespace: true });
   try {
     await navigator.clipboard.writeText(json);
-    onToast(registered
-      ? `[$${fieldName}] formatter JSON copied — paste into that column's Format pane`
+    onToast(look
+      ? `${fieldName} formatter JSON copied — paste into that column's Format pane`
       : 'Column JSON copied (this cell as a column-formatter starting point)');
   } catch {
     onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
@@ -337,96 +193,73 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
   const items: MenuItem[] = [];
 
   if (field) {
-    const registered = field.name in state.columnRefs;
-    const isLinked = !!col.el.columnFormatterReference;
-    if (isLinked) {
-      // a linked instance of the column's shared style (the Figma model):
-      // edit the shared style for everyone, or detach a local copy into this view.
-      const blast = cfrBlastRadius(field.name, state.doc.root, state.columnRefs);
+    if (Object.hasOwn(state.columnLooks, field.name)) {
+      // the column wears a look — a baked instance of a ⬡ component
+      const look = state.columnLooks[field.name];
+      const def = look._component ? componentById(look._component.id) : undefined;
+      if (def) {
+        items.push({
+          icon: 'Package',
+          label: 'Change the component…',
+          title: `${fieldLabel(field)} wears the ${def.name} component — remap which columns fill its slots`,
+          fn: () => openComponentMapper(def, onToast, { applyToColumn: field.name }),
+        });
+      }
+      // an unstamped (imported) look has no def to reopen — "Save as
+      // component…" below is its one step to editability (refuse-and-teach)
       items.push({
-        icon: 'Brush',
-        label: `Edit the ${field.name} style`,
-        badge: '§ shared',
-        title: blast.count > 1
-          ? `Edit the shared ${field.name} style — changes all ${blast.count} places it's used (${blast.places.join(', ')})`
-          : `Edit the shared ${field.name} style — changes apply everywhere it's used`,
-        fn: () => formatColumn(col, field, onToast),
-      });
-      items.push({
-        icon: 'BranchFork2',
-        label: 'Detach from style',
-        title: `Format just this cell — a local copy that lives only in this view; the ${field.name} style everywhere else is untouched`,
-        fn: () => { state.forkCfr(col.path); onToast(`"${label}" is detached from the ${field.name} style — edits stay in this view. Ctrl+Z to relink.`); },
-      });
-    } else if (registered) {
-      items.push({
-        icon: 'Edit',
-        label: `Edit the ${field.name} style`,
-        title: `Open the ${field.name} column style on the canvas`,
-        fn: () => formatColumn(col, field, onToast),
-      });
-    } else {
-      items.push({
-        icon: 'Brush',
-        label: 'Format this column',
-        title: 'Pick a ready-made look that fits this column — or format it manually',
-        fn: () => openFormatColumnMenu(col, field, header, onToast),
-      });
-      items.push({
-        icon: 'Link',
-        label: `Save as the ${field.name} column style`,
-        title: `Register this cell's design as the ${field.name} column style and link this cell to it — reuse it anywhere via "+ column" or a reference`,
+        icon: 'Clear',
+        label: 'Remove the look',
+        title: `Back to the plain ${fieldLabel(field)} value — one undoable step`,
         fn: () => {
-          const f = state.promoteToColumn(col.path);
-          onToast(f
-            ? `Saved as the ${f} column style — this cell now uses it. Ctrl+Z to undo.`
-            : 'Could not save this cell as a column style.');
+          state.removeColumnLook(field.name);
+          onToast(`Removed the look from ${fieldLabel(field)} — plain value again. Ctrl+Z restores it.`);
         },
       });
-    }
-    if (registered) {
       items.push({
         icon: 'Package',
         label: 'Save as component…',
-        title: `Package ${fieldLabel(field)}'s current format as a reusable component — apply it to other ${field.type} columns from "Format this column", or map it anywhere from the ⬡ Components tab`,
+        title: `Package ${fieldLabel(field)}'s look as a reusable ⬡ component — apply it to other ${typeName(field.type)} columns, or map it anywhere from Components`,
         fn: () => openSaveColumnAsComponent(field, onToast),
       });
+    } else if (fittingComponents(field.type).length > 0) {
+      items.push({
+        icon: 'Package',
+        label: 'Apply a component…',
+        title: `Give ${fieldLabel(field)} its look by applying a ⬡ component — one undoable step (you can also drop one straight onto the column)`,
+        fn: () => openApplyComponentMenu(field, header, onToast),
+      });
+    } else {
+      // nothing in the catalog fits — teach instead of hiding the concept
+      items.push({
+        icon: 'Package',
+        label: `No component fits a ${typeName(field.type)} column yet`,
+        title: `Build one in Components — a component with a slot that accepts a ${typeName(field.type)} column can be applied (or dropped) here`,
+        fn: () => onToast(`No component fits a ${typeName(field.type)} column yet — build one in Components`),
+      });
     }
-    items.push({
-      icon: 'LightningBolt',
-      label: 'Conditional formatting…',
-      title: `Color ${fieldLabel(field)} by its value — pick conditions and looks, see them on your rows, apply in one click`,
-      fn: () => openCondFormat({ kind: 'column', fieldName: field.name, cellPath: col.path }, onToast),
-    });
   }
-  items.push({
-    icon: 'Font',
-    label: 'Format cells…',
-    title: 'Font, borders, fill and alignment — the comfortable dialog; applies to every row of this column',
-    fn: () => {
-      state.select(col.path);
-      openFormatCells(col.path, onToast);
-    },
-  });
-  items.push({
-    icon: 'Color',
-    label: isGroup ? 'Style this group' : 'Style this cell',
-    title: 'Open the style playground on this element — consequence-free until you Apply',
-    fn: () => {
-      state.select(col.path);
-      openElementPlayground(col.path);
-    },
-  });
-  if (isGroup && col.path.length > 0) {
+  if (isGroup) {
     items.push({
-      icon: 'Separator',
-      label: 'Ungroup',
-      title: 'Dissolve the group — its columns return to the grid (one undo step)',
+      icon: 'Color',
+      label: 'Style this group',
+      title: 'Open the style playground on this element — consequence-free until you Apply',
       fn: () => {
-        state.unwrapNode(col.path);
-        onToast(`"${label}" ungrouped — Ctrl+Z to regroup`);
+        state.select(col.path);
+        openElementPlayground(col.path);
       },
     });
+    if (col.path.length > 0) {
+      items.push({
+        icon: 'Separator',
+        label: 'Ungroup',
+        title: 'Dissolve the group — its columns return to the grid (one undo step)',
+        fn: () => {
+          state.unwrapNode(col.path);
+          onToast(`"${label}" ungrouped — Ctrl+Z to regroup`);
+        },
+      });
+    }
   }
   items.push({
     icon: 'Copy',
@@ -447,7 +280,7 @@ function menuFor(col: GridColumn, header: HTMLElement, onToast: (m: string) => v
   openMenu(header, label, items);
 }
 
-// ─── drag: reorder (edges) / group (drop onto) ───────────────────────────────
+// ─── drag: reorder (edges) / group (drop onto) / ⬡ component (apply look) ────
 
 const GRID_MIME = 'application/x-wb-grid-col';
 let dragSourceIndex: number | null = null;
@@ -466,8 +299,8 @@ function zoneFor(e: DragEvent, target: HTMLElement): DropZone {
 }
 
 function clearDropMarks(host: HTMLElement): void {
-  host.querySelectorAll('.wb-grid-drop-before, .wb-grid-drop-after, .wb-grid-drop-onto')
-    .forEach((n) => n.classList.remove('wb-grid-drop-before', 'wb-grid-drop-after', 'wb-grid-drop-onto'));
+  host.querySelectorAll('.wb-grid-drop-before, .wb-grid-drop-after, .wb-grid-drop-onto, .wb-grid-drop-look')
+    .forEach((n) => n.classList.remove('wb-grid-drop-before', 'wb-grid-drop-after', 'wb-grid-drop-onto', 'wb-grid-drop-look'));
 }
 
 function applyDrop(zone: DropZone, from: number, to: number, cols: GridColumn[], onToast: (m: string) => void): void {
@@ -493,6 +326,13 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     ? root.children.map((el, i) => ({ el, path: [i] }))
     : [{ el: root, path: [] as NodePath }];
   const unplaced = root.children?.length ? unplacedFields(root, state.fields) : [];
+
+  /** The single field a column represents, as a MockField (undefined for
+   *  composites/groups — they take no component drops). */
+  const fieldOf = (col: GridColumn): MockField | undefined => {
+    const name = gridColumnField(col.el);
+    return name ? state.fields.find((f) => f.name === name) : undefined;
+  };
 
   // ── the tab-group lens (owner brief 2026-07-05) ────────────────────────────
   // Which group each column belongs to, and the render ENTRIES: every visible
@@ -548,6 +388,41 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     .map((e) => ('collapsed' in e ? '36px' : 'minmax(140px, 1fr)'))
     .join(' ') + (unplaced.length ? ' 108px' : '');
   grid.style.setProperty('--wb-grid-cols', template);
+
+  // ── ⬡ component drop = apply as the column's look ─────────────────────────
+  // Headers AND body cells of single-field columns accept COMPONENT_MIME (the
+  // library rows' drag payload) alongside the header-reorder MIME. The whole
+  // column highlights while a component hovers it; the drop applies with the
+  // exact "Apply a component…" semantics. stopPropagation everywhere so the
+  // canvas-level generic component drop (insert as a NEW column) never
+  // double-fires under a column-targeted drop.
+  const clearLookMarks = (): void => {
+    grid.querySelectorAll('.wb-grid-drop-look')
+      .forEach((n) => n.classList.remove('wb-grid-drop-look'));
+  };
+  const attachLookDrop = (target: HTMLElement, field: MockField, i: number): void => {
+    target.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes(COMPONENT_MIME)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      clearDropMarks(host);
+      grid.querySelectorAll(`.wb-grid-header[data-col="${i}"], .wb-grid-cell[data-col="${i}"]`)
+        .forEach((n) => n.classList.add('wb-grid-drop-look'));
+    });
+    // the drag source is a library row — its dragend never reaches the grid,
+    // so leaving a target clears the highlight (the next dragover re-marks)
+    target.addEventListener('dragleave', () => clearLookMarks());
+    target.addEventListener('drop', (e) => {
+      if (!e.dataTransfer?.types.includes(COMPONENT_MIME)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      clearDropMarks(host);
+      const def = componentById(e.dataTransfer.getData(COMPONENT_MIME));
+      if (!def) return;
+      applyComponentAsLook(def, field, onToast);
+    });
+  };
 
   // ── multi-select + "make a row view" bar ──────────────────────────────────
   // drop any selection that points past the current columns (e.g. after a hide)
@@ -675,6 +550,7 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       return;
     }
     const { col, i, group: colGroup } = entry;
+    const colField = fieldOf(col);
     const h = document.createElement('div');
     h.className = 'wb-grid-header';
     h.dataset.col = String(i);
@@ -686,23 +562,25 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     h.tabIndex = 0;
     h.setAttribute('role', 'button');
     h.setAttribute('aria-haspopup', 'menu');
-    h.title = 'Click for column actions · drag left/right to reorder · drop onto another column to group them';
+    h.title = 'Click for column actions · drag left/right to reorder · drop onto another column to group them'
+      + (colField ? ' · drop a ⬡ component to apply its look' : '');
     const label = document.createElement('span');
     label.className = 'wb-grid-header-label';
     label.textContent = gridColumnLabel(col.el, state.fields);
     h.append(label);
-    // § style mark: this column is a LINKED INSTANCE of a shared column format
-    if (col.el.columnFormatterReference) {
-      const linkField = cfrFieldName(col.el.columnFormatterReference);
-      const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
-      const badge = document.createElement('span');
-      badge.className = 'wb-cfr-link wb-style-mark';
-      badge.textContent = '§';
-      badge.setAttribute('aria-hidden', 'true');
-      badge.title = blast.count > 1
-        ? `Uses the ${linkField} style — shared with ${blast.count} places. "Edit the ${linkField} style" changes them all; "Detach from style" makes a copy for this view.`
-        : `Uses the ${linkField} style. "Edit the ${linkField} style" changes the shared style; "Detach from style" makes a copy for this view.`;
-      h.append(badge);
+    // ⬡ look mark: this column wears a component (named when the look is a
+    // stamped instance — an imported, unstamped look stays unmarked)
+    if (colField && Object.hasOwn(state.columnLooks, colField.name)) {
+      const tag = state.columnLooks[colField.name]._component;
+      const lookDef = tag ? componentById(tag.id) : undefined;
+      if (lookDef) {
+        const mark = document.createElement('span');
+        mark.className = 'wb-grid-look';
+        mark.textContent = '⬡';
+        mark.setAttribute('aria-hidden', 'true');
+        mark.title = `This column wears the ${lookDef.name} component — right-click to change or remove`;
+        h.append(mark);
+      }
     }
     const caret = document.createElement('span');
     caret.className = 'wb-grid-header-caret';
@@ -769,6 +647,7 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
         if (!Number.isInteger(from) || from === i) return;
         applyDrop(zoneFor(e, h), from, i, cols, onToast);
       });
+      if (colField) attachLookDrop(h, colField, i);
     }
     headrow.appendChild(h);
   });
@@ -777,16 +656,16 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
     const add = document.createElement('button');
     add.className = 'wb-grid-addcol';
     // the count answers "where the heck is that column" at a glance — hidden
-    // and never-placed fields both wait here (formatted ones stay formatted)
+    // and never-placed fields both wait here (look-wearing ones keep it)
     add.textContent = `+ column · ${unplaced.length}`;
     add.title = `${unplaced.length} column${unplaced.length > 1 ? 's' : ''} from your schema ${unplaced.length > 1 ? 'aren’t' : 'isn’t'} shown in this grid — click to bring one back`;
     add.addEventListener('click', () => {
       openMenu(add, 'Columns not shown', unplaced.map((f) => ({
-        icon: f.name in state.columnRefs ? 'Brush' : 'TripleColumn',
-        label: fieldLabel(f) + (f.name in state.columnRefs ? ' · formatted' : ''),
+        icon: Object.hasOwn(state.columnLooks, f.name) ? 'Brush' : 'TripleColumn',
+        label: fieldLabel(f) + (Object.hasOwn(state.columnLooks, f.name) ? ' · formatted' : ''),
         fn: () => {
-          state.insertNode(gridCellForField(f, state.columnRefs), []);
-          onToast(`${fieldLabel(f)} added to the grid${f.name in state.columnRefs ? ' — rendering its formatter' : ''}`);
+          state.insertNode(gridCellForField(f, state.columnLooks), []);
+          onToast(`${fieldLabel(f)} added to the grid${Object.hasOwn(state.columnLooks, f.name) ? ' — wearing its look' : ''}`);
         },
       })));
     });
@@ -808,36 +687,14 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
       const cell = document.createElement('div');
       cell.className = 'wb-grid-cell';
       cell.dataset.col = String(i);
-      if (col.el.columnFormatterReference) {
-        const linkField = cfrFieldName(col.el.columnFormatterReference);
-        const linkDisplay = state.fields.find((f) => f.name === linkField)?.displayName ?? linkField;
-        const blast = cfrBlastRadius(linkField, state.doc.root, state.columnRefs);
-        cell.classList.add('wb-cell-linked');
-        cell.title = `${linkDisplay} style — double-click to edit (used in ${Math.max(blast.count, 1)} place${blast.count === 1 ? '' : 's'})`;
-        const tag = document.createElement('span');
-        tag.className = 'wb-style-nametag';
-        tag.textContent = `${linkDisplay} style`;
-        tag.setAttribute('aria-hidden', 'true');
-        cell.appendChild(tag);
-        cell.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          const field = state.fields.find((f) => f.name === linkField);
-          // Drill-in is navigation, never a mutation: only open an already-
-          // registered style. formatColumn silently registers a default
-          // formatter when the name isn't in state.columnRefs yet — the
-          // header menu stays the one explicit creation path, mirroring the
-          // tree's inert unregistered "reference" tag.
-          if (!field || !(field.name in state.columnRefs)) return;
-          formatColumn(col, field, onToast);
-        });
-      }
       try {
         renderCellContent(cell, col, ctx, opts);
       } catch (err) {
         cell.textContent = `⚠ ${(err as Error).message}`;
         cell.classList.add('wb-render-error');
       }
-      // a whole column is also a "drop onto" group target
+      // a whole column is also a "drop onto" group target — and a single-field
+      // column's cells take ⬡ component drops (apply as the look)
       if (col.path.length > 0) {
         cell.addEventListener('dragover', (e) => {
           if (!e.dataTransfer?.types.includes(GRID_MIME)) return;
@@ -858,6 +715,8 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
           if (!Number.isInteger(from) || from === i) return;
           applyDrop('onto', from, i, cols, onToast);
         });
+        const cellField = fieldOf(col);
+        if (cellField) attachLookDrop(cell, cellField, i);
       }
       rowEl.appendChild(cell);
     });
@@ -879,7 +738,8 @@ export function renderGrid(host: HTMLElement, deps: GridDeps): void {
 
 /** Render one column's element into a cell — honoring a top-level forEach
  *  the way the exported row formatter would (the renderer only expands
- *  forEach on children, and grid columns render directly). */
+ *  forEach on children, and grid columns render directly). Cells render
+ *  their EMBEDDED content — a look is baked into the cell, never resolved. */
 function renderCellContent(cell: HTMLElement, col: GridColumn, ctx: EvalContext, opts: RenderOptions): void {
   const el = col.el;
   if (el.forEach) {

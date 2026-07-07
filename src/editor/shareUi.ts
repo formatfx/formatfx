@@ -26,12 +26,13 @@ import { state, defaultFields, EditorState } from './state';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { importJson } from '../core/serializer';
 import { buildGridRoot } from './gridScaffold';
+import { inlineColumnFormatter } from './lookDialect';
 import { buildSampleRows } from '../core/schemaImport';
 import { PROJECT_FILE_NAME } from '../branding';
 import {
   parseShareHash, decodeShareFragment, buildShareUrl, canDeflate, SHARE_URL_WARN_LENGTH,
 } from '../core/share';
-import type { MockField } from '../core/types';
+import type { MockField, SPElement } from '../core/types';
 
 /** Additive backup key — the frozen autosave key itself is never renamed. */
 export const BACKUP_STORAGE_KEY = `${EditorState.STORAGE_KEY}.bak`;
@@ -172,8 +173,8 @@ export async function openSharedWorkspaceFromHash(opts: ShareUiOptions): Promise
  * A shared payload is normally a workspace file; a bare formatter JSON (e.g.
  * a raw pnp/List-Formatting sample) is wrapped in a default workspace so the
  * link still opens live: a row/tile formatter becomes a named view over a
- * default floor, a column formatter becomes the current field's registered
- * format rendered on the floor. Anything else throws (refuse, don't guess).
+ * default floor, a column formatter becomes the current field's LOOK,
+ * embedded in its floor cell. Anything else throws (refuse, don't guess).
  */
 export function normalizeSharedPayload(json: string): string {
   const parsed = JSON.parse(json);
@@ -183,10 +184,14 @@ export function normalizeSharedPayload(json: string): string {
   const doc = importJson(json); // throws with its own teaching message
   const fields = fieldsForFormatter(json);
   const currentFieldName = fields.find((f) => f.name === 'Status')?.name ?? fields[0].name;
-  const columnRefs: Record<string, unknown> = doc.kind === 'column' ? { [currentFieldName]: doc.root } : {};
+  // a column formatter speaks @currentField — seed it as an explicit-dialect
+  // look so the grid cell embeds it (an imported look: unstamped, no def)
+  const columnLooks: Record<string, SPElement> = doc.kind === 'column'
+    ? { [currentFieldName]: inlineColumnFormatter(doc.root, currentFieldName) }
+    : {};
   return JSON.stringify({
-    version: 2,
-    floor: { kind: 'grid', root: buildGridRoot(fields, columnRefs as Parameters<typeof buildGridRoot>[1]) },
+    version: 3,
+    floor: { kind: 'grid', root: buildGridRoot(fields, columnLooks) },
     views: doc.kind === 'row' || doc.kind === 'tile'
       ? [{ id: 'v1', name: 'Shared formatter', doc }]
       : [],
@@ -194,7 +199,7 @@ export function normalizeSharedPayload(json: string): string {
     fields,
     rows: buildSampleRows(fields, 3),
     currentFieldName,
-    columnRefs,
+    columnLooks,
   });
 }
 

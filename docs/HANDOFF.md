@@ -102,11 +102,16 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                areas.ts (the maker-first "make a row view" brain — pure +
                node-tested: per-area weight Normal/Wide/Widest ⇄ a CSS-fr-like
                flex grow factor, row density Roomy/Compact = gap/padding only,
-               buildRowView turns a grid root into a weighted row), cfr.ts
-               (the CFR linked-instance brain — pure: cfrBlastRadius =
-               change-everywhere scope, inlineColumnFormatter forks a linked
-               cell local @currentField→[$Field], toColumnFormatter promotes a
-               local cell to the column's shared format [$Field]→@currentField)
+               buildRowView turns a grid root into a weighted row),
+               lookDialect.ts (the two ref-dialect converters behind column
+               LOOKS — pure: inlineColumnFormatter registers pasted/imported
+               column JSON as a look, @currentField→[$Field]; toColumnFormatter
+               compiles a look back to a real per-column formatter,
+               [$Field]→@currentField), canvasTabs.ts (the canvas TAB STRIP —
+               ▦ Grid + view tabs + ⬡ workshop tabs; workshop keep-alive +
+               dirty dots), leftPane.ts + viewCard/columnShelf/
+               componentLibrary/viewMenu (the Mockup-B left pane sections —
+               COLUMNS-COMPONENTS-VIEWS §3)
 src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
                extractSnippet.ts / deploySnippet.ts generate the auditable
                paste-into-devtools snippets. Pure + dependency-free, and
@@ -125,46 +130,74 @@ peer of JSON). The autosave BACKUP key `….project.v1.bak` is additive —
 the frozen keys stay frozen.
 
 Key structural invariants:
+- **Columns · Components · Views (2026-07-06/07 — the model-B migration;
+  spec: docs/specs/COLUMNS-COMPONENTS-VIEWS.md, all phases shipped)**: a
+  COLUMN is data (typed shelf chips; `MockField` carries no formatting), a
+  COMPONENT is the only unit of formatting, and a column's look = a
+  component applied to it. `state.columnLooks` (field → baked bound
+  instance, explicit-`[$Field]` dialect, root stamped `_component`)
+  replaced the `columnRefs` CFR registry; the floor's grid cells EMBED
+  clones of the looks (no reference element — `columnFormatterReference`
+  left the document model, the renderer resolves nothing). Per-column
+  export compiles on demand (`toColumnFormatter`); imports register
+  UNSTAMPED looks one "Save as component…" gesture from editability.
+  Navigation is the CANVAS TAB STRIP (`#wb-canvastabs`): the standing
+  ▦ Grid tab + one rearrangeable tab per opened view (dblclick renames,
+  ✕ closes without deleting) or ⬡ component WORKSHOP (the re-housed
+  componentEditor covering the canvas; staged edits keep-alive across tab
+  switches, dirty-dot + confirm-to-discard). The left pane is Mockup B:
+  nav row → This-view card → structure tree ("⬡ Name ← Column" binding
+  rows) → columns shelf → always-on components library ("＋ New
+  component…") → views list → lens tabs/toolbar/inspector (+ the INSTANCE
+  card: re-bind, open-in-workshop, detach, remove-the-look). Grid header
+  menu: Apply/Change/Remove a component, Save as component…, Copy column
+  JSON (compiled), Hide; ⬡ drops on columns apply looks. DELETED surfaces
+  (don't trust older bullets that mention them): the VIEW/COLUMNS/
+  COMPONENTS formatter tabs, the document pill, the column gallery, the
+  view strip, the CFR drill-in (`openColumnRef`), the § channel, the
+  subtype engine + knob forms, and the per-column Format-cells/
+  conditional-formatting header routes (both live on at ELEMENT level via
+  the context menu).
 - **Grid-first workspace (kind 'grid', the landing default)**: a grid doc
   IS a row formatter in embryo — the root is the future rowFormatter flex
   row and **each root child is one grid column**. The canvas renders header
   + body rows as separate CSS grids sharing one track template
   (`--wb-grid-cols`), cells carry the child's `data-sp-path`, so selection
   /palette-drop/tree/inspector all work unchanged. Column↔field mapping is
-  derived (CFR target, else the single `[$Field]` ref in the subtree —
-  `gridColumnField`), NOT stored: no extra metadata in the JSON. Serializer
+  derived (the look cell's `_field` stamp when present, else the single
+  `[$Field]` ref in the subtree — `gridColumnField`), NOT stored beyond the
+  stamp. Serializer
   treats 'grid' exactly like 'row' (re-importing detects 'row'; project
   files keep 'grid'). **Every grid gesture is ONE undoable document
   mutation** (`moveNodeTo`/`groupNodes`/`unwrapNode`/insert/remove) — a
   roadmap contract; no-op moves must not snapshot. Generated structure
-  arrives fully `_elmName`'d ("Status + DueDate group"). "Format this
-  column" registers a `defaultColumnFormatter` scaffold and swaps the plain
-  cell for a CFR cell (one doc mutation), then `openColumnRef`s it. Schema
+  arrives fully `_elmName`'d ("Status + DueDate group"). A column gets its
+  formatting by WEARING a component (`applyComponentToColumn` — store +
+  placed cell rewrite together, one step). Schema
   import rebuilds the grid root **only while `isPureGrid`** (every column
   still single-field) — never clobber a layout someone has started.
-- **Workspace model (FLOOR-AND-SHEETS Stage 1, 2026-07-05)**: the FLOOR
+- **Workspace model (FLOOR-AND-SHEETS Stage 1, 2026-07-05; registry/drill
+  language SUPERSEDED 2026-07-07 by the migration bullet above — column
+  formatters are now `columnLooks`, there is no drill-in, and the canvas
+  doc key is always 'main')**: the FLOOR
   (`state.floorDoc`, a columns-only grid document, kind always 'grid') +
   N named view SHEETS (`state.views: SheetDoc[]`, each row/tile;
-  `activeViewId` is the open sheet or null for the floor) + N registered
-  column formatters (`state.columnRefs`, keyed by field internal name,
-  workspace-owned — they render on the floor's cells and on sheets alike).
+  `activeViewId` is the open sheet or null for the floor) + the column
+  LOOKS (`state.columnLooks`, keyed by field internal name,
+  workspace-owned — the floor's cells embed clones; view drops clone them).
   `state.doc` is the live canvas document: the active surface's slot
-  object, or a kind-'column' tree while drilled. `openView`/`minimizeView`
-  are NAVIGATION (never a mutation, never an undo step) and work under a
-  drill. Undo is ONE global app-level stack whose snapshots capture the
+  object. `openView`/`minimizeView`
+  are NAVIGATION (never a mutation, never an undo step). Undo is ONE
+  global app-level stack whose snapshots capture the
   whole workspace + where the change happened — undo/redo navigate back to
-  the surface they change. CFRs resolve against the registry; editing an
-  open column formatter updates the registry live (see `EditorState.emit`).
-  A main document of kind 'column' no longer exists: column examples/JSON
-  register to the current field and open the drill-in.
-  **Stage 2 (2026-07-05, owner-amended mid-build)**: the LEFT VIEW STRIP
-  (`viewStrip.ts`, in the Left Edit Pane) lists the sheets — chip click
-  opens, double-click renames, ＋ opens the template builder — and the
-  GRID IS THE COLUMNS TAB'S CANVAS (no flip-flop button): `colsTab` lands
-  on the grid from anywhere (an already-on-the-grid click opens the column
-  gallery), `viewTab` returns to `state.lastOpenViewId` (or the view menu
-  when no sheets exist). "◧ Back to grid" and the "⟳ Reopen" bar are
-  GONE. `loadDocument` gates row-payload-onto-floor on `isPureGrid` — a
+  the surface they change (and always emit 'data': a restore can change
+  the views/tabs/looks collections without moving the canvas).
+  A main document of kind 'column' does not exist: column examples/JSON
+  register as the current field's look and select its grid column.
+  **Stage 2 (2026-07-05; its NAVIGATION chrome — the view strip and the
+  COLUMNS/VIEWS tab semantics — was replaced 2026-07-07 by the canvas tab
+  strip; `viewStrip.ts` is deleted)**:
+  `loadDocument` gates row-payload-onto-floor on `isPureGrid` — a
   zoned layout becomes a NEW sheet, so the floor never renders
   pseudo-columns. Column TAB GROUPS (`colGroups.ts` pure + node-tested;
   `state.floorGroups`, an ADDITIVE project key sanitized on load) are
@@ -172,14 +205,14 @@ Key structural invariants:
   header bands + collapsible slim tracks; group gestures are project
   metadata off the undo stack (the renameView rule), and the exported
   floor is byte-identical with or without them.
-  **Stage-2 follow-ups + Stages 3–4 (2026-07-05, second owner brief)**:
-  tabs read **Columns | Components | Views** ("views are made up of
-  columns and components"); the view menu is views-only and the grid's
-  pill opens the column gallery; components are OFFERED FROM THE PALETTE
+  **Stage-2 follow-ups + Stages 3–4 (2026-07-05, second owner brief; the
+  formatter-tab/pill/gallery chrome named here died 2026-07-07)**:
+  components are OFFERED FROM THE PALETTE
   (`paletteComponents.ts` — canonical trees, authored-intent slot types
   via `presetRefTypes`, same definitely-renders unit bar) and element
-  component cards drag onto the canvas (complete best-guess → insert at
-  the drop point, provenance-stamped; incomplete → the typed mapper).
+  component rows drag onto the canvas (complete best-guess → insert at
+  the drop point, provenance-stamped; incomplete → the typed mapper;
+  dropped on a grid COLUMN they apply as its look).
   Stage 3: the **Select/Live** toggle on the canvas chrome
   (`state.canvasMode`, session-only; `RenderOptions.interactive: false`
   makes Select-mode clicks select customRowAction buttons instead of
@@ -240,54 +273,44 @@ Key structural invariants:
   derived via `formatterDestination()`); the kind-switching `#wb-kind` select
   moved into the Studio side pane as "Advanced: formatter type" (`setKind`
   semantics unchanged).
-- **Left Edit Pane formatter navigation (2026-07-02, owner mockup)**: the
-  ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE. The Left
-  Edit Pane owns navigation: the formatter tabs under the lens tabs —
-  VIEWS (accent blue, grid icon), COLUMNS (violet, §) and COMPONENTS (teal ⬡),
-  relabeled 2026-07-03: no visible "Formatters" text on the bar (it lives on
-  as an `aria-label` on the tablist for AT users only), and the ← back +
-  🕘 snapshot buttons right-align on that bar (moved up from the pill row) —
-  and a **document dropdown** (`#wb-doc-pill`) naming what's on the canvas
-  with a subtle type tag ("list row schema"/"tile schema" for views, "<type>
-  column" for columns). The pill opens the View Formatters menu (rename,
-  "+ New rowview") or the Column Formatters gallery (previews + "Not yet
-  formatted"). The tree renders the ACTIVE document only (no doc headers, no
+- **Left Edit Pane (2026-07-02 owner mockup; its FORMATTER TABLIST,
+  document pill and § tree language were RETIRED 2026-07-07 — the pane is
+  Mockup B now, see the migration bullet above)**: the
+  ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE; the ←
+  back + 🕘 snapshot buttons live on the pane's nav row. The tree renders
+  the ACTIVE surface only (no doc headers, no
   per-row checkboxes — the row highlight is the selection UI; Ctrl/Cmd-click
-  multi-selects). A CFR host in the tree is ONE normal row (2026-07-03 —
-  the old indented violet stub row is gone; every reference has an inherent
-  wrapper div, so the child presentation was noise): § ink + a right-aligned
-  "reference" tag-button, violet as INK only, no fill. Row click selects the
-  HOST element (the inspector shows the wrapper div); the tag-button is the
-  explicit door that drills into the shared column formatter (blast radius
-  in its tooltip; inert span + teaching tooltip when unregistered). The tree
+  multi-selects); a bound component instance is ONE normal row reading
+  "⬡ Name ← Column" (from `_component.map`). The tree
   region sits on `--wb-lp-tree-bg`, one subtle step lighter than the pane.
   Host-cell defaults were AUDITED, not changed: the scaffold's
   `flex:1/min-width:0` block host passes full width through and imposes
-  nothing — the referenced formatter's alignment/size wins exactly as far as
+  nothing — the embedded look's alignment/size wins exactly as far as
   real SP allows (probe evidence in PR #158; `align-self` stays unverified,
   so nothing new is emitted). The Save/Discard checkpoint buttons were removed
   (issue #140 tracks their snapshot-based replacement; the state API —
   `markSavepoint`/`discardToSavepoint` — is kept for it).
 - **Snapshots + navigation back (2026-07-03, issue #140)**: the 🕘 button on
-  the Formatters bar opens the snapshot menu (`snapMenu.ts` over the
+  the left pane's nav row opens the snapshot menu (`snapMenu.ts` over the
   pure `snapshots.ts` store brain). Snapshots are **full-workspace-only**
   (owner decision, later same day — superseding the scoped-primary design):
-  the ONE take action always captures `{ kind: 'all' }` (view + every column
-  formatter + view name); legacy scoped captures stay restorable under a
-  collapsed "Older, scoped snapshots" group (never orphan user data), and
+  the ONE take action always captures `{ kind: 'all' }` (floor + every view
+  + the column looks); legacy scoped captures stay restorable under a
+  collapsed "Older, scoped snapshots" group (never orphan user data — a
+  legacy column scope now restores as that field's LOOK), and
   `snapshots.ts` still knows the old scopes for storage compat. Every
-  restore is ONE undoable step — `applySnapshot` rides `snapState` (doc +
-  registry together), so even restore-everything is a single Ctrl+Z; the
+  restore is ONE undoable step — `applySnapshot` rides `snapState` (docs +
+  looks together), so even restore-everything is a single Ctrl+Z; the
   view name restores off the undo stack (same rule as `setViewName`).
   Storage: `wb-snapshots.v1` (ADDITIVE key — frozen keys stay frozen),
-  capped at 25 per scope, oldest evicted per scope. The ← button on the
-  Formatters bar is **navigation back** — a nav-history stack in state
-  (`backTarget`/`goBack`, pushed by `openMain`/`openColumnRef`) that
-  retraces doc switches; it is NOT undo, skips unregistered columns, and
+  capped at 25 per scope, oldest evicted per scope. The ← button beside it
+  is **navigation back** — a nav-history stack in state
+  (`backTarget`/`goBack`, pushed by surface switches) that
+  retraces grid⇄view wandering; it is NOT undo, skips entries whose sheet
+  has since been removed, and
   never ping-pongs (going back pops the trail). Related canvas fix:
   `.wb-fxbar` reserves its populated min-height so selection changes never
-  shift the grid mid-double-click (that jump used to swallow drill-in
-  dblclicks after a deselect).
+  shift the grid mid-double-click.
 - **Components — formatting without a column to call home (2026-07-03, owner
   brief)**: the third color channel — **teal ⬡** (`--wb-component`, beside
   blue=view and violet=column; same exclusivity rule). A component
@@ -295,9 +318,9 @@ Key structural invariants:
   date column") over a tree written against slot keys as field names;
   binding rewrites `[$Key]`→`[$YourColumn]` via `remapFieldRefs` (the SAME
   boundary-aware remap presets.ts now imports for schema-aware drop). The
-  **COMPONENTS tab** in the Left Edit Pane is a library browser (a local UI
-  mode, not a canvas doc — any doc navigation exits it): built-ins ("Yours"
-  below), live best-guess previews, slot chips, and **Add to view…** → the
+  components LIBRARY is a STANDING left-pane section since 2026-07-07 (the
+  old tab-swap mode died with the formatter tabs): built-ins ("Yours"
+  below), live best-guess previews, slot chips, and **Add…** → the
   typed mapping dialog (type-filtered pickers, best-guess prefilled, live
   preview; insert = one undoable step, a new grid column on the grid).
   **Save as component…** lives on the element context menu AND the column
@@ -307,19 +330,16 @@ Key structural invariants:
   `wb-components.v1` (additive), 50 cap. Built-ins must pass the
   definitely-renders unit contract (bound + rendered over every mock row,
   zero runtime issues, no standalone `!`).
-  **Surface consolidation (owner request, same date)**: the custom-subtype
-  authoring surface was SWALLOWED — "Save as reusable subtype…", the refine
-  ⋯ modal and its push-update button are gone from the UI; the "Format this
-  column" catalog = built-in seeds (subtype engine, knobs intact) + YOUR
-  single-slot type-compatible components badged "Yours" (snapshot-apply
-  semantics, recipe-tagged with the component id — `resolveSubtype`
-  optional-chains unknown ids so the fx vocab degrades to broad
-  suggestions; US-8 restriction stays unit-pinned in fxSuggest.test.ts).
-  Legacy `wb-subtypes` customs migrate one-way into components on first
-  library read (flag `wb-components.subtypes-migrated.v1`; the old key is
-  left untouched as the rollback path). The pure subtype machinery
-  (`subtypeFromColumn`/`forkSubtype`/knob promotion, `pushSubtypeUpdate`)
-  remains in code + unit tests but is currently unreachable from the UI.
+  **Surface consolidation (owner request, same date; completed by the
+  2026-07-07 migration)**: the custom-subtype
+  authoring surface was SWALLOWED and then the SUBTYPE ENGINE ITSELF was
+  DELETED with the migration (knob catalog, `bakeSubtype`, the seeds, the
+  `subtype`/`subtypeArgs` field tags) — the one-click catalog is the header
+  menu's **"Apply a component…"**: single-slot type-fitting components,
+  badged Built-in / Yours.
+  Legacy `wb-subtypes` customs still migrate one-way into components on
+  first library read (flag `wb-components.subtypes-migrated.v1`; the old
+  key is left untouched as the rollback path).
   The library's "Whole rows" group points into **New rowview** (the
   templateModal) — the row-scoped sibling, one implementation.
 - **Row components + the pnp bridge + replace-and-push (2026-07-03, issue
@@ -343,24 +363,27 @@ Key structural invariants:
   palette drops stay prompt-free (unifying catalogs would tax simple drops)
   and the two Save labels never co-appear post-#149.
 - **Components pane redesign (2026-07-03 owner brief, PRs #156–#159 via the
-  integration branch)**: the ⬡ tab is first an **inventory of the project**.
+  integration branch)**: the library leads with an **inventory of the
+  project**.
   (a) **Instance provenance**: insertions go through `bindComponentInstance`,
   stamping the bound root `_component: { id, map }` (typed on SPElement beside
   `_elmName`; ships in exports by default, stripped by `keepMeta:false`,
   `META_KEYS` updated). Previews stay on plain `bindComponent` so a preview
-  never reads as a usage. (b) **The usage scan** (`componentUsage.ts`, pure):
-  stamped subtrees in the main doc (card content included) + column usages
-  via the `field.subtype` tag OR stamped subtrees in registered trees, ONE
-  usage per (component, column); deleted ids leave no ghosts. The tab renders
-  "In this project" first — usage-count chips, "Show usages" jump rows
-  (openMain+select / openColumnRef; `mainUsageLabel` speaks the
-  column-formatter noun when the MAIN doc is a JSON-tab-imported column) —
-  then the add-a-component browser. (c) **Context-aware insertion**
-  (`componentInsertTarget`, pure): with a column formatter open, element
-  components insert INTO it (components in CFRs are allowed — bound trees
-  reference explicit `[$Field]`s); the view path is unchanged; row components
-  still replace the view body with honest copy. (d) **The component EDITOR**
-  (`componentEditor.ts`, modal over the canvas pane): staged editing of
+  never reads as a usage. (b) **The usage scan** (`componentUsage.ts`, pure,
+  reshaped 2026-07-07): stamped subtrees in the ACTIVE surface's doc (card
+  content included) + one usage per (component, column) whose LOOK carries a
+  stamp — so on the grid a dressed column reads as TWO usages, the look
+  store entry and its embedded floor cell; deleted ids leave no ghosts. The
+  pane renders
+  "In this project" first — usage-count chips, jump rows
+  (select on the canvas / select the dressed grid column) —
+  then the add-a-component browser. (c) **Insertion target**
+  (`componentInsertTarget`, pure): on the grid element components arrive as
+  a new root column, on a view at the selection; row components
+  still replace the view body with honest copy. (d) **The component EDITOR
+  = the WORKSHOP** (`componentEditor.ts`, re-housed 2026-07-07 from the
+  retired modal into a canvas TAB — `mountComponentWorkshop`): staged
+  editing of
   name/description/slot labels (keys immutable) and elements visually
   (preview click-select via `data-sp-path`, compact Format-cells-vocabulary
   style panel; number/boolean style values are LITERALS — only `=`-strings
@@ -501,8 +524,9 @@ Key structural invariants:
   box-sizing border-box, overflow hidden — all allow-listed; zone `size`
   then shares HEIGHT). The gallery groups **Row layouts / Tile layouts**
   (4 tile wireframes: Headline/Profile/Stat/Blank; `wireframeById`'s
-  fallback stays the ROW blank), the doc pill menu gained "+ New
-  tileview…" (an explicit ask that doesn't match what reopened lands on
+  fallback stays the ROW blank), "＋ New tileview…" sits beside "＋ New
+  rowview…" in the left pane's views list (an explicit ask that doesn't
+  match what reopened lands on
   the GALLERY, reopened config kept — the dirty re-pick confirm is the
   net), and the root inspector's **"Applies as"** segmented re-targets
   the same zones row↔tile mid-edit (modal-local until Save). Tile
@@ -695,9 +719,9 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    this vision: advanced-mode hover-card creation from the grid surface.
 1.6. ~~Playground polish backlog~~ **DONE 2026-06-12**: panel top-anchored
    (no recentering between family tabs), breathing room around the family
-   story, CFR slots labeled "name ⤷ [$Field]" on their overlays with a
-   confirm-and-enter button that switches the workspace to the referenced
-   column formatter and reopens the playground there, and a soft confirm
+   story, CFR slot overlays with a confirm-and-enter button (that whole
+   enter-the-column-formatter affordance left the product 2026-07-07 with
+   the CFR model — nothing to enter), and a soft confirm
    on Apply-to-canvas when name-less JSON would replace a named design.
 1.7. **Preview context menus + playground restructure + conditional
    formatting — BUILT 2026-06-12** (owner's voice-memo brief). Three parts:
@@ -708,7 +732,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    (b) playground reorganized into labeled groups: QUICK_LOOKS macro
    bundles (pill/card/stripe/ellipsis…, toggle on/off as picks), the nav
    "road" replaced by a mini structure tree beside the stage (ancestors +
-   children, stash dots, CFR enter row keeps `wb-pg-navcfr`), the family
+   children, stash dots; the CFR enter row died with the CFR model), the family
    story restyled as a tagged callout, the selected property rendered as a
    formatted card with self-applying examples, and an "already on X"
    current-styles list (expressions shown as 𝑓x; picks strike the old
@@ -719,10 +743,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    first-match-
    wins via per-property =if() chains threaded through every rule; an
    existing PLAIN value on a managed property becomes the no-match
-   fallback, an existing FORMULA is replaced (UI warns first). Column route
-   = "Format this column" semantics (register scaffold, CFR-swap the cell
-   as one doc mutation, openColumnRef switches the workspace, then the
-   style merge is the undoable step). The old "one-way generator" gap
+   fallback, an existing FORMULA is replaced (UI warns first). The
+   per-COLUMN route (a `{kind:'column'}` target reachable from the grid
+   header menu) was RETIRED 2026-07-07 with the migration — `CondTarget`
+   is element-only now; conditional formatting is element styling inside
+   a view or the workshop, reached via the context menu.
+   The old "one-way generator" gap
    CLOSED 2026-07-05: `parseRulesFromStyle` (condRules.ts — the contract
    tests pin it) parses generated =if() chains back into editable rules,
    so reopening the dialog lands on the applied rules with the WATCHED
@@ -806,16 +832,16 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    density + back-to-grid in a row-view toolbar, and the grid offers
    "⟳ Reopen" after a back-to-grid (state.lastLayoutKind, session-local —
    FLOOR-AND-SHEETS Stage 0; both the back-to-grid button and the Reopen
-   bar were later RETIRED by FLOOR-AND-SHEETS Stage 2, 2026-07-05 — the
-   COLUMNS tab and the view strip are the navigation now). Per-area
+   bar were later RETIRED by FLOOR-AND-SHEETS Stage 2, 2026-07-05, and
+   that stage's COLUMNS-tab/view-strip navigation was itself replaced by
+   the canvas tab strip 2026-07-07). Per-area
    right-click sizing was retired 2026-07-04 — zone sizing is the template
    builder inspector's job. **Stage 4: CFR linked instances
-   (the Figma model)** — a teal link badge (`.wb-cfr-link`, the `#038387` of
-   the Structure ⤷ chip) marks a columnFormatterReference cell; its header menu
-   offers "Format this Column" (edit the shared format, blast radius named) and
-   "Override in this view" (fork local, default fork-local), and a plain column
-   promotes via "Save as the column's format" (cfr.ts; state.forkCfr /
-   promoteToColumn, one undo step each). **Stage 5: safety + the single
+   (the Figma model)** — SUPERSEDED 2026-07-07: the whole CFR
+   linked-instance model (link badges, forkCfr/promoteToColumn, the §
+   channel) left the product with the Columns · Components · Views
+   migration — a column's look is a ⬡ component applied to it
+   (docs/specs/COLUMNS-COMPONENTS-VIEWS.md). **Stage 5: safety + the single
    Advanced door.** (a) **Deploy clobber guard** — the deploy snippet bakes the
    target kind and, before replacing an EXISTING *view* formatter, shows a
    pointed foreign-clobber warning ("REPLACES THE ENTIRE view formatter…",
@@ -824,13 +850,13 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    **Advanced** and opens straight to the JSON tab (the escape hatch, with
    Deploy); Palette/Structure/Properties stay reachable, de-emphasized
    (consolidate, not delete — per the owner). (c) **"Format this column" preset
-   picker** (owner request) — columnPresets.ts maps a field type to the palette
-   presets that fit it (Facepile for people, data bar for number, status pill
-   for choice…) and `buildColumnPreset` turns the pick into a real
-   @currentField column formatter; the header menu shows the presets then
-   "Format this column manually". The dead `.wb-adv` markers (no CSS since the
+   picker** (owner request) — SUPERSEDED twice over: first by the subtype
+   catalog, then 2026-07-07 by the header menu's "Apply a component…"
+   ("Format this column" is no longer a gesture; columnPresets.ts and the
+   subtype engine are deleted). The dead `.wb-adv` markers (no CSS since the
    2026-06-17 unification) are being removed opportunistically. e2e:
-   `areas.spec.ts`, `cfr.spec.ts`, plus grid/maker/bridge coverage.
+   `areas.spec.ts` plus grid/maker/bridge coverage (`cfr.spec.ts` retired
+   with the CFR model; `lookLegibility.spec.ts` is its successor).
 1.12. **Collaborative hub (issue #86) — BUILT 2026-07-02.** The CodePen
    model: the whole workspace serializes into the URL fragment. W1 Share —
    core/share.ts codec (native deflate-raw + base64url, versioned `w1`/`w1r`
@@ -873,45 +899,64 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 950 vitest unit tests across 52 files (engine semantics incl.
+- `npm test` — 950 vitest unit tests across 51 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
-  incl. the List Snapshot edges, workspace/state, preset binding, grid
-  scaffolding + grid mutations, conditional-formatting codegen evaluated
+  incl. the List Snapshot edges, workspace/state incl. the looks model —
+  `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
+  `lookDialect` ref-dialect converters, preset binding, grid scaffolding +
+  grid mutations, conditional-formatting codegen evaluated
   through the real engine — that test file is the contract for
   generated-condition semantics — the bridge's EXECUTED-snippet round trips
-  against stubbed fetch, and the collaborative-hub contracts: the share
+  against stubbed fetch, the collaborative-hub contracts (the share
   codec byte-exact round trips, the stress-test variant catalog incl.
-  threshold mining, the Explain visitor over both expression syntaxes, and
-  the autosave-pause never-clobber guarantee, the Stage-2 chrome: the view
-  strip, the column tab-groups brain, the pure-grid Apply-to-canvas
-  guard, the palette-derived components' definitely-renders contract, and
-  the Select/Live canvas mode). Run headlessly anywhere.
+  threshold mining, the Explain visitor over both expression syntaxes, the
+  autosave-pause never-clobber guarantee), the Mockup-B left-pane sections
+  (shelf, library, view card, views list), the column tab-groups brain,
+  the pure-grid Apply-to-canvas guard, the palette-derived components'
+  definitely-renders contract, and the Select/Live canvas mode). Run
+  headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 150 Playwright specs across `sandbox.spec.ts`
-  (core flows), `import.spec.ts` (schema import + CFR + grid rebuild +
-  snapshot-import/views/deploy-panel), `workspace.spec.ts` (doc switching,
-  box model, flex editor, playground incl. quick looks/structure tree/property
-  card, pane modes, dark-mode probe), `grid.spec.ts` (grid-first workspace:
-  header menus, right-click context menus, conditional formatting incl.
-  cross-column watching, the Format cells dialog, format-column round trip,
-  hide/add, drag-to-group/reorder), `guide.spec.ts` (field guide),
-  `areas.spec.ts` + `cfr.spec.ts` + `maker.spec.ts` (the maker-first redesign:
-  row-view builder, CFR linked instances, Studio/Advanced toggle),
-  `formatterNav.spec.ts` (the Left Edit Pane's VIEW/COLUMN FORMATTERS tabs +
-  document dropdown + the Stage-2 view strip and grid-under-COLUMNS
-  semantics), `snapshots.spec.ts` (snapshots + navigation back),
-  `components.spec.ts` (the ⬡ tab: inventory + usage jumps, typed mapping
-  into the view OR an open column formatter, the component editor incl.
-  save-and-apply with as-found pinning, save-as, CFR refusal),
-  `share.spec.ts` (the collaborative hub: real-browser
+- `npm run test:ui` — 136 Playwright tests across 15 spec files:
+  `sandbox.spec.ts` (core smoke flows: the grid-first landing with dressed
+  columns, palette insert, JSON round trip, lint teaching, hover cards,
+  dark mode, the one unified surface), `canvasTabs.spec.ts` (the canvas
+  tab strip — the one navigation surface: the standing ▦ Grid tab,
+  open/focus/close/inline-rename/drag-reorder, reload persistence, the
+  workshop covering the canvas with keep-alive staged edits),
+  `grid.spec.ts` (the grid-first workspace: the header menu's LOOK
+  gestures — apply/change/remove a component, the reuse loop — hide/add,
+  drag to reorder/group, column tab groups, compiled column-JSON export,
+  element right-click menus, element-level Format cells + conditional
+  formatting incl. cross-column watching and the parse-back round trip),
+  `import.spec.ts` (schema import + the List Snapshot: imported
+  CustomFormatters register as column looks, the review opt-out, captured
+  views opening as canvas tabs, the lint-gated deploy panel),
+  `workspace.spec.ts` (the workspace loop: shelf chip inserts + field
+  drags, the instance card's re-bind/detach, workshop saves re-baking worn
+  columns, compiled copy, element naming, style doc cards, the playground,
+  box-model/alignment editors, the This-view card, the dark-mode engine
+  probe, Select/Live), `components.spec.ts` (the always-on library:
+  project inventory + usage jumps, the typed mapping dialog + the trigger
+  picker, Save as component…, replace-and-push re-baking, Bring your own
+  incl. the CFR-import refusal, the legacy-subtypes migration),
+  `lookLegibility.spec.ts` ("teal ⬡ = a component at work": header marks,
+  the tree's binding rows, accept-gated drops, the instance card — and no
+  violet § channel anywhere in the DOM), `areas.spec.ts` (Ctrl-click
+  multi-select → "make a row view" as a NEW canvas tab, the density knob,
+  explicit tile), `maker.spec.ts` (the maker-first shell: grid landing,
+  the single Advanced door, the tab strip as the where-am-I),
+  `snapshots.spec.ts` (snapshots + navigation back), `templates.spec.ts`
+  (the row/tile builder: wireframe gallery, zone editor, field/component
+  drags into zones, width presets, in-place reopen), `share.spec.ts`
+  (the collaborative hub: real-browser
   share round trips with fresh-context recipients, the never-clobber/backup/
   restore flows, Explain, Stress Test), `search.spec.ts` (the universal
   search overlay: Ctrl+F/🔎, grouped results, navigate-never-mutate, the
   explicit Insert card, the no-logical-NOT teaching no-match),
-  `styleLegibility.spec.ts`
-  ("violet = shared"), `icons.spec.ts`, `subtypes.spec.ts` and
-  `templates.spec.ts`.
+  `guide.spec.ts` (the field guide reader) and `icons.spec.ts` (the
+  Fluent icon gallery: the fx bar's Icon slot + the guide's icon wall).
+  (The same keep-the-count-honest rule applies here.)
   Shared mechanics (fresh-app reset, `header()`, `openJson()`,
   `openPalette()`, `loadExample()`, the Data-dock schema-import steps) live
   in `e2e/helpers.ts` — navigation only, never assertions; each spec keeps

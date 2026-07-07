@@ -1,18 +1,27 @@
 /**
- * Editor state contracts (FLOOR-AND-SHEETS Stage 1):
+ * Editor state contracts (FLOOR-AND-SHEETS + COLUMNS-COMPONENTS-VIEWS):
  *   · the workspace is a FLOOR (columns-only grid document) plus named
  *     SHEETS (row/tile view documents) — separate documents, no relabeling;
+ *   · a column's LOOK is a component applied to it: `columnLooks` stores the
+ *     baked bound instance (root stamped `_component`, explicit-[$Field]
+ *     dialect); the floor's grid cells EMBED clones of the look — no
+ *     columnFormatterReference, no drill-in surface (activeDocKey is always
+ *     'main'); every look gesture rewrites the store AND the floor cell
+ *     together as ONE undoable step;
  *   · leaving/opening a view is NAVIGATION — it never mutates and never
  *     pushes an undo step;
- *   · undo is ONE GLOBAL app-level stack across the floor, every sheet, and
- *     the column drill-in — and it navigates back to the surface it changes;
- *   · autosave format v2 (same frozen key) with a strict load guard: an old
- *     or garbled blob falls back to a fresh default — no migration code.
+ *   · undo is ONE GLOBAL app-level stack across the floor, every sheet and
+ *     the column looks — and it navigates back to the surface it changes;
+ *   · autosave format v3 (same frozen key) with a strict load guard: a v2
+ *     `columnRefs` payload — or anything older — throws, and restore()
+ *     falls back to a fresh default. No migration code.
  * Plus: customCardProps content stays addressable via CARD_SEGMENT paths.
  */
 import { describe, it, expect } from 'vitest';
 import { EditorState, CARD_SEGMENT } from './state';
 import { gridColumnField } from './gridScaffold';
+import type { ComponentDef } from './components';
+import type { Snapshot } from './snapshots';
 import type { SPElement, FormatterDocument } from '../core/types';
 
 function withCard(): EditorState {
@@ -30,6 +39,29 @@ function withCard(): EditorState {
 
 const rowDoc = (children: SPElement[] = []): FormatterDocument =>
   ({ kind: 'row', root: { elmType: 'div', children } });
+
+/** A minimal single-slot component def — the apply-gesture test double. */
+const chipDef: ComponentDef = {
+  id: 'test-chip',
+  name: 'Chip',
+  description: 'single-slot test component',
+  slots: [{ key: 'Value', label: 'The value to show', types: ['text', 'note'] }],
+  root: { elmType: 'div', txtContent: '[$Value]', style: { 'font-weight': '600' } },
+};
+
+/** Index of a field's column among the floor grid's root children (-1 = unplaced). */
+function floorIndexOf(s: EditorState, field: string): number {
+  return (s.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === field);
+}
+
+/** The floor grid cell embedding (or plainly rendering) a field's column. */
+function floorCellOf(s: EditorState, field: string): SPElement {
+  return s.floorDoc.root.children![floorIndexOf(s, field)];
+}
+
+function undoDepth(s: EditorState): number {
+  return (s as unknown as { undoStack: string[] }).undoStack.length;
+}
 
 describe('card-segment paths', () => {
   it('nodeAt descends into customCardProps.formatter', () => {
@@ -51,21 +83,6 @@ describe('card-segment paths', () => {
     expect(s.nodeAt([0, CARD_SEGMENT])?.children).toHaveLength(0);
     s.removeNode([0, CARD_SEGMENT]); // no-op — no sibling list to splice
     expect(s.nodeAt([0, CARD_SEGMENT])).not.toBeNull();
-  });
-
-  it('referencedColumns finds CFRs in children and inside customCardProps', () => {
-    const s = withCard();
-    s.doc.root.children!.push({ elmType: 'div', columnFormatterReference: '[$StatusUI]' });
-    s.doc.root.children![0].customCardProps!.formatter.children!.push(
-      { elmType: 'div', columnFormatterReference: '[$ProgressUI]' },
-    );
-    const refs = s.referencedColumns();
-    expect(refs.has('StatusUI')).toBe(true);
-    expect(refs.has('ProgressUI')).toBe(true);
-    // scans the active SURFACE even while a column formatter is drilled open
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'x' };
-    s.openColumnRef('StatusUI');
-    expect(s.referencedColumns().has('StatusUI')).toBe(true);
   });
 
   it('wrapNode adds a parent — including around the root and card roots', () => {
@@ -159,6 +176,36 @@ describe('the workspace: floor + named sheets', () => {
   });
 });
 
+describe('the default workspace wears components (COLUMNS-COMPONENTS-VIEWS §1)', () => {
+  it('showcase looks are REAL stamped palette instances; Owner is dressed but unplaced', () => {
+    const s = new EditorState();
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    expect(s.columnLooks['Progress']._component?.id).toBe('palette-data-bar');
+    expect(s.columnLooks['Owner']._component?.id).toBe('palette-persona');
+    // stored dialect is explicit [$Field] — a share link renders without the def
+    expect(JSON.stringify(s.columnLooks['Status'])).toContain('[$Status]');
+    expect(JSON.stringify(s.columnLooks['Owner'])).toContain('[$Owner.title]');
+    // Owner's look is registered but its column is NOT on the floor, on
+    // purpose — "+ column" demonstrates adding an already-dressed column
+    expect(floorIndexOf(s, 'Owner')).toBe(-1);
+  });
+
+  it('floor cells EMBED clones of the looks (stamped _field) — no reference elements anywhere', () => {
+    const s = new EditorState();
+    const statusCell = floorCellOf(s, 'Status');
+    expect(statusCell._component?.id).toBe('palette-status-pill');
+    expect(statusCell._field).toBe('Status');
+    expect(statusCell.style?.['flex']).toBe('1'); // the cell's layout merged on
+    expect(statusCell.style?.['min-width']).toBe('0');
+    expect(statusCell).not.toBe(s.columnLooks['Status']); // a clone, not an alias
+    // a look-less column renders the plain value
+    expect(floorCellOf(s, 'Title')._component).toBeUndefined();
+    expect(floorCellOf(s, 'Title').txtContent).toBe('[$Title]');
+    // § left the document model — nothing serialized carries a reference
+    expect(s.serializeProject()).not.toContain('columnFormatterReference');
+  });
+});
+
 describe('navigation is never a mutation', () => {
   it('openView / minimizeView push nothing onto the undo stack and touch no document', () => {
     const s = new EditorState();
@@ -168,7 +215,7 @@ describe('navigation is never a mutation', () => {
     expect(s.canUndo).toBe(true); // the creation itself
     s.undo(); // clear the stack down to nothing
     s.redo(); // sheet back, open
-    const undoDepth = 1;
+    const depth = 1;
 
     s.minimizeView();
     expect(s.onFloor).toBe(true);
@@ -178,7 +225,7 @@ describe('navigation is never a mutation', () => {
 
     expect(JSON.stringify(s.viewById(sheet.id)!.doc)).toBe(sheetJson);
     expect(JSON.stringify(s.floorDoc)).toBe(floorJson);
-    expect((s as unknown as { undoStack: string[] }).undoStack).toHaveLength(undoDepth);
+    expect(undoDepth(s)).toBe(depth);
   });
 
   it('minimize remembers the way back (lastOpenViewId feeds the VIEWS tab\'s return)', () => {
@@ -199,32 +246,48 @@ describe('navigation is never a mutation', () => {
     expect(s.onFloor).toBe(true);
   });
 
-  it('surface flips stay available while drilled into a column formatter', () => {
+  it('goBack retraces surface switches', () => {
     const s = new EditorState();
-    const sheet = s.createView(rowDoc())!;
-    s.openColumnRef('Status');
-    expect(s.activeDocKey).toBe('Status');
-    s.minimizeView(); // the surface under the drill switches to the floor
+    const a = s.createView(rowDoc())!; // floor → A
+    s.createView(rowDoc());            // A → B
+    expect(s.backTarget).toBe('main');
+    s.goBack(); // back onto A
+    expect(s.activeViewId).toBe(a.id);
+    s.goBack(); // back to the floor, where it all started
     expect(s.onFloor).toBe(true);
-    expect(s.activeDocKey).toBe('Status'); // the drill stays put
-    expect(s.doc.kind).toBe('column');
-    s.openView(sheet.id);
-    expect(s.activeViewId).toBe(sheet.id);
-    expect(s.activeDocKey).toBe('Status');
-    s.openMain(); // Done lands on the surface that's up: the sheet
-    expect(s.doc).toBe(s.viewById(sheet.id)!.doc);
+    expect(s.goBack()).toBeNull(); // nowhere further to retrace
   });
 
-  it('goBack retraces surface and drill switches', () => {
+  it('goBack skips entries whose sheet has since been removed', () => {
     const s = new EditorState();
-    const sheet = s.createView(rowDoc())!; // now on the sheet
-    s.openColumnRef('Status');
-    expect(s.backTarget).toBe('main');
-    s.goBack();
-    expect(s.activeDocKey).toBe('main');
-    expect(s.activeViewId).toBe(sheet.id);
-    s.goBack(); // back to the floor (where createView started from)
+    s.createView(rowDoc()); // nav: floor
+    s.minimizeView();       // nav: the sheet
+    s.undo();               // the sheet's creation is undone — it no longer exists
     expect(s.onFloor).toBe(true);
+    expect(s.backTarget).toBeNull(); // dead sheet skipped; the floor is where we stand
+  });
+});
+
+describe('the canvas doc key is always \'main\' (no drill-in surface)', () => {
+  it('navigation never changes activeDocKey; openMain is a no-op guard', () => {
+    const s = new EditorState();
+    expect(s.activeDocKey).toBe('main');
+    const sheet = s.createView(rowDoc())!;
+    expect(s.activeDocKey).toBe('main');
+    s.openMain(); // already there — must not disturb the surface
+    expect(s.doc).toBe(sheet.doc);
+    s.minimizeView();
+    expect(s.activeDocKey).toBe('main');
+    expect(s.doc).toBe(s.floorDoc);
+  });
+
+  it('mainRootForScope tracks the active surface', () => {
+    const s = new EditorState();
+    expect(s.mainRootForScope).toBe(s.floorDoc.root);
+    const sheet = s.createView(rowDoc())!;
+    expect(s.mainRootForScope).toBe(sheet.doc.root);
+    s.minimizeView();
+    expect(s.mainRootForScope).toBe(s.floorDoc.root);
   });
 });
 
@@ -256,63 +319,20 @@ describe('global undo across floor + sheets (§2.3)', () => {
     expect(s.onFloor).toBe(true);
   });
 
-  it('column drill-in edits are app-level steps on the same stack', () => {
+  it('look mutations ride the same one stack as document edits', () => {
     const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'original' };
     const floorLen = s.floorDoc.root.children!.length;
-    s.insertNode({ elmType: 'span', txtContent: 'floor-edit' }); // step 1 (floor)
-    s.openColumnRef('StatusUI');                                 // navigation
-    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });   // step 2 (column)
-    s.openMain();                                                // navigation
-    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('col-edit');
+    s.insertNode({ elmType: 'span', txtContent: 'floor-edit' }); // step 1 (doc)
+    s.removeColumnLook('Status');                                // step 2 (look)
+    expect(floorCellOf(s, 'Status')._component).toBeUndefined();
 
-    s.undo(); // step 2 reverts — undo re-drills into the column it changes
-    expect(s.activeDocKey).toBe('StatusUI');
-    expect(s.columnRefs['StatusUI'].children).toBeUndefined();
+    s.undo(); // last change first: the look comes back, cell re-embedded
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    expect(floorCellOf(s, 'Status')._component?.id).toBe('palette-status-pill');
+    expect(s.floorDoc.root.children).toHaveLength(floorLen + 1); // step 1 still live
 
-    s.undo(); // step 1 reverts — back out to the floor
-    expect(s.activeDocKey).toBe('main');
-    expect(s.onFloor).toBe(true);
+    s.undo(); // then the doc edit
     expect(s.floorDoc.root.children).toHaveLength(floorLen);
-  });
-
-  it('two drill-ins interleave chronologically without clobbering each other', () => {
-    const s = new EditorState();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: 'StatusOriginal' };
-    s.columnRefs['OwnerUI'] = { elmType: 'span', txtContent: 'OwnerOriginal' };
-    s.openColumnRef('StatusUI');
-    s.insertNode({ elmType: 'span', txtContent: 'status-edited' });
-    s.openColumnRef('OwnerUI');
-    s.insertNode({ elmType: 'span', txtContent: 'owner-edited' });
-
-    s.undo(); // last change first: the OwnerUI edit
-    expect(s.columnRefs['OwnerUI'].children).toBeUndefined();
-    expect(s.columnRefs['StatusUI'].children?.[0]?.txtContent).toBe('status-edited');
-
-    s.undo(); // then the StatusUI edit — and the canvas re-drills there
-    expect(s.activeDocKey).toBe('StatusUI');
-    expect(s.columnRefs['StatusUI'].children).toBeUndefined();
-    expect(s.columnRefs['OwnerUI'].children).toBeUndefined();
-  });
-
-  it('editing while drilled live-syncs the registry; the surface object survives the trip', () => {
-    const s = withCard();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
-    const mainRoot = s.doc.root;
-
-    s.openColumnRef('StatusUI');
-    expect(s.activeDocKey).toBe('StatusUI');
-    expect(s.doc.kind).toBe('column');
-    expect(s.doc.root.txtContent).toBe('[$Status]');
-
-    // edit while open — registry must reflect it immediately
-    s.mutateDocument(() => { s.doc.root.txtContent = '=toUpperCase([$Status])'; });
-    expect(s.columnRefs['StatusUI'].txtContent).toBe('=toUpperCase([$Status])');
-
-    s.openMain();
-    expect(s.activeDocKey).toBe('main');
-    expect(s.doc.root).toBe(mainRoot);
-    expect(s.columnRefs['StatusUI'].txtContent).toBe('=toUpperCase([$Status])');
   });
 
   it('redo restores an undone mutation; a fresh mutation invalidates the redo', () => {
@@ -378,17 +398,16 @@ describe('global undo across floor + sheets (§2.3)', () => {
   });
 });
 
-describe('reparentNode', () => {
-  const seedColumnDrill = (s: EditorState, root: SPElement): void => {
-    // structural tests want an arbitrary tree on the canvas — a drilled
-    // column doc is the simplest host for one under the new model
-    s.columnRefs['Probe'] = root;
-    s.openColumnRef('Probe');
+describe('reparentNode / insertNode: plain container semantics', () => {
+  const seedSheet = (s: EditorState, root: SPElement): void => {
+    // structural tests want an arbitrary tree on the canvas — a sheet is the
+    // natural host for one (no drilled documents exist under this model)
+    s.createView({ kind: 'row', root });
   };
 
   it('adjusts the destination index after the source removal shifts it', () => {
     const s = new EditorState();
-    seedColumnDrill(s, {
+    seedSheet(s, {
       elmType: 'div',
       children: [
         { elmType: 'span', _elmName: 'A' },
@@ -407,7 +426,7 @@ describe('reparentNode', () => {
 
   it('refuses to drop a node into its own subtree (no-op)', () => {
     const s = new EditorState();
-    seedColumnDrill(s, {
+    seedSheet(s, {
       elmType: 'div',
       children: [
         { elmType: 'div', _elmName: 'A', children: [{ elmType: 'span', _elmName: 'B' }] },
@@ -418,234 +437,200 @@ describe('reparentNode', () => {
     expect(JSON.stringify(s.doc)).toBe(before);
   });
 
-  it('dropping onto a solo-CFR host splits the reference into its own child (no absorption)', () => {
-    const s = new EditorState();
-    const sheet = s.createView(rowDoc([
-      { elmType: 'span', _elmName: 'Extra', txtContent: '[$Title]' },
-      {
-        elmType: 'div',
-        _elmName: 'Status',
-        columnFormatterReference: '[$Status]',
-        style: { 'flex': '1', 'min-width': '0' },
-      },
-    ]))!;
-    // drop Extra (index 0) onto the Status CFR host (index 1)
-    s.reparentNode([0], [1]);
-    // removing Extra shifts the host to index 0; it is now a plain container
-    const host = sheet.doc.root.children![0];
-    expect(host.columnFormatterReference).toBeUndefined(); // no longer absorbs
-    expect(host._elmName).toBeUndefined(); // the column name went down with the ref
-    expect(host.style).toEqual({ 'flex': '1', 'min-width': '0' }); // slot styles stay put
-    // the div now HOSTS the reference and the dropped node as siblings
-    expect(host.children!.map((c) => c.columnFormatterReference)).toEqual(['[$Status]', undefined]);
-    expect(host.children![0]._elmName).toBe('Status'); // ref cell keeps the column name
-    expect(host.children![1]._elmName).toBe('Extra');
-    // one undo reverts the whole restructure
-    s.undo();
-    expect(s.doc.root.children![1].columnFormatterReference).toBe('[$Status]');
-    expect(s.doc.root.children![1].children).toBeUndefined();
-  });
-
-  it('inserting into a solo-CFR host splits the reference out too', () => {
-    const s = new EditorState();
-    s.createView(rowDoc([
-      { elmType: 'div', _elmName: 'Status', columnFormatterReference: '[$Status]' },
-    ]));
-    const path = s.insertNode({ elmType: 'span', txtContent: 'new' }, [0]);
-    expect(path).toEqual([0, 1]); // beside the extracted ref, not swallowed
-    const host = s.doc.root.children![0];
-    expect(host.columnFormatterReference).toBeUndefined();
-    expect(host.children!.map((c) => c.columnFormatterReference)).toEqual(['[$Status]', undefined]);
-    expect(s.nodeAt(path)?.txtContent).toBe('new');
+  it('inserting into an embedded look cell just appends — CFR-host splitting is gone', () => {
+    const s = new EditorState(); // the floor grid; Progress wears the data bar
+    const i = floorIndexOf(s, 'Progress');
+    const kidsBefore = floorCellOf(s, 'Progress').children!.length;
+    const path = s.insertNode({ elmType: 'span', txtContent: 'extra' }, [i]);
+    expect(path).toEqual([i, kidsBefore]); // a plain child, nothing extracted
+    const cell = floorCellOf(s, 'Progress');
+    expect(cell._component?.id).toBe('palette-data-bar'); // the stamp stays on the cell
+    expect(cell._field).toBe('Progress');
+    expect(cell.children).toHaveLength(kidsBefore + 1);
   });
 });
 
-describe('applyColumnSubtype: snapshot apply as ONE undoable mutation (US-3)', () => {
-  function colPath(s: EditorState, fieldName: string): number[] {
-    const kids = s.doc.root.children ?? [];
-    return [kids.findIndex((c) => gridColumnField(c) === fieldName)];
-  }
+describe('applyComponentToColumn: a column gets its look by wearing a component (§4)', () => {
+  it('bakes a stamped instance into the store and EMBEDS it in the floor cell, in one gesture', () => {
+    const s = new EditorState();
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
 
-  it('registers the formatter, CFR-wires the cell, tags the field — and one undo reverts all three', () => {
-    const s = new EditorState(); // the floor grid
-    const field = s.fields.find((f) => f.name === 'DueDate')!; // an unformatted column
-    const path = colPath(s, 'DueDate');
-    const baked: SPElement = { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' };
+    s.applyComponentToColumn('Title', chipDef, { Value: 'Title' });
 
-    s.applyColumnSubtype('DueDate', baked, 'date-badge', {}, path);
+    // the STORE: baked bound instance, [$Field] dialect, _component-stamped
+    const look = s.columnLooks['Title'];
+    expect(look.txtContent).toBe('[$Title]'); // slot key rewritten to the column
+    expect(look._component).toEqual({ id: 'test-chip', map: { Value: 'Title' } });
+    expect(look._elmName).toBe('Chip');
 
-    expect(field.subtype).toBe('date-badge');
-    expect(field.subtypeArgs).toEqual({});
-    expect(s.columnRefs['DueDate']).toBe(baked);
-    expect(s.nodeAt(path)?.columnFormatterReference).toBeTruthy();
+    // the FLOOR CELL: a clone of the look, stamped _field, cell layout merged
+    const cell = floorCellOf(s, 'Title');
+    expect(cell).not.toBe(look); // embedded clone, never an alias
+    expect(cell._field).toBe('Title');
+    expect(cell._component?.id).toBe('test-chip');
+    expect(cell.txtContent).toBe('[$Title]');
+    expect(cell.style?.['font-weight']).toBe('600'); // the component's styling…
+    expect(cell.style?.['flex']).toBe('1');          // …plus the cell's layout
+    expect(cell.style?.['min-width']).toBe('0');
+
+    expect(reasons).toContain('document');
+    expect(reasons).toContain('data'); // pickers/library refresh on look changes
+  });
+
+  it('ONE undo reverts the look AND the floor cell together; redo re-applies both', () => {
+    const s = new EditorState();
+    s.applyComponentToColumn('Title', chipDef, { Value: 'Title' });
+    expect(undoDepth(s)).toBe(1);
 
     s.undo(); // single Ctrl+Z
-    expect(s.nodeAt(path)?.columnFormatterReference).toBeFalsy();
-    expect(field.subtype).toBeUndefined();
-    expect(field.subtypeArgs).toBeUndefined();
-  });
+    expect(Object.hasOwn(s.columnLooks, 'Title')).toBe(false);
+    const plain = floorCellOf(s, 'Title');
+    expect(plain._component).toBeUndefined();
+    expect(plain.txtContent).toBe('[$Title]'); // back to the plain-value cell
 
-  it('redo re-applies the tag and the formatter together', () => {
-    const s = new EditorState();
-    const field = s.fields.find((f) => f.name === 'DueDate')!;
-    const path = colPath(s, 'DueDate');
-    s.applyColumnSubtype('DueDate', { elmType: 'div', txtContent: 'x' }, 'date-badge', {}, path);
-    s.undo();
     s.redo();
-    expect(field.subtype).toBe('date-badge');
-    expect(s.nodeAt(path)?.columnFormatterReference).toBeTruthy();
+    expect(s.columnLooks['Title']._component?.id).toBe('test-chip');
+    expect(floorCellOf(s, 'Title')._component?.id).toBe('test-chip');
   });
 
-  it('does not entangle structural field edits with the doc undo (no regression)', () => {
+  it('re-applying the identical component is a no-op — no phantom undo step', () => {
     const s = new EditorState();
-    const path = colPath(s, 'DueDate');
-    s.applyColumnSubtype('DueDate', { elmType: 'div', txtContent: 'x' }, 'date-badge', {}, path);
-    s.fields.push({ name: 'Extra', type: 'text' }); // a later, non-snapshotting edit
-    s.undo(); // undoing the apply must NOT remove the field added afterwards
-    expect(s.fields.some((f) => f.name === 'Extra')).toBe(true);
-    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBeUndefined();
+    s.applyComponentToColumn('Title', chipDef, { Value: 'Title' });
+    s.applyComponentToColumn('Title', chipDef, { Value: 'Title' }); // same bake
+    expect(undoDepth(s)).toBe(1);
+    s.undo(); // one undo lands on the plain column, not a phantom
+    expect(Object.hasOwn(s.columnLooks, 'Title')).toBe(false);
+  });
+
+  it('an unknown field is refused outright — nothing stored, nothing snapshotted', () => {
+    const s = new EditorState();
+    s.applyComponentToColumn('Ghost', chipDef, { Value: 'Ghost' });
+    expect(Object.hasOwn(s.columnLooks, 'Ghost')).toBe(false);
+    expect(s.canUndo).toBe(false);
   });
 });
 
-describe('pushSubtypeUpdate: batched re-bake, one undo reverts all columns (US-7)', () => {
-  it('re-bakes every column tagged with the subtype from its stored args', () => {
+describe('removeColumnLook: undressing a column', () => {
+  it('deletes the look and re-embeds the plain-value cell as ONE undoable step', () => {
     const s = new EditorState();
-    const a = s.fields.find((f) => f.name === 'DueDate')!;
-    const b = s.fields.find((f) => f.name === 'Title')!;
-    a.subtype = 'cc'; a.subtypeArgs = {};
-    b.subtype = 'cc'; b.subtypeArgs = {};
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
-    s.columnRefs['Title'] = { elmType: 'div', txtContent: 'OLD' };
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
 
-    const n = s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'NEW' }));
-    expect(n).toBe(2);
-    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
-    expect(s.columnRefs['Title'].txtContent).toBe('NEW');
+    s.removeColumnLook('Status');
+    expect(Object.hasOwn(s.columnLooks, 'Status')).toBe(false);
+    const plain = floorCellOf(s, 'Status');
+    expect(plain._component).toBeUndefined();
+    expect(plain.txtContent).toBe('[$Status]');
+    expect(plain._field).toBe('Status');
+    expect(reasons).toContain('data');
 
-    s.undo(); // ONE Ctrl+Z reverts BOTH columns
-    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
-    expect(s.columnRefs['Title'].txtContent).toBe('OLD');
-
-    s.redo(); // and redo re-applies the whole batch
-    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW');
-    expect(s.columnRefs['Title'].txtContent).toBe('NEW');
+    s.undo(); // single Ctrl+Z re-dresses the column, store AND cell
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    expect(floorCellOf(s, 'Status')._component?.id).toBe('palette-status-pill');
   });
 
-  it('overwrites a hand-edited column and Ctrl+Z recovers it (spec edge case)', () => {
+  it('a look-less column is a no-op — no phantom undo step', () => {
     const s = new EditorState();
-    const a = s.fields.find((f) => f.name === 'DueDate')!;
-    a.subtype = 'cc'; a.subtypeArgs = {};
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'HAND-EDITED' }; // a maker's hand-edit
-    s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'REBAKED' }));
-    expect(s.columnRefs['DueDate'].txtContent).toBe('REBAKED'); // hand-edit overwritten
-    s.undo();
-    expect(s.columnRefs['DueDate'].txtContent).toBe('HAND-EDITED'); // recovered
+    const before = s.serializeProject();
+    s.removeColumnLook('DueDate'); // never had a look
+    expect(s.canUndo).toBe(false);
+    expect(s.serializeProject()).toBe(before);
+  });
+});
+
+describe('registerImportedLook: imports become looks (§1)', () => {
+  it('converts @currentField → [$Field] and stores UNSTAMPED; the floor cell embeds it', () => {
+    const s = new EditorState();
+    s.registerImportedLook('Title', {
+      elmType: 'div',
+      txtContent: '=toUpperCase(@currentField)',
+    });
+    const look = s.columnLooks['Title'];
+    expect(look.txtContent).toBe('=toUpperCase([$Title])');
+    expect(look._component).toBeUndefined(); // no def backs an import — not silently editable
+    const cell = floorCellOf(s, 'Title');
+    expect(cell.txtContent).toBe('=toUpperCase([$Title])');
+    expect(cell._field).toBe('Title');
+    expect(cell.style?.['flex']).toBe('1');
+
+    s.undo(); // ONE step reverts the registration and the cell
+    expect(Object.hasOwn(s.columnLooks, 'Title')).toBe(false);
+    expect(floorCellOf(s, 'Title').txtContent).toBe('[$Title]'); // the plain-value cell again
   });
 
-  it('a push and a prior doc edit unwind in order (interleaved)', () => {
+  it('dotted @currentField props carry the field binding through', () => {
     const s = new EditorState();
-    const a = s.fields.find((f) => f.name === 'DueDate')!;
-    a.subtype = 'cc'; a.subtypeArgs = {};
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
-    s.insertNode({ elmType: 'span', txtContent: 'x' });   // a doc mutation
-    const docAfterInsert = JSON.stringify(s.doc);
-    s.pushSubtypeUpdate('cc', () => ({ elmType: 'div', txtContent: 'NEW' }));
-    s.undo(); // undo the push only
-    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
-    expect(JSON.stringify(s.doc)).toBe(docAfterInsert);   // the insert survived
-    s.undo(); // undo the doc edit
-    expect(JSON.stringify(s.doc)).not.toBe(docAfterInsert);
+    s.registerImportedLook('AssignedTo', {
+      elmType: 'div',
+      txtContent: "=join(@currentField.title,', ')",
+    });
+    expect(s.columnLooks['AssignedTo'].txtContent).toBe("=join([$AssignedTo.title],', ')");
   });
 
-  it('re-bakes from each column\'s own stored subtypeArgs', () => {
+  it('registering a look for an UNPLACED column touches the store only', () => {
     const s = new EditorState();
-    const a = s.fields.find((f) => f.name === 'DueDate')!;
-    a.subtype = 'cc'; a.subtypeArgs = { Symbol: '€' };
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'x' };
-    s.pushSubtypeUpdate('cc', (args) => ({ elmType: 'div', txtContent: String(args.Symbol ?? '?') }));
-    expect(s.columnRefs['DueDate'].txtContent).toBe('€');
-  });
-
-  it('returns 0 and snapshots nothing when no column uses the subtype', () => {
-    const s = new EditorState();
-    const n = s.pushSubtypeUpdate('nobody', () => ({ elmType: 'div' }));
-    expect(n).toBe(0);
-    s.undo(); // nothing to undo — no throw, no change
+    expect(floorIndexOf(s, 'Tags')).toBe(-1); // Tags has no floor column
+    const floorBefore = JSON.stringify(s.floorDoc);
+    s.registerImportedLook('Tags', { elmType: 'div', txtContent: '@currentField' });
+    expect(s.columnLooks['Tags'].txtContent).toBe('[$Tags]');
+    expect(JSON.stringify(s.floorDoc)).toBe(floorBefore); // unplaced = floor untouched
   });
 });
 
 describe('batchProjectUpdate: the component editor\'s one-step apply', () => {
-  it('doc replacement + registry re-bake + tag restamp revert on ONE undo', () => {
+  it('view subtree replacement + look re-bakes revert on ONE undo', () => {
     const s = new EditorState();
-    s.doc.root.children = [{ elmType: 'div', txtContent: 'OLD-VIEW', _component: { id: 'c-x', map: {} } }];
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD-COL' };
-    const due = s.fields.find((f) => f.name === 'DueDate')!;
-    due.subtype = 'c-x';
-    const before = JSON.stringify(s.doc);
+    s.createView(rowDoc([{ elmType: 'div', txtContent: 'OLD-VIEW', _component: { id: 'c-x', map: {} } }]));
+    const docBefore = JSON.stringify(s.doc);
+    const lookBefore = JSON.stringify(s.columnLooks['Status']);
 
-    s.batchProjectUpdate(['DueDate'], () => {
+    s.batchProjectUpdate(['Status'], () => {
       s.doc.root.children![0] = { elmType: 'div', txtContent: 'NEW-VIEW', _component: { id: 'c-x', map: {} } };
-      s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'NEW-COL' };
-      due.subtype = 'c-x-variant';
+      s.columnLooks['Status'] = { elmType: 'div', txtContent: 'NEW-LOOK', _component: { id: 'c-x', map: {} } };
     });
     expect(s.doc.root.children![0].txtContent).toBe('NEW-VIEW');
-    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW-COL');
-    expect(due.subtype).toBe('c-x-variant');
+    expect(s.columnLooks['Status'].txtContent).toBe('NEW-LOOK');
 
-    s.undo(); // ONE Ctrl+Z reverts ALL THREE together
-    expect(JSON.stringify(s.doc)).toBe(before);
-    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD-COL');
-    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x');
+    s.undo(); // ONE Ctrl+Z reverts BOTH together
+    expect(JSON.stringify(s.doc)).toBe(docBefore);
+    expect(JSON.stringify(s.columnLooks['Status'])).toBe(lookBefore);
 
     s.redo(); // and redo re-applies the whole batch
     expect(s.doc.root.children![0].txtContent).toBe('NEW-VIEW');
-    expect(s.columnRefs['DueDate'].txtContent).toBe('NEW-COL');
-    expect(s.fields.find((f) => f.name === 'DueDate')!.subtype).toBe('c-x-variant');
-  });
-
-  it('leaves a drilled column first, so the SURFACE is live inside the snapshot', () => {
-    const s = new EditorState();
-    s.openColumnRef('Status');
-    expect(s.activeDocKey).toBe('Status');
-    s.batchProjectUpdate([], () => {
-      s.doc.root.children![0]._elmName = 'Renamed by the apply';
-    });
-    expect(s.activeDocKey).toBe('main'); // navigation happened before the mutate
-    expect(s.doc.root.children![0]._elmName).toBe('Renamed by the apply');
-    s.undo();
-    expect(s.doc.root.children![0]._elmName).not.toBe('Renamed by the apply');
+    expect(s.columnLooks['Status'].txtContent).toBe('NEW-LOOK');
   });
 
   it('a no-op fn leaves ZERO trace — no undo step', () => {
     const s = new EditorState();
-    s.columnRefs['DueDate'] = { elmType: 'div', txtContent: 'OLD' };
     expect(s.canUndo).toBe(false);
-    s.batchProjectUpdate(['DueDate'], () => { /* nothing */ });
+    s.batchProjectUpdate(['Status'], () => { /* nothing */ });
     expect(s.canUndo).toBe(false);
-    expect(s.columnRefs['DueDate'].txtContent).toBe('OLD');
   });
 });
 
-describe('autosave format v2 (same frozen key, strict load guard)', () => {
-  it('serializeProject emits the workspace: floor, views, activeViewId', () => {
+describe('autosave format v3 (same frozen key, strict load guard)', () => {
+  it('serializeProject emits the workspace: floor, views, activeViewId, columnLooks', () => {
     const s = new EditorState();
     const sheet = s.createView(rowDoc([{ elmType: 'span', txtContent: 'x' }]), 'Sprint board')!;
     const p = JSON.parse(s.serializeProject());
-    expect(p.version).toBe(2);
+    expect(p.version).toBe(3);
     expect(p.floor.kind).toBe('grid');
     expect(p.floor.root.elmType).toBe('div');
     expect(p.views).toHaveLength(1);
     expect(p.views[0]).toMatchObject({ id: sheet.id, name: 'Sprint board' });
     expect(p.views[0].doc.kind).toBe('row');
     expect(p.activeViewId).toBe(sheet.id);
-    expect(p.doc).toBeUndefined(); // the old single-document key is GONE
+    expect(p.columnLooks.Status._component.id).toBe('palette-status-pill');
+    expect(p.columnRefs).toBeUndefined(); // the v2 registry key is GONE
+    expect(p.doc).toBeUndefined();        // so is the pre-Stage-1 single-doc key
   });
 
-  it('round-trips the whole workspace, including where you stood', () => {
+  it('round-trips the whole workspace, including where you stood and every look', () => {
     const s = new EditorState();
     s.createView(rowDoc(), 'A');
     const b = s.createView({ kind: 'tile', root: { elmType: 'div' } }, 'B')!;
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
+    s.registerImportedLook('DueDate', { elmType: 'div', txtContent: '=toLocaleDateString(@currentField)' });
     const text = s.serializeProject();
 
     const s2 = new EditorState();
@@ -654,18 +639,9 @@ describe('autosave format v2 (same frozen key, strict load guard)', () => {
     expect(s2.activeViewId).toBe(b.id);
     expect(s2.doc).toBe(s2.viewById(b.id)!.doc); // reload lands where you left off
     expect(s2.doc.tileWidth).toBe(254);
-    expect(s2.columnRefs['StatusUI'].txtContent).toBe('[$Status]');
+    expect(s2.columnLooks['DueDate'].txtContent).toBe('=toLocaleDateString([$DueDate])');
+    expect(s2.columnLooks['Status']._component?.id).toBe('palette-status-pill');
     expect(s2.serializeProject()).toBe(text);
-  });
-
-  it('serializeProject stores the drilled column\'s live tree in the registry', () => {
-    const s = withCard();
-    s.columnRefs['StatusUI'] = { elmType: 'span', txtContent: '[$Status]' };
-    s.openColumnRef('StatusUI');
-    s.mutateDocument(() => { s.doc.root.txtContent = 'edited'; });
-    const p = JSON.parse(s.serializeProject());
-    expect(p.floor.root.children[0].elmType).toBe('button'); // the floor, not the drill
-    expect(p.columnRefs.StatusUI.txtContent).toBe('edited');
   });
 
   it('REFUSES pre-Stage-1 payloads — the guard throws, restore() falls back to the default', () => {
@@ -682,6 +658,21 @@ describe('autosave format v2 (same frozen key, strict load guard)', () => {
     expect(s2.restore()).toBe(false); // no migration: unparseable → fresh default
     expect(s2.onFloor).toBe(true);
     expect(s2.views).toEqual([]);
+    localStorage.removeItem(EditorState.STORAGE_KEY);
+  });
+
+  it('REFUSES the v2 columnRefs format — a load guard, not a converter', () => {
+    const v2 = JSON.parse(new EditorState().serializeProject());
+    v2.version = 2;
+    delete v2.columnLooks;
+    v2.columnRefs = { Status: { elmType: 'div', txtContent: '@currentField' } };
+    expect(() => new EditorState().loadProject(JSON.stringify(v2))).toThrow(/columnLooks/);
+
+    localStorage.setItem(EditorState.STORAGE_KEY, JSON.stringify(v2));
+    const s = new EditorState();
+    expect(s.restore()).toBe(false);
+    // the fresh default workspace, showcase looks intact — nothing half-loaded
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
     localStorage.removeItem(EditorState.STORAGE_KEY);
   });
 
@@ -717,13 +708,15 @@ describe('autosave format v2 (same frozen key, strict load guard)', () => {
     expect(s2.doc).toBe(s2.floorDoc);
   });
 
-  it('resetAll returns to the fresh floor-only workspace', () => {
+  it('resetAll returns to the fresh floor-only workspace, showcase looks included', () => {
     const s = new EditorState();
     s.createView(rowDoc(), 'Whatever');
+    s.removeColumnLook('Status');
     s.resetAll();
     expect(s.views).toEqual([]);
     expect(s.onFloor).toBe(true);
     expect(s.doc).toBe(s.floorDoc);
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
   });
 });
 
@@ -784,7 +777,7 @@ describe('STORAGE_KEY is frozen', () => {
   it('matches the literal that protects existing autosaved work', () => {
     // HANDOFF §1: these keys deliberately never change on rename — a rename
     // here would orphan every user's autosaved project. This test must fail.
-    // (Frozen NAMES, not frozen formats — the payload is v2 now.)
+    // (Frozen NAMES, not frozen formats — the payload is v3 now.)
     expect(EditorState.STORAGE_KEY).toBe('list-formatting-sandbox.project.v1');
   });
 });
@@ -816,12 +809,12 @@ describe('undo integrity', () => {
   it('setKind("grid") on a sheet MINIMIZES — navigation, not a mutation', () => {
     const s = new EditorState();
     const sheet = s.createView(rowDoc())!;
-    const undoDepth = (s as unknown as { undoStack: string[] }).undoStack.length;
+    const depth = undoDepth(s);
     s.setKind('grid');
     expect(s.onFloor).toBe(true);
     expect(s.views).toHaveLength(1); // the sheet survives, untouched
     expect(s.viewById(sheet.id)!.doc.kind).toBe('row');
-    expect((s as unknown as { undoStack: string[] }).undoStack).toHaveLength(undoDepth);
+    expect(undoDepth(s)).toBe(depth);
   });
 
   it('setKind("row") on the floor starts a NEW sheet carrying a copy of the floor tree', () => {
@@ -836,6 +829,15 @@ describe('undo integrity', () => {
     s.doc.root.children!.pop(); // shaping the sheet…
     expect(JSON.stringify(s.floorDoc)).toBe(floorJson);      // …can never corrupt the floor
     expect(s.floorDoc.kind).toBe('grid');
+  });
+
+  it('setKind("column") is ignored — a look is a component instance, not a canvas document', () => {
+    const s = new EditorState();
+    s.setKind('column');
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toEqual([]);
+    expect(s.doc.kind).toBe('grid');
+    expect(s.canUndo).toBe(false);
   });
 });
 
@@ -950,16 +952,37 @@ describe('loadDocument: the Apply-to-canvas routing', () => {
     expect(s.doc.kind).toBe('tile');
   });
 
-  it('on the floor, a column payload registers to the current field and drills in', () => {
+  it('a COLUMN payload registers as the current field\'s look and selects that grid column — no drill', () => {
     const s = new EditorState();
     s.currentFieldName = 'DueDate';
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
     s.loadDocument({ kind: 'column', root: { elmType: 'div', txtContent: '@currentField' } });
-    expect(s.activeDocKey).toBe('DueDate');
-    expect(s.doc.kind).toBe('column');
-    expect(s.columnRefs['DueDate'].txtContent).toBe('@currentField');
+    expect(s.activeDocKey).toBe('main'); // no drill surface exists
+    expect(s.onFloor).toBe(true);
+    expect(s.columnLooks['DueDate'].txtContent).toBe('[$DueDate]'); // store dialect
+    expect(s.columnLooks['DueDate']._component).toBeUndefined();    // imports are unstamped
+    expect(floorCellOf(s, 'DueDate').txtContent).toBe('[$DueDate]');
+    expect(s.selection).toEqual([floorIndexOf(s, 'DueDate')]);
+    expect(reasons).toContain('load');
   });
 
-  it('on a sheet, the payload replaces the sheet document (kind follows the payload)', () => {
+  it('a COLUMN payload from a sheet minimizes to the floor; ONE undo unregisters AND navigates back', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.currentFieldName = 'Title';
+    s.loadDocument({ kind: 'column', root: { elmType: 'div', txtContent: '@currentField' } });
+    expect(s.onFloor).toBe(true); // the look lives on the grid — navigation rode along
+    expect(s.columnLooks['Title'].txtContent).toBe('[$Title]');
+    expect(s.selection).toEqual([floorIndexOf(s, 'Title')]);
+
+    s.undo(); // the registration was the one mutation — undo returns to its surface
+    expect(Object.hasOwn(s.columnLooks, 'Title')).toBe(false);
+    expect(floorCellOf(s, 'Title')._component).toBeUndefined();
+    expect(s.activeViewId).toBe(sheet.id);
+  });
+
+  it('on a sheet, a row/tile payload replaces the sheet document (kind follows the payload)', () => {
     const s = new EditorState();
     const sheet = s.createView(rowDoc())!;
     s.loadDocument({ kind: 'tile', root: { elmType: 'div', _elmName: 'T' } });
@@ -968,25 +991,70 @@ describe('loadDocument: the Apply-to-canvas routing', () => {
     expect(s.viewById(sheet.id)!.doc.root._elmName).toBe('T');
     expect(s.doc).toBe(s.viewById(sheet.id)!.doc);
   });
+});
 
-  it('while drilled, the payload replaces the column tree and live-syncs the registry', () => {
+describe('snapshots: capture & apply as ONE undoable step (issue #140)', () => {
+  it('column capture: null for a look-less column; a CLONE of the look otherwise (own keys only)', () => {
     const s = new EditorState();
-    s.openColumnRef('Status');
-    s.loadDocument({ kind: 'column', root: { elmType: 'div', txtContent: 'replaced' } });
-    expect(s.activeDocKey).toBe('Status');
-    expect(s.columnRefs['Status'].txtContent).toBe('replaced');
-    s.undo();
-    expect(s.columnRefs['Status'].txtContent).not.toBe('replaced');
+    expect(s.captureSnapshot({ kind: 'column', field: 'DueDate' })).toBeNull();
+    expect(s.captureSnapshot({ kind: 'column', field: 'toString' })).toBeNull(); // prototype keys never read as looks
+    const snap = s.captureSnapshot({ kind: 'column', field: 'Status' })!;
+    expect(snap.scope).toEqual({ kind: 'column', field: 'Status' });
+    expect(snap.payload.root).toEqual(s.columnLooks['Status']);
+    expect(snap.payload.root).not.toBe(s.columnLooks['Status']); // a capture, not an alias
   });
 
-  it('loadColumnDocument is one undoable step; undo unregisters the format', () => {
+  it('\'all\' capture carries the whole workspace: floor + views + columnLooks', () => {
     const s = new EditorState();
-    expect('Tags' in s.columnRefs).toBe(false);
-    s.loadColumnDocument({ elmType: 'div', txtContent: '@currentField' }, 'Tags');
-    expect(s.activeDocKey).toBe('Tags');
-    s.undo();
-    expect('Tags' in s.columnRefs).toBe(false);
-    expect(s.activeDocKey).toBe('main');
+    s.createView(rowDoc(), 'A');
+    const snap = s.captureSnapshot({ kind: 'all' })!;
+    expect(snap.payload.all!.floor.kind).toBe('grid');
+    expect(snap.payload.all!.views.map((v) => v.name)).toEqual(['A']);
+    expect(snap.payload.all!.columnLooks['Status']).toEqual(s.columnLooks['Status']);
+    expect(snap.payload.all!.columnLooks['Status']).not.toBe(s.columnLooks['Status']);
+  });
+
+  it('column apply rewrites the look AND the floor cell — the grid never goes stale; one undo reverts both', () => {
+    const s = new EditorState();
+    const snap = s.captureSnapshot({ kind: 'column', field: 'Status' })!;
+    s.removeColumnLook('Status');
+    expect(floorCellOf(s, 'Status')._component).toBeUndefined();
+
+    expect(s.applySnapshot(snap)).toBe(true);
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    expect(floorCellOf(s, 'Status')._component?.id).toBe('palette-status-pill');
+
+    s.undo(); // single Ctrl+Z back to the undressed column, store AND cell
+    expect(Object.hasOwn(s.columnLooks, 'Status')).toBe(false);
+    expect(floorCellOf(s, 'Status')._component).toBeUndefined();
+  });
+
+  it('a payload that does not match its scope is refused wholesale — nothing touched', () => {
+    const s = new EditorState();
+    const before = s.serializeProject();
+    const corrupt = (scope: Snapshot['scope']): Snapshot =>
+      ({ id: 'x', takenAt: '2026-07-06T00:00:00Z', label: 'corrupt', scope, payload: {} });
+    expect(s.applySnapshot(corrupt({ kind: 'column', field: 'Status' }))).toBe(false);
+    expect(s.applySnapshot(corrupt({ kind: 'all' }))).toBe(false);
+    expect(s.serializeProject()).toBe(before);
+    expect(s.canUndo).toBe(false);
+  });
+
+  it('\'all\' apply restores floor + sheets + looks; one undo reverts the whole restore', () => {
+    const s = new EditorState();
+    const snap = s.captureSnapshot({ kind: 'all' })!;
+    s.removeColumnLook('Status');
+    s.createView(rowDoc(), 'Later');
+
+    expect(s.applySnapshot(snap)).toBe(true);
+    expect(s.views).toEqual([]); // the capture predates the sheet
+    expect(s.onFloor).toBe(true); // the sheet you stood on isn't in this capture
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    expect(floorCellOf(s, 'Status')._component?.id).toBe('palette-status-pill');
+
+    s.undo(); // ONE Ctrl+Z brings back the sheet and the undressed column
+    expect(s.views.map((v) => v.name)).toEqual(['Later']);
+    expect(Object.hasOwn(s.columnLooks, 'Status')).toBe(false);
   });
 });
 
@@ -1099,19 +1167,20 @@ describe('lens + save checkpoint', () => {
     expect(JSON.stringify(s.doc)).toBe(snap);
   });
 
-  it('the savepoint is workspace-wide: a column edit counts as dirt, navigation does not', () => {
+  it('the savepoint is workspace-wide: a look change counts as dirt, navigation does not', () => {
     const s = new EditorState();
     const sheet = s.createView(rowDoc())!;
     s.markSavepoint();
     s.minimizeView();
     s.openView(sheet.id);
     expect(s.isDirtySinceSave).toBe(false); // pure navigation — not dirt
-    s.openColumnRef('Status');
-    s.insertNode({ elmType: 'span', txtContent: 'col-edit' });
-    expect(s.isDirtySinceSave).toBe(true); // the registry changed
+    s.minimizeView();
+    s.removeColumnLook('Status');
+    expect(s.isDirtySinceSave).toBe(true); // the look store changed
     s.discardToSavepoint();
     expect(s.isDirtySinceSave).toBe(false);
-    expect(s.columnRefs['Status'].children).toBeUndefined();
+    expect(s.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    expect(floorCellOf(s, 'Status')._component?.id).toBe('palette-status-pill');
   });
 
   it('undo/redo/discard restore the selection focus state', () => {
@@ -1138,22 +1207,272 @@ describe('lens + save checkpoint', () => {
   });
 });
 
-describe('mainRootForScope', () => {
-  it('returns the live root on the surface, and the surface root while drilled', () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// CANVAS TABS (COLUMNS-COMPONENTS-VIEWS §2, Phase B) — appended test group.
+// state owns tab BOOKKEEPING only: openTabs (grid always present, open
+// order, rearrangeable), activeComponentTab (UI state — the workshop cover),
+// and the sanitize/persistence rules. All tab gestures follow the renameView
+// rule: OFF the undo stack, but autosaved ('data').
+// ─────────────────────────────────────────────────────────────────────────────
+import { tabKey, type CanvasTab } from './state';
+
+describe('canvas tabs (§2): openTabs bookkeeping', () => {
+  it('a fresh workspace has the standing Grid tab, active, no workshop cover', () => {
     const s = new EditorState();
-    const floorRoot = s.doc.root;
-    s.columnRefs['Status'] = { elmType: 'div', txtContent: '@currentField' };
-    s.openColumnRef('Status');
-    expect(s.activeDocKey).toBe('Status');
-    expect(s.mainRootForScope).toBe(floorRoot);
-    s.openMain();
-    expect(s.mainRootForScope).toBe(s.doc.root);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.activeTabKey).toBe('grid');
   });
 
-  it('tracks the sheet when one is up', () => {
+  it('tabKey is the stable identity: grid | view:id | component:defId', () => {
+    expect(tabKey({ kind: 'grid' })).toBe('grid');
+    expect(tabKey({ kind: 'view', id: 'v1' })).toBe('view:v1');
+    expect(tabKey({ kind: 'component', defId: 'c-x' })).toBe('component:c-x');
+  });
+
+  it('createView appends the sheet\'s tab (sheets are born open); openView re-ensures a closed one', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    const b = s.createView(rowDoc())!;
+    expect(s.openTabs).toEqual([
+      { kind: 'grid' },
+      { kind: 'view', id: a.id },
+      { kind: 'view', id: b.id },
+    ]);
+    // reopening never duplicates
+    s.openView(a.id);
+    s.openView(b.id);
+    expect(s.openTabs).toHaveLength(3);
+    // close a's tab, then navigate to it — the chokepoint re-appends in open order
+    s.closeTab(`view:${a.id}`);
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${b.id}`]);
+    s.openView(a.id);
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${b.id}`, `view:${a.id}`]);
+  });
+
+  it('activeTabKey derives from existing state — no duplicated active-tab field for surfaces', () => {
     const s = new EditorState();
     const sheet = s.createView(rowDoc())!;
-    s.openColumnRef('Status');
-    expect(s.mainRootForScope).toBe(sheet.doc.root);
+    expect(s.activeTabKey).toBe(`view:${sheet.id}`);
+    s.minimizeView();
+    expect(s.activeTabKey).toBe('grid');
+    s.openComponentTab('c-x');
+    expect(s.activeTabKey).toBe('component:c-x');
+    expect(s.onFloor).toBe(true); // the surface waits untouched underneath
+  });
+
+  it('openComponentTab appends once and re-activates on focus; the doc keeps aliasing the surface', () => {
+    const s = new EditorState();
+    const docBefore = s.doc;
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-b');
+    s.openComponentTab('c-a'); // focus, not a new tab
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', 'component:c-a', 'component:c-b']);
+    expect(s.activeComponentTab).toBe('c-a');
+    expect(s.doc).toBe(docBefore); // activeDocKey stays 'main'; doc never re-aliases
+    expect(s.activeDocKey).toBe('main');
+  });
+
+  it('surface navigation always clears the workshop cover (openView / minimizeView / deactivate)', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    s.openComponentTab('c-a');
+    s.openView(sheet.id); // already the active surface — just uncovers it
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.openTabs.map(tabKey)).toContain('component:c-a'); // the tab stays open
+
+    s.openComponentTab('c-a');
+    s.minimizeView(); // real navigation to the floor
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.onFloor).toBe(true);
+
+    s.openComponentTab('c-a');
+    s.deactivateComponentTab();
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.openTabs.map(tabKey)).toContain('component:c-a');
+  });
+
+  it('closing the ACTIVE view tab minimizes to the grid — navigation, never deletion, no undo step', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const depth = undoDepth(s); // the creation only
+    expect(s.closeTab(`view:${sheet.id}`)).toBe(true);
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toHaveLength(1); // the view itself waits in the list
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(undoDepth(s)).toBe(depth);
+  });
+
+  it('closing an INACTIVE view tab never navigates', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    const b = s.createView(rowDoc())!;
+    expect(s.closeTab(`view:${a.id}`)).toBe(true);
+    expect(s.activeViewId).toBe(b.id); // still standing on b
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${b.id}`]);
+  });
+
+  it('closing the grid tab is refused; unknown keys report false', () => {
+    const s = new EditorState();
+    expect(s.closeTab('grid')).toBe(false);
+    expect(s.closeTab('view:ghost')).toBe(false);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+  });
+
+  it('closing the active component tab clears activeComponentTab (the surface uncovers)', () => {
+    const s = new EditorState();
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-b');
+    expect(s.closeTab('component:c-b')).toBe(true);
+    expect(s.activeComponentTab).toBeNull();
+    expect(s.activeTabKey).toBe('grid');
+    // closing an INACTIVE component tab leaves the active one covering
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-c');
+    s.closeTab('component:c-a');
+    expect(s.activeComponentTab).toBe('c-c');
+  });
+
+  it('moveTab rearranges (any tab, the Grid included); out-of-range is a no-op', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    s.openComponentTab('c-x');
+    s.moveTab(2, 0); // the component tab to the front
+    expect(s.openTabs.map(tabKey)).toEqual(['component:c-x', 'grid', `view:${a.id}`]);
+    s.moveTab(0, 99); // clamped to the end
+    expect(s.openTabs.map(tabKey)).toEqual(['grid', `view:${a.id}`, 'component:c-x']);
+    const before = s.openTabs.map(tabKey);
+    s.moveTab(-1, 0);
+    s.moveTab(99, 0);
+    s.moveTab(1, 1);
+    expect(s.openTabs.map(tabKey)).toEqual(before);
+  });
+
+  it('tab gestures follow the renameView rule: OFF the undo stack, but they emit \'data\' (autosave)', () => {
+    const s = new EditorState();
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    s.openComponentTab('c-a');
+    s.openComponentTab('c-b');
+    s.moveTab(2, 1);
+    s.closeTab('component:c-a');
+    s.deactivateComponentTab();
+    expect(s.canUndo).toBe(false); // presentational metadata, not document edits
+    expect(reasons).toContain('data');
+    expect(reasons).not.toContain('document');
+  });
+
+  it('undoing a createView drops its now-dangling tab (restore-side sanitize)', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    expect(s.openTabs).toHaveLength(2);
+    s.undo(); // the sheet is gone — its tab must not survive as a ghost
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    s.redo(); // the sheet returns open — openView-side ensure re-tabs it
+    expect(s.views).toHaveLength(1);
+  });
+
+  it('an undo emits \'data\' even when it never moves the canvas — the list surfaces must hear it', () => {
+    // undo a floor-side createView from the floor itself: no navigation
+    // happens (floor → floor), but the views/tabs collections change — the
+    // tab strip and views list re-render on 'data', so it must fire anyway
+    const s = new EditorState();
+    s.createView(rowDoc());
+    s.minimizeView(); // wander back to the floor before undoing
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    s.undo(); // the sheet (and its tab) disappear; the canvas stays put
+    expect(s.onFloor).toBe(true);
+    expect(s.views).toHaveLength(0);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(reasons).toContain('data');
+  });
+
+  it('persists ADDITIVELY: no openTabs key while only the Grid tab is open', () => {
+    const p = JSON.parse(new EditorState().serializeProject());
+    expect(p.openTabs).toBeUndefined();
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const p2 = JSON.parse(s.serializeProject());
+    expect(p2.openTabs).toEqual([{ kind: 'grid' }, { kind: 'view', id: sheet.id }]);
+  });
+
+  it('round-trips openTabs (order included) through serialize/load; the cover never persists', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!;
+    // a component tab for a def the stores KNOW (a palette derivation)
+    s.openComponentTab('palette-status-pill');
+    s.moveTab(2, 1); // rearranged order is project metadata — it round-trips
+    const text = s.serializeProject();
+    const s2 = new EditorState();
+    s2.loadProject(text);
+    expect(s2.openTabs.map(tabKey)).toEqual(['grid', 'component:palette-status-pill', `view:${a.id}`]);
+    expect(s2.activeComponentTab).toBeNull(); // UI state — a reload lands on the surface
+    expect(s2.serializeProject()).toBe(text);
+  });
+
+  it('sanitize-on-load: garbage entries, dangling views and unknown defs drop; grid + active view re-assert', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const p = JSON.parse(s.serializeProject());
+    p.openTabs = [
+      { bogus: true },
+      { kind: 'view', id: 'ghost' },          // no such view
+      { kind: 'component', defId: 'c-ghost' }, // no such def in any store
+      { kind: 'view', id: sheet.id },
+      { kind: 'view', id: sheet.id },          // duplicate — deduped
+    ];
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(p));
+    expect(s2.openTabs).toEqual([{ kind: 'grid' }, { kind: 'view', id: sheet.id }]);
+  });
+
+  it('sanitize-on-load: an ABSENT openTabs key seeds the Grid tab plus the active view\'s', () => {
+    const s = new EditorState();
+    const sheet = s.createView(rowDoc())!;
+    const p = JSON.parse(s.serializeProject());
+    delete p.openTabs;
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(p));
+    expect(s2.openTabs).toEqual([{ kind: 'grid' }, { kind: 'view', id: sheet.id }]);
+    expect(s2.activeViewId).toBe(sheet.id);
+  });
+
+  it('a MALFORMED openTabs value never fails the strict guard — it is outside it', () => {
+    const s = new EditorState();
+    const p = JSON.parse(s.serializeProject());
+    p.openTabs = 'not-an-array';
+    const s2 = new EditorState();
+    s2.loadProject(JSON.stringify(p)); // must not throw
+    expect(s2.openTabs).toEqual([{ kind: 'grid' }]);
+  });
+
+  it('resetAll returns to the lone Grid tab with no cover', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    s.openComponentTab('c-a');
+    s.resetAll();
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]);
+    expect(s.activeComponentTab).toBeNull();
+  });
+
+  it('applySnapshot(\'all\') sanitizes tabs against the restored view list', () => {
+    const s = new EditorState();
+    const snap = s.captureSnapshot({ kind: 'all' })!; // captured with NO views
+    const sheet = s.createView(rowDoc())!;
+    expect(s.openTabs.map(tabKey)).toContain(`view:${sheet.id}`);
+    expect(s.applySnapshot(snap)).toBe(true);
+    expect(s.views).toEqual([]);
+    expect(s.openTabs).toEqual([{ kind: 'grid' }]); // the dead view's tab dropped
+  });
+
+  it('openTabs entries are plain CanvasTab data (the type round-trips as JSON)', () => {
+    const tabs: CanvasTab[] = [
+      { kind: 'grid' },
+      { kind: 'view', id: 'v1' },
+      { kind: 'component', defId: 'c-20260706-abc' },
+    ];
+    expect(JSON.parse(JSON.stringify(tabs))).toEqual(tabs);
+    expect(tabs.map(tabKey)).toEqual(['grid', 'view:v1', 'component:c-20260706-abc']);
   });
 });

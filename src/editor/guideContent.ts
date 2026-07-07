@@ -591,8 +591,9 @@ across sites, with hierarchy or synonyms → managed metadata
 
 <div class="wb-guide-note wb-guide-note-warning"><strong>Export blind spot (verified here):</strong>
 SharePoint's own <em>Export to CSV with schema</em> omits calculated <em>and</em> lookup columns
-from the schema XML. If you import a list into FormatFX and a column formatter reference comes
-back unresolved, this omission is the usual reason.</div>
+from the schema XML. If you import a list into FormatFX and an imported column's formatting
+references a field that isn't there (the linter flags the unknown field), this omission is the
+usual reason.</div>
 `,
   },
 
@@ -777,9 +778,13 @@ is the heart of it — and it is best understood as <strong>CSS filtered through
 per row — there's a full operator/function vocabulary, field references
 (<code>[$InternalName]</code>, <code>[$Lookup.lookupValue]</code>), and tokens
 (<code>@currentField</code>, <code>@me</code>, <code>@now</code>, <code>@rowIndex</code>…).
-Column formatters style one column; view (row) formatters lay out the whole row and can embed
-column formatters by reference (<code>columnFormatterReference</code>); tile formatters drive the
-gallery layout. References: ${ext(MS.columnFormatting, 'column formatting')} ·
+Column formatters style one column; view (row) formatters lay out the whole row; tile formatters
+drive the gallery layout. One more key you'll meet in wild samples: a view formatter can embed a
+column's live formatter by reference (<code>columnFormatterReference</code>). Recognize it when
+reading other people's JSON — but it's platform plumbing, not how you author here: in this app
+formatting is built as <strong>components</strong>, a column wears one as its look, and export
+compiles a self-contained formatter for whichever target you deploy — never a reference.
+References: ${ext(MS.columnFormatting, 'column formatting')} ·
 ${ext(MS.viewFormatting, 'view formatting')} · ${ext(MS.syntaxRef, 'syntax reference')} ·
 ${ext(MS.pnpSamples, 'pnp/List-Formatting samples')}.</p>
 
@@ -941,10 +946,10 @@ card.</p>
 <p>Field notes for cards (details in <a href="#" data-guide-page="gotchas">gotchas</a>): give
 the card a dedicated trigger — an absolutely-positioned overlay div, or a <code>button</code>
 with direct <code>txtContent</code> — rather than hanging <code>customCardProps</code> on a div
-full of children, whose clicks have been seen to get swallowed. And
-<code>columnFormatterReference</code> works inside card content (an old "renders blank" rule
-was retracted on production evidence), including referenced formatters that open cards of
-their own.</p>
+full of children, whose clicks have been seen to get swallowed. And a note for pasted view JSON:
+<code>columnFormatterReference</code> — the platform's embed-a-column-formatter key, which this
+editor never emits — works inside card content, referenced formatters that open cards of their
+own included (an old "renders blank" rule was retracted on production evidence).</p>
 
 <h2 id="ac-foreach">forEach — the loop that pairs with all of this</h2>
 <p><code>"forEach": "_item in [$MultiValueField]"</code> repeats an element per value — the
@@ -1015,10 +1020,13 @@ date columns. Verified against a real tenant 2026-06-10; several community sampl
 otherwise. Related: <code>toLocaleDateString()</code> on an empty date renders empty text, not
 the 1970 epoch.</p></div>
 
-<div class="wb-guide-gotcha">${sev('info')}<h3>@currentField swaps inside a CFR</h3>
-<p>Inside a resolved <code>columnFormatterReference</code>, <code>@currentField</code> is the
-<em>referenced</em> column, not the host's. Correct and convenient — until you forget while
-reading someone else's row formatter.</p></div>
+<div class="wb-guide-gotcha">${sev('info')}<h3>@currentField swaps inside a columnFormatterReference</h3>
+<p>Platform trivia for reading JSON from the wild: a hand-written view formatter can embed a
+column's live formatter with <code>columnFormatterReference</code>, and inside the referenced
+formatter <code>@currentField</code> is the <em>referenced</em> column, not the host's. Correct
+and convenient — until you forget while deciphering someone else's row formatter. In your own
+work here the swap can't bite: this editor brings imported column formatters in as
+component-shaped looks and never emits a reference.</p></div>
 
 <div class="wb-guide-gotcha">${sev('info')}<h3>The calculated TODAY drift</h3>
 <p>Calculated columns evaluate at save time only. A stored "days late" goes stale the moment
@@ -1034,13 +1042,15 @@ the patterns that hold up are an <strong>absolutely-positioned overlay div</stro
 dedicated trigger (the preferred one), or a <code>button</code> with direct
 <code>txtContent</code>.</p></div>
 
-<div class="wb-guide-gotcha">${sev('info')}<h3>CFRs inside cards work (old canon said otherwise)</h3>
-<p>Retraction: an earlier version of this guide — and the imported team canon — claimed
-<code>columnFormatterReference</code> inside a <code>customCardProps</code> formatter renders
-blank. <strong>It doesn't.</strong> CFRs inside card content are used in production constantly,
-including referenced column formatters that open cards of their own. The limits that
-<em>are</em> documented: a reference isn't resolved multi-level, and references to multi-choice
-template formatters aren't supported (${ext(MS.syntaxRef, 'syntax reference')}).</p></div>
+<div class="wb-guide-gotcha">${sev('info')}<h3>columnFormatterReference inside cards works (old canon said otherwise)</h3>
+<p>Retraction, kept for anyone deciphering pasted view JSON: an earlier version of this guide —
+and the imported team canon — claimed <code>columnFormatterReference</code> inside a
+<code>customCardProps</code> formatter renders blank. <strong>It doesn't.</strong> References
+inside card content run in production constantly, including referenced column formatters that
+open cards of their own. The limits that <em>are</em> documented: a reference isn't resolved
+multi-level, and references to multi-choice template formatters aren't supported
+(${ext(MS.syntaxRef, 'syntax reference')}). Platform rules only — this editor never emits a
+reference, so they constrain JSON you deploy by hand, not anything you build here.</p></div>
 
 <div class="wb-guide-gotcha">${sev('error')}<h3>forEach + split() on the root element</h3>${lintRule('foreach-split-scope')}
 <p>The verified failure: <code>forEach</code> over a <code>split()</code> expression on the
@@ -1080,17 +1090,19 @@ Non-<code>translate</code> transforms: treat as suspect ${lintRule('css-transfor
 <p>Live-verified (2026-06-11): in LIST row context, an element carrying the
 <code>.sp-card-formatterRef</code> class renders <code>visibility: hidden</code> — occupies
 layout, never paints — and this app's preview reproduces that. Scope it correctly, though: the
-class belongs to the <code>sp-card-*</code> gallery/card vocabulary. CFRs in list views don't
-need it at all; pair it with card-classed containers (<code>sp-card-container</code> and
-friends), where it's the expected wrapper for a CFR. The verified invisibility is best read as
-"this class used outside card markup", not as a defect of CFRs in lists.</p></div>
+class belongs to the <code>sp-card-*</code> gallery/card vocabulary, where hand-written card
+JSON uses it as the standard wrapper around an embedded column formatter (typically a
+<code>columnFormatterReference</code>). Pair it with card-classed containers
+(<code>sp-card-container</code> and friends); anywhere else it just hides things. A pasted
+sample that goes blank in a list view often has this class riding along — the verified
+invisibility is "this class used outside card markup", not a defect of the content it wraps.</p></div>
 
 <h2 id="go-platform">Platform &amp; tooling</h2>
 
 <div class="wb-guide-gotcha">${sev('warning')}<h3>Schema export omits calculated and lookup columns</h3>
 <p>SharePoint's <em>Export to CSV with schema</em> leaves calculated and lookup columns out of
 the schema XML, and exports empty multi-lookups as the literal string <code>"[]"</code>
-(verified 2026-06-11). An "unresolved column reference" after importing a list here usually
+(verified 2026-06-11). An imported look whose expressions hit unknown-field lint flags usually
 means exactly this — re-add those columns by hand in the Data tab.</p></div>
 
 <div class="wb-guide-gotcha">${sev('info')}<h3>gap IS supported</h3>
@@ -1112,10 +1124,24 @@ The short version of where each idea lives:</p>
 <h2 id="fx-import">Bring your actual list in</h2>
 <p><strong>Data tab → Import schema…</strong> takes the file SharePoint produces from
 <em>Export → Export to CSV</em> with <em>Include schema</em> checked. One file yields your
-columns (types, choices, read-only flags), up to ten real rows, and every live column formatter —
-the grid workspace rebuilds around it. Remember the export blind spot from the
-<a href="#" data-guide-page="gotchas">gotchas</a>: calculated and lookup columns won't be in the
-schema XML; add them in the Data tab if your formatters reference them.</p>
+columns (types, choices, read-only flags), up to ten real rows, and each column's live formatter
+as that column's <strong>look</strong> — component-shaped formatting already applied to the
+column, worn in the grid the moment the import lands. Imported looks aren't silently editable
+(they arrived without a component to edit); <em>Save as component…</em> in the column header
+menu lifts one into a real, editable component — one gesture away. Remember the export blind
+spot from the <a href="#" data-guide-page="gotchas">gotchas</a>: calculated and lookup columns
+won't be in the schema XML; add them in the Data tab if your formatting references them.</p>
+
+<h2 id="fx-components">Columns are data; components do the formatting</h2>
+<p>There is no per-column formatter editor in this app, because a column doesn't own formatting —
+it <em>wears</em> it. The unit you build is a <strong>component</strong> (⬡): packaged
+formatting with typed slots for the columns it consumes. Apply one to a grid column and that
+becomes the column's look; swap it for another, or pick <em>Remove the look</em> in the header
+menu, and the column is plain data again — each a single undo step. Editing happens in the
+component's workshop: change the component once, save, and every column and view wearing it
+updates. At deploy time each look compiles into a self-contained SharePoint column formatter
+(<code>@currentField</code> dialect) on demand, and views export as view formatters — nothing
+you ship leans on <code>columnFormatterReference</code> or any other cross-formatter wiring.</p>
 
 <h2 id="fx-linter">Let the linter teach</h2>
 <p>The JSON tab's diagnostics are the <a href="#" data-guide-page="gotchas">gotchas page</a> in

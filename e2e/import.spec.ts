@@ -1,9 +1,11 @@
 /**
- * E2E: schema import flow (native "Export to CSV with schema") and
- * columnFormatterReference rendering from the registry.
+ * E2E: schema import (native "Export to CSV with schema" + the List Snapshot)
+ * — imported CustomFormatters register as column LOOKS (unstamped, rendered
+ * embedded in the grid), the review opts individual formatters out, captured
+ * views open as their own canvas tabs, and the deploy panel stays lint-gated.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { freshApp, importPastedText, openDataDock, openJson } from './helpers';
+import { freshApp, header, canvasTab, importPastedText, openDataDock, openJson } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -28,23 +30,27 @@ async function importExport(page: Page): Promise<void> {
   await page.click('#wb-fmt-review-import');
 }
 
-test('native CSV-with-schema import: fields, real rows, formatters registered', async ({ page }) => {
+test('native CSV-with-schema import: fields, real rows, live formatters register as LOOKS', async ({ page }) => {
   await importExport(page);
   await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
   await expect(page.locator('#wb-toast')).toContainText('2 rows');
-  await expect(page.locator('#wb-toast')).toContainText('1 live column formatters');
+  await expect(page.locator('#wb-toast')).toContainText('1 column look');
   // data grid shows the imported internal names
   await expect(page.locator('.wb-data-fieldname', { hasText: 'Phase' })).toBeVisible();
-  // registry section lists the recovered formatter
-  await expect(page.locator('.wb-schema-form', { hasText: 'Column formatter references' }))
-    .toContainText('[$Pct]');
   // the untouched grid workspace rebuilds around the import: real headers
-  // (display names), and the recovered formatter renders immediately
+  // (display names), and the recovered look renders embedded immediately
   await expect(page.locator('.wb-grid-header-label')).toHaveText(['Task name', 'Phase', 'Pct']);
   await expect(page.locator('.wb-grid-row').first()).toContainText('75%');
+  // an imported look is UNSTAMPED — no def backs it, so no ⬡ header mark; the
+  // header menu offers the remove/lift doors, never silent editability
+  await expect(header(page, 'Pct').locator('.wb-grid-look')).toHaveCount(0);
+  await header(page, 'Pct').click();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Remove the look' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Save as component…' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Change the component…' })).toHaveCount(0);
 });
 
-test('import review opts a column formatter out: unchecked → column imports but formatter is not registered', async ({ page }) => {
+test('import review opts a column formatter out: unchecked → column imports but no look registers', async ({ page }) => {
   await importPastedText(page, listSchemaCsv());
   // the review lists the one formatter-bearing column (Pct); uncheck it
   const review = page.locator('#wb-fmt-review');
@@ -54,24 +60,25 @@ test('import review opts a column formatter out: unchecked → column imports bu
   // the column + data still import…
   await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
   await expect(page.locator('.wb-data-fieldname', { hasText: 'Pct' })).toBeVisible();
-  // …but no live column formatter was registered, and the cell shows the raw value
-  await expect(page.locator('#wb-toast')).not.toContainText('live column formatters');
-  await expect(page.locator('.wb-schema-form', { hasText: 'Column formatter references' }))
-    .not.toContainText('[$Pct]');
+  // …but no look registered: the cell shows the raw value and the header menu
+  // offers the apply on-ramp instead of the look actions
+  await expect(page.locator('#wb-toast')).not.toContainText('column look');
+  await expect(page.locator('.wb-grid-row').first()).not.toContainText('75%');
+  await header(page, 'Pct').click();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Remove the look' })).toHaveCount(0);
 });
 
-test('columnFormatterReference renders the registered formatter with swapped @currentField', async ({ page }) => {
+test('an imported look compiles back to real column-formatter JSON (@currentField round trip)', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await importExport(page);
-  await openJson(page);
-  await page.fill('#wb-json-text', JSON.stringify({
-    elmType: 'div',
-    columnFormatterReference: '[$Pct]',
-  }));
-  await page.click('#wb-json-apply');
-  // the referenced formatter shows the Pct value (75%), not a placeholder chip
-  const firstCell = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-mock-cell-fmt').first();
-  await expect(firstCell).toContainText('75%');
-  await expect(firstCell.locator('.wb-cfr-chip')).toHaveCount(0);
+  // the look store speaks explicit [$Pct]; the export compiles on demand
+  await header(page, 'Pct').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Copy column JSON' }).click();
+  await expect(page.locator('#wb-toast')).toContainText('Pct formatter JSON copied');
+  const parsed = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(parsed.$schema).toContain('column-formatting');
+  expect(JSON.stringify(parsed)).toContain('@currentField');
+  expect(JSON.stringify(parsed)).not.toContain('[$Pct]');
 });
 
 /** Synthetic List Snapshot — what the live-extract snippet captures. */
@@ -108,7 +115,7 @@ function listSnapshot(opts: { defaultViewFormatter?: boolean } = {}): string {
   });
 }
 
-test('list snapshot import: fields + views land; the default view\'s row formatting auto-loads on a pure grid', async ({ page }) => {
+test('list snapshot import: fields + views land; the default view\'s row formatting opens as its own tab', async ({ page }) => {
   await openDataDock(page);
   await page.click('button:has-text("Import schema…")');
   // the live block advertises the zero-install path
@@ -119,9 +126,9 @@ test('list snapshot import: fields + views land; the default view\'s row formatt
   await expect(page.locator('#wb-toast')).toContainText('Imported 3 fields');
   await expect(page.locator('#wb-toast')).toContainText('2 views');
   await expect(page.locator('#wb-toast')).toContainText('"All Items" opened as its own view');
-  // the captured view formatter opened as its OWN named sheet (renders per-row)
+  // the captured view formatter opened as its OWN named view — a canvas tab
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('»Ship the bridge«');
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('All Items');
+  await expect(canvasTab(page, 'All Items')).toHaveClass(/active/);
   // …and the views section lists both captured views
   await expect(page.locator('.wb-schema-form', { hasText: 'Views from your list' })).toContainText('Board');
   // one undo removes the imported sheet again — back on the (rebuilt) grid
@@ -155,21 +162,9 @@ test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ p
 
   // a document with a lint ERROR refuses to generate (refuse-and-teach)
   await page.fill('#wb-json-text', JSON.stringify({
-    elmType: 'div', txtContent: '=not([$Title])',
+    rowFormatter: { elmType: 'div', txtContent: '=not([$Title])' },
   }));
   await page.click('#wb-json-apply');
   await page.click('#wb-deploy-copy');
   await expect(page.locator('#wb-toast')).toContainText('Not deploying');
-});
-
-test('unregistered CFR shows the explanatory chip', async ({ page }) => {
-  await openJson(page);
-  await page.fill('#wb-json-text', JSON.stringify({
-    elmType: 'div',
-    columnFormatterReference: '[$NotRegistered]',
-  }));
-  await page.click('#wb-json-apply');
-  const chip = page.locator('.wb-mock-row:not(.wb-mock-header) .wb-cfr-chip').first();
-  await expect(chip).toBeVisible();
-  await expect(chip).toContainText('NotRegistered');
 });

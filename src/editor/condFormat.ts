@@ -8,11 +8,10 @@
  * result is previewed against the real mock rows through the real renderer
  * before anything is applied (one undoable mutation).
  *
- * Two routes in, mirroring the rest of the app:
- *  - element route: merge the generated conditional styles into THIS element
- *  - column route (grid header): land the rules on the column's registered
- *    formatter — creating/CFR-wiring it exactly like "Format this column" —
- *    and switch the workspace to it
+ * ELEMENT-scoped only (the inspector door): the generated conditional styles
+ * merge into the element the dialog was opened on. The per-column route died
+ * with "Format this column" (COLUMNS-COMPONENTS-VIEWS model B) — a column's
+ * conditional look now travels inside the component applied to it.
  */
 
 import type { MockField, NodePath, SPElement, SPExpr } from '../core/types';
@@ -20,7 +19,7 @@ import { renderElement } from '../core/renderer';
 import { evaluate, type EvalContext } from '../core/expressions';
 import { state } from './state';
 import {
-  defaultColumnFormatter, gridCellForField, fieldRefsIn, fieldLabel,
+  defaultColumnFormatter, fieldRefsIn, fieldLabel,
 } from './gridScaffold';
 import {
   COND_COLORS, COND_EFFECTS, condColor, condEffect, condExpr, condLabel,
@@ -31,9 +30,7 @@ import { elementRefChip } from './elmRef';
 import { createOverlay } from './overlay';
 import { createModalUndo, wireModalUndoKeys, modalUndoButtons } from './modalUndo';
 
-export type CondTarget =
-  | { kind: 'element'; path: NodePath }
-  | { kind: 'column'; fieldName: string; cellPath?: NodePath };
+export type CondTarget = { kind: 'element'; path: NodePath };
 
 let activeClose: (() => void) | null = null;
 
@@ -45,13 +42,9 @@ export function closeCondFormat(): void {
 
 const nameOf = (el: SPElement): string => el._elmName ?? `<${el.elmType}>`;
 
-/** Best-guess field for an element: bound field, else first reference. */
+/** Best-guess field for an element: the first field it references. */
 function guessField(node: SPElement): MockField {
   const editable = state.fields.filter((f) => !f.protected);
-  if (state.doc.kind === 'column') {
-    const f = state.fields.find((x) => x.name === state.currentFieldName);
-    if (f) return f;
-  }
   for (const name of fieldRefsIn(node)) {
     const f = state.fields.find((x) => x.name === name);
     if (f) return f;
@@ -78,13 +71,9 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   closeCondFormat();
   const toast = onToast ?? (() => { /* entry points without a toaster stay quiet */ });
 
-  // the column being PAINTED is fixed (column route); the field being
-  // WATCHED is free — "color DueDate by Status" is the whole point
-  const paintField: MockField | null = target.kind === 'column'
-    ? state.fields.find((f) => f.name === target.fieldName) ?? null
-    : null;
-  let field: MockField =
-    paintField ?? guessField(state.nodeAt(target.kind === 'element' ? target.path : []) ?? state.doc.root);
+  // the ELEMENT being painted is fixed; the field being WATCHED is free —
+  // "color this badge by Status" is the whole point
+  let field: MockField = guessField(state.nodeAt(target.path) ?? state.doc.root);
   if (!field) { toast('Add a column in the Data tab first.'); return; }
 
   const rules: CondRule[] = [];
@@ -100,9 +89,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
 
   /** Style object the generated chains will fall back to (the "else" look). */
   const existingStyle = (): Record<string, SPExpr | undefined> | undefined =>
-    target.kind === 'element'
-      ? state.nodeAt(target.path)?.style
-      : state.columnRefs[paintField!.name]?.style;
+    state.nodeAt(target.path)?.style;
 
   // Reopen, don't restart (§6 1.7's "obvious next step", built 2026-07-05):
   // `=if()` chains this dialog generated parse back into editable rules —
@@ -114,7 +101,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   let parsedFallbacks: Record<string, string> | null = null;
   if (parsed) {
     const watched = state.fields.find((f) => f.name === parsed.fieldName);
-    if (watched && (target.kind === 'element' || paintField)) {
+    if (watched) {
       field = watched; // the chains may watch a different column than they paint
       rules.push(...parsed.rules);
       parsedFallbacks = parsed.fallbacks;
@@ -176,8 +163,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
   const ctxForRow = (rowIndex: number): EvalContext => ({
     row: state.rows[rowIndex] ?? {},
     rowIndex,
-    // @currentField in the painted content is the painted column
-    currentFieldName: (paintField ?? field).name,
+    // @currentField in the preview content is the watched column
+    currentFieldName: field.name,
     me: state.me,
     iterators: {},
     iteratorIndex: {},
@@ -208,8 +195,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
 
   const render = (): void => {
     panel.innerHTML = '';
-    const targetNode = target.kind === 'element' ? state.nodeAt(target.path) : null;
-    if (target.kind === 'element' && !targetNode) {
+    const targetNode = state.nodeAt(target.path);
+    if (!targetNode) {
       panel.textContent = 'The element is gone (undone or removed) — close and reselect.';
       return;
     }
@@ -237,13 +224,9 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     targetRow.className = 'wb-cf-target';
     const tlabel = document.createElement('span');
     tlabel.className = 'wb-cf-targetlab';
-    if (target.kind === 'element') {
-      // Show the painted element as a reference badge (tree icon + name) so the
-      // user can tie this dialog back to the element they clicked (issue #143).
-      tlabel.append('Painting ', elementRefChip(targetNode!), ' — every row — when');
-    } else {
-      tlabel.textContent = `Painting the ${fieldLabel(paintField!)} column — every row — when`;
-    }
+    // Show the painted element as a reference badge (tree icon + name) so the
+    // user can tie this dialog back to the element they clicked (issue #143).
+    tlabel.append('Painting ', elementRefChip(targetNode), ' — every row — when');
     targetRow.appendChild(tlabel);
     const fieldSel = document.createElement('select');
     for (const f of state.fields) {
@@ -294,9 +277,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       if (hasFormulas) {
         const notice = document.createElement('div');
         notice.className = 'wb-cf-notice';
-        notice.textContent = target.kind === 'element'
-          ? 'This element already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).'
-          : 'This column\'s formatter already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).';
+        notice.textContent = 'This element already has formula-driven styles — the builder starts fresh over them. Rules you add and Apply will replace those formulas (Ctrl+Z undoes).';
         panel.appendChild(notice);
       }
     }
@@ -531,8 +512,8 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
       const strip = document.createElement('div');
       strip.className = 'wb-cf-preview';
       const gen = rulesToStyle(field, rules, priorStyle());
-      // the preview wears the PAINTED column's content, styled by the rules
-      const sample: SPElement = { ...defaultColumnFormatter(paintField ?? field), style: gen.style };
+      // the preview wears the WATCHED column's plain content, styled by the rules
+      const sample: SPElement = { ...defaultColumnFormatter(field), style: gen.style };
       state.rows.forEach((row, i) => {
         const item = document.createElement('div');
         item.className = 'wb-cf-preview-item';
@@ -572,17 +553,14 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     const apply = document.createElement('button');
     apply.className = 'wb-cf-apply';
     const removing = !rules.length && parsedFallbacks !== null;
-    const targetLabel = target.kind === 'element'
-      ? nameOf(targetNode!)
-      : `the [$${paintField!.name}] formatter`;
+    const targetLabel = nameOf(targetNode);
     apply.textContent = removing ? `Remove the rules from ${targetLabel}` : `Apply to ${targetLabel}`;
     apply.title = removing
       ? 'Every managed property returns to its pre-rules look (undoable with Ctrl+Z)'
       : 'Merge the generated conditional styles (undoable with Ctrl+Z)';
     apply.disabled = !rules.length && !removing;
     apply.addEventListener('click', () => {
-      if (target.kind === 'element') applyToElement(target.path);
-      else applyToColumn(target.cellPath);
+      applyToElement(target.path);
       closeCondFormat();
     });
     foot.appendChild(apply);
@@ -600,38 +578,6 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     const gen = rulesToStyle(field, rules, priorStyle(node.style));
     state.mutateDocument(() => { node.style = { ...(node.style ?? {}), ...gen.style }; });
     toast(`${rules.length} rule${rules.length === 1 ? '' : 's'} applied to ${nameOf(node)} — Ctrl+Z undoes`);
-  };
-
-  /** The "Format this column" route: register, CFR-wire the cell, switch,
-   *  merge. The PAINTED column gets the formatter; the rules inside it may
-   *  watch any field. */
-  const applyToColumn = (cellPath?: NodePath): void => {
-    const paint = paintField!;
-    const existed = paint.name in state.columnRefs;
-    if (!existed) state.columnRefs[paint.name] = defaultColumnFormatter(paint);
-    if (cellPath?.length && state.activeDocKey === 'main') {
-      const cell = state.nodeAt(cellPath);
-      const p = state.parentOf(cellPath);
-      if (cell && !cell.columnFormatterReference && p?.parent.children) {
-        state.mutateDocument(() => {
-          const next = gridCellForField(paint, state.columnRefs);
-          if (cell._elmName) next._elmName = cell._elmName;
-          p.parent.children![p.index] = next;
-        });
-      }
-    }
-    state.openColumnRef(paint.name);
-    const root = state.doc.root;
-    if (!rules.length && parsedFallbacks) {
-      state.mutateDocument(() => removeRulesFrom(root));
-      toast(`Conditional rules removed from the [$${paint.name}] formatter — the pre-rules look is back (Ctrl+Z undoes)`);
-      return;
-    }
-    const gen = rulesToStyle(field, rules, priorStyle(root.style));
-    state.mutateDocument(() => { root.style = { ...(root.style ?? {}), ...gen.style }; });
-    toast(existed
-      ? `Rules applied to the [$${paint.name}] formatter — you're editing it now (Ctrl+Z undoes the styles)`
-      : `Started a formatter for ${paint.name} with your rules — the grid renders it live`);
   };
 
   render();

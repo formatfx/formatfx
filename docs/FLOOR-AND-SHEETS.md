@@ -7,6 +7,19 @@
 > SHEET-MODE.md (the surface's spreadsheet-comfort canon — still law),
 > HANDOFF.md (architecture as built).
 
+> **Superseded in part, 2026-07-07** (the Columns · Components · Views
+> migration, owner-approved 2026-07-06 — spec:
+> [specs/COLUMNS-COMPONENTS-VIEWS.md](specs/COLUMNS-COMPONENTS-VIEWS.md)):
+> §2.2's left strip of sheets and §2.2b's COLUMNS-tab semantics (the
+> formatter tabs, the document pill, the formatted-columns gallery, the
+> CFR drill-in) are replaced by the **canvas tab strip** — the standing
+> ▦ Grid tab plus one rearrangeable tab per opened view or ⬡ component
+> workshop — and by the looks model (`columnLooks`; a column gets its
+> formatting by wearing a component, and `columnFormatterReference` left
+> the document model entirely). Everything else here — floor/sheet
+> separation, navigation-never-mutates, one global undo stack, the
+> overlay/Escape system, Select/Live — still stands.
+
 ## 1. Why — what the 2026-07-04 investigation found
 
 The presenting bug: **apply a row view, click "◧ Back to grid", and the

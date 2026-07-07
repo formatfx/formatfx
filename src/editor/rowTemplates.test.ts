@@ -282,12 +282,26 @@ describe('buildTemplateView over zones', () => {
     expect((keb.attributes!.class as string)).toContain('sp-card-showOnHoverChild');
   });
 
-  it('a CFR-registered field still lands as a reference cell inside its zone', () => {
+  it("a look-wearing field lands as an EMBEDDED clone of its look — an instance, never a reference", () => {
     const c = defaultConfigFor('equal', FIELDS);
-    const refs: Record<string, import('../core/types').SPElement> = { Title: { elmType: 'div' } };
-    const { root } = buildTemplateView(c, FIELDS, refs, PAL);
+    const look: import('../core/types').SPElement = {
+      elmType: 'div', _elmName: 'Title pill', txtContent: '[$Title]',
+      style: { 'border-radius': '12px' },
+      _component: { id: 'c-pill', map: { Title: 'Title' } },
+    };
+    const looks = { Title: look };
+    const { root } = buildTemplateView(c, FIELDS, looks, PAL);
     const items = root.children!.flatMap((z) => z.children ?? []);
-    expect(items.some((it) => it.columnFormatterReference)).toBe(true);
+    const cell = items.find((it) => it._field === 'Title')!;
+    // the cell IS the look: content + provenance stamp carried into the view
+    expect(cell.txtContent).toBe('[$Title]');
+    expect(cell._component).toEqual({ id: 'c-pill', map: { Title: 'Title' } });
+    expect(cell.style!['border-radius']).toBe('12px');
+    // a CLONE, not an alias — shaping the view never reaches the store
+    cell.txtContent = 'MUTATED';
+    expect(look.txtContent).toBe('[$Title]');
+    // the reference channel is gone from the model
+    expect(JSON.stringify(root)).not.toContain('columnFormatterReference');
   });
 });
 
@@ -494,10 +508,10 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
   /** Apply-then-reopen: build pruned (what Apply writes), parse it back. */
   const reopen = (
     config: RowTemplateConfig,
-    columnRefs: Record<string, import('../core/types').SPElement> = {},
+    columnLooks: Record<string, import('../core/types').SPElement> = {},
   ): RowTemplateConfig | null => {
-    const { root, additionalRowClass } = buildTemplateView(config, FIELDS, columnRefs, PAL, [CHIP], { prune: true });
-    return configFromView(root, additionalRowClass, FIELDS, columnRefs, [CHIP], config.target);
+    const { root, additionalRowClass } = buildTemplateView(config, FIELDS, columnLooks, PAL, [CHIP], { prune: true });
+    return configFromView(root, additionalRowClass, FIELDS, columnLooks, [CHIP], config.target);
   };
 
   it('every wireframe seed survives apply → reopen with zones intact', () => {
@@ -557,9 +571,28 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
     expect(parsed.zones[0].items.at(-1)).toEqual({ kind: 'component', componentId: CHIP.id, map: { Due: 'Due' }, width: 'fill' });
   });
 
-  it('CFR cells parse back to their field (the derived-mapping rule)', () => {
-    const refs = { Title: { elmType: 'div' as const } };
-    const parsed = reopen(defaultConfigFor('equal', FIELDS), refs)!;
+  it('the _field stamp round-trips: build → parse recovers the field, even for a multi-ref look', () => {
+    // an imported (unstamped) look on Due whose tree ALSO references Status —
+    // fieldRefsIn is ambiguous, so `_field` is the only honest recovery route
+    const dueLook: import('../core/types').SPElement = {
+      elmType: 'div', _elmName: 'Due pair',
+      children: [
+        { elmType: 'span', txtContent: '=toLocaleDateString([$Due])' },
+        { elmType: 'span', txtContent: '[$Status]' },
+      ],
+    };
+    let c = defaultConfigFor('blank', FIELDS); // seeds a Title field item
+    c = addItemAt(c, [0], newFieldItem('Due', c.zones[0]));
+    const parsed = reopen(c, { Due: dueLook })!;
+    expect(parsed).not.toBeNull();
+    expect(parsed.zones[0].items).toEqual([
+      expect.objectContaining({ kind: 'field', fieldName: 'Title' }),
+      expect.objectContaining({ kind: 'field', fieldName: 'Due' }),
+    ]);
+  });
+
+  it('plain single-ref cells parse back to their field (the derived-mapping fallback)', () => {
+    const parsed = reopen(defaultConfigFor('equal', FIELDS))!;
     expect(parsed.zones.flatMap((z) => z.items)).toContainEqual(
       expect.objectContaining({ kind: 'field', fieldName: 'Title' }));
   });

@@ -28,7 +28,6 @@ import type { MockField, FieldType, SPElement, CustomRowAction } from '../core/t
 import type { AreaWeight, RowDensity } from './areas';
 import { WEIGHT_FLEX, setRowDensity, rowDensityOf } from './areas';
 import { gridCellForField, fieldRefsIn as gridFieldRefsIn } from './gridScaffold';
-import { cfrFieldName } from '../core/refs';
 import { bindComponentInstance, type ComponentDef } from './components';
 
 export type WireframeId =
@@ -480,11 +479,11 @@ function applyText(el: SPElement, text: 'truncate' | 'wrap'): void {
 
 function itemEl(
   item: ZoneItem, zone: ZoneConfig,
-  fields: MockField[], columnRefs: Record<string, SPElement>, components: ComponentDef[],
+  fields: MockField[], columnLooks: Record<string, SPElement>, components: ComponentDef[],
 ): SPElement {
   if (item.kind === 'zone') {
     // a nested zone builds like any zone — its own size IS its item sizing
-    return buildZone(item.zone, fields, columnRefs, components);
+    return buildZone(item.zone, fields, columnLooks, components);
   }
   if (item.kind === 'component') {
     const def = components.find((c) => c.id === item.componentId);
@@ -499,7 +498,7 @@ function itemEl(
   }
   const field = fields.find((f) => f.name === item.fieldName);
   const cell: SPElement = field
-    ? gridCellForField(field, columnRefs)
+    ? gridCellForField(field, columnLooks)
     : { elmType: 'div', _elmName: 'Empty item' };
   applyItemSizing(cell, item.width, zone.flow);
   applyText(cell, item.text);
@@ -509,7 +508,7 @@ function itemEl(
 /** A zone → its flex container. Exported for the brain tests. */
 export function buildZone(
   zone: ZoneConfig,
-  fields: MockField[], columnRefs: Record<string, SPElement>, components: ComponentDef[],
+  fields: MockField[], columnLooks: Record<string, SPElement>, components: ComponentDef[],
 ): SPElement {
   const style: Record<string, string> = { 'display': 'flex' };
   if (zone.size === 'hug') {
@@ -533,7 +532,7 @@ export function buildZone(
     elmType: 'div',
     _elmName: `${zone.label} zone`,
     style,
-    children: zone.items.map((it) => itemEl(it, zone, fields, columnRefs, components)),
+    children: zone.items.map((it) => itemEl(it, zone, fields, columnLooks, components)),
   };
 }
 
@@ -563,13 +562,13 @@ export function pruneZones(zones: ZoneConfig[]): ZoneConfig[] {
 
 export function buildTemplateView(
   config: RowTemplateConfig, fields: MockField[],
-  columnRefs: Record<string, SPElement>, palette: Record<string, string>,
+  columnLooks: Record<string, SPElement>, palette: Record<string, string>,
   components: ComponentDef[] = [],
   opts: { prune?: boolean } = {},
 ): { root: SPElement; additionalRowClass?: string } {
   const composed = composeRowStyle(config, palette);
   const zones = opts.prune ? pruneZones(config.zones) : config.zones;
-  const zoneEls = zones.map((z) => buildZone(z, fields, columnRefs, components));
+  const zoneEls = zones.map((z) => buildZone(z, fields, columnLooks, components));
 
   // the kebab is a row-layout feature: in a vertical tile every position would
   // read as a full-width stacked strip, so tiles refuse it (teach, don't guess)
@@ -878,7 +877,12 @@ function parseItemWidth(el: SPElement, flow: ZoneFlow): ItemWidth {
 }
 
 function parseItem(el: SPElement, flow: ZoneFlow, fields: MockField[]): ZoneItem | null {
-  if (el._component) {
+  // The _field stamp wins over _component: a look-embedded FIELD cell is a
+  // baked component instance too (gridCellForField clones the look, whose
+  // root carries the look's _component stamp, and adds _field), and must
+  // reopen as the field item that built it. Only a deliberately placed
+  // component (stamped, but no column identity) parses as a component item.
+  if (el._component && !el._field) {
     return { kind: 'component', componentId: el._component.id, map: { ...el._component.map }, width: parseItemWidth(el, flow) };
   }
   // a NESTED zone: the builder names every zone "<label> zone" — recurse.
@@ -889,11 +893,9 @@ function parseItem(el: SPElement, flow: ZoneFlow, fields: MockField[]): ZoneItem
     return zone ? { kind: 'zone', zone } : null;
   }
   // a field cell: the single field it renders is DERIVED, exactly like the
-  // grid's column↔field mapping (CFR target, else the one [$Field] referenced)
-  let fieldName: string | undefined;
-  if (el.columnFormatterReference) {
-    fieldName = cfrFieldName(el.columnFormatterReference);
-  } else {
+  // grid's column↔field mapping (the _field stamp, else the one [$Field] referenced)
+  let fieldName: string | undefined = el._field;
+  if (!fieldName) {
     const refs = [...gridFieldRefsIn(el)];
     if (refs.length === 1) fieldName = refs[0];
   }
@@ -937,7 +939,7 @@ export function configFromView(
   root: SPElement,
   additionalRowClass: string | undefined,
   fields: MockField[],
-  columnRefs: Record<string, SPElement>,
+  columnLooks: Record<string, SPElement>,
   components: ComponentDef[],
   target: BuilderTarget = 'row',
 ): RowTemplateConfig | null {
@@ -1005,7 +1007,7 @@ export function configFromView(
   // ORIGINAL carries so a light/dark toggle between Apply and reopen still
   // round-trips (the next Apply re-bakes the current theme, which is correct).
   const verifyPalette = { themePrimary: stripe?.[1] ?? '' };
-  const rebuilt = buildTemplateView(config, fields, columnRefs, verifyPalette, components);
+  const rebuilt = buildTemplateView(config, fields, columnLooks, verifyPalette, components);
   if (!deepEq(rebuilt.root, root)) return null;
   if ((rebuilt.additionalRowClass ?? '') !== (additionalRowClass ?? '')) return null;
   return config;

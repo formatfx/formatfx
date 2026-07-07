@@ -1,87 +1,127 @@
 /**
- * E2E: the grid-first workspace (roadmap 1.5) — header menus, per-column
- * formatting, hide / add column, and the on-ramp: dragging one column onto
- * another generates named row-formatter scaffolding, one undo step per
- * grid mutation.
+ * E2E: the grid-first workspace — the header menu's LOOK gestures (apply /
+ * change / remove a component, the ONE way a column gets formatting), hide /
+ * add column, drag to reorder/group, compiled column-JSON export, element
+ * right-click menus, and the element-level Format cells / conditional
+ * formatting dialogs (their per-column header routes died with the CFR model).
+ * One undoable document mutation per gesture.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, header, openJson } from './helpers';
+import { freshApp, header, canvasTab, openJson } from './helpers';
 
 // dialogs accepted: applying name-less JSON over a named design asks first
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
 const HEADERS = ['Title', 'Status', 'DueDate', 'Progress', 'AssignedTo', 'Project'];
 
-test('header menu formats an unformatted column: scaffold registered, grid renders it via CFR', async ({ page }) => {
+test('apply a component end-to-end: type-fitting catalog, badged; the column dresses; one Ctrl+Z undoes', async ({ page }) => {
+  // DueDate ships bare — no ⬡ mark, plain date text
+  await expect(header(page, 'DueDate').locator('.wb-grid-look')).toHaveCount(0);
   await header(page, 'DueDate').click();
   const menu = page.locator('.wb-grid-menu');
   await expect(menu.locator('.wb-grid-menu-title')).toHaveText('DueDate');
-  await menu.locator('button', { hasText: 'Format this column' }).click();
-  // a date column offers presets first; take the manual escape hatch here
-  await expect(menu.locator('.wb-grid-menu-title')).toHaveText('Format DueDate');
-  await menu.locator('button', { hasText: 'Format this column manually' }).click();
-  // we land in the column-formatter editing context, scaffolded on @currentField
-  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate');
-  // style it so the round trip is visible, then return to the grid
-  await openJson(page);
-  await page.fill('#wb-json-text', JSON.stringify({
-    elmType: 'div', txtContent: "='⏰ '+toLocaleDateString(@currentField)",
-  }));
-  await page.click('#wb-json-apply');
-  await page.locator('.wb-fmt-tab-cols').click(); // COLUMNS = back to the grid
-  await expect(page.locator('.wb-grid-row').first()).toContainText('⏰');
-  // the cell became a reference — resolved, not a placeholder chip
-  await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
-  // and a single undo removes the cell swap (the one document mutation)
-});
-
-test('"Format this column" is the subtype catalog: type-aware looks, badged, snapshot-applied', async ({ page }) => {
-  // an unformatted people column → no avatars anywhere in the grid yet
-  await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
-  await header(page, 'AssignedTo').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Format this column' }).click();
-  await expect(page.locator('.wb-grid-menu-title')).toHaveText('Format AssignedTo');
-  // the system thinks for the maker: a multi-person column → people looks, badged
-  const facepile = page.locator('.wb-grid-menu button', { hasText: 'Facepile' });
-  await expect(facepile.locator('.wb-menu-badge')).toHaveText('Built-in');
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Member count' })).toBeVisible();
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Format this column manually' })).toBeVisible();
-  // a subtype that does not fit a people column never appears (refuse-don't-guess)
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Data bar' })).toHaveCount(0);
-  // snapshot apply: stay on the grid (not drilled into a column),
-  // the cell renders avatars, one Ctrl+Z reverts
-  await facepile.click();
-  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
-  await expect(page.locator('.wb-grid-cell img').first()).toBeVisible();
+  await menu.locator('button', { hasText: 'Apply a component…' }).click();
+  // the catalog thinks in types: date-fitting components only, badged
+  await expect(page.locator('.wb-grid-menu-title')).toHaveText('Apply a component to DueDate');
+  const chip = page.locator('.wb-grid-menu button', { hasText: 'Deadline chip' });
+  await expect(chip.locator('.wb-menu-badge')).toHaveText('Built-in');
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Facepile' })).toHaveCount(0);
+  await chip.click();
+  await expect(page.locator('#wb-toast')).toContainText('Applied Deadline chip to DueDate');
+  // the column wears the look: ⬡ mark on the header, the cell renders it
+  await expect(header(page, 'DueDate').locator('.wb-grid-look')).toHaveCount(1);
+  await expect(page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="2"]'))
+    .toContainText(/Due|Overdue/);
+  // ONE undo removes look + cell rewrite together
   await page.keyboard.press('Control+z');
-  await expect(page.locator('.wb-grid-cell img')).toHaveCount(0);
+  await expect(header(page, 'DueDate').locator('.wb-grid-look')).toHaveCount(0);
+  await expect(page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="2"]'))
+    .not.toContainText(/Due |Overdue/);
 });
 
-test('drilling into a column formatter lights the COLUMN tab; clicking it again returns to the grid', async ({ page }) => {
+test('change the component: the mapper re-aims a worn look\'s OTHER slots (the worn column stays pinned)', async ({ page }) => {
+  // dress DueDate in a two-slot component by DROPPING it (multi-slot defs
+  // arrive by drop — the catalog menu carries single-slot fits only)
+  const node = page.locator('.wb-comp-node')
+    .filter({ has: page.locator('.wb-comp-rowname', { hasText: 'Assignee + deadline' }) }).first();
+  await node.locator('.wb-comp-row').dragTo(page.locator('.wb-grid-cell[data-col="2"]').first());
+  await expect(page.locator('#wb-toast')).toContainText('Applied Assignee + deadline to DueDate');
+  // best-guess filled the Person slot with AssignedTo (row 2: Linus T)
+  const row2cell = page.locator('.wb-grid-row').nth(1).locator('.wb-grid-cell[data-col="2"]');
+  await expect(row2cell).toContainText('Linus T');
+
+  // "Change the component…" reopens the mapper aimed at the column: the slot
+  // the column fills is PINNED (a look must render the column it's applied
+  // to), the other slots re-map freely
+  await header(page, 'DueDate').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Change the component…' }).click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg).toBeVisible();
+  await expect(dlg.locator('.wb-compmap-select[data-slot="Due"]')).toBeDisabled();
+  await dlg.locator('.wb-compmap-select[data-slot="Person"]').selectOption('Owner');
+  await dlg.locator('.wb-compmap-insert').click();
+  // the look re-baked: row 2 now shows its Owner (store + cell together)
+  await expect(row2cell).toContainText('Grace Hopper');
+  await page.keyboard.press('Control+z');
+  await expect(row2cell).toContainText('Linus T');
+});
+
+test('remove the look: back to the plain value, ⬡ mark gone; one Ctrl+Z restores both', async ({ page }) => {
   await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' }).click();
-  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Status');
-  // the grid is columns mode's canvas — the COLUMNS tab is the way back
-  await page.locator('.wb-fmt-tab-cols').click();
-  await expect(page.locator('.wb-fmt-tab-cols')).toHaveClass(/active/);
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('Grid');
-  await expect(page.locator('.wb-grid-header-label').first()).toBeVisible();
+  await page.locator('.wb-grid-menu button', { hasText: 'Remove the look' }).click();
+  await expect(page.locator('#wb-toast')).toContainText('Removed the look from Status');
+  await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(0);
+  // the plain choice value, no pill styling
+  const cell = page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="1"]');
+  await expect(cell).toContainText('In Progress');
+  await expect(cell.locator('[style*="border-radius"]')).toHaveCount(0);
+  // a bare column's menu flips to the apply on-ramp
+  await header(page, 'Status').click();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Apply a component…' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+z');
+  await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(1);
+  await expect(cell.locator('[style*="border-radius"]').first()).toBeVisible();
 });
 
-test('hide column is one undoable mutation; "+ column" re-adds fields, formatted ones stay formatted', async ({ page }) => {
+test('save a look as YOUR component, then apply it to another column (the reuse loop)', async ({ page }) => {
+  // package Status's look — the dialog derives a typed slot from the recipe
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg.locator('.wb-comp-slot')).toContainText(['Status · choice / multi-choice']);
+  await dlg.locator('.wb-compmap-name').fill('My pill');
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Saved “My pill”');
+  // it persists to the additive components key with the derived slot
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('wb-components.v1') || '{}'));
+  const mine = stored.components.find((c: { name: string }) => c.name === 'My pill');
+  expect(mine.slots).toHaveLength(1);
+  expect(mine.slots[0].types).toContain('choice');
+  // …and the apply catalog of a fitting column now offers it, badged Yours
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Remove the look' }).click();
+  await header(page, 'Status').click();
+  await page.locator('.wb-grid-menu button', { hasText: 'Apply a component…' }).click();
+  const yours = page.locator('.wb-grid-menu button', { hasText: 'My pill' });
+  await expect(yours.locator('.wb-menu-badge')).toHaveText('Yours');
+  await yours.click();
+  await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveAttribute('title', /My pill/);
+});
+
+test('hide column is one undoable mutation; "+ column" re-adds fields, dressed ones arrive dressed', async ({ page }) => {
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Hide column' }).click();
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS.filter((h) => h !== 'Status'));
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
 
-  // Owner is registered-but-unplaced: adding it renders its persona formatter
+  // Owner is dressed-but-unplaced: adding it renders its Persona look
   await page.locator('.wb-grid-addcol').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Owner · formatted' }).click();
   await expect(page.locator('.wb-grid-header-label')).toHaveText([...HEADERS, 'Owner']);
-  await expect(page.locator('.wb-grid-row').first().locator('img')).toBeVisible(); // avatar
+  await expect(header(page, 'Owner').locator('.wb-grid-look')).toHaveCount(1);
+  await expect(page.locator('.wb-grid-row').first().locator('img').first()).toBeVisible(); // avatar
 });
 
 test('drop one column ONTO another → named row-formatter scaffolding, one undo step', async ({ page }) => {
@@ -116,36 +156,39 @@ test('drag a header to another header\'s edge → reorder, not group', async ({ 
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
 });
 
-test('header menu copies a registered column formatter as column JSON', async ({ page, context }) => {
+test('header menu compiles a look to real column-formatter JSON on demand', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await header(page, 'Status').click();
   await page.locator('.wb-grid-menu button', { hasText: 'Copy column JSON' }).click();
-  await expect(page.locator('#wb-toast')).toContainText('[$Status] formatter JSON copied');
+  await expect(page.locator('#wb-toast')).toContainText('Status formatter JSON copied');
   const parsed = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
   expect(parsed.$schema).toContain('column-formatting');
-  expect(JSON.stringify(parsed)).toContain('[$Status]');
+  // the store speaks explicit [$Status]; the EXPORT compiles to @currentField
+  expect(JSON.stringify(parsed)).toContain('@currentField');
 });
 
-test('the tree graduates: Type→row starts a NEW view carrying the grid; grid minimizes back', async ({ page }) => {
+test('Type→row starts a NEW view carrying the grid; picking grid minimizes back, groups intact', async ({ page }) => {
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
   await openJson(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
   // a new SHEET carrying a copy of the grid's tree — renders once per mock row
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('In Progress');
+  await expect(canvasTab(page, 'View 1')).toHaveClass(/active/);
   // picking grid MINIMIZES — the floor is its own document, groups intact
   await page.selectOption('#wb-pane-side #wb-kind', 'grid');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status + DueDate group', 'Progress', 'AssignedTo', 'Project']);
-  // …and the view waits as a chip in the Stage-2 view strip
-  await expect(page.locator('#wb-viewstrip .wb-viewstrip-chip')).toHaveText('View 1');
+  // …and the view waits in its canvas tab
+  await expect(canvasTab(page, 'View 1')).toBeVisible();
+  await expect(canvasTab(page, 'View 1')).not.toHaveClass(/active/);
 });
 
 test('right-click: column menu on headers, element menu on cell content, remove + undo', async ({ page }) => {
   // a header right-click opens the same column menu as a click
   await header(page, 'Status').click({ button: 'right' });
   await expect(page.locator('.wb-grid-menu-title')).toHaveText('Status');
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Change the component…' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.wb-grid-menu')).toBeHidden();
   // right-clicking rendered cell content gets the element menu for that column
@@ -175,8 +218,11 @@ test('element menu: the parent crumb walks the selection up a level', async ({ p
   await expect(page.locator('.wb-grid-menu-title .wb-elmmenu-parent')).toBeHidden();
 });
 
-test('conditional formatting from the header menu: condition → rule → data preview → apply lands on the column formatter', async ({ page }) => {
-  await header(page, 'DueDate').click();
+test('conditional formatting (element menu): condition → rule → data preview → apply as one undo step', async ({ page }) => {
+  // the per-column header route died with the CFR model — the element
+  // context menu is the door now (element styling inside the view)
+  const dueEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first();
+  await dueEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
   await expect(cf).toBeVisible();
@@ -190,19 +236,18 @@ test('conditional formatting from the header menu: condition → rule → data p
   await expect(cf.locator('.wb-cf-preview-lab').nth(0)).toHaveText('no rule');
   await expect(cf.locator('.wb-cf-preview-lab').nth(1)).toHaveText('rule 1');
   await cf.locator('.wb-cf-apply').click();
-  // the column route registers a formatter and switches the workspace to it
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate');
-  await openJson(page);
-  const json = await page.inputValue('#wb-json-text');
-  // the JSON tab shows the sanitized export (Zero Whitespace Rule)
-  expect(json).toContain("=if(toString([$DueDate])!=''&&[$DueDate]<@now,'#d13438','')");
-  // back on the grid, the cell resolves the new formatter (no placeholder chip)
-  await page.locator('.wb-fmt-tab-cols').click();
-  await expect(page.locator('.wb-grid .wb-cfr-chip')).toHaveCount(0);
+  await expect(page.locator('#wb-toast')).toContainText('1 rule applied to DueDate');
+  // the =if() chain landed on the element: the overdue row (row 2) paints red
+  const overdue = page.locator('.wb-grid-row').nth(1).locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first();
+  await expect(overdue).toHaveCSS('color', 'rgb(209, 52, 56)');
+  // ONE Ctrl+Z reverts the whole apply
+  await page.keyboard.press('Control+z');
+  await expect(overdue).not.toHaveCSS('color', 'rgb(209, 52, 56)');
 });
 
 test('conditional formatting can watch a different column than the one it paints', async ({ page }) => {
-  await header(page, 'DueDate').click();
+  const dueEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first();
+  await dueEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
   // the picker is a type-labeled dropdown — no typing column names
@@ -213,14 +258,60 @@ test('conditional formatting can watch a different column than the one it paints
   await cf.locator('.wb-cf-addbtn').click();
   await expect(cf.locator('.wb-cf-rule-when').first()).toContainText('Status is Blocked');
   await cf.locator('.wb-cf-apply').click();
-  // the PAINTED column gets the formatter; the rules inside watch Status
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate');
-  await openJson(page);
-  expect(await page.inputValue('#wb-json-text')).toContain("[$Status]=='Blocked'");
+  // the PAINTED element sits in the DueDate column; the rule watches Status —
+  // row 2 (Blocked) wears the rule's red fill, row 1 (In Progress) does not
+  await expect(page.locator('.wb-grid-row').nth(1).locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first())
+    .toHaveCSS('background-color', 'rgb(209, 52, 56)');
+  await expect(page.locator('.wb-grid-row').nth(0).locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first())
+    .not.toHaveCSS('background-color', 'rgb(209, 52, 56)');
 });
 
-test('format cells: bold + fill + outline border stage together and apply as one undo step', async ({ page }) => {
-  await header(page, 'Title').click();
+test('conditional formatting round-trips: reopen parses the rules back; zero rules removes them', async ({ page }) => {
+  const rightClickDue = async () => {
+    await page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first()
+      .click({ button: 'right' });
+    await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
+  };
+  // build and apply one rule the normal way
+  await rightClickDue();
+  const cf = page.locator('.wb-cf');
+  await cf.locator('.wb-cf-cond', { hasText: 'is in the past (overdue)' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await cf.locator('.wb-cf-apply').click();
+  await expect(page.locator('#wb-toast')).toContainText('1 rule applied');
+
+  // REOPEN: the dialog parses the chains back — the rule is there to edit
+  await rightClickDue();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
+  await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
+  await expect(cf.locator('.wb-cf-note')).toContainText('parsed back');
+
+  // edit: add a second rule and re-apply — both survive the next round trip
+  await cf.locator('.wb-cf-cond', { hasText: 'is today' }).click();
+  await cf.locator('.wb-cf-addbtn').click();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(2);
+  await cf.locator('.wb-cf-apply').click();
+  await rightClickDue();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(2);
+
+  // remove them all: zero rules + Apply = clear the conditional formatting
+  await cf.locator('.wb-cf-rule-del').last().click();
+  await cf.locator('.wb-cf-rule-del').click();
+  await expect(cf.locator('.wb-cf-empty')).toContainText('Apply now clears');
+  const apply = cf.locator('.wb-cf-apply');
+  await expect(apply).toHaveText(/Remove the rules/);
+  await apply.click();
+  await expect(page.locator('#wb-toast')).toContainText('Conditional rules removed');
+
+  // and a fresh open is genuinely fresh — nothing left to parse
+  await rightClickDue();
+  await expect(cf.locator('.wb-cf-rule')).toHaveCount(0);
+  await expect(cf.locator('.wb-cf-empty')).toContainText('No rules yet');
+});
+
+test('format cells (element menu): bold + fill + outline stage together and apply as one undo step', async ({ page }) => {
+  const titleEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first().locator('[data-sp-path]').first();
+  await titleEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
   const fc = page.locator('.wb-fc');
   await expect(fc).toBeVisible();
@@ -241,7 +332,8 @@ test('format cells: bold + fill + outline border stage together and apply as one
 });
 
 test('format cells: Enter applies staged changes (Excel Esc/Enter contract)', async ({ page }) => {
-  await header(page, 'Title').click();
+  const titleEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first().locator('[data-sp-path]').first();
+  await titleEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
   const fc = page.locator('.wb-fc');
   await expect(fc).toBeVisible();
@@ -254,7 +346,8 @@ test('format cells: Enter applies staged changes (Excel Esc/Enter contract)', as
 });
 
 test('format cells: Enter does not apply when nothing is staged (Apply is disabled)', async ({ page }) => {
-  await header(page, 'Title').click();
+  const titleEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first().locator('[data-sp-path]').first();
+  await titleEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
   const fc = page.locator('.wb-fc');
   await expect(fc).toBeVisible();
@@ -264,27 +357,14 @@ test('format cells: Enter does not apply when nothing is staged (Apply is disabl
   await expect(fc).toBeVisible();
 });
 
-test('✨ a color for each choice: one rule per choice, smart colors, formula-replacement warning', async ({ page }) => {
-  await header(page, 'Status').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
-  const cf = page.locator('.wb-cf');
-  await cf.locator('.wb-cf-auto').click();
-  await expect(cf.locator('.wb-cf-rule')).toHaveCount(4);
-  await expect(cf.locator('.wb-cf-rule-when').nth(2)).toContainText('Status is Blocked');
-  // Done gets the green solid pill — the words pick the colors
-  await expect(cf.locator('.wb-cf-rule').nth(3).locator('.wb-cf-chip'))
-    .toHaveCSS('background-color', 'rgb(16, 124, 16)');
-  // the showcase Status pill already drives background-color by formula — we warn
-  await expect(cf.locator('.wb-cf-note')).toContainText('replaces the formula');
-});
-
 test('the app lands on the grid and the whole on-ramp is click/drag-only', async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator('.wb-grid-header-label')).toHaveText(HEADERS);
-  // header menu works (Status is a linked instance → the Figma-model actions)
+  // header menu works (Status wears a look → the look actions lead)
   await header(page, 'Status').click();
-  await expect(page.locator('.wb-grid-menu button', { hasText: 'Edit the Status style' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Change the component…' })).toBeVisible();
+  await expect(page.locator('.wb-grid-menu button', { hasText: 'Remove the look' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.wb-grid-menu')).toBeHidden();
   // grouping works
@@ -337,7 +417,8 @@ test('column tab groups: group via multi-select, pill actions, collapse/expand, 
 });
 
 test('format cells: modal-local ↶↷ walks the staged gestures; the stack bottoms out at open', async ({ page }) => {
-  await header(page, 'Title').click();
+  const titleEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell').first().locator('[data-sp-path]').first();
+  await titleEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Format cells…' }).click();
   const fc = page.locator('.wb-fc');
   await expect(fc.locator('.wb-mu-undo')).toBeDisabled(); // bottoms out where you opened it
@@ -367,7 +448,8 @@ test('format cells: modal-local ↶↷ walks the staged gestures; the stack bott
 });
 
 test('conditional formatting: modal-local ↶↷ over the rules list; Ctrl+Z inside the dialog stays local', async ({ page }) => {
-  await header(page, 'DueDate').click();
+  const dueEl = page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="2"] [data-sp-path]').first();
+  await dueEl.click({ button: 'right' });
   await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
   const cf = page.locator('.wb-cf');
   await expect(cf.locator('.wb-mu-undo')).toBeDisabled();
@@ -384,52 +466,4 @@ test('conditional formatting: modal-local ↶↷ over the rules list; Ctrl+Z ins
   await cf.locator('.wb-mu-redo').click();
   await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
   await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
-});
-
-test('conditional formatting round-trips: reopen parses the rules back; zero rules removes them', async ({ page }) => {
-  // build and apply one rule the normal way
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
-  const cf = page.locator('.wb-cf');
-  await cf.locator('.wb-cf-cond', { hasText: 'is in the past (overdue)' }).click();
-  await cf.locator('.wb-cf-addbtn').click();
-  await cf.locator('.wb-cf-apply').click();
-  await expect(page.locator('.wb-doc-pill-name')).toHaveText('DueDate'); // landed on the formatter
-  await page.locator('.wb-fmt-tab-cols').click(); // back to the grid
-
-  // REOPEN: the dialog parses the chains back — the rule is there to edit
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
-  await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
-  await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
-  await expect(cf.locator('.wb-cf-note')).toContainText('parsed back');
-
-  // edit: add a second rule and re-apply — both survive the next round trip
-  await cf.locator('.wb-cf-cond', { hasText: 'is today' }).click();
-  await cf.locator('.wb-cf-addbtn').click();
-  await expect(cf.locator('.wb-cf-rule')).toHaveCount(2);
-  await cf.locator('.wb-cf-apply').click();
-  await page.locator('.wb-fmt-tab-cols').click();
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
-  await expect(cf.locator('.wb-cf-rule')).toHaveCount(2);
-
-  // remove them all: zero rules + Apply = clear the conditional formatting
-  await cf.locator('.wb-cf-rule-del').last().click();
-  await cf.locator('.wb-cf-rule-del').click();
-  await expect(cf.locator('.wb-cf-empty')).toContainText('Apply now clears');
-  const apply = cf.locator('.wb-cf-apply');
-  await expect(apply).toHaveText(/Remove the rules/);
-  await apply.click();
-  await expect(page.locator('#wb-toast')).toContainText('Conditional rules removed');
-  // the chains are gone from the registered formatter's JSON
-  await openJson(page);
-  expect(await page.inputValue('#wb-json-text')).not.toContain('if(toString([$DueDate])');
-
-  // and a fresh open is genuinely fresh — nothing left to parse
-  await page.locator('.wb-fmt-tab-cols').click();
-  await header(page, 'DueDate').click();
-  await page.locator('.wb-grid-menu button', { hasText: 'Conditional formatting…' }).click();
-  await expect(cf.locator('.wb-cf-rule')).toHaveCount(0);
-  await expect(cf.locator('.wb-cf-empty')).toContainText('No rules yet');
 });

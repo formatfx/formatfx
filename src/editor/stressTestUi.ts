@@ -5,8 +5,8 @@
  * (core/stressTest.ts): empty state, max-length text, extreme dates, boundary
  * numbers (including thresholds mined from the formatter's own comparisons),
  * multi-value extremes, unicode/RTL. Rendering goes through the REAL renderer
- * with the same CFR resolution as the canvas, so what breaks here is what
- * breaks in production.
+ * — the same path as the canvas — so what breaks here is what breaks in
+ * production.
  *
  * READ-ONLY by contract: variants are throwaway rows; opening, browsing and
  * closing this overlay never touches state.rows, the document, the undo
@@ -19,7 +19,6 @@
 import { state } from './state';
 import { createOverlay, type OverlayHandle } from './overlay';
 import { renderElement, type RenderIssue } from '../core/renderer';
-import { resolveColumnRef } from './previewCtx';
 import { buildStressVariants, type StressRow } from '../core/stressTest';
 import type { MockRow } from '../core/types';
 import type { EvalContext } from '../core/expressions';
@@ -59,7 +58,7 @@ export function openStressTest(toast: (msg: string) => void): void {
   panel.appendChild(body);
 
   const variants = buildStressVariants(state.fields, {
-    mineTrees: [state.doc.root, ...Object.values(state.columnRefs)],
+    mineTrees: [state.doc.root, ...Object.values(state.columnLooks)],
   });
 
   let silentFailures = 0;
@@ -117,7 +116,7 @@ function renderStressRow(sr: StressRow, rowIndex: number, toast: (msg: string) =
   const issues: RenderIssue[] = [];
   try {
     const rendered = renderElement(state.doc.root, ctxFor(sr.row, rowIndex), {
-      tagPaths: false, resolveColumnRef, issues,
+      tagPaths: false, issues,
     });
     // clone strips customRowAction/customCardProps listeners — a misclick
     // inside the matrix must do nothing (read-only contract)

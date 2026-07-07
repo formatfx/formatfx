@@ -14,13 +14,11 @@ import { exportJson } from '../core/serializer';
 import { lintDocument } from '../core/linter';
 import { buildApplyPayload, type ApplyPayload } from '../bridge/applyPayload';
 
-/** Where the current document deploys, derived from what's being edited. */
-export function deployTargetOf(viewTitle?: string): { target: 'field' | 'view'; name: string } {
-  if (state.doc.kind === 'column') {
-    const field = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
-    return { target: 'field', name: field };
-  }
-  // row/grid/tile all ship as a view's row formatting
+/** Where the current document deploys: the canvas doc is always a surface
+ *  (grid/row/tile) now, and it ships as a view's row/tile formatting.
+ *  Per-column JSON compiles on demand from columnLooks (toColumnFormatter)
+ *  in the column's header menu — never through the deploy payload. */
+export function deployTargetOf(viewTitle?: string): { target: 'view'; name: string } {
   return { target: 'view', name: (viewTitle || '').trim() || 'All Items' };
 }
 

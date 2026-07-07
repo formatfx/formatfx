@@ -194,26 +194,17 @@ describe('linter', () => {
     expect(lintDocument(shape('hover')).map((i) => i.rule)).not.toContain('card-trigger-button');
   });
 
-  it('retracted canon stays retracted: CFR-in-card and inlineEditField-in-forEach are clean', () => {
+  it('retracted canon stays retracted: inlineEditField-in-forEach is clean', () => {
     const doc: FormatterDocument = {
       kind: 'column',
       root: {
         elmType: 'div',
-        customCardProps: {
-          openOnEvent: 'hover',
-          formatter: {
-            elmType: 'div',
-            children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }],
-          },
-        },
         children: [
           { elmType: 'div', forEach: '_p in [$AssignedTo]', inlineEditField: '[$AssignedTo]', txtContent: '[$_p.title]' },
         ],
       },
     };
-    const rules = lintDocument(doc).map((i) => i.rule);
-    expect(rules).not.toContain('cfr-in-card');
-    expect(rules).not.toContain('inline-edit-foreach');
+    expect(lintDocument(doc).map((i) => i.rule)).not.toContain('inline-edit-foreach');
   });
 
   it('hover-child-no-parent: showOnHoverChild with no showOnHoverParent ancestor warns', () => {
@@ -841,25 +832,6 @@ describe('renderer (happy-dom)', () => {
     const spans = Array.from(node.querySelectorAll('span'));
     expect(spans.map((s) => s.textContent)).toEqual(['Ada Lovelace', 'Grace Hopper']);
     expect((spans[1] as HTMLElement).style.getPropertyValue('margin-left')).toBe('-8px');
-  });
-
-  it('resolves columnFormatterReference from a registry, with cycle protection', () => {
-    const ref: SPElement = { elmType: 'span', txtContent: '[$Status]' };
-    const el: SPElement = { elmType: 'div', columnFormatterReference: '[$StatusUI]' };
-    const node = renderElement(el, ctx, { resolveColumnRef: () => ref }) as HTMLElement;
-    expect(node.textContent).toBe('In Progress');
-
-    const cyc: SPElement = { elmType: 'div', columnFormatterReference: '[$Loop]' };
-    const node2 = renderElement(cyc, ctx, { resolveColumnRef: () => cyc }) as HTMLElement;
-    expect(node2.querySelector('.wb-cfr-chip')).toBeTruthy();
-  });
-
-  it('@currentField inside a CFR means the REFERENCED column, not the host', () => {
-    const progressFormatter: SPElement = { elmType: 'span', txtContent: '@currentField' };
-    const host: SPElement = { elmType: 'div', columnFormatterReference: '[$Progress]' };
-    // host ctx targets Status — but the referenced formatter must see Progress
-    const node = renderElement(host, ctx, { resolveColumnRef: () => progressFormatter }) as HTMLElement;
-    expect(node.textContent).toBe('64');
   });
 
   it('collects runtime issues instead of failing silently', () => {

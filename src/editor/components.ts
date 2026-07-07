@@ -1,11 +1,10 @@
 /**
- * editor/components.ts — the component brain: a COMPONENT is a package of
- * formatting without a column to call home. Where a column formatter belongs
- * to one column (violet §) and the view formatter to one view (blue), a
- * component is UNBOUND — it declares typed SLOTS ("needs a person column, a
- * date column") and binds to a real schema only when a maker adds it and maps
- * their columns in. Pure and node-testable (no DOM/state imports), like
- * gridScaffold/areas/cfr/snapshots.
+ * editor/components.ts — the component brain: a COMPONENT is the one unit of
+ * packaged formatting (COLUMNS-COMPONENTS-VIEWS model B). Where a column is
+ * just data and a view is just layout, a component is UNBOUND formatting — it
+ * declares typed SLOTS ("needs a person column, a date column") and binds to
+ * a real schema only when a maker adds it and maps their columns in. Pure and
+ * node-testable (no DOM/state imports), like gridScaffold/areas/lookDialect.
  *
  * The definition convention: `root` is written against the slot KEYS as field
  * names — `[$Due]` in the tree ⇄ the slot with key 'Due'. Binding = rewriting
@@ -15,16 +14,16 @@
  *
  * Save-as-component derives slots FROM a tree: every referenced field becomes
  * a slot typed by the current schema (widened to its single/multi sibling).
- * Components must be self-contained — a subtree carrying a
- * columnFormatterReference is refused (that content lives in the registry,
- * not the subtree; detach from the style first).
+ * Components must be self-contained — imported JSON carrying a
+ * columnFormatterReference is refused (§ left the document model; nothing
+ * resolves a reference anymore — that content has to be inlined first).
  *
  * Storage: 'wb-components.v1' (ADDITIVE key — the frozen project/prefs keys
  * stay frozen). Built-ins ship in code and are never persisted.
  */
 
 import type { SPElement, MockField, FieldType, FormatterDocument, DocumentKind } from '../core/types';
-import { inlineColumnFormatter } from './cfr';
+import { inlineColumnFormatter } from './lookDialect';
 
 export interface ComponentSlot {
   /** The author-side field name used inside `root` (e.g. 'Due' ⇄ `[$Due]`). */
@@ -115,11 +114,16 @@ export function fieldRefsIn(tree: SPElement): string[] {
   return [...found];
 }
 
-/** Whether a subtree carries a columnFormatterReference anywhere. */
-export function containsCfr(tree: SPElement): boolean {
-  if (tree.columnFormatterReference) return true;
-  if (tree.children?.some(containsCfr)) return true;
-  if (tree.customCardProps?.formatter) return containsCfr(tree.customCardProps.formatter);
+/** Whether parsed formatter JSON carries a `columnFormatterReference` key
+ *  anywhere. § left the document model, so SPElement can't carry it — but
+ *  IMPORTS arrive as arbitrary parsed JSON claiming to be an SPElement, so
+ *  the check walks raw objects/arrays for the property key itself. */
+export function containsCfr(tree: unknown): boolean {
+  if (Array.isArray(tree)) return tree.some(containsCfr);
+  if (tree && typeof tree === 'object') {
+    if ('columnFormatterReference' in tree) return true;
+    return Object.values(tree).some(containsCfr);
+  }
   return false;
 }
 
@@ -226,10 +230,10 @@ export function mappingComplete(def: ComponentDef, mapping: Record<string, strin
   return def.slots.every((s) => Boolean(mapping[s.key]));
 }
 
-/** A component the "Format this column" catalog can offer for a `type` column:
+/** A component the column-apply pickers can offer a `type` column outright:
  *  element-scoped, exactly one slot, and that slot accepts the type.
- *  (Multi-slot components need the mapping dialog; row components replace the
- *  whole view — both live in the ⬡ library.) */
+ *  (Multi-slot components go through the mapping dialog; row components
+ *  replace the whole view — both live in the ⬡ library.) */
 export function isSingleColumnComponent(def: ComponentDef, type: FieldType): boolean {
   return componentKind(def) === 'element' && def.slots.length === 1 && def.slots[0].types.includes(type);
 }
@@ -267,27 +271,15 @@ export function bindComponentInstance(def: ComponentDef, mapping: Record<string,
 
 // ─── context-aware insertion (where does "Add" land?) ────────────────────────
 
-/** Where an element component lands when inserted. */
-export type ComponentInsertTarget =
-  | { kind: 'view'; grid: boolean }
-  | { kind: 'column'; field: string };
-
 /**
- * The destination for an element-component insert: the OPEN column formatter
- * when one is on the canvas (owner decision — components in column formatters
- * and CFRs are allowed; the bound tree references explicit `[$Field]`s, valid
- * there), otherwise the view (on the grid it arrives as a new root column).
+ * The destination for an element-component insert: always the ACTIVE VIEW —
+ * on the grid it arrives as a new root column, elsewhere at the selection.
+ * (Applying a component TO a column is a different gesture entirely:
+ * state.applyComponentToColumn, via the mapper's applyToColumn mode.)
  * Pure so the dialog copy and the insert itself share one truth.
  */
-export function componentInsertTarget(
-  activeDocKey: string,
-  docKind: DocumentKind,
-  currentFieldName: string,
-): ComponentInsertTarget {
-  if (activeDocKey !== 'main') return { kind: 'column', field: activeDocKey };
-  // the MAIN doc itself can be a column formatter (a JSON-tab import)
-  if (docKind === 'column') return { kind: 'column', field: currentFieldName };
-  return { kind: 'view', grid: docKind === 'grid' };
+export function componentInsertTarget(docKind: DocumentKind): { grid: boolean } {
+  return { grid: docKind === 'grid' };
 }
 
 // ─── persistence (caller owns localStorage, same split as snapshots) ─────────
@@ -390,7 +382,7 @@ export function createVariant(oldDef: ComponentDef, id: string, takenNames: stri
  * Re-bind a stamped INSTANCE to a (new) recipe using ITS OWN stored slot map —
  * the save-and-apply re-bake. Preserves the maker's rename (an `_elmName` that
  * differs from the name the old def gave it) and the instance's grid-layout
- * artifacts (flex/min-width — the forkCfr convention). Returns null for an
+ * artifacts (flex/min-width — the grid-cell convention). Returns null for an
  * unstamped element (nothing to re-bind). Pure.
  */
 export function rebindInstance(def: ComponentDef, el: SPElement, oldDefName: string): SPElement | null {

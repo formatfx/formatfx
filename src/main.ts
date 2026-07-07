@@ -16,6 +16,7 @@ import { PRODUCT_NAME, PRODUCT_TAGLINE, PROJECT_FILE_NAME } from './branding';
 import { applyTheme, setCustomPalette } from './core/theme';
 import { exportJson } from './core/serializer';
 import { mountCanvas } from './editor/canvas';
+import { mountCanvasTabs } from './editor/canvasTabs';
 import { mountFxBar } from './editor/fxBar';
 import { mountJsonPanel } from './editor/jsonPanel';
 import { mountDataPanel, applyImportedSchema } from './editor/dataPanel';
@@ -88,9 +89,11 @@ app.innerHTML = `
   <main class="wb-layout" id="wb-layout">
     <aside class="wb-leftpane" id="wb-leftpane"></aside>
     <section class="wb-pane-canvas">
+      <div id="wb-canvastabs" title="Canvas tabs — the Grid plus every view or component you open; drag to rearrange"></div>
       <div id="wb-fxbar" title="The Function Bar — paint the selected element's properties with Excel-style formulas."></div>
       <label class="wb-check wb-preview-titlecol" id="wb-titlecol-label" title="Show the Title context column next to your formatted column — uncheck to show the formatter cell alone"><input type="checkbox" id="wb-titlecol" checked> Title column</label>
       <div id="wb-canvas" class="wb-canvas"></div>
+      <div id="wb-workshop" hidden></div>
       <div class="wb-data-split" id="wb-data-split" title="Drag to resize the data panel"></div>
       <section class="wb-data-dock" id="wb-data-dock">
         <div class="wb-data-dock-head" id="wb-data-dock-head" title="Mock rows &amp; columns — click the title to collapse">
@@ -324,11 +327,13 @@ kindSel.addEventListener('change', () => {
     : `Same element tree, new wrapper: this view now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
 });
 
-// the wrapper kind only makes sense on a surface (floor or sheet); examples
-// route themselves (column → register + drill, row/tile → a new view), so
-// they stay loadable even while drilled into a column formatter
+// the wrapper kind only makes sense on a surface (floor or sheet): it stays
+// disabled while a component WORKSHOP tab covers the canvas (the staged def
+// is not a document — COLUMNS-COMPONENTS-VIEWS §2). The activeDocKey guard
+// stays for the later phase where a component tab re-targets the canvas doc
+// key; it's always 'main' today.
 const refreshStudioDisabled = () => {
-  kindSel.disabled = state.activeDocKey !== 'main';
+  kindSel.disabled = state.activeDocKey !== 'main' || state.activeComponentTab !== null;
 };
 state.subscribe((reason) => {
   if (reason === 'data' || reason === 'load' || reason === 'kind') {
@@ -342,10 +347,8 @@ state.subscribe((reason) => {
 document.getElementById('wb-copy')!.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
-    toast(state.activeDocKey !== 'main'
-      ? `${state.activeDocKey} column formatter JSON copied — paste into that column's Format pane`
-      : state.doc.kind === 'grid'
-      ? 'View (row) formatter JSON copied — the grid ships as a row layout; for one column\'s JSON use its header menu'
+    toast(state.doc.kind === 'grid'
+      ? 'View (row) formatter JSON copied — the grid ships as a row layout; per-column JSON comes from the column\'s header menu'
       : 'Main formatter JSON copied — paste into the view\'s Format pane');
   } catch {
     toast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
@@ -363,10 +366,10 @@ exampleSel.addEventListener('change', () => {
   const root = instantiate(item, state.fields);
   const kind: DocumentKind = id === 'row-card' ? 'row' : id === 'tile-card' ? 'tile' : 'column';
   if (kind === 'column') {
-    // a column example becomes the CURRENT field's registered formatter and
-    // opens its drill-in — the main surface is always the floor or a view now
-    state.loadColumnDocument(root);
-    toast(`Loaded example: ${item.label} — editing it as the ${state.currentFieldName} column formatter`);
+    // a column example becomes the CURRENT field's LOOK — the grid renders
+    // it embedded, with that column selected (one undoable step)
+    state.loadDocument({ kind: 'column', root });
+    toast(`Loaded example: ${item.label} — applied as the ${state.currentFieldName} column's look`);
   } else {
     state.loadViewDocument({ kind, root }, item.label);
     toast(`Loaded example: ${item.label} — added as its own view`);
@@ -456,6 +459,9 @@ mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElemen
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountExplainPanel(document.getElementById('wb-tab-explain')!);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
+// the canvas tab strip mounts LAST: its first render may swap the workshop
+// over #wb-canvas (a component tab restored active), so the canvas must exist
+mountCanvasTabs(document.getElementById('wb-canvastabs')!, document.getElementById('wb-workshop')!, toast);
 
 // ── share: mint links, restore backups, open incoming links safely ──
 document.getElementById('wb-share')!.addEventListener('click', () => openShareDialog({ toast }));

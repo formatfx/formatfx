@@ -24,7 +24,6 @@ import {
   styleFamilyOf, type StyleFamily,
 } from '../core/schema';
 import { renderElement } from '../core/renderer';
-import { cfrFieldName } from '../core/refs';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
 import { state, CARD_SEGMENT } from './state';
 import { createOverlay, type OverlayHandle } from './overlay';
@@ -165,7 +164,6 @@ function mount(opts: Opts): void {
   let targetPath: NodePath = opts.path ?? [];
   let pending: Record<string, string> =
     opts.mode === 'element' ? { ...(stashes.get(state.nodeAt(targetPath)!) ?? {}) } : {};
-  let pendingCfrSwitch: string | null = null;
 
   const stashCurrent = () => {
     const node = state.nodeAt(targetPath);
@@ -175,7 +173,6 @@ function mount(opts: Opts): void {
   };
   const switchTarget = (path: NodePath) => {
     stashCurrent();
-    pendingCfrSwitch = null;
     targetPath = path;
     pending = { ...(stashes.get(state.nodeAt(targetPath)!) ?? {}) };
     render();
@@ -233,10 +230,6 @@ function mount(opts: Opts): void {
       }, {
         issues: [],
         tagPaths: true,
-        resolveColumnRef: (ref: string) => {
-          const n = cfrFieldName(ref);
-          return state.columnRefs[n] ?? null;
-        },
         onAction: () => { /* inert in the playground */ },
       });
     } catch (e) {
@@ -254,10 +247,7 @@ function mount(opts: Opts): void {
       const childRel = rel.length ? `${relAttr}.${i}` : String(i);
       for (const el of find(childRel)) {
         el.classList.add('wb-pgx-child');
-        // a CFR slot's content comes from another formatter — say so
-        el.setAttribute('data-pgx-name', child.columnFormatterReference
-          ? `${nameOf(child)} ⤷ ${child.columnFormatterReference}`
-          : nameOf(child));
+        el.setAttribute('data-pgx-name', nameOf(child));
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           switchTarget([...targetPath, i]);
@@ -282,9 +272,6 @@ function mount(opts: Opts): void {
     lab.textContent = (targetNode.children?.length
       ? 'children are masked with their names — click one to restyle it instead · '
       : '')
-      + (targetNode.columnFormatterReference
-        ? `This element's content is rendered by the ${targetNode.columnFormatterReference} column formatter — you're in the view formatter now; open its § style entry in the Structure pane to edit that column's style · `
-        : '')
       + 'rendered with row 1 of your data';
     stage.appendChild(lab);
     return stage;
@@ -338,7 +325,7 @@ function mount(opts: Opts): void {
       r.appendChild(caret);
       const nm = document.createElement('span');
       nm.className = 'wb-pg-tree-name';
-      nm.textContent = nameOf(el) + (el.columnFormatterReference ? ` ⤷ ${el.columnFormatterReference}` : '');
+      nm.textContent = nameOf(el);
       r.appendChild(nm);
       if (stashes.has(el) && kind !== 'target') {
         const dot = document.createElement('span');
@@ -386,24 +373,6 @@ function mount(opts: Opts): void {
       tree.appendChild(row(targetNode, null, targetPath.length, 'target'));
       targetKids();
     }
-
-    // CFR slot: its content comes from a registered column formatter —
-    // offer to open THAT formatter in the playground (switches the
-    // workspace, exactly like clicking the column in the Structure tree)
-    const cfr = targetNode.columnFormatterReference;
-    const cfrName = cfr ? cfrFieldName(cfr) : undefined;
-    if (cfrName && state.columnRefs[cfrName]) {
-      const enter = document.createElement('button');
-      enter.className = 'wb-pg-tree-row wb-pg-tree-child wb-pg-navcfr';
-      enter.style.paddingLeft = `${6 + (targetPath.length + 1) * 12}px`;
-      enter.textContent = `⤷ switch to [$${cfrName}] column formatter`;
-      enter.title = `You're editing the view formatter. This slot's content comes from the [$${cfrName}] column formatter — click to switch to that column's formatter in the playground.`;
-      enter.addEventListener('click', () => {
-        pendingCfrSwitch = cfrName;
-        render();
-      });
-      tree.appendChild(enter);
-    }
     return tree;
   };
 
@@ -437,30 +406,6 @@ function mount(opts: Opts): void {
     close.addEventListener('click', () => { stashCurrent(); closePlayground(); });
     head.appendChild(close);
     panel.appendChild(head);
-
-    // ── CFR switch confirmation banner ──
-    if (pendingCfrSwitch) {
-      const cfr = pendingCfrSwitch;
-      const banner = document.createElement('div');
-      banner.className = 'wb-pg-cfr-confirm';
-      const msg = document.createElement('span');
-      msg.textContent = `This slot's content comes from the [$${cfr}] column formatter. Switch the playground to edit that formatter instead?`;
-      const yes = document.createElement('button');
-      yes.className = 'wb-pg-cfr-confirm-yes';
-      yes.textContent = `Switch to [$${cfr}]`;
-      yes.addEventListener('click', () => {
-        pendingCfrSwitch = null;
-        stashCurrent();
-        state.openColumnRef(cfr);
-        openElementPlayground([]);
-      });
-      const no = document.createElement('button');
-      no.className = 'wb-pg-cfr-confirm-no';
-      no.textContent = 'Stay here';
-      no.addEventListener('click', () => { pendingCfrSwitch = null; render(); });
-      banner.append(msg, yes, no);
-      panel.appendChild(banner);
-    }
 
     // ── context: the structure tree beside the live stage ──
     if (opts.mode === 'element' && targetNode) {

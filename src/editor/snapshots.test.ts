@@ -1,13 +1,14 @@
 /**
  * snapshots.ts is the store contract (issue #140): scope partitioning,
- * per-scope caps with oldest-first eviction, corrupt-store tolerance — and,
- * since FLOOR-AND-SHEETS Stage 1, the LOAD GUARD that drops pre-Stage-1
- * captures (the retired 'view' scope, the old doc-shaped 'all' payload)
- * instead of migrating them.
+ * per-scope caps with oldest-first eviction, corrupt-store tolerance — and
+ * the LOAD GUARD that drops old-shape captures instead of migrating them:
+ * the retired 'view' scope, the pre-Stage-1 doc-shaped 'all' payload, and
+ * the pre-model-B 'all' carrying `columnRefs` instead of `columnLooks`.
  * The state integration tests below are the RESTORE contract: every apply is
- * ONE undoable step, including "restore everything" (floor + sheets +
- * registry together), and capture always deep-copies (no aliasing into the
- * live documents).
+ * ONE undoable step, including "restore everything" (floor + sheets + column
+ * looks together), a column restore re-embeds the floor cell (the grid never
+ * goes stale), and capture always deep-copies (no aliasing into the live
+ * documents).
  * The nav-back tests pin the "how did I get here" trail semantics.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -31,7 +32,7 @@ function snap(scopeKind: 'column' | 'all', minute: number, field?: string): Snap
     scope,
     payload: scopeKind === 'column'
       ? { root: { elmType: 'div' } }
-      : { all: { floor: { kind: 'grid', root: { elmType: 'div' } }, views: [], columnRefs: {} } },
+      : { all: { floor: { kind: 'grid', root: { elmType: 'div' } }, views: [], columnLooks: {} } },
   };
 }
 
@@ -65,15 +66,27 @@ describe('snapshot store (pure)', () => {
     expect(loadStore(raw).snapshots).toHaveLength(1);
   });
 
-  it('drops pre-Stage-1 payload shapes — a load guard, not a converter', () => {
+  it('drops old payload shapes — a load guard, not a converter', () => {
     const legacyAll = {
       ...snap('all', 3),
-      // the old workspace shape: one main document + a workspace-level view name
+      // the pre-Stage-1 workspace shape: one main document + a view name
       payload: { all: { doc: { kind: 'grid', root: { elmType: 'div' } }, columnRefs: {}, viewName: 'V' } },
     };
     const legacyColumn = { ...snap('column', 4, 'Status'), payload: {} };
     const raw = JSON.stringify({ version: 1, snapshots: [snap('all', 1), legacyAll, legacyColumn] });
     expect(loadStore(raw).snapshots).toHaveLength(1);
+  });
+
+  it('drops a pre-model-B "all" carrying columnRefs instead of columnLooks', () => {
+    const preModelB = {
+      ...snap('all', 5),
+      // shaped like today's payload EXCEPT the store key: the § era's registry
+      payload: { all: { floor: { kind: 'grid', root: { elmType: 'div' } }, views: [], columnRefs: {} } },
+    };
+    const raw = JSON.stringify({ version: 1, snapshots: [snap('all', 1), preModelB] });
+    const kept = loadStore(raw).snapshots;
+    expect(kept).toHaveLength(1);
+    expect(kept[0].payload.all?.columnLooks).toEqual({});
   });
 
   it('partitions by scope key and lists newest-first', () => {
@@ -105,9 +118,9 @@ describe('snapshot store (pure)', () => {
     store = addSnapshot(store, s);
     expect(removeSnapshot(store, s.id).snapshots).toEqual([]);
     expect(defaultLabel({ kind: 'column', field: 'Status' }, 0)).toBe('Status column');
-    expect(defaultLabel({ kind: 'all' }, 0)).toBe('Grid + column formatters');
-    expect(defaultLabel({ kind: 'all' }, 1)).toBe('Grid + 1 view + column formatters');
-    expect(defaultLabel({ kind: 'all' }, 3)).toBe('Grid + 3 views + column formatters');
+    expect(defaultLabel({ kind: 'all' }, 0)).toBe('Grid + column looks');
+    expect(defaultLabel({ kind: 'all' }, 1)).toBe('Grid + 1 view + column looks');
+    expect(defaultLabel({ kind: 'all' }, 3)).toBe('Grid + 3 views + column looks');
     expect(relativeTime(at(0).toISOString(), at(0))).toBe('just now');
     expect(relativeTime(at(0).toISOString(), at(5))).toBe('5m ago');
     expect(relativeTime('garbage', at(5))).toBe('');
@@ -117,40 +130,42 @@ describe('snapshot store (pure)', () => {
 describe('state snapshot capture/apply (one undoable step)', () => {
   beforeEach(() => state.resetAll());
 
-  it('captures a column deep-copy and restores it as one Ctrl+Z step', () => {
+  it('captures a column-look deep-copy and restores it as one Ctrl+Z step', () => {
     const taken = state.captureSnapshot({ kind: 'column', field: 'Status' })!;
     expect(taken.payload.root?._elmName).toBe('Status pill');
-    // deep copy: mutating the live registry must not touch the snapshot
-    state.mutateDocument(() => { state.columnRefs['Status'].txtContent = 'CHANGED'; });
+    // deep copy: mutating the live look store must not touch the snapshot
+    state.mutateDocument(() => { state.columnLooks['Status'].txtContent = 'CHANGED'; });
     expect(taken.payload.root?.txtContent).not.toBe('CHANGED');
     // restore over the change, then a single undo brings the change back
     expect(state.applySnapshot(taken)).toBe(true);
-    expect(state.columnRefs['Status'].txtContent).toBe(taken.payload.root?.txtContent);
+    expect(state.columnLooks['Status'].txtContent).toBe(taken.payload.root?.txtContent);
     state.undo();
-    expect(state.columnRefs['Status'].txtContent).toBe('CHANGED');
+    expect(state.columnLooks['Status'].txtContent).toBe('CHANGED');
   });
 
-  it('captures the open column\'s LIVE tree (edits included)', () => {
-    state.openColumnRef('Status');
-    state.mutateDocument(() => { state.doc.root.txtContent = 'LIVE'; });
+  it('a column restore re-embeds the floor cell — the grid never goes stale', () => {
     const taken = state.captureSnapshot({ kind: 'column', field: 'Status' })!;
-    expect(taken.payload.root?.txtContent).toBe('LIVE');
+    state.removeColumnLook('Status'); // undressed: plain-value cell on the floor
+    expect(state.floorDoc.root.children![1]._component).toBeUndefined();
+    expect(state.applySnapshot(taken)).toBe(true);
+    // look AND cell came back together
+    expect(state.columnLooks['Status']._component?.id).toBe('palette-status-pill');
+    const cell = state.floorDoc.root.children![1];
+    expect(cell._component?.id).toBe('palette-status-pill');
+    expect(cell._field).toBe('Status');
+    expect(cell.txtContent).toBe(taken.payload.root?.txtContent);
   });
 
-  it('capture is read-only — "everything" while drilled mutates nothing, yet holds the live tree', () => {
-    state.openColumnRef('Status');
-    const before = JSON.stringify({ doc: state.doc, refs: state.columnRefs });
+  it('capture is read-only — "everything" mutates nothing, yet holds the live looks', () => {
+    const before = JSON.stringify({ doc: state.doc, looks: state.columnLooks });
     const taken = state.captureSnapshot({ kind: 'all' })!;
-    expect(JSON.stringify({ doc: state.doc, refs: state.columnRefs })).toBe(before);
+    expect(JSON.stringify({ doc: state.doc, looks: state.columnLooks })).toBe(before);
     expect(state.canUndo).toBe(false);
-    // …and the payload still carries the open column's live tree
-    expect(taken.payload.all?.columnRefs['Status']._elmName).toBe('Status pill');
+    expect(taken.payload.all?.columnLooks['Status']._elmName).toBe('Status pill');
   });
 
-  it('prototype members never read as registered columns (own-key checks)', () => {
+  it('prototype members never read as look-wearing columns (own-key checks)', () => {
     // 'toString' is inherited on every object — `in` would say it exists
-    state.openColumnRef('toString');
-    expect(state.activeDocKey).toBe('main');
     expect(state.captureSnapshot({ kind: 'column', field: 'toString' })).toBeNull();
   });
 
@@ -164,14 +179,14 @@ describe('state snapshot capture/apply (one undoable step)', () => {
     expect(taken.payload.all?.views[0].doc.root._elmName).toBe('live'); // deep copy
   });
 
-  it('"everything": restores floor + sheets + registry as ONE undo step', () => {
+  it('"everything": restores floor + sheets + looks as ONE undo step', () => {
     state.createView({ kind: 'row', root: { elmType: 'div', _elmName: 'keep-me' } }, 'Board');
     state.minimizeView();
     const taken = state.captureSnapshot({ kind: 'all' })!;
-    // mutate all three: the floor, the sheet list, a column formatter
+    // mutate all three: the floor, the sheet list, a column look
     state.mutateDocument(() => {
       state.floorDoc.root.children?.pop();
-      state.columnRefs['Status'].txtContent = 'MUTATED';
+      state.columnLooks['Status'].txtContent = 'MUTATED';
     });
     state.createView({ kind: 'tile', root: { elmType: 'div' } }, 'Extra');
     expect(state.views).toHaveLength(2);
@@ -179,22 +194,15 @@ describe('state snapshot capture/apply (one undoable step)', () => {
     expect(state.applySnapshot(taken)).toBe(true);
     expect(state.views).toHaveLength(1);
     expect(state.views[0].name).toBe('Board');
-    expect(state.columnRefs['Status'].txtContent).toBe("=if([$Status]=='','None',[$Status])");
+    expect(state.columnLooks['Status'].txtContent).toBe("=if([$Status]=='','None',[$Status])");
     expect(state.onFloor).toBe(true); // the sheet we stood on isn't in the capture → floor
 
     state.undo(); // ONE undo reverts the whole restore
     expect(state.views).toHaveLength(2);
-    expect(state.columnRefs['Status'].txtContent).toBe('MUTATED');
+    expect(state.columnLooks['Status'].txtContent).toBe('MUTATED');
   });
 
-  it('restoring "everything" from a drilled column leaves the drill first (navigation, not mutation)', () => {
-    const taken = state.captureSnapshot({ kind: 'all' })!;
-    state.openColumnRef('Status');
-    expect(state.applySnapshot(taken)).toBe(true);
-    expect(state.activeDocKey).toBe('main');
-  });
-
-  it('column scope on an unregistered column: capture refuses, apply registers', () => {
+  it('column scope on a look-less column: capture refuses, apply registers', () => {
     expect(state.captureSnapshot({ kind: 'column', field: 'Tags' })).toBeNull();
     const foreign: ReturnType<typeof state.captureSnapshot> = {
       id: 'x', takenAt: new Date().toISOString(), label: 'Tags column',
@@ -202,9 +210,9 @@ describe('state snapshot capture/apply (one undoable step)', () => {
       payload: { root: { elmType: 'div', txtContent: '[$Tags]' } },
     };
     expect(state.applySnapshot(foreign!)).toBe(true);
-    expect(state.columnRefs['Tags']?.txtContent).toBe('[$Tags]');
+    expect(state.columnLooks['Tags']?.txtContent).toBe('[$Tags]');
     state.undo(); // one step removes the registration again
-    expect(state.columnRefs['Tags']).toBeUndefined();
+    expect(state.columnLooks['Tags']).toBeUndefined();
   });
 
   it('refuses a scope/payload mismatch without touching anything', () => {
@@ -222,47 +230,45 @@ describe('state snapshot capture/apply (one undoable step)', () => {
 describe('navigation back (the "how did I get here" trail — not undo)', () => {
   beforeEach(() => state.resetAll());
 
-  it('starts with nowhere to go, tracks doc switches, and retraces them', () => {
-    expect(state.backTarget).toBeNull();
-    state.openColumnRef('Status');
-    expect(state.backTarget).toBe('main');
-    state.openColumnRef('Progress'); // direct column→column switch
-    expect(state.backTarget).toBe('Status');
-    expect(state.goBack()).toBe('Status');
-    expect(state.activeDocKey).toBe('Status');
-    expect(state.goBack()).toBe('main');
-    expect(state.activeDocKey).toBe('main');
+  it('starts with nowhere to go and retraces sheet trips', () => {
     expect(state.backTarget).toBeNull();
     expect(state.goBack()).toBeNull();
-  });
-
-  it('going back does not push new history (no ping-pong)', () => {
-    state.openColumnRef('Status');
-    state.openMain();
-    // trail: main → Status → main; back lands on Status, then main, then ends
-    expect(state.goBack()).toBe('Status');
-    expect(state.goBack()).toBe('main');
-    expect(state.goBack()).toBeNull();
-  });
-
-  it('retraces surface switches too — a sheet trip and back', () => {
     const sheet = state.createView({ kind: 'row', root: { elmType: 'div' } })!;
     state.minimizeView();
+    expect(state.backTarget).toBe('main');
     expect(state.goBack()).toBe('main'); // back onto the sheet
     expect(state.activeViewId).toBe(sheet.id);
     expect(state.goBack()).toBe('main'); // back to the floor (pre-create)
     expect(state.onFloor).toBe(true);
+    expect(state.goBack()).toBeNull();
   });
 
-  it('skips column keys that have been unregistered since', () => {
-    state.openColumnRef('Status');
-    state.openMain();
-    delete state.columnRefs['Status'];
-    expect(state.backTarget).toBeNull(); // Status is gone, main is current
+  it('going back does not push new history (no ping-pong)', () => {
+    const sheet = state.createView({ kind: 'row', root: { elmType: 'div' } })!;
+    state.minimizeView();
+    state.openView(sheet.id);
+    // trail: floor → sheet → floor → sheet; each goBack CONSUMES an entry
+    expect(state.goBack()).toBe('main');
+    expect(state.onFloor).toBe(true);
+    expect(state.goBack()).toBe('main');
+    expect(state.activeViewId).toBe(sheet.id);
+    expect(state.goBack()).toBe('main');
+    expect(state.onFloor).toBe(true);
+    expect(state.goBack()).toBeNull();
+  });
+
+  it('skips entries whose sheet has been removed since', () => {
+    const sheet = state.createView({ kind: 'row', root: { elmType: 'div' } })!;
+    state.minimizeView();
+    expect(state.backTarget).toBe('main'); // would land on the sheet
+    state.views.splice(state.views.findIndex((v) => v.id === sheet.id), 1);
+    // the sheet entry is dead; the floor entry equals where we stand — nothing left
+    expect(state.backTarget).toBeNull();
   });
 
   it('a fresh project clears the trail', () => {
-    state.openColumnRef('Status');
+    state.createView({ kind: 'row', root: { elmType: 'div' } });
+    state.minimizeView();
     state.resetAll();
     expect(state.backTarget).toBeNull();
   });

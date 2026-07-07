@@ -22,6 +22,26 @@ export function header(page: Page, label: string): Locator {
   return page.locator('.wb-grid-header', { has: page.locator('.wb-grid-header-label', { hasText: label }) });
 }
 
+/** A canvas tab in the strip above the canvas, located by its visible name
+ *  ('Grid', a view name, or a component name). */
+export function canvasTab(page: Page, name: string): Locator {
+  return page.locator('#wb-canvastabs .wb-canvastab', {
+    has: page.locator('.wb-canvastab-name', { hasText: name }),
+  });
+}
+
+/** Click the standing ▦ Grid tab (a no-op when the grid is already up). */
+export async function openGridTab(page: Page): Promise<void> {
+  await page.locator('#wb-canvastabs .wb-canvastab-grid .wb-canvastab-btn').click();
+}
+
+/** Ctrl-click grid headers into a multi-selection and graduate them into a
+ *  row view via the areas bar — the shared on-ramp several specs walk. */
+export async function makeRowView(page: Page, labels: string[]): Promise<void> {
+  for (const l of labels) await header(page, l).click({ modifiers: ['Control'] });
+  await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
+}
+
 // The JSON pane (the "Advanced" escape hatch) is hidden by default — reveal it
 // idempotently. The left edit pane and canvas are always visible.
 export async function openJson(page: Page): Promise<void> {

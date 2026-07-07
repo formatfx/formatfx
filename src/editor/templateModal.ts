@@ -67,9 +67,9 @@ export function openTemplateModal(
   const reopened = creating ? null
     : state.doc.kind === 'row'
       ? configFromView(state.doc.root, typeof rawRowClass === 'string' ? rawRowClass : undefined,
-        state.fields, state.columnRefs, comps)
+        state.fields, state.columnLooks, comps)
       : state.doc.kind === 'tile'
-        ? configFromView(state.doc.root, undefined, state.fields, state.columnRefs, comps, 'tile')
+        ? configFromView(state.doc.root, undefined, state.fields, state.columnLooks, comps, 'tile')
         : null;
   if (reopened?.target === 'tile') {
     // the tile box size lives on the document wrapper — reseed it from there
@@ -224,7 +224,7 @@ export function openTemplateModal(
     const overwrites = !creating && !editingExisting && !pristine;
     if (overwrites && !confirm(`Replace this view's layout with the ${noun.toLowerCase()}? Ctrl+Z reverts it in one step.`)) return;
     const { root, additionalRowClass } = buildTemplateView(
-      ui.config, state.fields, state.columnRefs, palette(), comps, { prune: true });
+      ui.config, state.fields, state.columnLooks, palette(), comps, { prune: true });
     if (creating) {
       const doc = ui.config.target === 'tile'
         ? {

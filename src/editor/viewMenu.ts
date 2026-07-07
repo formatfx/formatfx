@@ -1,161 +1,157 @@
 /**
- * editor/viewMenu.ts — the View Formatters menu, anchored under the Left Edit
- * Pane's document dropdown. FLOOR-AND-SHEETS Stage 1 made this the real
- * multi-view list: every named sheet — click one to open it (NAVIGATION,
- * never a mutation), Rename it inline, or start a new row/tile view from a
- * template. One Rename = one `state.renameView` (project metadata, off the
- * undo stack). The old "◧ Grid" floor row is gone (Stage 2 follow-up): the
- * grid is the COLUMNS tab's canvas, so this menu is views-only — matching
- * the strip.
+ * editor/viewMenu.ts — the VIEWS LIST section of the Left Edit Pane
+ * (COLUMNS-COMPONENTS-VIEWS §2-3: "viewMenu becomes the views list in the
+ * pane"). The old anchored popover (reached from the retired document pill)
+ * is now a standing section: one row per named sheet — clicking one opens
+ * (or focuses) its canvas tab, NAVIGATION only, never a mutation; ✎/dblclick
+ * renames inline (one `state.renameView` — project metadata, off the undo
+ * stack); the ＋ on-ramps start a new row/tile view from the template
+ * builder. The composition section sits LAST in the pane, after the columns
+ * and components it's built from (the owner's left-to-right mental model).
  */
 
 import { state } from './state';
 import { openTemplateModal } from './templateModal';
 
-let openPanel: { panel: HTMLElement; cleanup: () => void } | null = null;
+export function mountViewsList(host: HTMLElement, onToast: (m: string) => void): void {
+  host.classList.add('wb-viewslist');
+  // rename-in-progress, by view id — render state, because any 'data' emit
+  // (the rename itself included) re-renders the whole list
+  let renameId: string | null = null;
 
-export function closeViewMenu(): void {
-  if (!openPanel) return;
-  openPanel.cleanup();
-  openPanel.panel.remove();
-  openPanel = null;
-}
+  const startRename = (viewId: string): void => {
+    renameId = viewId;
+    render();
+    const input = host.querySelector<HTMLInputElement>('.wb-viewslist-input');
+    if (input) { input.focus(); input.select(); }
+  };
 
-/** Open the View Formatters menu anchored under `anchor`. */
-export function openViewMenu(anchor: HTMLElement, onToast: (m: string) => void): void {
-  closeViewMenu();
+  const renameInput = (viewId: string): HTMLInputElement => {
+    const view = state.viewById(viewId)!;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'wb-viewslist-input';
+    input.value = view.name;
+    input.setAttribute('aria-label', `Rename the ${view.name} view`);
+    let done = false;
+    const commit = (): void => {
+      if (done) return;
+      done = true;
+      renameId = null;
+      state.renameView(viewId, input.value); // emits 'data' → the list re-renders
+      const now = state.viewById(viewId)?.name ?? view.name;
+      if (now !== view.name) onToast(`View renamed to “${now}”`);
+      else render();
+    };
+    const cancel = (): void => {
+      if (done) return;
+      done = true;
+      renameId = null;
+      render();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
+    return input;
+  };
 
-  const panel = document.createElement('div');
-  // wb-esc-owner: this menu closes itself on a document-level Escape (onKey
-  // below) — see the convention comment in editor/overlay.ts. It was the one
-  // self-closing popover missing the marker (found by the Stage-4 audit).
-  panel.className = 'wb-viewmenu wb-esc-owner';
+  const render = (): void => {
+    host.replaceChildren();
 
-  const head = document.createElement('div');
-  head.className = 'wb-viewmenu-head';
-  head.textContent = 'View Formatters';
-  panel.appendChild(head);
+    const head = document.createElement('div');
+    head.className = 'wb-viewslist-head';
+    head.textContent = 'Views — your layouts';
+    head.title = 'Whole-row and tile layouts built from your columns and components — each opens as a canvas tab';
+    host.appendChild(head);
 
-  // ── the sheets: one row per named view (the grid lives on COLUMNS) ───────
-  for (const view of state.views) {
-    const row = document.createElement('div');
-    row.className = 'wb-viewmenu-row' + (state.activeViewId === view.id ? ' wb-viewmenu-active' : '');
+    for (const view of state.views) {
+      const row = document.createElement('div');
+      // the tab is "active" only when its surface is actually SHOWING — a
+      // workshop covering the canvas unmarks the view row underneath
+      const active = state.activeTabKey === `view:${view.id}`;
+      row.className = 'wb-tree-row wb-viewslist-row' + (active ? ' selected' : '');
 
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'wb-viewmenu-open wb-viewmenu-name';
-    open.textContent = view.name;
-    open.title = state.activeViewId === view.id
-      ? 'This view is on the canvas'
-      : `Open “${view.name}” (${view.doc.kind === 'tile' ? 'tile' : 'row'} view)`;
-    open.addEventListener('click', () => {
-      closeViewMenu();
-      if (state.activeViewId !== view.id) {
-        state.openView(view.id);
-        onToast(`Opened “${view.name}”`);
+      if (renameId === view.id) {
+        row.appendChild(renameInput(view.id));
+        host.appendChild(row);
+        continue;
       }
-    });
 
-    const rename = document.createElement('button');
-    rename.type = 'button';
-    rename.className = 'wb-viewmenu-rename';
-    rename.textContent = 'Rename';
-    rename.title = 'Rename this view — Enter to commit, Esc to cancel';
-    rename.addEventListener('click', () => {
-      row.replaceChildren();
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'wb-viewmenu-input';
-      input.value = view.name;
-      row.appendChild(input);
-
-      let committed = false;
-      const commit = (): void => {
-        if (committed) return;
-        committed = true;
-        state.renameView(view.id, input.value);
-        onToast(`View renamed to “${state.viewById(view.id)?.name ?? view.name}”`);
-        closeViewMenu();
-      };
-      const cancel = (): void => {
-        if (committed) return;
-        committed = true;
-        closeViewMenu();
-      };
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); commit(); }
-        else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'wb-viewslist-open';
+      if (active) open.setAttribute('aria-current', 'true');
+      const mark = document.createElement('span');
+      mark.className = 'wb-viewslist-mark';
+      mark.textContent = view.doc.kind === 'tile' ? '▤' : '☰';
+      mark.setAttribute('aria-hidden', 'true');
+      const name = document.createElement('span');
+      name.className = 'wb-viewslist-name';
+      name.textContent = view.name;
+      const kind = document.createElement('span');
+      kind.className = 'wb-tree-elmtype-dim';
+      kind.textContent = view.doc.kind === 'tile' ? 'tile' : 'row';
+      open.append(mark, name, kind);
+      open.title = (active
+        ? 'This view is on the canvas'
+        : `Open “${view.name}” in its canvas tab`) + ' — double-click to rename';
+      open.addEventListener('click', () => {
+        const navigates = state.activeTabKey !== `view:${view.id}`;
+        state.openView(view.id); // opens/focuses the tab; uncovers a workshop
+        if (navigates) onToast(`Opened “${view.name}”`);
       });
-      input.addEventListener('blur', commit);
-      input.focus();
-      input.select();
-    });
+      open.addEventListener('dblclick', () => startRename(view.id));
+      row.appendChild(open);
 
-    row.append(open, rename);
-    panel.appendChild(row);
-  }
+      const actions = document.createElement('span');
+      actions.className = 'wb-tree-actions';
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.textContent = '✎';
+      rename.title = `Rename ${view.name} — Enter commits, Esc cancels`;
+      rename.setAttribute('aria-label', rename.title);
+      rename.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startRename(view.id);
+      });
+      actions.appendChild(rename);
+      row.appendChild(actions);
+      host.appendChild(row);
+    }
 
-  if (!state.views.length) {
-    const none = document.createElement('div');
-    none.className = 'wb-viewmenu-empty';
-    none.textContent = 'No views yet — a view is a whole-row layout built from your columns and components. Select columns on the grid or start from a template below.';
-    panel.appendChild(none);
-  }
+    if (!state.views.length) {
+      const none = document.createElement('div');
+      none.className = 'wb-viewslist-empty';
+      none.textContent = 'No views yet — a view is a whole-row layout built from your columns and components. Start one from a template below.';
+      host.appendChild(none);
+    }
 
-  // "+ New rowview" / "+ New tileview" — start a fresh layout from a pre-built
-  // template. Saving from the floor CREATES a new named view (nothing is ever
-  // overwritten); both buttons open the SAME builder, tileview just leads its
-  // gallery with the tile layouts.
-  const newRow = document.createElement('button');
-  newRow.type = 'button';
-  newRow.className = 'wb-viewmenu-newrow';
-  newRow.textContent = '+ New rowview…';
-  newRow.title = 'Start a new row view from a pre-built template — it becomes its own named view';
-  newRow.addEventListener('click', () => {
-    closeViewMenu();
-    openTemplateModal(onToast, { target: 'row', createNew: true });
+    // ＋ on-ramps: both open the SAME builder; tileview leads with the tiles
+    const newRow = document.createElement('button');
+    newRow.type = 'button';
+    newRow.className = 'wb-viewslist-new wb-viewslist-newrow';
+    newRow.textContent = '＋ New rowview…';
+    newRow.title = 'Start a new row view from a pre-built template — it becomes its own named view';
+    newRow.addEventListener('click', () => openTemplateModal(onToast, { target: 'row', createNew: true }));
+    host.appendChild(newRow);
+
+    const newTile = document.createElement('button');
+    newTile.type = 'button';
+    newTile.className = 'wb-viewslist-new wb-viewslist-newtile';
+    newTile.textContent = '＋ New tileview…';
+    newTile.title = 'Start a tile (gallery) layout from a pre-built template — it becomes its own named view';
+    newTile.addEventListener('click', () => openTemplateModal(onToast, { target: 'tile', createNew: true }));
+    host.appendChild(newTile);
+  };
+
+  const hostAny = host as unknown as { _unsub?: () => void };
+  hostAny._unsub?.();
+  hostAny._unsub = state.subscribe((reason) => {
+    // 'load' = navigation, 'data' = tab/rename/registry, 'kind' = row⇄tile
+    // flips (a row's mark + tag)
+    if (reason === 'load' || reason === 'data' || reason === 'kind') render();
   });
-  panel.appendChild(newRow);
-
-  const newTile = document.createElement('button');
-  newTile.type = 'button';
-  newTile.className = 'wb-viewmenu-newtile';
-  newTile.textContent = '+ New tileview…';
-  newTile.title = 'Start a tile (gallery) layout from a pre-built template — it becomes its own named view';
-  newTile.addEventListener('click', () => {
-    closeViewMenu();
-    openTemplateModal(onToast, { target: 'tile', createNew: true });
-  });
-  panel.appendChild(newTile);
-
-  document.body.appendChild(panel);
-
-  // position under the anchor, kept on-screen
-  const r = anchor.getBoundingClientRect();
-  panel.style.top = `${Math.min(r.bottom + 6, Math.max(8, window.innerHeight - 160))}px`;
-  panel.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 240))}px`;
-
-  let done = false;
-  const close = (): void => { if (!done) { done = true; closeViewMenu(); } };
-  const onOutside = (e: PointerEvent): void => {
-    if (!panel.contains(e.target as Node) && e.target !== anchor) close();
-  };
-  const onKey = (e: KeyboardEvent): void => {
-    // Esc closes the menu — unless the inline rename input is handling it
-    if (e.key === 'Escape' && !panel.querySelector('.wb-viewmenu-input')) close();
-  };
-  // Defer arming the outside-close listeners so the opening click doesn't
-  // close the menu it just opened. If the menu closes before this fires
-  // (rapid open/close, test afterEach), cleanup clears the timer so the
-  // listeners are never added — no leaked handlers.
-  const armTimer = window.setTimeout(() => {
-    document.addEventListener('pointerdown', onOutside);
-    document.addEventListener('keydown', onKey);
-  }, 0);
-  const cleanup = (): void => {
-    window.clearTimeout(armTimer);
-    document.removeEventListener('pointerdown', onOutside);
-    document.removeEventListener('keydown', onKey);
-  };
-  openPanel = { panel, cleanup };
+  render();
 }

@@ -1,13 +1,13 @@
 /**
  * editor/snapshots.ts — the snapshot store brain (issue #140). Pure and
- * node-testable, like gridScaffold/areas/cfr: no state import, no DOM, no
- * direct localStorage — callers hand raw JSON in and get raw JSON back.
+ * node-testable, like gridScaffold/areas/lookDialect: no state import, no DOM,
+ * no direct localStorage — callers hand raw JSON in and get raw JSON back.
  *
  * A snapshot captures ONE thing, chosen by its scope:
- *   · { kind: 'column', field }     — one column formatter's tree
+ *   · { kind: 'column', field }     — one column's look tree
  *   · { kind: 'all' }               — the whole workspace: the floor grid,
  *                                     every named view sheet, and every
- *                                     registered column formatter
+ *                                     column look
  * The scope KEY ('col:<field>' | 'all') partitions the store so the snapshot
  * menu lists only the history of what's selected, with the "everything" group
  * alongside — placement decides the primary action.
@@ -16,9 +16,10 @@
  * an ADDITIVE key — the frozen project/prefs keys stay frozen; deleting it
  * loses snapshots and nothing else). Each scope keeps at most CAP entries;
  * adding past the cap evicts the oldest of THAT scope only. Entries whose
- * shape predates FLOOR-AND-SHEETS Stage 1 (the old main-document 'view'
- * scope, the old doc-shaped 'all' payload) fail the load-time validity filter
- * and are dropped — a load guard, not a converter (no migration code).
+ * shape predates the current model (the old main-document 'view' scope, the
+ * old doc-shaped 'all' payload, the pre-model-B 'all' carrying `columnRefs`
+ * instead of `columnLooks`) fail the load-time validity filter and are
+ * dropped — a load guard, not a converter (no migration code).
  */
 
 import type { FormatterDocument, SPElement } from '../core/types';
@@ -33,10 +34,10 @@ export type SnapshotScope =
 
 /** What a snapshot holds, by scope kind (exactly one of these is set). */
 export interface SnapshotPayload {
-  /** column: that formatter's element tree. */
+  /** column: that column's look tree. */
   root?: SPElement;
-  /** all: the floor + the named view sheets + the registered column formatters. */
-  all?: { floor: FormatterDocument; views: SnapshotSheet[]; columnRefs: Record<string, SPElement> };
+  /** all: the floor + the named view sheets + the per-column looks. */
+  all?: { floor: FormatterDocument; views: SnapshotSheet[]; columnLooks: Record<string, SPElement> };
 }
 
 export interface Snapshot {
@@ -84,7 +85,8 @@ function isValidPayload(scope: SnapshotScope, p: unknown): p is SnapshotPayload 
   if (!p || typeof p !== 'object') return false;
   const payload = p as SnapshotPayload;
   if (scope.kind === 'column') return Boolean(payload.root?.elmType);
-  return Boolean(payload.all?.floor?.root?.elmType) && Array.isArray(payload.all?.views);
+  return Boolean(payload.all?.floor?.root?.elmType) && Array.isArray(payload.all?.views)
+    && Boolean(payload.all?.columnLooks) && typeof payload.all?.columnLooks === 'object';
 }
 
 /** Parse a persisted store; tolerate corrupt/missing/foreign data (fresh store). */
@@ -146,8 +148,8 @@ export function snapshotId(now: Date): string {
 export function defaultLabel(scope: SnapshotScope, viewCount: number): string {
   if (scope.kind === 'column') return `${scope.field} column`;
   return viewCount === 0
-    ? 'Grid + column formatters'
-    : `Grid + ${viewCount} view${viewCount === 1 ? '' : 's'} + column formatters`;
+    ? 'Grid + column looks'
+    : `Grid + ${viewCount} view${viewCount === 1 ? '' : 's'} + column looks`;
 }
 
 /** Compact relative-time caption for the menu ("just now", "5m ago", "2d ago"). */

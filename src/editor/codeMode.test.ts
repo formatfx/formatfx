@@ -93,12 +93,14 @@ describe('applyDeclarations', () => {
     const node: SPElement = {
       elmType: 'div',
       children: [child],
-      columnFormatterReference: 'Status',
+      inlineEditField: '[$Status]',
+      customRowAction: { action: 'defaultClick' },
       customCardProps: { formatter: { elmType: 'div' }, openOnEvent: 'hover' },
     };
     applyDeclarations(node, parseDeclarations('color: blue;'));
     expect(node.children).toEqual([child]);
-    expect(node.columnFormatterReference).toBe('Status');
+    expect(node.inlineEditField).toBe('[$Status]');
+    expect(node.customRowAction).toEqual({ action: 'defaultClick' });
     expect(node.customCardProps).toBeDefined();
     expect(node.style).toEqual({ color: 'blue' });
   });

@@ -18,7 +18,7 @@
 import { state } from './state';
 import { renderElement, type RenderOptions } from '../core/renderer';
 import { evaluate, type EvalContext } from '../core/expressions';
-import { ctxForRow, resolveColumnRef } from './previewCtx';
+import { ctxForRow } from './previewCtx';
 import {
   buildTemplateView, childSlotOrder, WIREFRAMES,
   ZONE_SIZE_LABEL, ZONE_FLOW_LABEL,
@@ -346,14 +346,14 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
 
   // the EDIT row/tile (full config — empty zones stay visible as drop targets)…
   const { root, additionalRowClass } = buildTemplateView(
-    ui.config, state.fields, state.columnRefs, api.palette(), api.components());
+    ui.config, state.fields, state.columnLooks, api.palette(), api.components());
   renderEditExemplar(stage, root, additionalRowClass, ui, api);
 
   // …and the always-LIVE rows/tiles beneath it: the PRUNED layout, exactly
   // what Apply writes — hover and custom kebab flyouts are real
   stage.appendChild(el('div', 'wb-template-livehead', 'Live'));
   const pruned = buildTemplateView(
-    ui.config, state.fields, state.columnRefs, api.palette(), api.components(), { prune: true });
+    ui.config, state.fields, state.columnLooks, api.palette(), api.components(), { prune: true });
   if (tile) renderLiveTiles(stage, pruned.root, ui, api);
   else renderLiveRows(stage, pruned.root, pruned.additionalRowClass, ui, api);
 
@@ -428,7 +428,7 @@ function renderEditExemplar(
   applyRowClass(prow, additionalRowClass, ctx);
   let rendered: HTMLElement;
   try {
-    rendered = renderElement(root, ctx, { tagPaths: false, resolveColumnRef, issues: [] }) as HTMLElement;
+    rendered = renderElement(root, ctx, { tagPaths: false, issues: [] }) as HTMLElement;
   } catch (e) {
     prow.textContent = `⚠ ${(e as Error).message}`;
     body.appendChild(prow);
@@ -593,7 +593,7 @@ function renderLiveRows(
   const onAction = (elx: SPElement, summary: string): void => api.notify(stubMessage(elx, summary));
   for (let i = 0; i < rowCount; i++) {
     const ctx = ctxForRow(i);
-    const opts: RenderOptions = { tagPaths: false, resolveColumnRef, issues: [], onAction };
+    const opts: RenderOptions = { tagPaths: false, issues: [], onAction };
     const prow = el('div', 'wb-template-prow');
     if (ui.config.hoverHighlight) prow.classList.add('wb-prow-hoverable');
     applyRowClass(prow, additionalRowClass, ctx);
@@ -618,7 +618,7 @@ function renderLiveTiles(body: HTMLElement, root: SPElement, ui: ModalUI, api: M
     box.style.height = `${ui.config.tileHeight ?? 220}px`;
     if (ui.config.hoverHighlight) box.classList.add('wb-prow-hoverable');
     try {
-      box.appendChild(renderElement(root, ctxForRow(i), { tagPaths: false, resolveColumnRef, issues: [], onAction }));
+      box.appendChild(renderElement(root, ctxForRow(i), { tagPaths: false, issues: [], onAction }));
     } catch (e) {
       box.textContent = `⚠ ${(e as Error).message}`;
     }

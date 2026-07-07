@@ -8,6 +8,11 @@
 > Branch (historical): `claude/formatfx-left-edit-pane-ys3gsf`.
 > Spec: the "FormatFX Left Edit Pane — Complete Specification" (Claude-style
 > consolidated editing surface).
+>
+> **2026-07-07:** the pane was REBUILT to Mockup B in the Columns ·
+> Components · Views migration (nav row → This-view card → tree → columns
+> shelf → components library → views list) — see
+> [specs/COLUMNS-COMPONENTS-VIEWS.md](specs/COLUMNS-COMPONENTS-VIEWS.md) §3.
 
 ## What's done (verified)
 

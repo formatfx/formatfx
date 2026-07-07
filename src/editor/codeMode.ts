@@ -121,8 +121,8 @@ export function parseDeclarations(text: string): ParsedDeclarations {
 
 /** Apply parsed declarations to a node IN PLACE, replacing only the four
  *  Code-lens-owned fields (style / attributes / txtContent / forEach). Children,
- *  customCardProps, columnFormatterReference and the other superpower fields are
- *  left untouched — the Code lens never owns them, so it can never wipe them. */
+ *  customCardProps and the other superpower fields are left untouched — the
+ *  Code lens never owns them, so it can never wipe them. */
 export function applyDeclarations(node: SPElement, parsed: ParsedDeclarations): void {
   if (Object.keys(parsed.style).length) node.style = parsed.style;
   else delete node.style;
