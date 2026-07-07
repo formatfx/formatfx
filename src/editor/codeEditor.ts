@@ -5,12 +5,21 @@
  * as `prop: value;` / `@name: value;` lines, parses on blur/change, and commits
  * via one undoable mutation. Parse errors surface in a banner and never corrupt
  * the node (invalid lines are simply skipped; valid ones still apply).
+ *
+ * #222: typing `@` or `[$` inside a declaration VALUE opens the tokenized
+ * SP-context typeahead (system tokens + internal-name column refs, with
+ * inline docs and live mock previews) — the same menu the fx bar shows,
+ * driven by the pure spCompletionAt(). `@name` at the start of a line is an
+ * attribute, not a token, so it never triggers.
  */
 
 import { state } from './state';
 import {
   nodeToDeclarations, parseDeclarations, applyDeclarations, CODE_HINT,
 } from './codeMode';
+import { spCompletionAt, type CompletionOpts } from './fxSuggest';
+import { openAcMenu, type AcMenu } from './acMenu';
+import { ctxForRow } from './previewCtx';
 
 export function mountCodeEditor(host: HTMLElement): void {
   host.classList.add('wb-codelens');
@@ -22,9 +31,32 @@ export function mountCodeEditor(host: HTMLElement): void {
   const box = host.querySelector<HTMLTextAreaElement>('.wb-code-box')!;
   const errs = host.querySelector<HTMLDivElement>('.wb-code-errors')!;
   let dirty = false; // user is mid-edit — don't clobber the textarea
+  let ac: AcMenu | null = null; // the tokenized-context typeahead, when open
+
+  const closeAc = (): void => { if (ac) { ac.close(); ac = null; } };
+  const acOpts = (): CompletionOpts => ({
+    current: state.fields.find((f) => f.name === state.currentFieldName),
+    ctx: state.rows.length ? ctxForRow(0) : undefined,
+  });
+  const updateAc = (): void => {
+    closeAc();
+    const caret = box.selectionStart ?? box.value.length;
+    const comp = spCompletionAt(box.value, caret, state.fields, acOpts());
+    if (!comp || comp.items.length === 0) return;
+    ac = openAcMenu(box, comp.items, (value) => {
+      const v = box.value;
+      box.value = v.slice(0, comp.from) + value + v.slice(comp.to);
+      dirty = true;
+      const pos = comp.from + value.length;
+      box.setSelectionRange(pos, pos);
+      box.focus();
+      updateAc(); // chain: '@currentField' may still want its '.email'
+    });
+  };
 
   const render = (): void => {
     if (dirty) return;
+    closeAc();
     const node = state.selectedNode;
     if (!node) {
       box.value = '';
@@ -64,9 +96,18 @@ export function mountCodeEditor(host: HTMLElement): void {
     });
   };
 
-  box.addEventListener('input', () => { dirty = true; });
+  box.addEventListener('input', () => { dirty = true; updateAc(); });
   box.addEventListener('change', commit);
-  box.addEventListener('blur', commit);
+  box.addEventListener('blur', () => { closeAc(); commit(); });
+  box.addEventListener('keydown', (e) => {
+    if (!ac) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); ac.move(1); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); ac.move(-1); return; }
+    if (e.key === 'Escape') { e.preventDefault(); closeAc(); return; }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      if (ac.accept()) e.preventDefault(); // accept instead of newline / focus move
+    }
+  });
 
   const hostAny = host as any;
   if (typeof hostAny._unsub === 'function') {
