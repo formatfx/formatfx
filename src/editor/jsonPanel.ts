@@ -5,10 +5,24 @@
  * with copy / download / CSOM-safe copy.
  * In: paste any column/view/tile formatter JSON and "Apply" loads it into
  * the visual editor.
+ *
+ * #218 — the split-view sync (this pane sits open beside the canvas):
+ *   · code → canvas: a caret landing inside an element's JSON selects that
+ *     element (the canvas's own .wb-selected highlight — no parallel system);
+ *   · canvas → code: document changes refresh the text IN PLACE, preserving
+ *     the reader's caret + scroll (preserveCaret over the deterministic
+ *     serializer output); selection changes scroll to and flash the selected
+ *     element's lines WITHOUT ever moving the caret.
+ *   · Both directions ride core/jsonMap's offset↔path map (a byproduct of
+ *     the serialization walk) and a SyncEcho guard so a code-originated
+ *     selection never bounces back onto its own caret. Sync is pure view
+ *     work: it never creates undo entries.
  */
 
-import { state } from './state';
+import { state, samePath } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
+import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange } from '../core/jsonMap';
+import { preserveCaret, lineSpanOf, SyncEcho } from './codeSync';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
 import { serializeApplyPayload } from '../bridge/applyPayload';
@@ -22,6 +36,7 @@ export interface JsonPanelApi {
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
+  host.classList.add('wb-codesync'); // positioning context for the flash bar
   host.innerHTML = `
     <div class="wb-json-toolbar">
       <div class="wb-json-actions">
@@ -75,14 +90,111 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     applyBtn.classList.remove('wb-json-apply-pending');
   };
 
+  // ── #218 split-view sync state ──
+  let mapRanges: JsonRange[] = []; // offset↔path map for the CURRENT textarea text
+  const echo = new SyncEcho();
+
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
-    textEl.value = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    const prev = textEl.value;
+    const { text, ranges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    mapRanges = ranges;
+    if (text !== prev) {
+      // refresh IN PLACE: the serializer is deterministic, so untouched parts
+      // of the text are byte-identical — keep the reader's caret + scroll
+      // instead of resetting them (a visual edit must not lose their place)
+      const selStart = textEl.selectionStart ?? 0;
+      const selEnd = textEl.selectionEnd ?? selStart;
+      const { scrollTop, scrollLeft } = textEl;
+      textEl.value = text;
+      textEl.setSelectionRange(preserveCaret(prev, text, selStart), preserveCaret(prev, text, selEnd));
+      textEl.scrollTop = scrollTop;
+      textEl.scrollLeft = scrollLeft;
+    }
     clearImportError(); // stale error no longer matches what's in the textarea
   };
 
-  textEl.addEventListener('input', () => { setDirty(); clearImportError(); });
+  // ── #218 code → canvas: a caret landing inside an element selects it ──
+  // Wired to user gestures only (click / keyup) so programmatic value swaps
+  // can never masquerade as a caret move; typing marks the buffer dirty
+  // before keyup fires, so hand-edits (stale offsets) never mis-select.
+  const syncSelectionFromCaret = (): void => {
+    if (dirty) return; // hand-edited text: offsets are stale until Apply
+    const path = pathAtOffset(mapRanges, textEl.selectionStart ?? 0);
+    if (!path) return; // wrapper chrome ($schema line) selects nothing
+    if (state.selection && samePath(state.selection, path)) return; // already there — no churn
+    echo.run('code', () => state.select(path));
+  };
+  textEl.addEventListener('click', syncSelectionFromCaret);
+  textEl.addEventListener('keyup', syncSelectionFromCaret);
+
+  // ── #218 canvas → code: scroll to + flash the selected element's lines ──
+  let flashBar: HTMLDivElement | null = null;
+  let flashTimer = 0;
+  const clearFlash = (): void => {
+    window.clearTimeout(flashTimer);
+    flashBar?.remove();
+    flashBar = null;
+  };
+  textEl.addEventListener('scroll', clearFlash); // a moved viewport orphans the bar
+
+  /** Line metrics for the monospace box (with fallbacks for test DOMs). */
+  const lineHeightPx = (): number => {
+    const cs = window.getComputedStyle(textEl);
+    const lh = parseFloat(cs.lineHeight);
+    if (Number.isFinite(lh) && lh > 0) return lh;
+    const fs = parseFloat(cs.fontSize);
+    return Number.isFinite(fs) && fs > 0 ? fs * 1.3 : 14;
+  };
+
+  /** Show where the primary selection lives in the JSON: scroll it into view
+   *  if needed and flash its lines. NEVER moves the caret or focus — the
+   *  reading/edit position is sacred (that's the whole echo-guard deal). */
+  const revealSelection = (): void => {
+    clearFlash();
+    if (dirty) return; // don't fight a hand-edit in progress
+    const path = state.selection;
+    if (!path) return;
+    const range = rangeForPath(mapRanges, path);
+    if (!range) return; // stale map (shouldn't happen) — just skip
+    const { first, last } = lineSpanOf(textEl.value, range.start, range.end);
+    const lh = lineHeightPx();
+    const padTop = parseFloat(window.getComputedStyle(textEl).paddingTop) || 0;
+    const top = first * lh + padTop;
+    const bottom = (last + 1) * lh + padTop;
+    if (textEl.clientHeight > 0 && (top < textEl.scrollTop || bottom > textEl.scrollTop + textEl.clientHeight)) {
+      // center-ish, biased a third down so context above stays visible
+      textEl.scrollTop = Math.max(0, top - Math.max(lh, (textEl.clientHeight - (bottom - top)) / 3));
+    }
+    let y = top - textEl.scrollTop;
+    let h = bottom - top;
+    if (textEl.clientHeight > 0) { // clip to the textarea's viewport
+      const y0 = Math.max(0, y);
+      const y1 = Math.min(textEl.clientHeight, y + h);
+      if (y1 <= y0) return;
+      y = y0;
+      h = y1 - y0;
+    }
+    const bar = document.createElement('div');
+    bar.className = 'wb-code-flashbar';
+    bar.dataset.lines = `${first + 1}-${last + 1}`; // 1-based, for humans + tests
+    bar.setAttribute('aria-hidden', 'true');
+    bar.style.top = `${textEl.offsetTop + y}px`;
+    bar.style.left = `${textEl.offsetLeft}px`;
+    bar.style.width = textEl.clientWidth ? `${textEl.clientWidth}px` : '100%';
+    bar.style.height = `${h}px`;
+    host.appendChild(bar);
+    flashBar = bar;
+    const done = (): void => {
+      if (flashBar === bar) flashBar = null;
+      bar.remove();
+    };
+    bar.addEventListener('animationend', done);
+    flashTimer = window.setTimeout(done, 1600); // fallback for DOMs without CSS animation
+  };
+
+  textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); });
   sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
@@ -286,7 +398,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     hostAny._unsub();
   }
   hostAny._unsub = state.subscribe((reason) => {
-    if (reason !== 'selection' && reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
+    if (reason === 'selection') {
+      // #218 canvas → code — unless the selection ORIGINATED here (the echo
+      // guard): a code-side caret move must not bounce back and scroll/flash
+      // the very textarea it came from.
+      if (!echo.from('code')) revealSelection();
+      return;
+    }
+    if (reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
   });
   regenerate();
   renderLint([]);
