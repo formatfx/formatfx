@@ -70,7 +70,7 @@ test('look-drop highlight is accept-gated: a ⬡ payload lights the whole column
 test('the instance card is the provenance surface: bound instances get it, plain elements do not', async ({ page }) => {
   // select the bound Status pill instance → the ⬡ card names the component
   await page.locator('#wb-tree-body .wb-tree-row',
-    { has: page.locator('.wb-tree-name', { hasText: 'Status pill' }) }).click();
+    { has: page.locator('.wb-tree-name', { hasText: 'Status pill' }) }).locator('.wb-tree-label').click();
   const card = page.locator('.wb-inst-card');
   await expect(card).toBeVisible();
   await expect(card.locator('.wb-inst-head')).toContainText('Status pill');
@@ -79,7 +79,7 @@ test('the instance card is the provenance surface: bound instances get it, plain
   await expect(card.locator('.wb-inst-removelook')).toBeVisible();
   // a plain element (the Title cell) shows no instance card
   await page.locator('#wb-tree-body .wb-tree-row',
-    { has: page.locator('.wb-tree-name', { hasText: 'Title' }) }).click();
+    { has: page.locator('.wb-tree-name', { hasText: 'Title' }) }).locator('.wb-tree-label').click();
   await expect(page.locator('.wb-inst-card')).toHaveCount(0);
 });
 

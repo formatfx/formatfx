@@ -71,7 +71,7 @@ test('field-chip drags: the tree and the canvas both take FIELD drops (§5 drag 
 test('the instance card re-binds a slot: store and placed cell rewrite together, one undo step', async ({ page }) => {
   // select the Status column's bound instance in the tree
   await page.locator('#wb-tree-body .wb-tree-row',
-    { has: page.locator('.wb-tree-name', { hasText: 'Status pill' }) }).click();
+    { has: page.locator('.wb-tree-name', { hasText: 'Status pill' }) }).locator('.wb-tree-label').click();
   const card = page.locator('.wb-inst-card');
   await expect(card.locator('.wb-inst-head')).toContainText('Status pill');
   // "Bound to <column ▾>": type-filtered like the mapper (choice/text fit)
@@ -90,7 +90,7 @@ test('the instance card re-binds a slot: store and placed cell rewrite together,
 
 test('the instance card detaches to plain elements — provenance gone, one undo restores it', async ({ page }) => {
   await page.locator('#wb-tree-body .wb-tree-row',
-    { has: page.locator('.wb-tree-name', { hasText: 'Status pill' }) }).click();
+    { has: page.locator('.wb-tree-name', { hasText: 'Status pill' }) }).locator('.wb-tree-label').click();
   await page.locator('.wb-inst-card .wb-inst-detach').click();
   await expect(page.locator('#wb-toast')).toContainText('Detached from “Status pill”');
   // the tree row loses its binding language (Status pill + Data bar shipped
@@ -158,7 +158,7 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   await expect(page.locator('#wb-tree-body .wb-tree-name', { hasText: 'DueDate' })).toBeVisible();
   await expect(page.locator('#wb-tree-body .wb-tree-name', { hasText: 'Status pill' })).toBeVisible();
   // double-click renames inline
-  await page.locator('.wb-tree-row').first().dblclick();
+  await page.locator('.wb-tree-row .wb-tree-label').first().dblclick();
   await page.locator('.wb-tree-rename').fill('My title');
   await page.locator('.wb-tree-rename').press('Enter');
   await expect(page.locator('.wb-tree-name', { hasText: 'My title' })).toBeVisible();
@@ -174,7 +174,7 @@ test('element naming: showcase and presets arrive named, double-click renames, s
 });
 
 test('style editor explains properties: ⓘ opens a doc card with clickable examples', async ({ page }) => {
-  await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-tree-row .wb-tree-label').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
     .filter({ has: page.locator('summary', { hasText: /^Style/ }) });
   await styleSection.locator('.wb-kv-add').click();
@@ -201,7 +201,7 @@ test('style editor explains properties: ⓘ opens a doc card with clickable exam
 });
 
 test('doc card groups longhands: padding-left gets the padding card, variants switch the row', async ({ page }) => {
-  await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-tree-row .wb-tree-label').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
     .filter({ has: page.locator('summary', { hasText: /^Style/ }) });
   await styleSection.locator('.wb-kv-add').click();
@@ -221,7 +221,7 @@ test('doc card groups longhands: padding-left gets the padding card, variants sw
 
 test('style playground: value chips style the sample live, apply merges into selection', async ({ page }) => {
   // select the DueDate grid column's element to apply onto
-  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'DueDate' }) }).click();
+  await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'DueDate' }) }).locator('.wb-tree-label').click();
   // entry via ☰ menu — consequence-free overlay
   await page.click('#wb-menu-btn');
   await page.click('#wb-playground');
@@ -248,7 +248,7 @@ test('style playground: value chips style the sample live, apply merges into sel
 });
 
 test('doc card links into the playground with the property preselected', async ({ page }) => {
-  await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-tree-row .wb-tree-label').first().click();
   const styleSection = page.locator('details.wb-inspector-section')
     .filter({ has: page.locator('summary', { hasText: /^Style/ }) });
   await styleSection.locator('.wb-kv-add').click();
@@ -279,7 +279,7 @@ test('wrap-in-parent works on the root (of a view sheet — the grid tree has no
 test('box-model editor writes per-side padding to the selected element', async ({ page }) => {
   await loadRowFixture(page);
   // select the view root in the tree structure, then drop to the Simple lens
-  await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-tree-row .wb-tree-label').first().click();
   await page.locator('.wb-lens-tab[data-lens="simple"]').click();
   const padTop = page.locator('.wb-box.wb-box-padding input.wb-box-top').first();
   await padTop.fill('33');
@@ -290,7 +290,7 @@ test('box-model editor writes per-side padding to the selected element', async (
 test('alignment editor: summary chip opens picker, position grid writes layout styles', async ({ page }) => {
   await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
-  await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-tree-row .wb-tree-label').first().click();
   await page.locator('.wb-lens-tab[data-lens="simple"]').click();
   // summary chip shows a plain-language readout and opens the picker
   const summary = page.locator('.wb-align-summary');
@@ -312,7 +312,7 @@ test('alignment editor: summary chip opens picker, position grid writes layout s
 test('box model: arrow-stepping adjusts padding live without losing focus', async ({ page }) => {
   await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
-  await page.locator('.wb-tree-row').first().click();
+  await page.locator('.wb-tree-row .wb-tree-label').first().click();
   await page.locator('.wb-lens-tab[data-lens="simple"]').click();
   const padTop = page.locator('.wb-box.wb-box-padding input.wb-box-top').first();
   await padTop.click();
