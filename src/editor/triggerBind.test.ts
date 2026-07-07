@@ -4,8 +4,11 @@
  * (§5) — the workflow GENERATES what card-trigger-button would otherwise lint.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import type { SPElement } from '../core/types';
-import { candidateHostPaths, applyTriggerAt, hostLabel, canHostTrigger } from './triggerBind';
+import type { SPElement, MockField } from '../core/types';
+import {
+  candidateHostPaths, applyTriggerAt, hostLabel, canHostTrigger,
+  applyConfirmEditAt, displayedField, inlineEditBlockReason,
+} from './triggerBind';
 import { lintDocument } from '../core/linter';
 import { mountInspector } from './inspector';
 import { state } from './state';
@@ -147,6 +150,132 @@ describe('applyTriggerAt — row actions and link (§5)', () => {
     // a host that is no longer a division with children refuses too
     const leafRoot = div([span('just text')]);
     expect(applyTriggerAt(leafRoot, [0], { action: 'card', event: 'hover' }, { elmType: 'div' })).toBeNull();
+  });
+});
+
+describe('applyTriggerAt — inline edit (#212, element-level)', () => {
+  it('stamps inlineEditField on the element directly — no overlay, no customRowAction', () => {
+    const root = div([div([span('a')])]);
+    const at = applyTriggerAt(root, [0], { action: 'inlineEdit', inlineEditField: '[$Title]', cursor: 'pointer' });
+    expect(at).toEqual([0]);
+    const host = root.children![0];
+    expect(host.inlineEditField).toBe('[$Title]');
+    expect(host.children).toHaveLength(1); // rides the element — nothing appended
+    expect(host.customRowAction).toBeUndefined();
+    expect(host.style?.cursor).toBe('pointer');
+  });
+
+  it('is element-level like hover-reveal: rides a leaf, and COMPOSES with a structural trigger in the subtree', () => {
+    const leafRoot = div([span('x')]);
+    expect(applyTriggerAt(leafRoot, [0], { action: 'inlineEdit', inlineEditField: '[$Title]' })).toEqual([0]);
+    expect(leafRoot.children![0].inlineEditField).toBe('[$Title]');
+    // the same host would REFUSE a structural trigger (collision) — inline
+    // edit is not a customRowAction/customCardProps, so it composes instead
+    const busy = div([div([{ elmType: 'button', customRowAction: { action: 'defaultClick' }, txtContent: 'go' } as SPElement])]);
+    expect(applyTriggerAt(busy, [0], { action: 'defaultClick' })).toBeNull();
+    expect(applyTriggerAt(busy, [0], { action: 'inlineEdit', inlineEditField: '[$Title]' })).toEqual([0]);
+    expect(busy.children![0].inlineEditField).toBe('[$Title]');
+  });
+
+  it('refuses a blank FieldRef and never silently clobbers an existing inline editor', () => {
+    const root = div([div([span('a')], { inlineEditField: '[$Title]' })]);
+    const snapshot = JSON.stringify(root);
+    expect(applyTriggerAt(root, [0], { action: 'inlineEdit', inlineEditField: '[$Tags]' })).toBeNull();
+    expect(applyTriggerAt(root, [0], { action: 'inlineEdit' })).toBeNull();
+    expect(applyTriggerAt(root, [0], { action: 'inlineEdit', inlineEditField: '   ' })).toBeNull();
+    expect(JSON.stringify(root)).toBe(snapshot);
+  });
+});
+
+describe('inlineEditBlockReason — Text & Person only (refuse-don\'t-guess)', () => {
+  const f = (name: string, type: MockField['type'], prot = false): MockField =>
+    ({ name, type, ...(prot ? { protected: true } : {}) });
+
+  it('allows text/person/personMulti; refuses every other type with a teaching reason', () => {
+    expect(inlineEditBlockReason(f('Title', 'text'))).toBeNull();
+    expect(inlineEditBlockReason(f('Owner', 'person'))).toBeNull();
+    expect(inlineEditBlockReason(f('AssignedTo', 'personMulti'))).toBeNull(); // a Person column, multi-select
+    expect(inlineEditBlockReason(f('Status', 'choice'))).toMatch(/Text & Person columns only/);
+    expect(inlineEditBlockReason(f('DueDate', 'date'))).toMatch(/Date column/);
+    expect(inlineEditBlockReason(f('Notes', 'note'))).toMatch(/Multiple lines of text/);
+    expect(inlineEditBlockReason(f('ID', 'number', true))).toMatch(/read-only/);
+  });
+});
+
+describe('displayedField (#212 — the column an element shows)', () => {
+  it('prefers the _field cell stamp, then the first [$Ref] in a txtContent (depth-first), then @currentField', () => {
+    expect(displayedField({ elmType: 'div', _field: 'Status', txtContent: '[$Title]' })).toBe('Status');
+    expect(displayedField(span('[$Title]'))).toBe('Title');
+    expect(displayedField({ elmType: 'div', txtContent: "=if([$Status]=='Done','✓','')" })).toBe('Status');
+    expect(displayedField({ elmType: 'div', txtContent: { operator: '+', operands: ['[$Progress]', '%'] } as never })).toBe('Progress');
+    expect(displayedField(div([span('static'), span('[$Owner.title]')]))).toBe('Owner');
+    expect(displayedField(span('@currentField'), 'Progress')).toBe('Progress');
+    expect(displayedField(span('just text'))).toBeNull();
+    expect(displayedField(div([span('plain')]))).toBeNull();
+  });
+});
+
+describe('applyConfirmEditAt — the draft-column confirm & commit recipe (#212)', () => {
+  it('generates the whole loop: draft edit surface + a !=\'\'-gated confirm row with Save/Cancel', () => {
+    const root = div([div([span('[$Status]')])]);
+    const at = applyConfirmEditAt(root, [0], { realField: 'Status', draftField: 'Draft' });
+    expect(at).toEqual([0]);
+    const host = root.children![0];
+    expect(host.children).toHaveLength(2);
+    const [surface, confirm] = host.children!;
+
+    // (a) the ORIGINAL content became the edit surface, staging into the draft
+    expect(surface.inlineEditField).toBe('[$Draft]');
+    expect(surface.children).toHaveLength(1);
+    expect(surface.children![0].txtContent).toBe('[$Status]');
+
+    // (b) visibility gate is `!=''` — there is NO logical NOT on SP (HANDOFF §3),
+    // so the gate must never lean on a standalone `!`
+    const gate = String(confirm.style?.display);
+    expect(gate).toBe("=if([$Draft]!='','flex','none')");
+    expect(gate).not.toMatch(/![^=]/); // any `!` is part of `!=`
+    // the from → to readout
+    const texts = confirm.children!.map((c) => c.txtContent);
+    expect(texts).toContain('[$Status]');
+    expect(texts).toContain('[$Draft]');
+
+    // (c) Save: ONE setValue, TWO entries IN ORDER — promote, then clear
+    const save = confirm.children!.find((c) => c.txtContent === 'Save')!;
+    expect(save.customRowAction).toEqual({ action: 'setValue', actionInput: { Status: '[$Draft]', Draft: '' } });
+    expect(Object.keys(save.customRowAction!.actionInput as Record<string, unknown>)).toEqual(['Status', 'Draft']);
+    // Cancel: just clears the draft
+    const cancel = confirm.children!.find((c) => c.txtContent === 'Cancel')!;
+    expect(cancel.customRowAction).toEqual({ action: 'setValue', actionInput: { Draft: '' } });
+
+    // schema-valid + ENTIRELY lint-quiet (complete setValues, buttons with
+    // direct text, ascii-safe arrow icon) — the generator never emits JSON
+    // its own linter would nag about
+    expect(lintDocument({ kind: 'row', root })).toEqual([]);
+  });
+
+  it('refuses incomplete or colliding specs and leaves the tree untouched', () => {
+    const root = div([div([span('a')])]);
+    const snapshot = JSON.stringify(root);
+    expect(applyConfirmEditAt(root, [0], { realField: '', draftField: 'Draft' })).toBeNull();
+    expect(applyConfirmEditAt(root, [0], { realField: 'Status', draftField: '' })).toBeNull();
+    expect(applyConfirmEditAt(root, [0], { realField: 'Draft', draftField: 'Draft' })).toBeNull();
+    expect(JSON.stringify(root)).toBe(snapshot);
+    // a host already carrying a trigger refuses — the recipe adds action buttons
+    const busy = div([div([span('a')])]);
+    applyTriggerAt(busy, [0], { action: 'defaultClick' });
+    const busySnap = JSON.stringify(busy);
+    expect(applyConfirmEditAt(busy, [0], { realField: 'Status', draftField: 'Draft' })).toBeNull();
+    expect(JSON.stringify(busy)).toBe(busySnap);
+    // a leaf host refuses too — nothing to wrap as the edit surface
+    const leaf = div([span('x')]);
+    expect(applyConfirmEditAt(leaf, [0], { realField: 'Status', draftField: 'Draft' })).toBeNull();
+    // a host that already edits inline refuses — never stack a second editor
+    // (mirrors applyTriggerAt's inlineEdit guard)
+    const editing = div([div([span('a')])]);
+    editing.children![0].inlineEditField = '[$Title]';
+    const editingSnap = JSON.stringify(editing);
+    expect(applyConfirmEditAt(editing, [0], { realField: 'Status', draftField: 'Draft' })).toBeNull();
+    expect(JSON.stringify(editing)).toBe(editingSnap);
   });
 });
 
