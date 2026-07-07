@@ -19,11 +19,12 @@
 
 import { state } from './state';
 import { slotsFor, readSlot, writeSlot, slotIdForProp, type FxSlot } from './fxSlots';
-import { fxSuggestions, completionAt, type CompletionOpts } from './fxSuggest';
+import { fxSuggestions, completionAt, excelColumnRef, type CompletionOpts } from './fxSuggest';
 import { excelToSp, spToExcel } from './dialect';
 import { openIconPicker } from './iconPicker';
 import { openAcMenu, type AcMenu } from './acMenu';
 import { ctxForRow } from './previewCtx';
+import { FIELD_MIME } from './templateUi';
 import type { SPExpr } from '../core/types';
 
 type Tone = 'hint' | 'error' | 'ok' | 'raw';
@@ -304,18 +305,11 @@ export function mountFxBar(host: HTMLElement, opts: { accessory?: HTMLElement } 
     expand.className = 'wb-fx-expand';
     expand.type = 'button';
     expand.textContent = '⤢';
-    // dot + tooltip change when there is a stashed (unapplied) draft for this slot
-    const hasStash = !view.readOnly && (slot.id in (floatStash.get(node) ?? {}));
-    if (hasStash) {
-      expand.classList.add('wb-fx-has-stash');
-      expand.title = 'You have an unapplied formula here — click to resume editing it';
-    } else {
-      expand.title = 'Open a roomy editor — more space to write and read a longer formula';
-    }
+    expand.title = 'Open a roomy editor — more space to write and read a longer formula';
     expand.addEventListener('click', () => {
       closeMenu();
       closeFloat();
-      float = openFloat(node, nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), () => render(), (text) => {
+      float = openFloat(nameOfNode(node, slot), expand, slot, editor.value, view, suggestions, placeholder, applyText, () => render(), (text) => {
         float = null;
         editor.value = text;
         editor.classList.remove('wb-fx-draft');
@@ -379,15 +373,7 @@ function nameOfNode(node: { _elmName?: string; elmType?: string }, slot: FxSlot)
   return `${el} · ${slot.label}`;
 }
 
-/**
- * Unapplied float text, stashed per element + slot. Dismissing the window with
- * ✕ keeps what you typed (without committing it) so reopening resumes it — only
- * Apply touches the formatter.
- */
-const floatStash = new WeakMap<object, Record<string, string>>();
-
 function openFloat(
-  node: object,
   targetLabel: string,
   anchor: HTMLElement,
   slot: FxSlot,
@@ -396,8 +382,7 @@ function openFloat(
   suggestions: string[],
   placeholder: string,
   applyText: (text: string, setFb: SetFeedback) => boolean,
-  onApplied: () => void,
-  onDismissed: () => void,
+  onCommitted: () => void,
   onDock: (text: string) => void,
 ): { panel: HTMLElement; cleanup: () => void } {
   const panel = document.createElement('div');
@@ -405,7 +390,7 @@ function openFloat(
   // handler below) — see the convention comment in editor/overlay.ts.
   panel.className = 'wb-fx-float wb-esc-owner';
 
-  // ── draggable head, with a non-destructive ✕ dismiss ──
+  // ── draggable head, with a dock (⤓) and a close (✕) ──
   const head = document.createElement('div');
   head.className = 'wb-fx-float-head';
   const title = document.createElement('span');
@@ -418,21 +403,20 @@ function openFloat(
   dock.type = 'button';
   dock.className = 'wb-fx-float-dock';
   dock.textContent = '⤓';
-  dock.title = 'Dock back into the bar — keeps what you typed there, ready to apply';
+  dock.title = 'Dock back into the one-line bar — keep editing there';
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.className = 'wb-fx-float-dismiss';
   dismiss.textContent = '✕';
-  dismiss.title = 'Dismiss this window — what you typed is kept (unapplied) until you reopen it. Use Apply to commit.';
-  dismiss.setAttribute('aria-label', 'Dismiss');
+  dismiss.title = 'Close this editor (changes apply as you make them)';
+  dismiss.setAttribute('aria-label', 'Close');
   head.append(title, dock, dismiss);
 
   const ta = document.createElement('textarea');
   ta.className = 'wb-fx-float-editor';
   ta.rows = 8;
   ta.spellcheck = false;
-  // resume any stash for this element + slot, falling back to the live value
-  ta.value = floatStash.get(node)?.[slot.id] ?? initial;
+  ta.value = initial;
   ta.placeholder = placeholder;
   ta.readOnly = view.readOnly;
 
@@ -446,26 +430,33 @@ function openFloat(
     fb.setAttribute('role', tone === 'error' ? 'alert' : 'status');
     fb.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
   };
+  // typing again = "I'm fixing it" → drop a lingering refusal at once.
+  const clearError = (): void => {
+    if (fb.dataset.tone !== 'error') return;
+    fb.textContent = '';
+    delete fb.dataset.tone;
+    fb.setAttribute('role', 'status');
+    fb.setAttribute('aria-live', 'polite');
+  };
   if (view.readOnly) {
     setFb(`Read-only — ${view.note}`, 'raw');
     fb.appendChild(advancedLink());
-  } else setFb(`${slot.hint}  ·  Enter applies · Shift+Enter for a new line`, 'hint');
+  } else setFb(`${slot.hint}  ·  Changes apply when you click away`, 'hint');
 
-  // chips fill the editor (the Apply button commits) — visible value choices
-  const chips = buildChips(suggestions, view.readOnly, (value) => { ta.value = value; ta.focus(); });
+  // Commit like the inline bar: on change (fires on blur). Refuse-don't-guess —
+  // a bad formula shows an error and never mutates. No Apply button.
+  const commit = (): void => { if (applyText(ta.value, setFb)) onCommitted(); };
 
-  const foot = document.createElement('div');
-  foot.className = 'wb-fx-float-foot';
-  const apply = document.createElement('button');
-  apply.type = 'button';
-  apply.className = 'wb-fx-float-apply';
-  apply.textContent = 'Apply';
-  apply.disabled = view.readOnly;
-  foot.append(apply);
+  // chips fill the editor with a COMPLETE value and commit it, like the inline
+  // bar's value menu (a chip is a finished choice, not a token to keep editing).
+  const chips = buildChips(suggestions, view.readOnly, (value) => {
+    ta.value = value;
+    if (applyText(value, setFb)) onCommitted();
+    ta.focus();
+  });
 
   panel.append(head, ta, fb);
   if (chips) panel.append(chips);
-  panel.append(foot);
   document.body.appendChild(panel);
 
   // position under the anchor, kept on-screen
@@ -474,47 +465,66 @@ function openFloat(
   panel.style.left = `${Math.max(8, Math.min(r.left - 360, window.innerWidth - 380))}px`;
 
   let done = false;
-  // Dismiss keeps the typed text (unapplied) so it resumes on reopen; clearing
-  // the box clears the stash, so a wiped editor doesn't haunt the next open.
-  const dismissWin = (): void => {
+  const closeWin = (): void => {
     if (done) return;
     done = true;
-    if (!view.readOnly) {
-      const stash = floatStash.get(node) ?? {};
-      if (ta.value.trim() === initial.trim()) delete stash[slot.id];
-      else stash[slot.id] = ta.value;
-      if (Object.keys(stash).length) floatStash.set(node, stash);
-      else floatStash.delete(node);
-    }
     cleanup();
     panel.remove();
-    onDismissed(); // re-render so the stash dot appears / clears immediately
+    onCommitted(); // re-render the inline bar so it reflects the committed value
   };
   const dockWin = (): void => {
     if (done) return;
     done = true;
-    // the in-progress text moves to the inline bar (uncommitted); clear any stash
-    const stash = floatStash.get(node);
-    if (stash) { delete stash[slot.id]; if (!Object.keys(stash).length) floatStash.delete(node); }
     cleanup();
     panel.remove();
-    onDock(ta.value);
-  };
-  const doApply = (): void => {
-    if (!applyText(ta.value, setFb)) return;
-    // committed — it's no longer an unapplied stash
-    const stash = floatStash.get(node);
-    if (stash) { delete stash[slot.id]; if (!Object.keys(stash).length) floatStash.delete(node); }
-    onApplied(); // refresh the inline bar; the window stays open
+    onDock(ta.value); // hand the current text back to the inline bar
   };
 
-  apply.addEventListener('click', doApply);
-  dismiss.addEventListener('click', dismissWin);
+  dismiss.addEventListener('click', closeWin);
   dock.addEventListener('click', dockWin);
+  ta.addEventListener('input', clearError);
+  ta.addEventListener('change', commit);
   ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doApply(); }
-    if (e.key === 'Escape') { e.preventDefault(); dismissWin(); }
+    // a roomy multiline editor: Enter inserts a new line; Escape closes.
+    if (e.key === 'Escape') { e.preventDefault(); closeWin(); }
   });
+
+  // ── drop a column chip (FIELD_MIME) to insert its reference at the drop point ──
+  // Accept-gated per the repo convention: only claim the drop for a field payload.
+  if (!view.readOnly) {
+    const accepts = (e: DragEvent): boolean => !!e.dataTransfer?.types.includes(FIELD_MIME);
+    ta.addEventListener('dragover', (e) => {
+      if (!accepts(e)) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'copy';
+      ta.classList.add('wb-fx-float-drop');
+    });
+    ta.addEventListener('dragleave', () => ta.classList.remove('wb-fx-float-drop'));
+    ta.addEventListener('drop', (e) => {
+      ta.classList.remove('wb-fx-float-drop');
+      if (!accepts(e)) return;
+      e.preventDefault();
+      const field = state.fields.find((f) => f.name === e.dataTransfer!.getData(FIELD_MIME));
+      if (!field) return;
+      const ref = excelColumnRef(field); // the Excel bracket form: [Display Name]
+      if (ta.value.trim() === '') {
+        // a bare drop onto an empty editor binds the whole column — a complete
+        // formula, so apply it straight away (one gesture = one commit).
+        ta.value = `=${ref}`;
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        clearError();
+        if (applyText(ta.value, setFb)) onCommitted();
+      } else {
+        // mid-formula: splice the reference at the drop point like typed text;
+        // it commits on the next change as the maker keeps building the formula.
+        const at = dropCaret(ta, e);
+        ta.value = ta.value.slice(0, at) + ref + ta.value.slice(at);
+        ta.setSelectionRange(at + ref.length, at + ref.length);
+        clearError();
+      }
+      ta.focus();
+    });
+  }
 
   // ── drag by the head (anywhere but the ✕) ──
   let drag: { dx: number; dy: number } | null = null;
@@ -547,6 +557,25 @@ function openFloat(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/** The text index a drop lands on inside the textarea — mapped from the pointer
+ *  when the browser supports it, else the current caret (or end). */
+function dropCaret(ta: HTMLTextAreaElement, e: DragEvent): number {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  try {
+    if (typeof doc.caretPositionFromPoint === 'function') {
+      const p = doc.caretPositionFromPoint(e.clientX, e.clientY);
+      if (p && (p.offsetNode === ta || ta.contains(p.offsetNode))) return p.offset;
+    } else if (typeof doc.caretRangeFromPoint === 'function') {
+      const range = doc.caretRangeFromPoint(e.clientX, e.clientY);
+      if (range && (range.startContainer === ta || ta.contains(range.startContainer))) return range.startOffset;
+    }
+  } catch { /* fall through to the caret / end fallback */ }
+  return ta.selectionStart ?? ta.value.length;
+}
 
 /** One-click shortcut to open the Advanced panel from a read-only fx-bar note. */
 function advancedLink(): HTMLButtonElement {

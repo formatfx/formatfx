@@ -2343,13 +2343,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   background: var(--wb-surface); color: var(--wb-text-2); cursor: pointer;
 }
 .wb-fx-expand:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-fx-expand.wb-fx-has-stash { position: relative; border-color: var(--wb-accent); }
-.wb-fx-expand.wb-fx-has-stash::after {
-  content: ''; display: block; position: absolute;
-  top: 2px; right: 2px; width: 5px; height: 5px;
-  border-radius: 50%; background: var(--wb-accent);
-  pointer-events: none;
-}
 .wb-fx-clear:hover { border-color: #d13438; color: #d13438; }
 .wb-fx-feedback { font-size: 11px; color: var(--wb-text-2); margin: 4px 0 0 26px; min-height: 14px; }
 .wb-fx-feedback[data-tone="error"] { color: #d13438; }
@@ -2541,14 +2534,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-fx-float-editor:focus { outline: none; border-color: var(--wb-accent); }
 .wb-fx-float-editor:read-only { color: var(--wb-text-2); font-style: italic; }
-.wb-fx-float-foot { display: flex; justify-content: flex-end; gap: 8px; }
-.wb-fx-float-foot button {
-  padding: 5px 14px; font-size: 12.5px; border-radius: 4px;
-  border: 1px solid var(--wb-border); background: var(--wb-surface); color: var(--wb-text); cursor: pointer;
-}
-.wb-fx-float-cancel:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-fx-float-apply:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: var(--wb-accent-text); }
-.wb-fx-float-apply:disabled { opacity: .45; cursor: default; }
+/* a column chip dragged over the editor — reuse the canvas/tree drop look */
+.wb-fx-float-editor.wb-fx-float-drop { outline: 2px dashed var(--wb-accent); outline-offset: -1px; background: rgba(0, 120, 212, .08); }
 
 /* ── Structure pane: auto-hide (pin) to a rail, like the side pane ────────── */
 .wb-pane-tree h2 { display: flex; align-items: center; justify-content: space-between; }
