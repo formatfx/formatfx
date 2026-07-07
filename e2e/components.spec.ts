@@ -363,6 +363,65 @@ test('the workshop: edit a slot label + a style, pin one usage as-found — one 
   await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
 });
 
+test('live nesting cascade (#225): saving a CHILD re-bakes every parent that embeds it on the canvas, one undo', async ({ page }) => {
+  // package two plain grid cells as custom components — a CHILD and a PARENT
+  await treeRow(page, 'DueDate').click({ button: 'right' });
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  await page.locator('.wb-compmap .wb-compmap-name').fill('Childlook');
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Saved “Childlook”');
+
+  await treeRow(page, 'Title').click({ button: 'right' });
+  await page.locator('.wb-grid-menu button', { hasText: 'Save as component…' }).click();
+  await page.locator('.wb-compmap .wb-compmap-name').fill('Parentlook');
+  await page.locator('.wb-compmap .wb-compmap-insert').click();
+  await expect(page.locator('#wb-toast')).toContainText('Saved “Parentlook”');
+
+  // embed the child INSIDE the parent (composition at the definition layer),
+  // then Save (the parent has no usages yet — the replace-only path)
+  await (await openDrawer(browseNode(page, 'Parentlook'))).locator('.wb-comp-edit').click();
+  let ce = page.locator('#wb-workshop .wb-ce');
+  await expect(ce).toBeVisible();
+  await ce.locator('.wb-ce-embedpick').selectOption({ label: 'Childlook' });
+  await ce.locator('.wb-ce-embedadd').click();
+  await expect(page.locator('#wb-toast')).toContainText('Embedded “Childlook”');
+  await ce.locator('.wb-ce-save').click();
+  await expect(page.locator('#wb-toast')).toContainText('Saved “Parentlook”');
+
+  // apply the PARENT to the grid — one new column whose cells render the
+  // embedded child too (best-guess fills the parent's Title slot AND the
+  // child's surfaced, namespaced date slot)
+  await openGridTab(page);
+  await (await openDrawer(browseNode(page, 'Parentlook'))).locator('.wb-comp-add').click();
+  const dlg = page.locator('.wb-compmap');
+  await expect(dlg).toBeVisible();
+  await dlg.locator('.wb-compmap-insert').click();
+  await expect(dlg).toHaveCount(0);
+
+  // nothing purple on the canvas yet
+  const purple = '[style*="rgb(92, 45, 145)"]';
+  await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
+
+  // edit the CHILD — purple its text — and Save. The child has NO direct usages
+  // (only the parent embeds it), so the save runs the replace-only path, whose
+  // cascade must still reach the parent instance living on the grid
+  await (await openDrawer(browseNode(page, 'Childlook'))).locator('.wb-comp-edit').click();
+  ce = page.locator('#wb-workshop .wb-ce');
+  await expect(ce).toBeVisible();
+  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await ce.locator('.wb-ce-save').click();
+  await expect(page.locator('#wb-toast')).toContainText('refreshed 1 place');
+
+  // the parent column re-baked LIVE — its cells now wear the child's new purple
+  // look (once per mock row), without ever reopening the parent
+  await openGridTab(page);
+  await expect(page.locator(`#wb-canvas ${purple}`)).not.toHaveCount(0);
+
+  // ONE Ctrl+Z reverts the whole cascade
+  await page.keyboard.press('Control+z');
+  await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
+});
+
 test('editing a built-in offers Save-as-new only; the tab swaps onto the copy under Yours', async ({ page }) => {
   const drawer = await openDrawer(browseNode(page, 'Deadline chip'));
   await drawer.locator('.wb-comp-edit').click();

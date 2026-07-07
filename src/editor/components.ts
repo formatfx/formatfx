@@ -302,10 +302,13 @@ export function bindComponentInstance(def: ComponentDef, mapping: Record<string,
 // tree into ONE plain, self-contained def at bind/apply time, so what bakes
 // onto a column or view — and what ships to SharePoint — is ordinary
 // schema-valid JSON with zero runtime dependency. Editing a child updates
-// every parent's NEXT bake; already-applied instances stay frozen snapshots.
-// (A CFR-backed LIVE reference — the parent pointing at a child column
-// formatter ON THE TENANT via columnFormatterReference — is deliberately
-// future work; the owner's call on #225 is snapshot-only for now.)
+// every parent's NEXT bake AND re-bakes their already-applied canvas instances
+// LIVE on save (componentEditor's cascadeToEmbedders, keyed on
+// transitiveEmbedders — the whole chain, D→A→B, in one undo step). What can't
+// be reached is a formatter already exported to a SharePoint list: that's a
+// dead copy, not a live link — a CFR-backed LIVE reference (the parent pointing
+// at a child column formatter ON THE TENANT via columnFormatterReference) is
+// deliberately future work; the owner's call on #225 is snapshot-only there.
 //
 // Cycle protection replays the CFR registry's author-time pattern: refuse
 // A→B→A when the maker tries it (embedRefusal, teaching message), and even a
@@ -411,6 +414,16 @@ export function withoutEmbed(parent: ComponentDef, ns: string): ComponentDef {
  *  blast radius (the CFR subsystem's precedent, kept minimal). */
 export function componentsEmbedding(id: string, defs: ComponentDef[]): ComponentDef[] {
   return defs.filter((d) => d.id !== id && (d.embeds ?? []).some((e) => e.of === id));
+}
+
+/** Every def that reaches `id` through embeds TRANSITIVELY, self excluded —
+ *  the full in-app blast radius a child edit must re-bake (D→A→B: saving B
+ *  refreshes A's AND D's live instances, not just A's). `componentsEmbedding`
+ *  is the direct-only sibling (delete guard, "used by N" line); this follows
+ *  the whole chain. Leans on embedClosure, which is cycle- and dangling-safe,
+ *  so it terminates on any store — including a hand-corrupted cyclic one. */
+export function transitiveEmbedders(id: string, defs: ComponentDef[]): ComponentDef[] {
+  return defs.filter((d) => d.id !== id && embedClosure(d, defs).has(id));
 }
 
 /**

@@ -39,6 +39,7 @@ import {
   bestGuessMapping, bindComponent, componentId, componentKind,
   createVariant, rebindInstance, replaceStampedIn, restampIn, uniqueName,
   flattenComponent, embedRefusal, embedClosure, withEmbed, withoutEmbed,
+  transitiveEmbedders,
   type ComponentDef, type ComponentEmbed,
 } from './components';
 import { paletteComponents } from './paletteComponents';
@@ -338,7 +339,7 @@ export function mountComponentWorkshop(
     embedsHost.replaceChildren();
     const note = document.createElement('div');
     note.className = 'wb-ce-note';
-    note.textContent = 'Applying this component bakes ONE flattened, self-contained formatter — a snapshot, no live link on SharePoint. An embedded component\'s unmapped slots surface on this one, namespaced.';
+    note.textContent = 'Editing an embedded component updates every place that nests it, live, across the app. Applying still bakes ONE flattened, self-contained formatter — SharePoint stores a copy, not a live link, so a formatter you\'ve already applied there won\'t change after the fact. An embedded component\'s unmapped slots surface on this one, namespaced.';
     embedsHost.appendChild(note);
     for (const em of staged.embeds ?? []) {
       const row = document.createElement('div');
@@ -737,11 +738,16 @@ export function mountComponentWorkshop(
     if (f && children && i >= 0) children[i] = gridCellForField(f, state.columnLooks);
   };
 
-  const applyUsage = (u: ComponentUsage, newDef: ComponentDef): void => {
+  /** Re-bake ONE usage of the def stamped `targetId` to `bakedDef` (that def
+   *  flattened against the fresh library), using the instance's OWN stored slot
+   *  map. `oldName` is the name instances were stamped under — rebindInstance
+   *  preserves a maker's rename against it. Generalized over `targetId` so the
+   *  embedder cascade can re-bake PARENT instances, not only the edited def. */
+  const rebakeUsage = (u: ComponentUsage, targetId: string, oldName: string, bakedDef: ComponentDef): void => {
     if (u.kind === 'view') {
       const el = state.nodeAt(u.path);
-      if (!el || el._component?.id !== def.id) return; // stale path — never clobber
-      const next = rebindInstance(newDef, el, def.name);
+      if (!el || el._component?.id !== targetId) return; // stale path — never clobber
+      const next = rebindInstance(bakedDef, el, oldName);
       if (next) replaceInDoc(u.path, next);
       return;
     }
@@ -751,12 +757,48 @@ export function mountComponentWorkshop(
     // subtrees; those re-bind in place.
     const look = Object.hasOwn(state.columnLooks, u.field) ? state.columnLooks[u.field] : undefined;
     if (!look) return;
-    const next = look._component?.id === def.id
-      ? rebindInstance(newDef, look, def.name)
-      : replaceStampedIn(look, def.id, (el) => rebindInstance(newDef, el, def.name) ?? el);
+    const next = look._component?.id === targetId
+      ? rebindInstance(bakedDef, look, oldName)
+      : replaceStampedIn(look, targetId, (el) => rebindInstance(bakedDef, el, oldName) ?? el);
     if (!next) return;
     state.columnLooks[u.field] = next;
     rewriteFloorCell(u.field);
+  };
+
+  /** The edited def's own direct usages (behaviour-identical to before). */
+  const applyUsage = (u: ComponentUsage, newDef: ComponentDef): void =>
+    rebakeUsage(u, def.id, def.name, newDef);
+
+  /**
+   * The in-app LIVE cascade (#225 follow-up): saving a component re-bakes every
+   * place on the canvas that uses a DIFFERENT component which (transitively)
+   * embeds the one just saved — so editing a Status pill refreshes the Task
+   * card and the Badge that wraps it, wherever they sit, without reopening
+   * them. SharePoint-exported JSON is a dead copy and stays out of reach (there
+   * is no live link to push to — that's the CFR decision, not this one); this
+   * is purely the formatfx-side surface. Parent instances carry no per-usage
+   * pin UI here, so they always re-bake (their own "keep as-found" variants are
+   * flattened, carry no embeds, and so never appear in the blast radius).
+   * Runs INSIDE an already-open batchProjectUpdate; returns what it touched.
+   */
+  const cascadeToEmbedders = (savedId: string, allDefs: ComponentDef[]): { places: number; fields: string[] } => {
+    const parents = transitiveEmbedders(savedId, allDefs);
+    if (!parents.length) return { places: 0, fields: [] };
+    const scan = scanComponentUsages(parents, state.doc.root, state.columnLooks);
+    const fields = new Set<string>();
+    let places = 0;
+    for (const parent of parents) {
+      const parentUsages = scan.get(parent.id) ?? [];
+      if (!parentUsages.length) continue;
+      // re-bake from the parent's OWN flatten — it inlines the fresh child
+      const baked = flattenComponent(parent, allDefs);
+      for (const u of parentUsages) {
+        rebakeUsage(u, parent.id, parent.name, baked);
+        places += 1;
+        if (u.kind === 'column') fields.add(u.field);
+      }
+    }
+    return { places, fields: [...fields] };
   };
 
   const pinUsage = (u: ComponentUsage, variantId: string): void => {
@@ -799,19 +841,24 @@ export function mountComponentWorkshop(
     }
     // instances always wear the RESOLVED recipe — re-bakes bind the flattened
     // shape (#225), matching what the mapper bound at insert time
-    const bakedDef = flattenComponent(newDef, [...BUILTIN_COMPONENTS, ...paletteComponents(), ...list]);
+    const allDefs = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...list];
+    const bakedDef = flattenComponent(newDef, allDefs);
     // the WHOLE apply — doc subtree replacements + registry re-bakes + tag
-    // restamps — is ONE undoable step (batchProjectUpdate wraps one snapshot)
+    // restamps + the embedder cascade — is ONE undoable step (batchProjectUpdate
+    // wraps one snapshot)
+    let cascaded = { places: 0, fields: [] as string[] };
     const touched = [...new Set(usages.flatMap((u) => (u.kind === 'column' ? [u.field] : [])))];
     state.batchProjectUpdate(touched, () => {
       for (const u of unpinnedList) applyUsage(u, bakedDef);
       if (variant) for (const u of pinnedList) pinUsage(u, variant.id);
+      cascaded = cascadeToEmbedders(def.id, allDefs); // live: refresh every component that embeds this one
     });
     setDirty(false);
     const parts = [`Replaced “${newDef.name}”`];
     if (unpinnedList.length) parts.push(`updated ${unpinnedList.length} place${unpinnedList.length === 1 ? '' : 's'}`);
     if (variant) parts.push(`kept ${pinnedList.length} as-found via “${variant.name}”`);
-    onToast(`${parts.join(', ')}${usages.length ? ' — one Ctrl+Z reverts the whole apply' : ''}`);
+    if (cascaded.places) parts.push(`refreshed ${cascaded.places} place${cascaded.places === 1 ? '' : 's'} nesting it`);
+    onToast(`${parts.join(', ')}${usages.length || cascaded.places ? ' — one Ctrl+Z reverts the whole apply' : ''}`);
     libraryRefresh?.();
     opts.onSaved(def.id); // the tab re-stages on the saved def (remounts us)
   };
@@ -831,8 +878,16 @@ export function mountComponentWorkshop(
       onToast('Could not save the component — browser storage is full or blocked');
       return;
     }
+    // no DIRECT usages, but a component that EMBEDS this one may be live on the
+    // canvas — refresh those in one undoable step (a no-op cascade records
+    // nothing, so the "nothing changed" message below still holds)
+    const allDefs = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...next];
+    let cascaded = { places: 0, fields: [] as string[] };
+    state.batchProjectUpdate([], () => { cascaded = cascadeToEmbedders(def.id, allDefs); });
     setDirty(false);
-    onToast(`Saved “${newDef.name}” — it's not used anywhere yet, so nothing on the canvas changed`);
+    onToast(cascaded.places
+      ? `Saved “${newDef.name}” — refreshed ${cascaded.places} place${cascaded.places === 1 ? '' : 's'} that nest it (one Ctrl+Z reverts)`
+      : `Saved “${newDef.name}” — it's not used anywhere yet, so nothing on the canvas changed`);
     libraryRefresh?.();
     opts.onSaved(def.id);
   };

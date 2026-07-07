@@ -17,7 +17,7 @@ import {
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
   MAX_COMPONENT_DEPTH, embedNamespace, embedClosure, componentDepth,
-  embedRefusal, withEmbed, withoutEmbed, componentsEmbedding, flattenComponent,
+  embedRefusal, withEmbed, withoutEmbed, componentsEmbedding, transitiveEmbedders, flattenComponent,
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel } from './componentUsage';
@@ -687,6 +687,34 @@ describe('component nesting (#225): embed, cycle refusal, depth cap, flatten', (
     const card = withEmbed(CARD_BASE, PILL);
     expect(componentsEmbedding('c-pill', [PILL, card]).map((d) => d.id)).toEqual(['c-card']);
     expect(componentsEmbedding('c-card', [PILL, card])).toEqual([]);
+  });
+
+  it('transitiveEmbedders: the FULL re-bake blast radius — follows chains, self excluded, cycle-safe', () => {
+    const card = withEmbed(CARD_BASE, PILL);                           // Task card → Status pill
+    const badgePlain: ComponentDef = {
+      id: 'c-badge', name: 'Badge', description: '', slots: [],
+      root: { elmType: 'div', children: [] },
+    };
+    const badge = withEmbed(badgePlain, card);                         // Badge → Task card → Status pill
+    const defs = [PILL, card, badge];
+    // editing the pill must re-bake BOTH the card and the badge that wraps it —
+    // componentsEmbedding (direct-only) would miss the badge
+    expect(transitiveEmbedders('c-pill', defs).map((d) => d.id).sort()).toEqual(['c-badge', 'c-card']);
+    expect(componentsEmbedding('c-pill', defs).map((d) => d.id)).toEqual(['c-card']); // contrast
+    // editing the card re-bakes only the badge above it
+    expect(transitiveEmbedders('c-card', defs).map((d) => d.id)).toEqual(['c-badge']);
+    // a top component nobody embeds has an empty blast radius
+    expect(transitiveEmbedders('c-badge', defs)).toEqual([]);
+    // a hand-corrupted A↔B store terminates (embedClosure never revisits an id)
+    const a: ComponentDef = {
+      id: 'c-a', name: 'A', description: '', slots: [],
+      embeds: [{ ns: 'B', of: 'c-b', name: 'B' }], root: { elmType: 'div', _embed: 'B' },
+    };
+    const b: ComponentDef = {
+      id: 'c-b', name: 'B', description: '', slots: [],
+      embeds: [{ ns: 'A', of: 'c-a', name: 'A' }], root: { elmType: 'div', _embed: 'A' },
+    };
+    expect(transitiveEmbedders('c-a', [a, b]).map((d) => d.id)).toEqual(['c-b']);
   });
 
   it('persistence: embeds round-trip the store; pre-nesting shapes load unchanged; corrupt embeds strip, not sink', () => {
