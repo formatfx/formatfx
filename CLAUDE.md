@@ -61,3 +61,20 @@ guidance in your environment.
   capture lands, #214**); deploys confirm first and are
   lint-gated. The auth constraint behind all of this is closed:
   docs/CONNECTIVITY.md §1.
+
+## Live-tenant / devtools probe notes (browser is the only auth path, CONNECTIVITY §1)
+
+- The chrome-devtools MCP browser is its **own signed-in Chrome profile**
+  (`~/.cache/chrome-devtools-mcp/`), separate from your normal one, on a
+  `--remote-debugging-pipe` (no pollable port). A stale instance blocks
+  `list_pages` — kill the `chrome-devtools-mcp` chrome process, then retry.
+- **Synthetic clicks don't drive SharePoint's React UI** — `el.click()` and
+  dispatched events silently fail to open column-header flyouts / command
+  menus. Use the MCP `click` tool by uid; for deep multi-step panels (e.g.
+  Quick Steps editor) hand the click to the owner.
+- SharePoint REST from the page: read-**POSTs** (e.g. `GetAllRules()`) need
+  `X-RequestDigest` from `POST /_api/contextinfo` (403 "security validation"
+  without). Deletes often need params in the **query string**, not a JSON body.
+- PowerShell has here-strings (`@'...'@`) but **not bash `<<EOF` heredoc
+  redirection** (parse error) — write multi-line git commit / PR bodies to a
+  temp file and use `git commit -F file` / `gh pr create --body-file file`.
