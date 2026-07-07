@@ -305,78 +305,135 @@ describe('fxBar', () => {
       return panel;
     };
 
-    it('⤢ opens a roomy editor; Apply transpiles and keeps the window open', () => {
+    // instant model: input clears a lingering refusal, change (blur) commits.
+    // There is no Apply button — the roomy editor commits like the inline bar.
+    const typeFloat = (panel: HTMLElement, text: string): void => {
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      ta.value = text;
+      ta.dispatchEvent(new Event('input'));
+      ta.dispatchEvent(new Event('change'));
+    };
+
+    // a column chip dragged from the shelf: FIELD_MIME payload = the field name
+    const fieldDrag = (name: string, kind: 'dragover' | 'drop'): Event => {
+      const ev = new Event(kind, { bubbles: false, cancelable: true });
+      (ev as unknown as { dataTransfer: unknown }).dataTransfer = {
+        types: ['application/x-wb-field'],
+        getData: (m: string) => (m === 'application/x-wb-field' ? name : ''),
+        setData: () => {},
+        dropEffect: '',
+        effectAllowed: '',
+      };
+      return ev;
+    };
+
+    it('⤢ opens a roomy editor; typing + blur (change) commits — no Apply button', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'ink');
+      const panel = openFloat(host);
+      expect(panel.querySelector('.wb-fx-float-apply')).toBeNull(); // Apply is gone
+      typeFloat(panel, '=IF([Status] = "Blocked", "#d13438", "")');
+      expect(state.selectedNode!.style!['color']).toBe("=if([$Status] == 'Blocked', '#d13438', '')");
+      // a free-floating tool window — it stays open after the commit
+      expect(document.querySelector('.wb-fx-float')).not.toBeNull();
+    });
+
+    it('a refusal on commit leaves the document untouched and shows an error', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      typeFloat(panel, '=NOPE([Status]');
+      expect(state.selectedNode!.style).toBeUndefined();            // nothing written
+      expect(document.querySelector('.wb-fx-float')).not.toBeNull(); // stays open
+      expect($(panel, '.wb-fx-feedback').getAttribute('data-tone')).toBe('error');
+    });
+
+    it('✕ closes the window (changes already applied instantly)', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const panel = openFloat(host);
+      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
+      expect(document.querySelector('.wb-fx-float')).toBeNull();
+    });
+
+    it('accepts a column-chip drag (FIELD_MIME): prevents default and highlights', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const ta = $<HTMLTextAreaElement>(openFloat(host), '.wb-fx-float-editor');
+      const ev = fieldDrag('Status', 'dragover');
+      ta.dispatchEvent(ev);
+      expect(ev.defaultPrevented).toBe(true);
+      expect(ta.classList.contains('wb-fx-float-drop')).toBe(true);
+      // a payload it won't act on is ignored — no highlight, no preventDefault
+      const foreign = new Event('dragover', { bubbles: false, cancelable: true });
+      (foreign as unknown as { dataTransfer: unknown }).dataTransfer = { types: ['application/x-wb-component'], getData: () => '', setData: () => {}, dropEffect: '' };
+      ta.dispatchEvent(foreign);
+      expect(foreign.defaultPrevented).toBe(false);
+    });
+
+    it('dropping a column onto an empty editor binds it as =[Column] and applies', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const ta = $<HTMLTextAreaElement>(openFloat(host), '.wb-fx-float-editor');
+      ta.value = ''; // an empty editor — a bare drop becomes a whole-column binding
+      ta.dispatchEvent(fieldDrag('Status', 'drop'));
+      expect(ta.value).toBe('=[Status]');
+      expect(state.selectedNode!.style!['background-color']).toBe('=[$Status]');
+    });
+
+    it('dropping a column into a formula splices its [Column] reference at the caret', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const ta = $<HTMLTextAreaElement>(openFloat(host), '.wb-fx-float-editor');
+      ta.value = '=IF(';
+      ta.setSelectionRange(4, 4);
+      ta.dispatchEvent(fieldDrag('Owner', 'drop'));
+      expect(ta.value).toBe('=IF([Owner]');
+      expect(state.selectedNode!.style).toBeUndefined(); // mid-formula: not committed yet
+    });
+
+    it('dropping an unknown field is a no-op', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill');
+      const ta = $<HTMLTextAreaElement>(openFloat(host), '.wb-fx-float-editor');
+      ta.value = '';
+      ta.dispatchEvent(fieldDrag('Ghost', 'drop'));
+      expect(ta.value).toBe('');
+      expect(state.selectedNode!.style).toBeUndefined();
+    });
+
+    it('Escape applies the current text and closes (like clicking away)', () => {
       const host = mountWith({ elmType: 'div' });
       setSlot(host, 'ink');
       const panel = openFloat(host);
       const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
-      ta.value = '=IF([Status] = "Blocked", "#d13438", "")';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
-      expect(state.selectedNode!.style!['color']).toBe("=if([$Status] == 'Blocked', '#d13438', '')");
-      // it's a free-floating tool window now — it stays open after Apply
-      expect(document.querySelector('.wb-fx-float')).not.toBeNull();
+      ta.value = '#0078d4';
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(state.selectedNode!.style!['color']).toBe('#0078d4'); // committed
+      expect(document.querySelector('.wb-fx-float')).toBeNull();    // and closed
     });
 
-    it('✕ dismisses without mutating, keeping the typed text unapplied for reopen', () => {
+    it('Escape on an invalid formula refuses and keeps the window open', () => {
       const host = mountWith({ elmType: 'div' });
       setSlot(host, 'fill');
       const panel = openFloat(host);
-      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#000000';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
-      expect(state.selectedNode!.style).toBeUndefined(); // dismiss never commits
-      expect(document.querySelector('.wb-fx-float')).toBeNull();
-      // reopening on the same cell/slot resumes the unapplied text
-      const reopened = openFloat(host);
-      expect($<HTMLTextAreaElement>(reopened, '.wb-fx-float-editor').value).toBe('#000000');
-      expect(state.selectedNode!.style).toBeUndefined(); // still uncommitted
-    });
-
-    it('stash dot: ⤢ gains wb-fx-has-stash and updated tooltip after dismiss with unapplied draft', () => {
-      const host = mountWith({ elmType: 'div' });
-      setSlot(host, 'fill');
-      const panel = openFloat(host);
-      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#abcdef';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
-      // dismiss triggers a re-render — the dot appears immediately
-      const expand = $<HTMLButtonElement>(host, '.wb-fx-expand');
-      expect(expand.classList.contains('wb-fx-has-stash')).toBe(true);
-      expect(expand.title).toMatch(/unapplied/i);
-    });
-
-    it('stash dot: ⤢ clears wb-fx-has-stash after the stashed draft is applied', () => {
-      const host = mountWith({ elmType: 'div' });
-      setSlot(host, 'fill');
-      const panel = openFloat(host);
-      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '#abcdef';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
-      // dot is present after dismiss
-      expect($<HTMLButtonElement>(host, '.wb-fx-expand').classList.contains('wb-fx-has-stash')).toBe(true);
-      // reopen and apply
-      const reopened = openFloat(host);
-      $<HTMLButtonElement>(reopened, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
-      // apply triggers onApplied → render — dot must be gone
-      expect($<HTMLButtonElement>(host, '.wb-fx-expand').classList.contains('wb-fx-has-stash')).toBe(false);
-    });
-
-    it('stash dot: appears even when the stashed value is an empty string (key-existence check)', () => {
-      const host = mountWith({ elmType: 'div', style: { 'background-color': '#ffffff' } });
-      setSlot(host, 'fill');
-      const panel = openFloat(host);
-      // clear the textarea — differs from initial '#ffffff', so '' is stashed
-      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-dismiss').dispatchEvent(new Event('click'));
-      expect($<HTMLButtonElement>(host, '.wb-fx-expand').classList.contains('wb-fx-has-stash')).toBe(true);
-    });
-
-    it('refused input in the float keeps it open and leaves the doc untouched', () => {
-      const host = mountWith({ elmType: 'div' });
-      setSlot(host, 'fill');
-      const panel = openFloat(host);
-      $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor').value = '=NOPE([Status]';
-      $<HTMLButtonElement>(panel, '.wb-fx-float-apply').dispatchEvent(new Event('click'));
-      expect(state.selectedNode!.style).toBeUndefined();
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      ta.value = '=NOPE([Status]';
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(state.selectedNode!.style).toBeUndefined();             // nothing written
       expect(document.querySelector('.wb-fx-float')).not.toBeNull(); // stays open
       expect($(panel, '.wb-fx-feedback').getAttribute('data-tone')).toBe('error');
+    });
+
+    it('Escape on an untouched suggestion-draft closes without committing it', () => {
+      const host = mountWith({ elmType: 'div' });
+      setSlot(host, 'fill'); // a draftable slot: the editor opens pre-filled
+      const panel = openFloat(host);
+      const ta = $<HTMLTextAreaElement>(panel, '.wb-fx-float-editor');
+      expect(ta.value).not.toBe(''); // a muted best-default draft was pre-filled
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(state.selectedNode!.style).toBeUndefined();          // draft never writes
+      expect(document.querySelector('.wb-fx-float')).toBeNull();  // just closes
     });
   });
 });

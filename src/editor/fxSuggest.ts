@@ -22,7 +22,10 @@ import { evaluate, type EvalContext, type SPValue } from '../core/expressions';
 import type { FxSlot } from './fxSlots';
 import { COND_COLORS, suggestChoiceColors, condColor } from './condRules';
 
-const fieldRef = (f: MockField): string => `[${f.displayName ?? f.name}]`;
+/** A column reference in the bar's Excel bracket form: `[Display Name]` — the one
+ *  spelling the fx editor reads and inserts (suggestions, autocomplete, drops). */
+export const excelColumnRef = (f: MockField): string => `[${f.displayName ?? f.name}]`;
+const fieldRef = excelColumnRef;
 
 /** A choice value safe to embed in a literal (no quote — SP strings can't escape). */
 function sampleChoice(f: MockField | undefined): { field: MockField; value: string } | null {
@@ -360,7 +363,7 @@ function choiceDoc(f: MockField): string {
 
 /** Column references in the bar's Excel bracket form — offered while typing `[`. */
 export function columnCompletions(fields: MockField[]): string[] {
-  return dedupe(fields.map((f) => `[${f.displayName ?? f.name}]`));
+  return dedupe(fields.map(excelColumnRef));
 }
 
 /** Docs for the Excel-dialect words the bar understands (see contextCompletions). */
