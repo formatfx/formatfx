@@ -805,9 +805,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    anything here: no app registrations is a HARD constraint and only
    page-context auth satisfies it post-ACS). Shipped: the FormatFX List
    Snapshot v1 (fourth schemaImport format, ALSO the future extension
-   wire protocol — version it), the GET-only extract snippet ("⚡ Live
+   wire protocol — version it), the read-only extract snippet ("⚡ Live
    from SharePoint" in the Data tab; captures fields + live column AND
-   view formatters + 10 rows), captured views in state.importedViews
+   view formatters + 10 rows — GET-only today, but the constraint is now
+   "read-only, no mutation" so read-POSTs like GetAllRules() are allowed:
+   owner decision 2026-07-07, CONNECTIVITY §8), captured views in
+   state.importedViews
    (additive project key) with default-view auto-load under the exact
    isPureGrid guard, and the confirm-first deploy snippet (JSON tab →
    🚀 Deploy…, advanced-gated, LINT-GATED — refuse-and-teach applies to

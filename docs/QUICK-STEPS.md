@@ -57,17 +57,18 @@ capture target on the List Snapshot format (CONNECTIVITY §3.1). **The identifie
 is therefore NOT dev-tools-only** — the "scrape it from the DOM" limitation is
 an authoring-UX gap in the native product, not a data gap for us.
 
-> **Implementation note — POST vs the GET-only extractor invariant.** Unlike
-> the field/view/item captures, `GetAllRules()` is a **POST** (a POST that
-> *reads*). The Tier-0 extract snippet is deliberately **GET-only** and has a
-> test asserting the extractor contains no write verbs (CONNECTIVITY §3.6). So
-> this call cannot ride the existing extract-snippet path unchanged: either
-> route the Rules/Quick Steps read through `spClient`/the extension (where a
-> read-POST is fine) rather than the pasted GET-only snippet, or relax that
-> invariant to allow an allow-listed read-POST. The safety property we actually
-> care about is **no mutation**, not the HTTP verb — but the literal "GET-only"
-> contract is load-bearing for the snippet's auditability, so keep the read-POST
-> out of it.
+> **Implementation note — `GetAllRules()` is a read-POST, and that's fine now.**
+> Unlike the field/view/item captures, `GetAllRules()` is a **POST** (a POST
+> that *reads*). Per the **2026-07-07 owner decision** (CONNECTIVITY §8), the
+> old "extraction stays GET-only" constraint is retired in favor of "extraction
+> stays **read-only** (no mutation)" — so a read-POST like this is explicitly
+> allowed in the capture path; no verb gymnastics needed. The snippet's
+> no-write-verbs test *will become* a no-*mutation*-verbs test (a read-POST
+> passes; a data-changing MERGE/POST does not — those stay the confirm-first
+> deploy path) **in the read-side implementation PR** — **today the snippet and
+> its tests still enforce literal GET-only**, so this note describes the policy
+> the implementation will realize, not current behavior. Route the Rules/Quick
+> Steps read wherever is cleanest (`spClient`/the extension is the natural home).
 
 ### 3.1 Response shape (the fields that matter)
 
@@ -235,10 +236,10 @@ CONNECTIVITY §3.6 one-time on-tenant checklist):
 
 ## 7. House-rule fit
 
-- **Reads mutate nothing.** `GetAllRules()` is a read-only call (a read-POST —
-  see the §3 note on keeping it out of the literal GET-only extract snippet);
-  any `CreateRuleEx()` write is a separate, later, confirm-first + lint-gated
-  motion (§5).
+- **Reads mutate nothing.** `GetAllRules()` is a read-only call (a read-POST,
+  explicitly allowed since the 2026-07-07 GET-only→read-only decision —
+  CONNECTIVITY §8); any `CreateRuleEx()` write is a separate, later,
+  confirm-first + lint-gated motion (§5).
 - **No new auth surface.** Everything inside the closed CONNECTIVITY §1 model:
   the user's authenticated session, the extension under `activeTab`.
 - **Zero runtime deps; `src/bridge` stays dependency-free, commented,
@@ -249,11 +250,86 @@ CONNECTIVITY §3.6 one-time on-tenant checklist):
 - **Refuse-don't-guess.** Ship the reproduce path (documented primitives);
   gate trigger-by-id behind a clear "uses an undocumented identifier" warning.
 
-## 8. Related
+## 8. Tenant verification checklist (read **and** creation)
+
+The runnable probe that closes §6 and proves the write path. **Run on a
+throwaway list you own — not production, not real data.** Reads are read-only;
+creation/edit/delete are writes on the scratch list and must be cleaned up
+(step L). Writes here exercise the **deploy/write tier**, which was always
+allowed to mutate — they do not contradict the read-only *extraction* decision
+(§7 / CONNECTIVITY §8); they stay confirm-first + lint-gated when they become a
+FormatFX feature. Same CI-unverifiable discipline as CONNECTIVITY §3.6.
+
+### 8.1 Setup
+Add a Quick Steps column and create 5–6 steps spanning action types
+(SetItemFieldValue, ExecuteItemFlow, DraftEmail, StartTeamsChat) and field
+types (Choice, Person, Date, Number, Yes/No, Lookup, and a multi-value one),
+plus a multi-field set step and ≥2 display conditions (equals, not-empty,
+date). Also create one automatic **Rule** so `GetAllRules()` returns both.
+
+### 8.2 Read probe (read-only)
+Run `GetAllRules()` (§3) with **both** `odata=nometadata` and `odata=verbose`;
+save both full responses (redact names/emails). Then answer:
+
+- **A. Response format** — nometadata shape: are results under `.value` vs the
+  verbose `.d.GetAllRules.results`? Field casing preserved? (Drives the
+  `spClient` parser.)
+- **B. Condition fidelity** — exact `Condition` string per rule; does it match
+  our `[$Field] == 'x'` dialect and round-trip through `dialect.ts`? How does
+  "not empty"/negation serialize — confirm `!=`/comparisons, **not** a NOT
+  operator (SharePoint has no logical NOT — HANDOFF §3).
+- **C. Button visuals** — where are per-step color, label/title, icon, order
+  stored (ActionParams? a column-schema blob? `QuickstepTitle`)?
+- **D. Read permission** — member vs owner to read `GetAllRules()`.
+- **E. Absence/edge** — response on a list with no quick steps; a document
+  library; a list where the feature isn't enabled (so the bridge degrades with
+  a teaching message, not a crash).
+- **F. Extension context** — the read-POST works from the extension's
+  page-context content script with the page form digest (no extra auth beyond
+  `captureSnapshot`). Validates the 2026-07-07 read-only decision end-to-end.
+- Plus the §6 items: **6.1** ID vs RuleTemplateId (and what RuleTemplateId
+  points at); **6.2** ItemData shape + `valueType` per field type; **6.3** Chris
+  Kent's trigger-by-id `customRowAction` JSON; **6.5** DraftEmail/StartTeamsChat
+  ActionParams + item-link tokenization; **6.6** whether the Quick Steps column
+  carries a CustomFormatter the extractor already captures.
+
+### 8.3 Creation / write tests (throwaway list only)
+- **H. Create a Rule** — `POST …/CreateRuleEx()` with the `results`-array
+  `ActionParams` (Key/Value/ValueType, §5), e.g. an ItemModified rule that sets
+  a field. Capture the exact request body + response. Then `GetAllRules()` and
+  confirm the round-trip. **Document BOTH shapes** — the create-side
+  (`results` array) and the read-side (flat escaped-JSON string) differ.
+- **I. Create a Quick Step** — same endpoint, `triggerType 5` +
+  `SetItemFieldValue (10002)` carrying `ItemData`. Confirm the button appears in
+  the view and, when clicked, actually writes the field. Proves the full
+  author→fire loop (Q6 / §5).
+- **J. Create each action type** — repeat for `ExecuteItemFlow (10001)` (needs a
+  FlowId), `DraftEmail (10003)`, `StartTeamsChat (10004)`; capture each one's
+  create-side `ActionParams` key set so we can *generate* them, not just read.
+- **K. Discover delete + update endpoints** — in devtools Network, delete and
+  edit a step via the UI and capture the endpoints (likely `RemoveRule`/
+  `DeleteRule` + an update call) and their bodies. Needed for cleanup and for
+  the read→edit→deploy story.
+- **L. Clean up** — delete every rule/quick step created here (via K's
+  endpoint); confirm `GetAllRules()` returns to its pre-probe state. Leave the
+  tenant as you found it.
+- **M. Write permission** — permission level `CreateRuleEx()` needs (member vs
+  owner); pairs with D → CONNECTIVITY §3.4 table.
+
+### 8.4 Deliverable
+Move each verified item from §6 into §3/§4 as settled reference (with the real
+captured shapes) and mark it closed; fold A–M findings into the relevant
+sections; document the create-side AND read-side `ActionParams` shapes for every
+action type (we need both to read AND author). Leave anything unverified in §6
+with a why. Commit on a branch off `main`, open a PR referencing #214. **Never**
+paste real tenant URLs, GUIDs, names, or emails — redacted/placeholder values
+only.
+
+## 9. Related
 
 - #214 — the research spike this doc answers (findings in its comments).
 - #212 — inline-edit / multi-field `setValue`; shares the emitter with the
   Quick Step reproduce path.
 - #204 — the `customRowAction` trigger/action vocabulary this extends.
 - CONNECTIVITY §1 (auth), §3 (the bridge), §3.6 (the on-tenant checklist
-  discipline this §6 mirrors).
+  discipline §8 mirrors), §8 (the read-only decision).
