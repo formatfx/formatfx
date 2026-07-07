@@ -1081,7 +1081,10 @@ body.wb-dark .wb-ce-save { color: #10393b; }
    reflow is honest; overflow scrolls inside the frame like a real screen */
 .wb-canvas-stage--framed {
   flex: 0 0 auto; min-width: 240px; box-sizing: border-box;
-  padding-right: 14px; border-right: 2px solid var(--wb-border);
+  /* handle clearance — inverse-scaled like the handle itself, so the
+     on-screen gap between content and grab strip is constant at any zoom */
+  padding-right: calc(14px / var(--wb-canvas-zoom, 1));
+  border-right: 2px solid var(--wb-border);
   overflow-x: auto;
 }
 /* the free-drag resize edge (the power-user path beside the presets);
