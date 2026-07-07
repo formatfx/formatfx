@@ -2915,24 +2915,30 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-lp-tree .wb-tree-meta > * { grid-area: 1 / 1; }
 .wb-lp-tree .wb-tree-meta .wb-tree-elmtype {
-  transition: opacity .12s ease, transform .12s ease;
+  transition: opacity .12s ease, transform .12s ease, visibility .12s;
 }
-.wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-elmtype {
+.wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-elmtype,
+.wb-lp-tree .wb-tree-row:focus-within .wb-tree-meta .wb-tree-elmtype {
   opacity: 0;
   transform: translateX(4px);
+  visibility: hidden;
   pointer-events: none;
 }
 .wb-lp-tree .wb-tree-meta .wb-tree-actions {
   display: inline-flex;
   opacity: 0;
   transform: translateX(4px);
+  /* visibility (not just opacity) so the idle buttons leave the a11y tree
+     and tab order — they come back the moment the row is hovered/focused */
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity .12s ease, transform .12s ease;
+  transition: opacity .12s ease, transform .12s ease, visibility .12s;
 }
 .wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-actions,
 .wb-lp-tree .wb-tree-row:focus-within .wb-tree-meta .wb-tree-actions {
   opacity: 1;
   transform: translateX(0);
+  visibility: visible;
   pointer-events: auto;
 }
 
