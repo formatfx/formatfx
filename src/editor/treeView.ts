@@ -12,6 +12,8 @@ import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { openElementMenu } from './contextMenu';
 import { elmIconName } from './elmRef';
+import { FIELD_MIME } from './columnShelf';
+import { gridCellForField } from './gridScaffold';
 
 function nodeHint(el: SPElement): string {
   let hint = '';
@@ -258,9 +260,11 @@ export function mountTree(
     });
     row.addEventListener('dragover', (e) => {
       // accept-gating: only highlight payloads this row will act on — an
-      // unconditional preventDefault false-advertised drops it would ignore
+      // unconditional preventDefault false-advertised drops it would ignore.
+      // Accepted: palette items, tree-node reparents, column-shelf chips (§5).
       const types = e.dataTransfer?.types;
-      if (!types?.includes('application/x-wb-palette') && !types?.includes('application/x-wb-node')) return;
+      if (!types?.includes('application/x-wb-palette') && !types?.includes('application/x-wb-node')
+        && !types?.includes(FIELD_MIME)) return;
       e.preventDefault();
       e.stopPropagation();
       row.classList.add('droptarget');
@@ -274,6 +278,15 @@ export function mountTree(
       if (paletteId) {
         const item = paletteItemById(paletteId);
         if (item) state.insertNode(instantiate(item, state.fields), path);
+        return;
+      }
+      // a column chip (§5): the field arrives as its look-aware cell — dressed
+      // when the column wears a component, the plain value otherwise. Same
+      // insert semantics as a palette drop; one undoable step.
+      const fieldName = e.dataTransfer?.getData(FIELD_MIME);
+      if (fieldName) {
+        const field = state.fields.find((f) => f.name === fieldName);
+        if (field) state.insertNode(gridCellForField(field, state.columnLooks), path);
         return;
       }
       const from = e.dataTransfer?.getData('application/x-wb-node');

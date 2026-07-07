@@ -21,6 +21,8 @@ import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
 import { hoverRevealStatus, setRevealOnHover } from './hoverReveal';
 import { canHostTrigger, applyTriggerAt, type TriggerSpec, type TriggerActionKind } from './triggerBind';
+import { componentById } from './componentLibrary';
+import { rebindInstance, type ComponentDef } from './components';
 
 /** Common-but-unlisted style properties offered as one-click "quick adds" in the
  *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
@@ -40,7 +42,8 @@ function propIsMixed(prop: string): boolean {
   return nodes.length > 1 && !styleAcross(nodes, prop).uniform;
 }
 
-export function mountInspector(host: HTMLElement): void {
+export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) => void } = {}): void {
+  const toast = opts.toast ?? (() => {});
   const render = () => {
     host.innerHTML = '';
     const node = state.selectedNode;
@@ -55,6 +58,14 @@ export function mountInspector(host: HTMLElement): void {
     if (state.doc.kind === 'grid' && state.selection && state.selection.length === 0) {
       host.innerHTML = '<div class="wb-inspector-empty">You’re on the columns grid — select a column (or an element inside one) to edit it.</div>';
       return;
+    }
+
+    // ── the INSTANCE card (COLUMNS-COMPONENTS-VIEWS §3.6) — a bound component
+    //    instance leads with its provenance, ahead of the element sections:
+    //    which def it is, which column each slot is bound to (remappable),
+    //    the workshop door, and the way OUT of the component model.
+    if (node._component && state.selection) {
+      host.appendChild(instanceCard(node, state.selection, toast));
     }
     const commit = (fn: (n: SPElement) => void) => {
       selfCommit = true;
@@ -524,6 +535,160 @@ let selfCommit = false;
  * click-driven controls (the Alignment section) — no free-text property
  * editing — so a misclick can't corrupt the formatter.
  */
+// ─── the instance card (§3.6): provenance + binding for a ⬡ instance ─────────
+
+/** Swap the subtree at `path` for `next` in the live document — the wrapNode
+ *  addressing rules (root / CARD_SEGMENT / plain child). Callers own the
+ *  undo step (mutateDocument). */
+function replaceNodeAt(path: NodePath, next: SPElement): void {
+  if (path.length === 0) { state.doc.root = next; return; }
+  const last = path[path.length - 1];
+  if (last === CARD_SEGMENT) {
+    const holder = state.nodeAt(path.slice(0, -1));
+    if (holder?.customCardProps) holder.customCardProps.formatter = next;
+    return;
+  }
+  const parent = state.nodeAt(path.slice(0, -1));
+  if (parent?.children) parent.children[last] = next;
+}
+
+/**
+ * The card a selected component INSTANCE leads with: ⬡ def name, one
+ * "Bound to <column ▾>" select per slot (type-filtered like the mapper;
+ * changing one re-bakes the instance from its def with the updated map —
+ * ONE undoable step), "Open in workshop ✎", and "Detach to plain elements".
+ * A grid LOOK cell (a `_field`-stamped cell whose column wears a look) also
+ * offers "Remove the look" (state.removeColumnLook); its re-binds route
+ * through state.applyComponentToColumn so the look STORE and the placed cell
+ * can never disagree.
+ */
+function instanceCard(node: SPElement, path: NodePath, toast: (m: string) => void): HTMLElement {
+  const tag = node._component!;
+  const def = componentById(tag.id);
+  // "grid look cell": on the floor, stamped with its column, column dressed
+  const lookField = state.doc.kind === 'grid' && node._field
+    && Object.hasOwn(state.columnLooks, node._field) ? node._field : null;
+
+  const card = document.createElement('div');
+  card.className = 'wb-inst-card';
+
+  const head = document.createElement('div');
+  head.className = 'wb-inst-head';
+  const mark = document.createElement('span');
+  mark.className = 'wb-comp-mark';
+  mark.textContent = '⬡';
+  mark.setAttribute('aria-hidden', 'true');
+  const name = document.createElement('span');
+  name.className = 'wb-inst-name';
+  name.textContent = def?.name ?? 'Component (no longer in the library)';
+  head.append(mark, name);
+  head.title = def
+    ? `An instance of the ${def.name} component — editing the def in the workshop updates every instance`
+    : 'This element was placed from a component that has since been deleted — it still works; detach to make that official';
+  card.appendChild(head);
+
+  const rebind = (d: ComponentDef, slotKey: string, to: string): void => {
+    const nextMap = { ...tag.map, [slotKey]: to };
+    if (lookField) {
+      // the look store and the placed floor cell move together — exactly the
+      // apply-component-to-column gesture (ONE undoable step)
+      state.applyComponentToColumn(lookField, d, nextMap);
+      return;
+    }
+    state.mutateDocument(() => {
+      const live = state.nodeAt(path);
+      if (!live?._component) return;
+      live._component = { ...live._component, map: nextMap };
+      const next = rebindInstance(d, live, d.name);
+      if (!next) return;
+      if (live._field) next._field = live._field; // a cell keeps its column identity
+      replaceNodeAt(path, next);
+    });
+  };
+
+  if (def) {
+    for (const slot of def.slots) {
+      const row = document.createElement('label');
+      row.className = 'wb-inst-slot';
+      const lab = document.createElement('span');
+      lab.className = 'wb-inst-slot-label';
+      lab.textContent = `${slot.label} — bound to`;
+      lab.title = slot.description ?? slot.label;
+      const sel = document.createElement('select');
+      sel.className = 'wb-inst-slot-select';
+      sel.dataset.slot = slot.key;
+      // type-filtered like the mapper — only columns the slot can take
+      const candidates = state.fields.filter((f) => !f.protected && slot.types.includes(f.type));
+      const bound = tag.map[slot.key] ?? '';
+      if (bound && !candidates.some((f) => f.name === bound)) {
+        // the bound column vanished or changed type — show it honestly
+        const opt = document.createElement('option');
+        opt.value = bound;
+        opt.textContent = `${bound} (missing)`;
+        sel.appendChild(opt);
+      }
+      for (const f of candidates) {
+        const opt = document.createElement('option');
+        opt.value = f.name;
+        opt.textContent = f.displayName ?? f.name;
+        sel.appendChild(opt);
+      }
+      sel.value = bound;
+      sel.title = 'Re-bind this slot to another column — one undoable step, the instance re-bakes from its component';
+      sel.addEventListener('change', () => {
+        rebind(def, slot.key, sel.value);
+        toast(`${slot.label} is now bound to ${sel.options[sel.selectedIndex]?.textContent ?? sel.value} — Ctrl+Z undoes`);
+      });
+      row.append(lab, sel);
+      card.appendChild(row);
+    }
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'wb-inst-actions';
+  if (def) {
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'wb-inst-open';
+    open.textContent = 'Open in workshop ✎';
+    open.title = `Open the ${def.name} workshop tab — staged edits, nothing changes until you save`;
+    open.addEventListener('click', () => state.openComponentTab(def.id));
+    actions.appendChild(open);
+  }
+  const detach = document.createElement('button');
+  detach.type = 'button';
+  detach.className = 'wb-inst-detach';
+  detach.textContent = 'Detach to plain elements';
+  detach.title = 'Remove the component stamp but keep every element — workshop edits to the component will no longer reach this copy';
+  detach.addEventListener('click', () => {
+    state.mutateDocument(() => {
+      const live = state.nodeAt(path);
+      if (live) delete live._component;
+      // a look cell's STORE detaches with it — otherwise the next look
+      // refresh would silently restore the stamp the maker just removed
+      if (lookField && Object.hasOwn(state.columnLooks, lookField)) {
+        delete state.columnLooks[lookField]._component;
+      }
+    });
+    toast(`Detached from “${def?.name ?? 'the component'}” — plain elements now; workshop edits won't reach this copy (Ctrl+Z undoes)`);
+  });
+  actions.appendChild(detach);
+  if (lookField) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'wb-inst-removelook';
+    remove.textContent = 'Remove the look';
+    remove.title = `Undress the ${lookField} column — back to the plain value; the component itself is untouched`;
+    remove.addEventListener('click', () => {
+      state.removeColumnLook(lookField); // store + floor cell, ONE undo step
+      toast(`Removed the ${lookField} column's look — plain value again (Ctrl+Z undoes)`);
+    });
+    actions.appendChild(remove);
+  }
+  card.appendChild(actions);
+  return card;
+}
+
 interface SectionReset { active: boolean; onReset: () => void; }
 
 function section(title: string, children: HTMLElement[], adv = false, reset?: SectionReset): HTMLElement {

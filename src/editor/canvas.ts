@@ -15,6 +15,8 @@ import { instantiate } from './presets';
 import { renderGrid } from './gridView';
 import { installPreviewContextMenu } from './contextMenu';
 import { COMPONENT_MIME, componentById, openComponentMapper } from './componentLibrary';
+import { FIELD_MIME } from './columnShelf';
+import { gridCellForField } from './gridScaffold';
 import { bestGuessMapping, mappingComplete, bindComponentInstance } from './components';
 import type { NodePath, SPElement } from '../core/types';
 import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
@@ -257,8 +259,10 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
     host.classList.remove('wb-canvas-drop');
   };
   host.addEventListener('dragover', (e) => {
+    // accept-gated (§5): palette items, ⬡ component rows, column-shelf chips
     const types = e.dataTransfer?.types;
-    if (!types?.includes('application/x-wb-palette') && !types?.includes(COMPONENT_MIME)) return;
+    if (!types?.includes('application/x-wb-palette') && !types?.includes(COMPONENT_MIME)
+      && !types?.includes(FIELD_MIME)) return;
     e.preventDefault();
     host.classList.add('wb-canvas-drop');
     const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
@@ -274,8 +278,22 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void): 
   host.addEventListener('drop', (e) => {
     const id = e.dataTransfer?.getData('application/x-wb-palette');
     const compId = e.dataTransfer?.getData(COMPONENT_MIME);
+    const fieldName = e.dataTransfer?.getData(FIELD_MIME);
     const target = (e.target as HTMLElement).closest('[data-sp-path]') as HTMLElement | null;
     clearDropHighlight();
+    // a column chip from the shelf (§5): the field lands as its look-aware
+    // cell — dressed when the column wears a component, plain value otherwise.
+    // Same insert semantics as a palette drop; ONE undoable step.
+    if (fieldName) {
+      e.preventDefault();
+      const field = state.fields.find((f) => f.name === fieldName);
+      if (!field) return;
+      const path = pathFromAttr(target?.dataset.spPath);
+      const container = path !== undefined ? state.nodeAt(path) : null;
+      state.insertNode(gridCellForField(field, state.columnLooks), path);
+      onToast(`Added the ${field.displayName ?? field.name} column into ${describeNode(container)} — now selected`);
+      return;
+    }
     // a ⬡ component card dropped where it should live: bind with the best
     // guess and insert right there (ONE undoable step, provenance-stamped so
     // the ⬡ inventory counts it); a guess with a hole opens the typed mapper

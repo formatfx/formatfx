@@ -1,8 +1,10 @@
 /**
- * editor/componentLibrary.ts — the COMPONENTS tab of the Left Edit Pane (the
- * teal channel: formatting without a column to call home). First an INVENTORY
- * of the current project, then the add-a-component browser, plus the dialogs
- * around them:
+ * editor/componentLibrary.ts — the COMPONENTS section of the Left Edit Pane
+ * (the teal channel: formatting without a column to call home). Mounted
+ * ALWAYS below the columns shelf since the Phase-C left-pane rebuild
+ * (COLUMNS-COMPONENTS-VIEWS §3.5 — the old COMPONENTS-tab swap mode died
+ * with the formatter tablist). First an INVENTORY of the current project,
+ * then the add-a-component browser, plus the dialogs around them:
  *
  *   The pane speaks the same INVENTORY language as the Columns and Views
  *   surfaces (owner redesign, 2026-07-05 — "why do we have such a different
@@ -51,7 +53,7 @@ import {
   loadComponents, serializeComponents, addComponent, removeComponent,
   bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
   deriveSlots, containsCfr, componentId, widenType, componentKind,
-  componentFromFormatterDoc, componentInsertTarget,
+  componentFromFormatterDoc, componentInsertTarget, uniqueName,
   type ComponentDef,
 } from './components';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
@@ -531,6 +533,34 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   section('Yours', customs.filter((c) => componentKind(c) === 'element'),
     'Nothing saved yet — right-click an element and “Save as component…” to package it.');
 
+  // "＋ New component…" — start from a BLANK def and build it in the workshop
+  // (§3.5). The def persists immediately (a workshop tab needs a stored def
+  // to stage against); Save in the workshop is where the recipe evolves.
+  const newComp = document.createElement('button');
+  newComp.type = 'button';
+  newComp.className = 'wb-comp-rowlink wb-comp-newdef';
+  newComp.innerHTML = '<span class="wb-comp-rowlink-name">＋ New component…</span>';
+  newComp.title = 'Start a blank component and open its workshop tab — build its elements there, then Save.';
+  newComp.addEventListener('click', () => {
+    const taken = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...readCustom()].map((c) => c.name);
+    const def: ComponentDef = {
+      id: componentId(new Date()),
+      // deduped: "Save as component" replaces by NAME, so two blanks must
+      // never collide ("New component 2", …)
+      name: uniqueName('New component', taken),
+      description: 'A blank component — build it in the workshop.',
+      slots: [],
+      root: { elmType: 'div', _elmName: 'New component', txtContent: 'New component' },
+    };
+    if (!writeCustom(addComponent(readCustom(), def))) {
+      onToast('Could not create the component — browser storage is full or blocked.');
+      return;
+    }
+    state.openComponentTab(def.id); // emits 'data' → the library re-renders
+    onToast(`Started “${def.name}” — build it in the workshop and Save when it's ready`);
+  });
+  host.appendChild(newComp);
+
   // ── the row-scoped siblings: whole-row components + New rowview ───────────
   section('Whole rows', customs.filter((c) => componentKind(c) === 'row'));
   const rowCard = document.createElement('button');
@@ -553,6 +583,34 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   importCard.title = 'Paste any column or view formatter — a pnp/List-Formatting sample, a teammate’s copy — and it becomes a mappable component with typed slots.';
   importCard.addEventListener('click', () => openImportComponentDialog(() => renderComponentLibrary(host, onToast), onToast));
   host.appendChild(importCard);
+}
+
+/**
+ * The ALWAYS-ON mount (§3.5): renderComponentLibrary plus a state
+ * subscription, so the inventory counts, look usages and def lists stay live
+ * as the project changes. Re-renders keep the maker's place — rows whose
+ * drawer was expanded re-expand (matched by the drawer's stable id).
+ */
+export function mountComponentLibrary(host: HTMLElement, onToast: (m: string) => void): void {
+  const render = (): void => {
+    const open = new Set(
+      [...host.querySelectorAll<HTMLElement>('.wb-comp-row[aria-expanded="true"]')]
+        .map((r) => r.getAttribute('aria-controls') ?? ''),
+    );
+    renderComponentLibrary(host, onToast);
+    if (!open.size) return;
+    for (const row of host.querySelectorAll<HTMLElement>('.wb-comp-row')) {
+      if (open.has(row.getAttribute('aria-controls') ?? '')) row.click(); // re-expand
+    }
+  };
+  const hostAny = host as unknown as { _unsub?: () => void };
+  hostAny._unsub?.();
+  hostAny._unsub = state.subscribe((reason) => {
+    // 'data' = defs/looks/tabs/schema, 'document' = instance edits (usage
+    // counts), 'load'/'kind' = another surface's inventory
+    if (reason === 'data' || reason === 'document' || reason === 'load' || reason === 'kind') render();
+  });
+  render();
 }
 
 /**

@@ -1,112 +1,135 @@
 /**
- * View Formatters menu (happy-dom): the multi-view list — one row per named
- * sheet (open = navigation, Rename inline) and the template on-ramps
- * (FLOOR-AND-SHEETS Stage 1). Views-only since the Stage-2 follow-up: the
- * grid lives on the COLUMNS tab, so there is no floor row here.
+ * The VIEWS LIST (happy-dom) — COLUMNS-COMPONENTS-VIEWS §2-3: the old
+ * anchored View Formatters popover became a standing left-pane section. One
+ * row per named sheet (open = navigation into its canvas tab, never an undo
+ * step; ✎/dblclick renames inline) plus the ＋ template on-ramps. The row
+ * marked active follows the ACTIVE TAB — a workshop covering the canvas
+ * unmarks the view underneath.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { openViewMenu, closeViewMenu } from './viewMenu';
+import { mountViewsList } from './viewMenu';
 import { state } from './state';
 
 const toast = (): void => {};
-const anchor = (): HTMLElement => document.createElement('button');
 
 function addSheet(name?: string): string {
   return state.createView({ kind: 'row', root: { elmType: 'div', children: [] } }, name)!.id;
 }
 
-describe('viewMenu', () => {
-  beforeEach(() => { state.resetAll(); });
-  afterEach(() => { closeViewMenu(); });
+function mount(): HTMLElement {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  mountViewsList(host, toast);
+  return host;
+}
 
-  it('a fresh workspace teaches the model — no views yet, and NO floor row (the grid lives on COLUMNS)', () => {
-    openViewMenu(anchor(), toast);
-    expect(document.querySelector('.wb-viewmenu')).not.toBeNull();
-    expect(document.querySelector('.wb-viewmenu-floor')).toBeNull();
-    expect(document.querySelector('.wb-viewmenu-empty')).not.toBeNull();
-    expect(document.querySelector('.wb-viewmenu-empty')?.textContent).toContain('columns and components');
-    expect(document.querySelector('.wb-viewmenu-name')).toBeNull();
+describe('viewsList', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    state.resetAll();
+  });
+  afterEach(() => {
+    // close any template modal a test opened via its real path (overlay Esc)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    document.querySelectorAll<HTMLElement>('body > *').forEach((el) => {
+      (el as unknown as { _unsub?: () => void })._unsub?.();
+      el.remove();
+    });
   });
 
-  it('lists every sheet by name, marking the active one', () => {
+  it('a fresh workspace teaches the model — no views yet, the on-ramps still offered', () => {
+    const host = mount();
+    expect(host.querySelector('.wb-viewslist-head')?.textContent).toContain('Views');
+    expect(host.querySelector('.wb-viewslist-empty')?.textContent).toContain('columns and components');
+    expect(host.querySelector('.wb-viewslist-row')).toBeNull();
+    expect(host.querySelector('.wb-viewslist-newrow')).not.toBeNull();
+    expect(host.querySelector('.wb-viewslist-newtile')).not.toBeNull();
+  });
+
+  it('lists every sheet by name with its kind tag, marking the ACTIVE TAB\'s row', () => {
     addSheet('Sprint board');
     addSheet('Gallery');
-    openViewMenu(anchor(), toast);
-    const names = [...document.querySelectorAll('.wb-viewmenu-name')].map((n) => n.textContent);
+    const host = mount();
+    const names = [...host.querySelectorAll('.wb-viewslist-name')].map((n) => n.textContent);
     expect(names).toEqual(['Sprint board', 'Gallery']);
-    // 'Gallery' was created last → it's the open sheet
-    const active = document.querySelector('.wb-viewmenu-active .wb-viewmenu-name');
+    // 'Gallery' was created last → it's the open sheet, so its row is marked
+    const active = host.querySelector('.wb-viewslist-row.selected .wb-viewslist-name');
     expect(active?.textContent).toBe('Gallery');
+    expect(host.querySelector('.wb-viewslist-row.selected .wb-viewslist-open')
+      ?.getAttribute('aria-current')).toBe('true');
   });
 
-  it('clicking a sheet opens it — navigation only, no undo step', () => {
+  it('clicking a row opens that view — navigation only, no undo step — and re-renders live', () => {
     const a = addSheet('A');
     addSheet('B');
+    const host = mount();
     const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
-    openViewMenu(anchor(), toast);
-    const rowA = [...document.querySelectorAll('.wb-viewmenu-name')]
-      .find((n) => n.textContent === 'A') as HTMLElement;
+    const rowA = [...host.querySelectorAll<HTMLElement>('.wb-viewslist-name')]
+      .find((n) => n.textContent === 'A')!.closest('.wb-viewslist-open') as HTMLElement;
     rowA.dispatchEvent(new Event('click'));
     expect(state.activeViewId).toBe(a);
     expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
-    expect(document.querySelector('.wb-viewmenu')).toBeNull(); // navigated → closed
+    expect(host.querySelector('.wb-viewslist-row.selected .wb-viewslist-name')?.textContent).toBe('A');
   });
 
-  it('Rename → Enter commits the new name via renameView and closes the menu', () => {
+  it('a workshop tab covering the canvas unmarks the view row (the active-TAB rule)', () => {
+    addSheet('A');
+    const host = mount();
+    expect(host.querySelector('.wb-viewslist-row.selected')).not.toBeNull();
+    state.openComponentTab('builtin-deadline-chip');
+    expect(host.querySelector('.wb-viewslist-row.selected')).toBeNull();
+    state.deactivateComponentTab();
+    expect(host.querySelector('.wb-viewslist-row.selected')).not.toBeNull();
+  });
+
+  it('✎ → Enter commits the rename via renameView; Esc cancels; blank keeps the name', () => {
     const id = addSheet();
-    openViewMenu(anchor(), toast);
-    (document.querySelector('.wb-viewmenu-rename') as HTMLElement).dispatchEvent(new Event('click'));
-    const input = document.querySelector('.wb-viewmenu-input') as HTMLInputElement;
-    expect(input).not.toBeNull();
+    const host = mount();
+    (host.querySelector('.wb-tree-actions button') as HTMLElement).dispatchEvent(new Event('click'));
+    let input = host.querySelector('.wb-viewslist-input') as HTMLInputElement;
     expect(input.value).toBe('View 1'); // prefilled with the current name
     input.value = 'Sprint board';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
     expect(state.viewById(id)?.name).toBe('Sprint board');
-    expect(document.querySelector('.wb-viewmenu')).toBeNull(); // committed → closed
-  });
+    expect(host.querySelector('.wb-viewslist-name')?.textContent).toBe('Sprint board');
 
-  it('Rename → Esc cancels without changing the name', () => {
-    const id = addSheet();
-    openViewMenu(anchor(), toast);
-    (document.querySelector('.wb-viewmenu-rename') as HTMLElement).dispatchEvent(new Event('click'));
-    const input = document.querySelector('.wb-viewmenu-input') as HTMLInputElement;
+    (host.querySelector('.wb-tree-actions button') as HTMLElement).dispatchEvent(new Event('click'));
+    input = host.querySelector('.wb-viewslist-input') as HTMLInputElement;
     input.value = 'Discarded';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(state.viewById(id)?.name).toBe('View 1');
-  });
+    expect(state.viewById(id)?.name).toBe('Sprint board');
 
-  it('a blank rename keeps the existing name', () => {
-    const id = addSheet('Something');
-    openViewMenu(anchor(), toast);
-    (document.querySelector('.wb-viewmenu-rename') as HTMLElement).dispatchEvent(new Event('click'));
-    const input = document.querySelector('.wb-viewmenu-input') as HTMLInputElement;
+    (host.querySelector('.wb-tree-actions button') as HTMLElement).dispatchEvent(new Event('click'));
+    input = host.querySelector('.wb-viewslist-input') as HTMLInputElement;
     input.value = '   ';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-    expect(state.viewById(id)?.name).toBe('Something');
+    expect(state.viewById(id)?.name).toBe('Sprint board');
   });
 
-  it('New rowview opens the template modal from the menu', () => {
-    openViewMenu(anchor(), toast);
-    const newRow = document.querySelector('.wb-viewmenu-newrow') as HTMLElement;
-    expect(newRow).not.toBeNull();
-    newRow.dispatchEvent(new Event('click'));
-    expect(document.querySelector('.wb-viewmenu')).toBeNull();           // menu closed
-    expect(document.querySelector('.wb-template-modal')).not.toBeNull(); // template modal opened
-    // close via the real path so createOverlay detaches its document Esc listener —
-    // removing only the overlay node would leak the keydown handler into later tests
+  it('double-clicking the row renames too (the strip convention); blur commits', () => {
+    const id = addSheet();
+    const host = mount();
+    (host.querySelector('.wb-viewslist-open') as HTMLElement).dispatchEvent(new Event('dblclick'));
+    const input = host.querySelector('.wb-viewslist-input') as HTMLInputElement;
+    input.value = 'Committed on blur';
+    input.dispatchEvent(new Event('blur'));
+    expect(state.viewById(id)?.name).toBe('Committed on blur');
+  });
+
+  it('＋ New rowview opens the template modal', () => {
+    const host = mount();
+    (host.querySelector('.wb-viewslist-newrow') as HTMLElement).dispatchEvent(new Event('click'));
+    expect(document.querySelector('.wb-template-modal')).not.toBeNull();
+    // close via the real path so createOverlay detaches its document Esc listener
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.querySelector('.wb-template-modal')).toBeNull();
   });
 
-  it('New tileview opens the template modal with the tile layouts leading', () => {
-    openViewMenu(anchor(), toast);
-    const newTile = document.querySelector('.wb-viewmenu-newtile') as HTMLElement;
-    expect(newTile).not.toBeNull();
-    newTile.dispatchEvent(new Event('click'));
-    expect(document.querySelector('.wb-viewmenu')).toBeNull();           // menu closed
-    expect(document.querySelector('.wb-template-modal')).not.toBeNull(); // builder opened
+  it('＋ New tileview opens the template modal with the tile layouts leading', () => {
+    const host = mount();
+    (host.querySelector('.wb-viewslist-newtile') as HTMLElement).dispatchEvent(new Event('click'));
+    expect(document.querySelector('.wb-template-modal')).not.toBeNull();
     expect(document.querySelector('.wb-template-gallery-head')?.textContent).toBe('Tile layouts');
-    // close via the real path so createOverlay detaches its document Esc listener
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.querySelector('.wb-template-modal')).toBeNull();
   });

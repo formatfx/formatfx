@@ -109,6 +109,53 @@ describe('simulate-hover pin (issue #203)', () => {
   });
 });
 
+describe('field drops (§5: FIELD_MIME lands as the look-aware cell)', () => {
+  const dragEvent = (type: string, fieldName: string): Event => {
+    const ev = new Event(type, { bubbles: true, cancelable: true });
+    (ev as unknown as { dataTransfer: unknown }).dataTransfer = {
+      types: ['application/x-wb-field'],
+      getData: (mime: string) => (mime === 'application/x-wb-field' ? fieldName : ''),
+      setData: () => {},
+      dropEffect: '',
+      effectAllowed: '',
+    };
+    return ev;
+  };
+
+  it('accept-gates the dragover and inserts gridCellForField on drop — one undo step', () => {
+    state.resetAll(); // Status wears the status-pill look by default
+    state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {});
+
+    const over = dragEvent('dragover', 'Status');
+    host.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true); // the canvas advertises the drop
+
+    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+    host.dispatchEvent(dragEvent('drop', 'Status'));
+    const cell = state.doc.root.children!.at(-1)!;
+    expect(cell._field).toBe('Status');
+    expect(cell._component?.id).toBe('palette-status-pill'); // arrived dressed
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth + 1);
+    state.resetAll();
+  });
+
+  it('an unknown field name is a no-op drop', () => {
+    state.resetAll();
+    state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountCanvas(host, () => {});
+    const before = JSON.stringify(state.doc.root);
+    host.dispatchEvent(dragEvent('drop', 'Ghost'));
+    expect(JSON.stringify(state.doc.root)).toBe(before);
+    state.resetAll();
+  });
+});
+
 describe('Select/Live canvas mode (FLOOR-AND-SHEETS Stage 3)', () => {
   it('Select: a customRowAction click SELECTS; Live: it fires the behavior instead', () => {
     state.resetAll();

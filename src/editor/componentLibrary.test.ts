@@ -6,7 +6,7 @@
  * one undoable mutation, robust pattern by construction).
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { renderComponentLibrary, openComponentMapper } from './componentLibrary';
+import { renderComponentLibrary, mountComponentLibrary, openComponentMapper, customComponents } from './componentLibrary';
 import { BUILTIN_COMPONENTS } from './components';
 import { mountCanvas } from './canvas';
 import { state } from './state';
@@ -100,6 +100,56 @@ describe('components pane — inventory rows, not cards', () => {
     const host = mountLibrary();
     const row = host.querySelector<HTMLElement>('.wb-comp-row')!;
     expect(row.draggable).toBe(true);
+  });
+});
+
+describe('＋ New component… (§3.5: a blank def, straight into the workshop)', () => {
+  beforeEach(() => { localStorage.clear(); });
+
+  it('creates a persisted blank custom def and opens its workshop tab', () => {
+    const host = mountLibrary();
+    const before = customComponents().length;
+    (host.querySelector('.wb-comp-newdef') as HTMLButtonElement).click();
+    const customs = customComponents();
+    expect(customs.length).toBe(before + 1);
+    const def = customs[customs.length - 1];
+    expect(def.name).toBe('New component');
+    expect(def.slots).toEqual([]); // blank — slots grow as the tree references columns
+    expect(def.root.elmType).toBe('div');
+    // …and the workshop tab opened on it
+    expect(state.activeComponentTab).toBe(def.id);
+    expect(state.openTabs.some((t) => t.kind === 'component' && t.defId === def.id)).toBe(true);
+    state.deactivateComponentTab();
+  });
+
+  it('a second blank def dedupes its name (save-over-name must never collide)', () => {
+    const host = mountLibrary();
+    (host.querySelector('.wb-comp-newdef') as HTMLButtonElement).click();
+    (host.querySelector('.wb-comp-newdef') as HTMLButtonElement).click();
+    const names = customComponents().map((c) => c.name);
+    expect(names).toContain('New component');
+    expect(names).toContain('New component 2');
+    state.deactivateComponentTab();
+  });
+});
+
+describe('the always-on mount (§3.5: no swap mode)', () => {
+  it('re-renders on state changes and keeps expanded drawers open', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountComponentLibrary(host, () => {});
+    expect(host.querySelectorAll('.wb-comp-row').length).toBeGreaterThan(0);
+
+    // expand a drawer, then poke the store — the re-render keeps it open
+    const row = [...host.querySelectorAll<HTMLElement>('.wb-comp-row')]
+      .find((r) => !r.querySelector('.wb-comp-count'))!;
+    row.click();
+    const openId = row.getAttribute('aria-controls')!;
+    state.emit('data');
+    const again = [...host.querySelectorAll<HTMLElement>('.wb-comp-row')]
+      .find((r) => r.getAttribute('aria-controls') === openId)!;
+    expect(again.getAttribute('aria-expanded')).toBe('true');
+    expect((document.getElementById(openId) as HTMLElement).hidden).toBe(false);
   });
 });
 

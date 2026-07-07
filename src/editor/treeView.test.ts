@@ -186,6 +186,14 @@ describe('accept-gated dragover (the false-highlight fix)', () => {
     expect(row.classList.contains('droptarget')).toBe(true);
   });
 
+  it('accepts a column-shelf chip (FIELD_MIME — §5)', () => {
+    const row = mountRow();
+    const ev = dragover(['application/x-wb-field']);
+    row.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(row.classList.contains('droptarget')).toBe(true);
+  });
+
   it('IGNORES payloads it will not act on — no highlight, no preventDefault', () => {
     const row = mountRow();
     // a component library row, a grid column, a file from the OS — the old
@@ -204,5 +212,47 @@ describe('accept-gated dragover (the false-highlight fix)', () => {
     expect(row.classList.contains('droptarget')).toBe(true);
     row.dispatchEvent(new Event('dragleave'));
     expect(row.classList.contains('droptarget')).toBe(false);
+  });
+});
+
+describe('field drops (§5: the shelf chip lands as its look-aware cell)', () => {
+  const drop = (fieldName: string): Event => {
+    const ev = new Event('drop', { bubbles: false, cancelable: true });
+    (ev as unknown as { dataTransfer: unknown }).dataTransfer = {
+      types: ['application/x-wb-field'],
+      getData: (mime: string) => (mime === 'application/x-wb-field' ? fieldName : ''),
+      setData: () => {},
+    };
+    return ev;
+  };
+
+  it('inserts gridCellForField at the drop row — dressed when the column wears a look', () => {
+    state.resetAll(); // the default workspace: Status wears the status-pill look
+    state.createView({ kind: 'row', root: { elmType: 'div', children: [{ elmType: 'div', children: [] }] } });
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+    const row = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1]; // the child div
+    row.dispatchEvent(drop('Status'));
+    const cell = state.doc.root.children![0].children![0];
+    expect(cell._field).toBe('Status');
+    expect(cell._component?.id).toBe('palette-status-pill'); // the look embedded
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth + 1);
+  });
+
+  it('a bare column lands as the plain-value cell; an unknown field is a no-op', () => {
+    state.resetAll();
+    state.createView({ kind: 'row', root: { elmType: 'div', children: [{ elmType: 'div', children: [] }] } });
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const row = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1];
+    row.dispatchEvent(drop('Tags'));
+    expect(state.doc.root.children![0].children![0].txtContent).toBe('[$Tags]');
+
+    const before = JSON.stringify(state.doc.root);
+    row.dispatchEvent(drop('Ghost'));
+    expect(JSON.stringify(state.doc.root)).toBe(before);
   });
 });

@@ -176,45 +176,7 @@ body {
   background: var(--wb-bg); color: var(--wb-text);
 }
 
-/* ── View Formatters menu (anchored under the document dropdown) ─────────── */
-.wb-viewmenu {
-  position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 16px);
-  display: flex; flex-direction: column; gap: 6px; padding: 10px;
-  background: var(--wb-surface); color: var(--wb-text);
-  border: 1px solid var(--wb-border); border-radius: 8px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
-}
-.wb-viewmenu-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
-.wb-viewmenu-row { display: flex; align-items: center; gap: 8px; border-radius: 4px; }
-.wb-viewmenu-row.wb-viewmenu-active { background: var(--wb-bg); outline: 1px solid var(--wb-border); }
-.wb-viewmenu-open {
-  flex: 1; min-width: 0; text-align: left; padding: 5px 6px; cursor: pointer;
-  border: none; border-radius: 4px; background: transparent; color: var(--wb-text);
-}
-.wb-viewmenu-open:hover { background: var(--wb-bg); color: var(--wb-accent); }
-.wb-viewmenu-empty { font-size: 11.5px; color: var(--wb-text-2); padding: 2px 6px 4px; }
-.wb-viewmenu-name { flex: 1; font-size: 12px; font-weight: 600; }
-.wb-viewmenu-rename {
-  flex: none; padding: 3px 8px; font-size: 12px; cursor: pointer;
-  border: 1px solid var(--wb-border); border-radius: 3px;
-  background: var(--wb-bg); color: var(--wb-text);
-}
-.wb-viewmenu-rename:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-viewmenu-input {
-  flex: 1; min-width: 0; font-size: 12px; padding: 4px 6px;
-  border: 1px solid var(--wb-accent); border-radius: 3px;
-  background: var(--wb-bg); color: var(--wb-text);
-}
-.wb-viewmenu-newrow,
-.wb-viewmenu-newtile {
-  margin-top: 2px; padding: 6px 8px; font-size: 12px; font-weight: 600; text-align: left;
-  cursor: pointer; border: 1px solid var(--wb-border); border-radius: 4px;
-  background: var(--wb-bg); color: var(--wb-accent);
-}
-.wb-viewmenu-newrow:hover,
-.wb-viewmenu-newtile:hover { border-color: var(--wb-accent); background: var(--wb-surface); }
-
-/* ── Snapshots menu (anchored under the 🕘 button by the document dropdown) ── */
+/* ── Snapshots menu (anchored under the 🕘 button in the nav row) ─────────── */
 .wb-snapmenu {
   position: fixed; z-index: 60; width: 290px; max-width: calc(100vw - 16px);
   max-height: min(430px, calc(100vh - 60px)); overflow-y: auto;
@@ -258,14 +220,10 @@ body {
 }
 .wb-snap-del:hover { color: #d13438; background: rgba(209, 52, 56, .08); }
 
-/* ── Components library (the ⬡ tab — formatting without a column) ──────────── */
-/* library mode: the browser replaces the doc-pill row + tree body */
-.wb-lp-library-open .wb-doc-pill-row,
-.wb-lp-library-open #wb-tree-body { display: none; }
+/* ── Components library (the ⬡ section — formatting without a column) ─────── */
 /* tree-density stack: rows sit tight like the structure tree; the headings
    carry the breathing room instead of a fat flex gap (owner redesign 2026-07-05) */
-.wb-complib { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px !important; }
-.wb-complib[hidden] { display: none; }
+.wb-complib { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; }
 .wb-complib-group {
   font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin: 6px 0 2px;
   color: var(--wb-lp-text-2);
@@ -992,35 +950,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   background: var(--wb-surface); color: var(--wb-text);
 }
 
-/* ── apply-time knob form (subtype apply) ─────────────────── */
-.wb-knobform-overlay {
-  position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .42);
-}
-.wb-knobform {
-  min-width: 320px; max-width: 440px; display: flex; flex-direction: column; gap: 10px;
-  background: var(--wb-surface); border: 1px solid var(--wb-border);
-  border-radius: 6px; padding: 16px 18px; box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
-}
-.wb-knobform-head { display: flex; flex-direction: column; gap: 2px; }
-.wb-knobform-title { font-size: 14px; font-weight: 600; color: var(--wb-text); }
-.wb-knobform-sub { font-size: 11px; color: var(--wb-text-2); }
-.wb-knobform-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px 10px; }
-.wb-knobform-label { font-size: 12px; color: var(--wb-text); }
-.wb-knobform-row input[type="text"], .wb-knobform-row input[type="number"], .wb-knobform-row select {
-  width: 100%; padding: 4px 6px; font-size: 12px;
-  background: var(--wb-bg); color: var(--wb-text); border: 1px solid var(--wb-border); border-radius: 3px;
-}
-.wb-knobform-row input[type="color"] { width: 44px; height: 26px; padding: 0; border: 1px solid var(--wb-border); border-radius: 3px; background: none; }
-.wb-knobform-err { grid-column: 2; font-size: 11px; color: var(--wb-danger, #d13438); min-height: 0; }
-.wb-knobform-err:empty { display: none; }
-.wb-knobform-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
-.wb-knobform-foot button {
-  padding: 5px 14px; font-size: 12px; border-radius: 4px; cursor: pointer; border: 1px solid var(--wb-border);
-}
-.wb-knobform-cancel { background: transparent; color: var(--wb-text); }
-.wb-knobform-apply { background: var(--wb-accent); color: var(--wb-accent-text); border-color: var(--wb-accent); font-weight: 600; }
-
 /* ── refine modal (custom subtype editor) ─────────────────── */
 .wb-refine-overlay {
   position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center;
@@ -1191,14 +1120,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-clickable { cursor: pointer; }
 .wb-has-card { cursor: pointer; }
 .wb-inline-edit { border-bottom: 1px dashed var(--wb-accent); }
-.wb-cfr-chip {
-  font-size: 10px;
-  background: repeating-linear-gradient(45deg,
-    var(--wb-canvas-bg), var(--wb-canvas-bg) 4px,
-    var(--wb-border) 4px, var(--wb-border) 8px);
-  border: 1px dashed var(--wb-scroll-thumb-hover); border-radius: 3px;
-  padding: 1px 6px; color: var(--wb-text-2);
-}
 .wb-foreach-empty { font-size: 10px; color: var(--wb-text-2); opacity: .6; }
 
 .wb-flyout {
@@ -1861,6 +1782,37 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-guide-next { text-align: right; }
 
 /* ── element-mode playground ─────────────────────────────── */
+/* ── the INSTANCE card (COLUMNS-COMPONENTS-VIEWS §3.6) — leads the inspector
+   for a bound ⬡ component instance: provenance, per-slot re-binding, the
+   workshop door, detach, and (grid look cells) "Remove the look". */
+.wb-inst-card {
+  display: flex; flex-direction: column; gap: 6px; margin: 10px 12px 2px;
+  padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--wb-component-border);
+  background: color-mix(in srgb, var(--wb-component) 5%, transparent);
+}
+.wb-inst-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wb-inst-name {
+  min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--wb-component);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-inst-slot { display: flex; align-items: center; gap: 6px; }
+.wb-inst-slot-label { flex: 0 1 auto; min-width: 0; font-size: 11px; color: var(--wb-text-2); white-space: nowrap; }
+.wb-inst-slot-select {
+  flex: 1 1 auto; min-width: 0; font-size: 11.5px; padding: 2px 4px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-inst-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.wb-inst-actions button {
+  padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--wb-border); border-radius: 5px;
+  background: transparent; color: var(--wb-text);
+}
+.wb-inst-open { border-color: var(--wb-component) !important; color: var(--wb-component) !important; }
+.wb-inst-open:hover { background: var(--wb-component-bg); }
+.wb-inst-detach:hover, .wb-inst-removelook:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+
 .wb-inspector-play, .wb-inspector-cond {
   display: block; margin: 0 12px 8px; padding: 6px 10px;
   border: 1px dashed var(--wb-accent); border-radius: 4px;
@@ -2391,41 +2343,6 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-fx-float-apply:not(:disabled) { background: var(--wb-accent); border-color: var(--wb-accent); color: var(--wb-accent-text); }
 .wb-fx-float-apply:disabled { opacity: .45; cursor: default; }
 
-/* ── Column Formatters menu (floating preview picker, opened from the crumb) ─ */
-.wb-colgal {
-  position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 16px);
-  max-height: 70vh; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 8px; padding: 12px;
-  background: var(--wb-surface); color: var(--wb-text);
-  border: 1px solid var(--wb-border); border-radius: 8px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
-}
-.wb-colgal-head { font-size: 12.5px; font-weight: 600; color: var(--wb-text-2); }
-.wb-colgal-group {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--wb-text-2); margin-top: 4px;
-}
-.wb-colgal-empty { font-size: 12px; color: var(--wb-text-2); line-height: 1.5; }
-.wb-colgal-newrow {
-  display: flex; align-items: center; padding: 6px 8px; text-align: left;
-  font-size: 12px; cursor: pointer;
-  border: 1px solid var(--wb-border); border-radius: 6px;
-  background: var(--wb-bg); color: var(--wb-text);
-}
-.wb-colgal-newrow:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-colgal-card {
-  display: flex; flex-direction: column; gap: 6px; padding: 8px; text-align: left;
-  border: 1px solid var(--wb-border); border-radius: 6px;
-  background: var(--wb-bg); color: var(--wb-text); cursor: pointer;
-}
-.wb-colgal-card:hover { border-color: var(--wb-accent); }
-.wb-colgal-label { font-size: 12px; font-weight: 600; }
-.wb-colgal-preview { display: flex; flex-direction: column; gap: 4px; }
-.wb-colgal-cell {
-  display: flex; align-items: center; min-height: 22px; padding: 2px 4px;
-  background: var(--wb-surface); border-radius: 3px; overflow: hidden;
-}
-
 /* ── Structure pane: auto-hide (pin) to a rail, like the side pane ────────── */
 .wb-pane-tree h2 { display: flex; align-items: center; justify-content: space-between; }
 #wb-tree-peek {
@@ -2715,7 +2632,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Left Edit Pane — the Claude-style consolidated editing surface
-   (Formatters bar · structure tree · lens tabs · draw toolbar · property lenses)
+   (nav row · this-view card · structure tree · columns shelf · components ·
+   views list · lens tabs · draw toolbar · property lenses)
    ══════════════════════════════════════════════════════════════════════════ */
 .wb-leftpane {
   background: var(--wb-lp-bg); color: var(--wb-lp-text);
@@ -2730,51 +2648,17 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
 }
 
-/* ── the Formatters bar (← · 🕘 · VIEWS / COLUMNS / COMPONENTS) ───────────────
-   Blue = the view formatter; violet = the shared column formatters — the same
-   two color channels the canvas and tree teach, so the tabs read as "those
-   things I keep seeing with the § mark live here". No visible "Formatters"
-   label — the tablist carries that name via aria-label for AT users. One
-   line: the ← back + 🕘 snapshot buttons (one grouped chip) lead the tabs.
-   The tab row's overflow-x: auto is the fallback for panes too narrow to fit
-   all three tabs without scrolling. */
-.wb-fmt-tabs {
-  flex: 0 0 auto; padding: 6px 6px 0 8px;
+/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ← back + 🕘 snapshots.
+   Navigation between surfaces lives in the canvas tab strip; this row keeps
+   only the retrace and history doors. */
+.wb-lp-nav {
+  flex: 0 0 auto; display: flex; align-items: center; padding: 6px 8px;
   border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-fmt-row {
-  display: flex; gap: 2px;
-  overflow-x: auto; scrollbar-width: none;
-}
-.wb-fmt-row::-webkit-scrollbar { display: none; }
-/* a REAL flex box, deliberately not display:contents — contents can drop the
-   wrapper (and its role="tablist" semantics) from the accessibility tree in
-   some browser/AT combos (Safari/VoiceOver). overflow stays visible so the
-   tabs' -1px margin still lands their underline on the bar's border-bottom. */
-/* gap is 2x .wb-fmt-tab's icon-to-label gap (6px) — the space from the end of
-   a tab's label to the next tab's icon reads as a clear break between tabs,
-   not just a wider version of the icon/label pairing within one tab. */
-.wb-fmt-tablist { display: flex; gap: 12px; flex: 0 0 auto; min-width: 0; }
-.wb-fmt-tab {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: none; background: none; cursor: pointer; padding: 9px 4px 8px;
-  font-size: 11px; font-weight: 600; letter-spacing: .01em; text-transform: uppercase;
-  color: var(--wb-lp-text-2);
-  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
-}
-.wb-fmt-tab .wb-fmt-mark { font-size: 14px; font-weight: 700; line-height: 1; }
-.wb-fmt-tab-view:hover { color: var(--wb-accent); }
-.wb-fmt-tab-cols:hover { color: var(--wb-shared); }
-.wb-fmt-tab-comp:hover { color: var(--wb-component); }
-.wb-fmt-tab-view.active { color: var(--wb-accent); border-bottom-color: var(--wb-accent); }
-.wb-fmt-tab-cols.active { color: var(--wb-shared); border-bottom-color: var(--wb-shared); }
-.wb-fmt-tab-comp.active { color: var(--wb-component); border-bottom-color: var(--wb-component); }
-
-/* …the ← back + 🕘 snapshot buttons lead the tab row as one grouped chip */
 .wb-nav-group {
-  flex: 0 0 auto; align-self: center; display: inline-flex; align-items: center;
+  flex: 0 0 auto; display: inline-flex; align-items: center;
   border: 1px solid var(--wb-lp-border); border-radius: 7px;
-  margin-right: 6px; padding: 2px;
+  padding: 2px;
 }
 .wb-nav-back, .wb-snap-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center;
@@ -2788,73 +2672,111 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-nav-back:disabled { opacity: .35; cursor: default; }
 
-/* ── the document dropdown row (the pill spans it alone) ───────────────────── */
-.wb-doc-pill-row {
-  display: flex; align-items: stretch; gap: 5px; margin: 8px 8px 6px;
+/* ── the THIS VIEW card (§3.2) — the active view's name/kind + its
+   view-scoped behaviors & properties; a compact ⬡ def card while a workshop
+   tab is up; hidden on the grid (the [hidden] rule wins the flex display). */
+.wb-viewcard {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px;
+  padding: 8px 10px; border-bottom: 1px solid var(--wb-lp-border);
 }
-
-/* ── the document dropdown (what's on the canvas: a view, or a column) ────── */
-.wb-doc-pill {
-  display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0;
-  padding: 6px 10px; cursor: pointer;
-  border: 1px solid var(--wb-accent); border-radius: 8px;
-  background: color-mix(in srgb, var(--wb-accent) 8%, transparent);
-  color: var(--wb-lp-text); font: inherit; text-align: left;
-}
-.wb-doc-pill:hover { background: color-mix(in srgb, var(--wb-accent) 16%, transparent); }
-.wb-doc-pill-name {
-  flex: 1 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600;
+.wb-viewcard[hidden] { display: none; }
+.wb-viewcard-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wb-viewcard-mark { flex: 0 0 auto; font-size: 13px; line-height: 1; color: var(--wb-accent); }
+.wb-viewcard-def .wb-viewcard-mark { color: var(--wb-component); }
+.wb-viewcard-name {
+  flex: 0 1 auto; min-width: 0; font-size: 12.5px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.wb-doc-pill-type {
+.wb-viewcard-kind {
   flex: 0 0 auto; font-size: 9.5px; font-weight: 600; letter-spacing: .05em;
-  text-transform: uppercase; color: var(--wb-accent); white-space: nowrap;
+  text-transform: uppercase; color: var(--wb-lp-text-2); white-space: nowrap;
 }
-.wb-doc-pill-caret { flex: 0 0 auto; font-size: 10px; color: var(--wb-accent); }
-/* …violet when the document is a column formatter */
-.wb-doc-pill.wb-doc-pill-col {
-  border-color: var(--wb-shared);
-  background: color-mix(in srgb, var(--wb-shared) 8%, transparent);
+.wb-viewcard-row { display: flex; align-items: center; gap: 8px; }
+.wb-viewcard-label { flex: 0 0 64px; font-size: 11px; color: var(--wb-lp-text-2); }
+.wb-viewcard-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--wb-lp-seg-track); }
+.wb-viewcard-segbtn {
+  border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer;
+  background: transparent; color: var(--wb-lp-text-2); font: inherit; font-size: 11px;
 }
-.wb-doc-pill.wb-doc-pill-col:hover { background: var(--wb-shared-bg); }
-.wb-doc-pill.wb-doc-pill-col .wb-doc-pill-type,
-.wb-doc-pill.wb-doc-pill-col .wb-doc-pill-caret { color: var(--wb-shared); }
-
-/* ── the view strip (FLOOR-AND-SHEETS Stage 2) — the workbook's sheet tabs ──
-   Grid floor + one chip per named view + ＋. Always visible (every mode incl.
-   a column drill — flipping surfaces under a drill is an owner requirement);
-   chips wrap rather than scroll so no view is ever off-screen. */
-.wb-viewstrip {
-  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  padding: 6px 8px; border-bottom: 1px solid var(--wb-lp-border);
+.wb-viewcard-segbtn.active { background: var(--wb-lp-surface); color: var(--wb-lp-text); font-weight: 600; }
+.wb-viewcard-rowclass {
+  flex: 1 1 auto; min-width: 0; padding: 3px 7px; font-size: 11.5px;
+  border: 1px solid var(--wb-lp-field-border, var(--wb-lp-border)); border-radius: 4px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text);
 }
-.wb-viewstrip-chip {
-  display: inline-flex; align-items: center; max-width: 140px;
-  padding: 3px 9px; cursor: pointer;
-  border: 1px solid var(--wb-lp-border); border-radius: 999px;
-  background: transparent; color: var(--wb-lp-text-2); font: inherit;
-  font-size: 11.5px; font-weight: 600; line-height: 1.4;
+.wb-viewcard-rowclass:focus { outline: none; border-color: var(--wb-accent); }
+.wb-viewcard-group {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  margin-top: 2px; color: var(--wb-lp-text-2);
+}
+.wb-viewcard-behavior {
+  display: flex; align-items: center; padding: 3px 7px; cursor: pointer; text-align: left;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-lp-text);
+  font: inherit; font-size: 11.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.wb-viewstrip-chip:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-viewstrip-chip.active {
-  border-color: var(--wb-accent); color: var(--wb-accent);
-  background: color-mix(in srgb, var(--wb-accent) 10%, transparent);
+.wb-viewcard-behavior:hover { background: var(--wb-lp-seg-track); color: var(--wb-accent); }
+.wb-viewcard-slots { display: flex; flex-wrap: wrap; gap: 4px; }
+.wb-viewcard-usage { font-size: 11px; color: var(--wb-lp-text-2); line-height: 1.45; }
+
+/* ── the middle shelves (§3.4-5): columns shelf · components · views list —
+   one scroll region between the splitter and the lens tabs, sharing the
+   pane's remaining height with the inspector below. */
+.wb-lp-shelves {
+  flex: 1 1 0; min-height: 72px; overflow-y: auto;
+  border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-viewstrip-add {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; cursor: pointer;
-  border: 1px dashed var(--wb-lp-border); border-radius: 999px;
-  background: transparent; color: var(--wb-lp-text-2); font: inherit;
-  font-size: 12px; line-height: 1;
+
+/* ── the columns shelf — "Columns — your data": typed chips, no formatter
+   state (a column is just data; its look lives on the grid/inventory). */
+.wb-colshelf { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 4px; }
+.wb-colshelf-head, .wb-viewslist-head {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--wb-lp-text-2);
 }
-.wb-viewstrip-add:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-viewstrip-input {
-  flex: 0 1 140px; min-width: 70px; padding: 2px 8px;
-  border: 1px solid var(--wb-accent); border-radius: 999px;
+.wb-colshelf-rack { display: flex; flex-wrap: wrap; gap: 4px; }
+.wb-colchip {
+  display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%;
+  padding: 2px 8px; cursor: grab;
+  border: 1px solid var(--wb-lp-border); border-radius: 999px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text); font: inherit;
+}
+.wb-colchip:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-colchip:active { cursor: grabbing; }
+.wb-colchip-name {
+  min-width: 0; font-size: 11.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-colchip-type { flex: 0 0 auto; font-size: 9.5px; color: var(--wb-lp-text-2); white-space: nowrap; }
+.wb-colshelf-empty { font-size: 11px; font-style: italic; color: var(--wb-lp-text-2); }
+
+/* ── the views list (§2: viewMenu became this) — composition last */
+.wb-viewslist { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px 10px; }
+.wb-viewslist-row { display: flex; align-items: center; }
+.wb-viewslist-open {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
+  padding: 2px 0; cursor: pointer; text-align: left;
+  border: none; background: transparent; color: var(--wb-lp-text); font: inherit; font-size: 12px;
+}
+.wb-viewslist-mark { flex: 0 0 auto; font-size: 12px; line-height: 1; color: var(--wb-lp-text-2); }
+.wb-viewslist-name {
+  min-width: 0; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wb-viewslist-row.selected .wb-viewslist-open,
+.wb-viewslist-row.selected .wb-viewslist-mark { color: var(--wb-accent); }
+.wb-viewslist-input {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 2px 6px;
+  border: 1px solid var(--wb-accent); border-radius: 3px;
   background: var(--wb-lp-surface); color: var(--wb-lp-text);
-  font: inherit; font-size: 11.5px; font-weight: 600;
 }
+.wb-viewslist-empty { font-size: 11px; font-style: italic; color: var(--wb-lp-text-2); line-height: 1.5; }
+.wb-viewslist-new {
+  display: flex; align-items: center; margin-top: 2px; padding: 3px 8px; cursor: pointer;
+  border: 1px dashed var(--wb-lp-border); border-radius: 3px; text-align: left;
+  background: transparent; color: var(--wb-lp-text); font: inherit; font-size: 11px; font-weight: 600;
+}
+.wb-viewslist-new:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
 /* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
 .wb-lens-tabs {
@@ -2870,7 +2792,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   color: var(--wb-accent); font-weight: 600; border-bottom-color: var(--wb-accent);
 }
 
-/* ── structure tree region (document dropdown + the tree itself) ───────────── */
+/* ── structure tree region ─────────────────────────────────────────────────── */
 .wb-lp-tree {
   flex: 0 0 auto; height: 260px; display: flex; flex-direction: column;
   border-bottom: 1px solid var(--wb-lp-border);
@@ -3239,7 +3161,6 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 }
 .wb-cell-linked:hover { outline: 1.5px solid var(--wb-shared); outline-offset: -1.5px; }
 .wb-style-mark { color: var(--wb-shared); font-weight: 700; font-style: normal; }
-.wb-grid-header .wb-cfr-link { color: var(--wb-shared); flex: none; cursor: help; }
 .wb-style-nametag {
   display: none;
   position: absolute;
@@ -3257,69 +3178,6 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 }
 .wb-cell-linked:hover .wb-style-nametag,
 .wb-cell-linked:has(.wb-selected) .wb-style-nametag { display: inline-block; }
-
-/* ── scope chip: what will this edit hit ───────────────────────────────── */
-.wb-scope-chip {
-  flex: none;
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-.wb-scope-view, .wb-scope-grid { background: var(--wb-canvas-bg); color: var(--wb-text-2); }
-.wb-scope-host { background: var(--wb-lp-selected); color: var(--wb-text); }
-.wb-scope-style { background: var(--wb-shared-bg); border: 1px solid var(--wb-shared-border); color: var(--wb-shared); }
-
-/* ── drilled into a column style ───────────────────────────────────────── */
-.wb-style-editing { outline: 2px solid var(--wb-shared); outline-offset: -2px; }
-.wb-style-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--wb-shared-bg);
-  color: var(--wb-shared);
-  border-bottom: 1px solid var(--wb-shared-border);
-}
-.wb-style-banner .wb-style-done {
-  margin-left: auto;
-  font: inherit;
-  font-size: 11.5px;
-  padding: 2px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--wb-shared-border);
-  background: var(--wb-surface);
-  color: var(--wb-shared);
-  cursor: pointer;
-}
-/* the Title context column steps back while a style is edited */
-.wb-style-editing .wb-mock-cell:not(.wb-mock-cell-fmt) { opacity: 0.45; }
-
-/* ── tree: a CFR host is ONE normal row ────────────────────────────────────
-   Every columnFormatterReference has an inherent wrapper div, so a nested
-   "reference" row was noise: the host row carries the whole story itself.
-   "Violet = shared" survives as INK only (no fill): the § mark beside the
-   name, and a right-aligned "reference" tag-button — the explicit door into
-   the shared column formatter. Row click/Enter selects the HOST element. */
-.wb-tree-label .wb-style-mark { flex: 0 0 auto; font-size: 11px; }
-.wb-tree-cfr-open {
-  /* auto left margin pins the tag (and the controls after it) to the right
-     even where the base .wb-tree-row's space-between would otherwise float
-     it mid-row (the Left Edit Pane's flex:1 label masks this; other mounts
-     don't) */
-  flex: 0 0 auto; margin-left: auto;
-  border: none; background: none; padding: 2px 4px;
-  font-size: 8.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
-  color: var(--wb-shared); opacity: .75;
-  cursor: pointer; white-space: nowrap;
-}
-.wb-tree-cfr-open:hover { opacity: 1; text-decoration: underline; }
-/* unregistered reference: teaching tooltip only — nothing to open */
-.wb-tree-cfr-missing { cursor: help; opacity: .55; }
-.wb-tree-cfr-missing:hover { opacity: .55; text-decoration: none; }
 
 /* ── universal search (Ctrl+F / topbar 🔎) ───────────────────── */
 /* command-palette box: query on top, grouped results left, preview card
@@ -3413,7 +3271,7 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 /* ── the CANVAS TAB STRIP (COLUMNS-COMPONENTS-VIEWS §2, Phase B) ────────────
    One tab per open surface/workshop above the fx bar: the standing ▦ Grid
    tab, the named views, and ⬡ component workshop tabs (teal channel + dirty
-   dot). Active = accent underline, the .wb-fmt-tab idiom; drag to rearrange
+   dot). Active = accent underline, the lens-tab idiom; drag to rearrange
    (insert indicator) and spring-load view tabs under component/field drags. */
 .wb-canvastabs {
   flex: 0 0 auto; display: flex; align-items: stretch; gap: 2px;
@@ -3469,7 +3327,7 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
   background: color-mix(in srgb, var(--wb-accent) 14%, transparent);
   outline: 1px dashed var(--wb-accent); outline-offset: -1px;
 }
-/* inline rename input — the viewStrip convention, tab-shaped */
+/* inline rename input — the retired viewStrip's convention, tab-shaped */
 .wb-canvastab-input {
   flex: 0 1 130px; min-width: 70px; margin: 4px 2px; padding: 2px 8px;
   border: 1px solid var(--wb-accent); border-radius: 3px;

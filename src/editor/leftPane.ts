@@ -1,30 +1,38 @@
 /**
- * editor/leftPane.ts — the Claude-style Left Edit Pane container.
+ * editor/leftPane.ts — the Claude-style Left Edit Pane container, rebuilt to
+ * COLUMNS-COMPONENTS-VIEWS §3 (Mockup B, approved). Top to bottom:
  *
- * Builds and wires the whole left column, top to bottom: the FORMATTERS bar
- * (the ← back + 🕘 snapshot buttons leading the VIEWS / COLUMNS / COMPONENTS
- * tabs — no visible "Formatters" label; the tablist carries that name via
- * aria-label instead), the VIEW STRIP (the workbook's sheet tabs: the grid
- * floor + one chip per named view + ＋ — FLOOR-AND-SHEETS Stage 2), the
- * document dropdown (the pill
- * naming what's on the canvas — its menu browses/renames views or the
- * formatted-columns gallery), the structure tree, a drag splitter, the
- * Simple/Pro/Code lens tabs, the draw toolbar (Select / Text / Frame / Icon /
- * Undo / Redo + a palette overflow popover), and the lower workspace that
- * swaps between the inspector (Simple/Pro) and the Code declarations box.
+ *   1. the NAV ROW — ← back (retrace) + 🕘 snapshots. Navigation between
+ *      surfaces lives in the CANVAS TAB STRIP now; the old formatter tablist
+ *      and the document pill died with the drill-in model.
+ *   2. the THIS VIEW card (viewCard.ts) — the active view's name/kind and its
+ *      view-scoped behaviors & properties; a def card while a component
+ *      workshop tab is up; hidden on the grid.
+ *   3. the STRUCTURE TREE — always mounted, rendering the active SURFACE
+ *      (state.doc — the v1 constraint: a workshop tab never re-targets it).
+ *      Drag splitter below (kept).
+ *   4. the COLUMNS SHELF (columnShelf.ts) — "Columns — your data": typed
+ *      chips, drag (FIELD_MIME) or click-to-insert. Data only.
+ *   5. the COMPONENTS library — always visible (the old tab-swap mode died),
+ *      then the VIEWS list (viewMenu.ts) — composition last, the owner's
+ *      left-to-right mental model.
+ *   6. the Simple/Pro/Code lens tabs, the draw toolbar (Select / Text /
+ *      Frame / Icon / Undo / Redo + palette overflow), and the lower
+ *      workspace swapping between the inspector and the Code declarations.
  */
 
 import { state, type EditorLens } from './state';
-import { mountViewStrip } from './viewStrip';
 import { mountTree } from './treeView';
 import { mountInspector } from './inspector';
 import { mountCodeEditor } from './codeEditor';
 import { mountPalette } from './palette';
 import { openIconPicker } from './iconPicker';
-import { openViewMenu } from './viewMenu';
+import { mountViewsList } from './viewMenu';
 import { openSnapMenu } from './snapMenu';
-import { renderComponentLibrary } from './componentLibrary';
-import type { FieldType, SPElement } from '../core/types';
+import { mountComponentLibrary } from './componentLibrary';
+import { mountColumnShelf } from './columnShelf';
+import { mountViewCard } from './viewCard';
+import type { SPElement } from '../core/types';
 
 export interface LeftPaneOptions {
   toast: (msg: string) => void;
@@ -35,26 +43,6 @@ const LENSES: Array<{ id: EditorLens; label: string }> = [
   { id: 'pro', label: 'Pro' },
   { id: 'code', label: 'Code' },
 ];
-
-/** Subtle schema tag for the view dropdown — which wrapper this view compiles
- *  to. Only read while a SHEET is up (row/tile view on the canvas): row
- *  layouts ship as the list's row schema; tile is its own schema. The floor
- *  never wears it — Columns mode is about columns, not a view wrapper. */
-function viewSchemaLabel(): string {
-  return state.doc.kind === 'tile' ? 'tile schema' : 'list row schema';
-}
-
-/** Subtle column-type tag for the column dropdown, e.g. "person column". */
-const FIELD_TYPE_LABEL: Record<FieldType, string> = {
-  text: 'text', note: 'multiline text', number: 'number', currency: 'currency',
-  choice: 'choice', choiceMulti: 'multi-choice', date: 'date',
-  person: 'person', personMulti: 'multi-person', boolean: 'yes/no',
-  hyperlink: 'hyperlink', lookup: 'lookup', lookupMulti: 'multi-lookup',
-};
-function columnTypeLabel(fieldName: string): string {
-  const field = state.fields.find((f) => f.name === fieldName);
-  return field ? `${FIELD_TYPE_LABEL[field.type] ?? field.type} column` : 'column';
-}
 
 export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const hostAny = host as any;
@@ -70,35 +58,22 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const { toast } = opts;
   host.classList.add('wb-leftpane');
   host.innerHTML = `
-    <div class="wb-fmt-tabs">
-      <div class="wb-fmt-row">
-        <div class="wb-nav-group">
-          <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
-          <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
-        </div>
-        <div class="wb-fmt-tablist" role="tablist" aria-label="Formatters">
-          <!-- Columns | Components | Views (owner, 2026-07-05): the mental
-               model reads left to right — views are made up of columns and
-               components, so the ingredients lead and the composition ends. -->
-          <button class="wb-fmt-tab wb-fmt-tab-cols" role="tab" data-fmt="cols" title="Your columns on the grid, and their shared formatters — each one paints a single column, everywhere it's referenced"><span class="wb-fmt-mark" aria-hidden="true">§</span><span>Columns</span></button>
-          <button class="wb-fmt-tab wb-fmt-tab-comp" role="tab" data-fmt="comp" title="Components — packaged formatting without a column to call home; add one and map your columns into its typed slots"><span class="wb-fmt-mark" aria-hidden="true">⬡</span><span>Components</span></button>
-          <button class="wb-fmt-tab wb-fmt-tab-view" role="tab" data-fmt="view" title="Views — whole-row layouts built from your columns and components">${ICONS.view}<span>Views</span></button>
-        </div>
+    <div class="wb-lp-nav">
+      <div class="wb-nav-group">
+        <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
+        <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
       </div>
     </div>
-    <div id="wb-viewstrip"></div>
+    <div id="wb-lp-viewcard"></div>
     <div class="wb-lp-tree" id="wb-lp-tree">
-      <div class="wb-doc-pill-row">
-        <button class="wb-doc-pill" id="wb-doc-pill" aria-haspopup="menu">
-          <span class="wb-doc-pill-name"></span>
-          <span class="wb-doc-pill-type"></span>
-          <span class="wb-doc-pill-caret" aria-hidden="true">▾</span>
-        </button>
-      </div>
       <div class="wb-tree-sec-body" id="wb-tree-body"></div>
-      <div class="wb-tree-sec-body wb-complib" id="wb-lp-library" hidden></div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
+    <div class="wb-lp-shelves" id="wb-lp-shelves">
+      <div id="wb-lp-shelf"></div>
+      <div class="wb-complib" id="wb-lp-library"></div>
+      <div id="wb-lp-views"></div>
+    </div>
     <div class="wb-lp-header">
       <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
         ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
@@ -120,142 +95,30 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     </div>
   `;
 
-  // ── mount the relocated panels ─────────────────────────────────────────────
-  // The view strip is the workbook's sheet tabs (FLOOR-AND-SHEETS Stage 2) —
-  // it sits above the tree region so it stays visible in every mode: on the
-  // floor, on a sheet, drilled into a column formatter, or browsing the
-  // component library. Flipping surfaces under a drill is an owner requirement.
-  mountViewStrip(host.querySelector<HTMLElement>('#wb-viewstrip')!, toast);
+  // ── mount the sections ─────────────────────────────────────────────────────
+  mountViewCard(host.querySelector<HTMLElement>('#wb-lp-viewcard')!, toast);
   mountTree(host.querySelector<HTMLElement>('#wb-tree-body')!, toast);
-  mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!);
+  mountColumnShelf(host.querySelector<HTMLElement>('#wb-lp-shelf')!, toast);
+  mountComponentLibrary(host.querySelector<HTMLElement>('#wb-lp-library')!, toast);
+  mountViewsList(host.querySelector<HTMLElement>('#wb-lp-views')!, toast);
+  mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!, { toast });
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
-
-  // ── formatter tabs + document dropdown ─────────────────────────────────────
-  // Which tab is active derives from workspace state. A drilled column ref
-  // (or a kind-'column' doc) reads as COLUMNS; so does STANDING ON THE GRID —
-  // the grid floor IS the Columns tab's canvas (owner call 2026-07-05, the
-  // Stage-2 amendment: no flip-flop button, Columns mode opens the grid).
-  // VIEWS is active exactly while a sheet is up and no column is drilled.
-  const isColumnDoc = (): boolean =>
-    state.activeDocKey !== 'main' || state.doc.kind === 'column';
-
-  const viewTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-view')!;
-  const colsTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-cols')!;
-  const compTab = host.querySelector<HTMLButtonElement>('.wb-fmt-tab-comp')!;
-  const libHost = host.querySelector<HTMLElement>('#wb-lp-library')!;
-  const pill = host.querySelector<HTMLButtonElement>('#wb-doc-pill')!;
-  const pillName = pill.querySelector<HTMLElement>('.wb-doc-pill-name')!;
-  const pillType = pill.querySelector<HTMLElement>('.wb-doc-pill-type')!;
-
-  // COMPONENTS is a library browser, not a document on the canvas — a local
-  // UI mode that any doc navigation (tab click or canvas drill-in) exits
-  let libraryOpen = false;
-
-  const refreshFmtNav = (): void => {
-    const drilled = isColumnDoc();
-    const cols = !libraryOpen && (drilled || state.onFloor);
-    const view = !libraryOpen && !drilled && !state.onFloor;
-    host.classList.toggle('wb-lp-library-open', libraryOpen);
-    libHost.hidden = !libraryOpen;
-    compTab.classList.toggle('active', libraryOpen);
-    compTab.setAttribute('aria-selected', String(libraryOpen));
-    viewTab.classList.toggle('active', view);
-    viewTab.setAttribute('aria-selected', String(view));
-    colsTab.classList.toggle('active', cols);
-    colsTab.setAttribute('aria-selected', String(cols));
-    // the pill is violet only for an actual column DOCUMENT — standing on the
-    // grid keeps the blue surface pill (plain "Grid": the schema tag belongs
-    // to sheets — Columns mode carries no view-wrapper chrome)
-    pill.classList.toggle('wb-doc-pill-col', drilled);
-    if (drilled) {
-      const fieldName = state.activeDocKey !== 'main' ? state.activeDocKey : state.currentFieldName;
-      pillName.textContent = state.fields.find((f) => f.name === fieldName)?.displayName ?? fieldName;
-      pillType.textContent = columnTypeLabel(fieldName);
-      pill.title = 'Browse the columns that have a formatter, or start one';
-    } else {
-      pillName.textContent = state.onFloor ? 'Grid' : state.activeViewName;
-      pillType.textContent = state.onFloor ? '' : viewSchemaLabel();
-      pill.title = state.onFloor
-        ? 'Browse the columns that have a formatter, or start one'
-        : 'Your named views — open one, rename it, or start a new row/tile view';
-    }
-    pillType.hidden = pillType.textContent === '';
-  };
-
-  viewTab.addEventListener('click', () => {
-    libraryOpen = false;
-    const wasDrilled = state.activeDocKey !== 'main';
-    if (wasDrilled) state.openMain(); // leave the drill → the surface below it
-    if (!state.onFloor) {
-      if (wasDrilled) toast(`Back to the ${state.activeViewName} view formatter`);
-      refreshFmtNav();
-      return;
-    }
-    // standing on the grid: the grid belongs to the COLUMNS tab now, so VIEWS
-    // returns to the sheet last on the canvas (newest as the fallback). With
-    // no sheets yet it CREATES a starting row view from the grid's columns
-    // (owner call 2026-07-06): clicking VIEWS must land in views mode with
-    // something real on the canvas — never bounce back to Columns with a
-    // popup. One undoable step; ＋ in the strip stays the tile/template door.
-    const target = (state.lastOpenViewId ? state.viewById(state.lastOpenViewId) : undefined)
-      ?? state.views[state.views.length - 1];
-    if (target) {
-      state.openView(target.id);
-      toast(`Opened “${target.name}”`);
-    } else {
-      state.makeRowView();
-      toast(`Started “${state.activeViewName}” — a row view of your columns. Use ＋ in the strip for more row or tile views.`);
-    }
-    refreshFmtNav();
-  });
-  colsTab.addEventListener('click', () => {
-    libraryOpen = false;
-    // COLUMNS opens the GRID — the floor is columns mode's canvas (owner call
-    // 2026-07-05). From a drill: back to the surface first; from a sheet:
-    // minimize (navigation — the sheet waits in the strip).
-    const wasDrilled = state.activeDocKey !== 'main';
-    if (wasDrilled) state.openMain();
-    if (!state.onFloor) {
-      state.minimizeView();
-      toast('Your columns grid — views wait in the strip on the left');
-      refreshFmtNav();
-      return;
-    }
-    if (wasDrilled) { toast('Back to the grid'); refreshFmtNav(); return; }
-    refreshFmtNav();
-  });
-  compTab.addEventListener('click', () => {
-    if (libraryOpen) return;
-    libraryOpen = true;
-    renderComponentLibrary(libHost, toast);
-    refreshFmtNav();
-  });
-  pill.addEventListener('click', (e) => {
-    e.stopPropagation();
-    // the view menu is the pill's job only while a sheet is up; on the floor
-    // the pill just names the grid
-    if (!state.onFloor) openViewMenu(pill, toast);
-  });
 
   // ── navigation back (retrace doc switches — not undo) ──────────────────────
   const backBtn = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
-  const backLabel = (key: string): string =>
-    key === 'main'
-      ? (state.onFloor ? 'the grid' : `the ${state.activeViewName} view`)
-      : `the ${key} column formatter`;
+  const landedLabel = (): string =>
+    state.onFloor ? 'the grid' : `the ${state.activeViewName} view`;
   const refreshBack = (): void => {
-    const target = state.backTarget;
-    backBtn.disabled = target === null;
-    backBtn.title = target === null
+    backBtn.disabled = state.backTarget === null;
+    backBtn.title = state.backTarget === null
       ? 'Back — retrace where you were (nothing to go back to yet)'
-      : `Back to ${backLabel(target)}`;
+      : 'Back — retrace your last surface switch';
   };
   backBtn.addEventListener('click', () => {
-    const landed = state.goBack();
-    if (landed !== null) toast(`Back to ${backLabel(landed)}`);
+    if (state.goBack() !== null) toast(`Back to ${landedLabel()}`);
   });
 
-  // ── snapshots (issue #140): the history button beside the dropdown ─────────
+  // ── snapshots (issue #140): the history button beside back ─────────────────
   const snapBtn = host.querySelector<HTMLButtonElement>('#wb-snap-btn')!;
   snapBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -365,9 +228,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const unsub = state.subscribe((reason) => {
     if (reason === 'lens') applyLens();
     if (reason === 'document' || reason === 'load' || reason === 'kind') refreshUndoRedo();
-    // a doc switch (canvas drill-in, back button, …) exits the library browser
-    if (reason === 'load') libraryOpen = false;
-    if (reason === 'load' || reason === 'data' || reason === 'kind') { refreshFmtNav(); refreshBack(); }
+    if (reason === 'load' || reason === 'data' || reason === 'kind') refreshBack();
   });
   hostAny._unsub = () => {
     unsub();
@@ -379,13 +240,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   };
   applyLens();
   refreshUndoRedo();
-  refreshFmtNav();
   refreshBack();
 }
 
-// Inline SVG glyphs for the toolbar + tabs — crisp at any size, theme via currentColor.
+// Inline SVG glyphs for the toolbar — crisp at any size, theme via currentColor.
 const ICONS = {
-  view: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M2.5 3.5h11v9h-11zM2.5 6.5h11M2.5 9.5h11"/></svg>',
   history: '<svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M3.2 8a4.8 4.8 0 1 0 1.4-3.4M3.2 2.8v2.4h2.4M8 5.4V8l1.9 1.4"/></svg>',
   text: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 3h10v2.2h-1.1V4.1H8.6v7.8H10V13H6v-1.1h1.4V4.1H4.1v1.1H3z"/></svg>',
   frame: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',

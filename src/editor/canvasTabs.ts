@@ -5,8 +5,9 @@
  * but the tabs can be rearranged" (owner, 2026-07-06).
  *
  *   · One tab per state.openTabs entry: the standing ▦ Grid tab, the named
- *     views (double-click renames inline — the viewStrip convention), and ⬡
- *     component WORKSHOP tabs (dirty dot while staged edits are unsaved).
+ *     views (double-click renames inline — the retired viewStrip's
+ *     convention), and ⬡ component WORKSHOP tabs (dirty dot while staged
+ *     edits are unsaved).
  *   · Clicking a grid/view tab is NAVIGATION (minimizeView/openView — never a
  *     mutation); clicking a component tab activates the workshop, which
  *     COVERS the canvas region (#wb-canvas hides, the workshop host shows).
@@ -44,8 +45,8 @@ export function mountCanvasTabs(
 ): void {
   stripHost.classList.add('wb-canvastabs');
   // plain NAVIGATION semantics, deliberately not the ARIA tabs pattern (the
-  // viewStrip precedent): no tab-panel relationship exists, so tab roles
-  // would promise interactions they don't have; aria-current marks active
+  // retired viewStrip's precedent): no tab-panel relationship exists, so tab
+  // roles would promise interactions they don't have; aria-current marks active
   stripHost.setAttribute('role', 'navigation');
   stripHost.setAttribute('aria-label', 'Canvas tabs');
 
@@ -137,7 +138,7 @@ export function mountCanvasTabs(
     state.closeTab(tabKey(t)); // emits 'data' → the strip re-renders
   };
 
-  // ── inline rename (the viewStrip convention: Enter/blur commit, Esc cancels) ──
+  // ── inline rename (Enter/blur commit, Esc cancels — the retired viewStrip's convention) ──
   const startRename = (btn: HTMLElement, viewId: string): void => {
     const view = state.viewById(viewId);
     if (!view) return;
