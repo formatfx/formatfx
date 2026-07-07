@@ -17,6 +17,7 @@ import { state, CARD_SEGMENT } from './state';
 import { focusFxSlot } from './fxBar';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
+import { openMapData } from './mapData';
 import { governedProperties } from './classPrecedence';
 import { styleAcross } from './multiSelect';
 import { hoverRevealStatus, setRevealOnHover } from './hoverReveal';
@@ -47,6 +48,9 @@ function propIsMixed(prop: string): boolean {
 
 export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) => void } = {}): void {
   const toast = opts.toast ?? (() => {});
+  // module-level relay so form helpers built outside this closure (exprField's
+  // ▦ Map data button) can toast — the selfCommit precedent
+  inspectorToast = toast;
   const render = () => {
     host.innerHTML = '';
     const node = state.selectedNode;
@@ -188,18 +192,33 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     }
 
     // Text content — the headline control in both lenses (Simple calls it "Text").
-    const txtContentField = (): HTMLElement => labeled('txtContent', textarea(
-      node.txtContent === undefined ? ''
-        : typeof node.txtContent === 'string' ? node.txtContent
-        : JSON.stringify(node.txtContent, null, 2),
-      (v) => commit((n) => {
-        const t = v.trim();
-        if (t === '') { delete n.txtContent; return; }
-        if (t.startsWith('{')) {
-          try { n.txtContent = JSON.parse(t); return; } catch { /* keep as string */ }
-        }
-        n.txtContent = v;
-      }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}"));
+    const txtContentField = (): HTMLElement => {
+      const wrap = document.createElement('div');
+      wrap.className = 'wb-mapdata-host';
+      wrap.appendChild(labeled('txtContent', textarea(
+        node.txtContent === undefined ? ''
+          : typeof node.txtContent === 'string' ? node.txtContent
+          : JSON.stringify(node.txtContent, null, 2),
+        (v) => commit((n) => {
+          const t = v.trim();
+          if (t === '') { delete n.txtContent; return; }
+          if (t.startsWith('{')) {
+            try { n.txtContent = JSON.parse(t); return; } catch { /* keep as string */ }
+          }
+          n.txtContent = v;
+        }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}")));
+      // ▦ Map data (#217) on the content slot — conditional text, click-only
+      const map = document.createElement('button');
+      map.type = 'button';
+      map.className = 'wb-mapdata-btn';
+      map.textContent = '▦ Map data…';
+      map.title = 'Drive the text from your columns with visual IF / ELSE-IF / ELSE rows — compiled to a safe formula, one undoable step';
+      map.addEventListener('click', () => {
+        if (state.selection) openMapData({ path: state.selection, slot: 'text', label: 'Text' }, toast);
+      });
+      wrap.appendChild(map);
+      return wrap;
+    };
 
     // Reveal on hover (issue #203, semantics HANDOFF §3.7) — one toggle applies
     // both class edits (sp-card-showOnHoverChild here + sp-card-showOnHoverParent
@@ -281,7 +300,9 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
             }
             if (Object.keys(n.style).length === 0) delete n.style;
           });
-        }, governedProperties(node.attributes?.class)),
+        }, governedProperties(node.attributes?.class), (prop) => {
+          if (state.selection) openMapData({ path: state.selection, slot: 'style', prop, label: prop }, toast);
+        }),
       ], true));
 
       // quick-add: one-click links for common-but-unlisted properties, each with
@@ -673,6 +694,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
 }
 
 let selfCommit = false;
+let inspectorToast: (m: string) => void = () => {};
 
 // ─── tiny form helpers ───────────────────────────────────────────────────────
 
@@ -1483,6 +1505,7 @@ function exprField(
   prop: string,
   buildControl: () => HTMLElement,
   formulaPlaceholder: string,
+  label?: string,
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'wb-expr-field';
@@ -1521,6 +1544,22 @@ function exprField(
       exprMode = !exprMode;
       render(exprMode);
     });
+    // ▦ Map data (#217): the click-only IF / ELSE-IF / ELSE builder for this
+    // property — compiles through the condition engine, one undoable stamp.
+    const mapBtn = document.createElement('button');
+    mapBtn.type = 'button';
+    mapBtn.className = 'wb-expr-map';
+    mapBtn.textContent = '▦';
+    mapBtn.title = 'Map data: drive this property from your columns with visual IF / ELSE-IF / ELSE rows — no formula typing';
+    // glyph-only button: give assistive tech a real name + the dialog hint
+    mapBtn.setAttribute('aria-label', 'Map data');
+    mapBtn.setAttribute('aria-haspopup', 'dialog');
+    mapBtn.addEventListener('click', () => {
+      if (state.selection) {
+        openMapData({ path: state.selection, slot: 'style', prop, label: label ?? prop }, inspectorToast);
+      }
+    });
+    wrap.append(mapBtn);
   };
   render();
   return wrap;
@@ -1535,7 +1574,7 @@ function exprRow(
   buildControl: () => HTMLElement,
   formulaPlaceholder = "=if([$Field]=='x','a','b')",
 ): HTMLElement {
-  return visualRow(node, label, prop, exprField(node, commit, prop, buildControl, formulaPlaceholder));
+  return visualRow(node, label, prop, exprField(node, commit, prop, buildControl, formulaPlaceholder, label));
 }
 
 const WEIGHTS: Array<[string, string]> = [
@@ -2237,6 +2276,9 @@ function kvEditor(
   // class-precedence: prop → governing class. A row whose prop is governed but
   // present (an inline value) is an OVERRIDE of that class — flag it (spec §5).
   governed?: Map<string, string>,
+  // ▦ Map data (#217): when provided, each row gets the visual-mapping door
+  // for its property (the style table passes this; attributes don't).
+  onMapProp?: (prop: string) => void,
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'wb-kv';
@@ -2357,7 +2399,23 @@ function kvEditor(
     key.addEventListener('input', () => { refreshValueOptions(); refreshGoverned(); });
     key.addEventListener('change', commitRows);
     val.addEventListener('change', commitRows);
-    row.append(key, val, badge, valList, info, del, card);
+    row.append(key, val, badge, valList, info);
+    if (onMapProp) {
+      const mapBtn = document.createElement('button');
+      mapBtn.type = 'button';
+      mapBtn.className = 'wb-kv-map';
+      mapBtn.textContent = '▦';
+      mapBtn.title = 'Map data: drive this property from your columns with visual IF / ELSE-IF / ELSE rows';
+      // glyph-only button: give assistive tech a real name + the dialog hint
+      mapBtn.setAttribute('aria-label', 'Map data');
+      mapBtn.setAttribute('aria-haspopup', 'dialog');
+      mapBtn.addEventListener('click', () => {
+        const k = key.value.trim();
+        if (k) onMapProp(k);
+      });
+      row.appendChild(mapBtn);
+    }
+    row.append(del, card);
     wrap.appendChild(row);
   };
 
