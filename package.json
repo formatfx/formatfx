@@ -38,6 +38,7 @@
     "prepublishOnly": "npm test && npm run build:lib",
     "test": "vitest run",
     "test:ui": "playwright test",
+    "test:e2e": "node tools/pr-dashboard/tests/e2e/test_runner.js",
     "visual:auth": "playwright test -c e2e/visual-compare/visual.config.ts auth.vspec.ts --headed",
     "visual:compare": "playwright test -c e2e/visual-compare/visual.config.ts compare.vspec.ts",
     "preview": "vite preview",

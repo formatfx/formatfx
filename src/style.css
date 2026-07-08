@@ -2864,29 +2864,15 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 
-/* ── the lens tabs line (Simple · Pro · Code) — sits between the structure
-   tree and the draw toolbar, heading the editing workspace below it ───────── */
-.wb-lp-header {
-  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 16px; border-bottom: 1px solid var(--wb-lp-border);
-}
-
-/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ← back + 🕘 snapshots.
-   Navigation between surfaces lives in the canvas tab strip; this row keeps
-   only the retrace and history doors. */
+/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ← back + Simple/Pro/Code lens + 🕘 snapshots. ── */
 .wb-lp-nav {
-  flex: 0 0 auto; display: flex; align-items: center; padding: 6px 8px;
-  border-bottom: 1px solid var(--wb-lp-border);
-}
-.wb-nav-group {
-  flex: 0 0 auto; display: inline-flex; align-items: center;
-  border: 1px solid var(--wb-lp-border); border-radius: 7px;
-  padding: 2px;
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; border-bottom: 1px solid var(--wb-lp-border);
 }
 .wb-nav-back, .wb-snap-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center;
-  justify-content: center; width: 27px; height: 25px;
-  border: none; border-radius: 5px;
+  justify-content: center; width: 28px; height: 28px;
+  border: none; border-radius: 6px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
   font-size: 16px; line-height: 1;
 }

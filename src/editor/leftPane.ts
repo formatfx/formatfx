@@ -83,10 +83,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   host.classList.add('wb-leftpane');
   host.innerHTML = `
     <div class="wb-lp-nav">
-      <div class="wb-nav-group">
-        <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
-        <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
+      <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
+      <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
+        ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
       </div>
+      <button class="wb-snap-btn" id="wb-snap-btn" aria-haspopup="menu" aria-label="Snapshots" title="Snapshots — capture the whole workspace and restore any capture later">${ICONS.history}</button>
     </div>
     <div id="wb-lp-viewcard"></div>
     <div class="wb-lp-tree" id="wb-lp-tree">
@@ -103,11 +104,6 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         <div class="wb-complib wb-lp-sec-body" id="wb-lp-library"></div>
       </section>
       <div id="wb-lp-views"></div>
-    </div>
-    <div class="wb-lp-header">
-      <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
-        ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
-      </div>
     </div>
     <div class="wb-drawbar" role="toolbar" aria-label="Draw tools">
       <button class="wb-tool" data-tool="text" title="Insert a text element (span)" aria-label="Insert text">${ICONS.text}</button>

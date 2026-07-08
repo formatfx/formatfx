@@ -47,6 +47,7 @@ export default defineConfig(({ mode }) => ({
   define: buildDefines(),
   test: {
     environment: 'happy-dom',
-    exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'dist-single/**'],
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'dist-single/**', 'tools/**'],
+    testTimeout: 15000,
   },
 }));
