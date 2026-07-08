@@ -50,7 +50,7 @@ describe('structure (§3, top to bottom)', () => {
     const ids = [...host.children].map((el) => el.id || el.className.split(' ')[0]);
     expect(ids).toEqual([
       'wb-lp-nav', 'wb-lp-viewcard', 'wb-lp-tree', 'wb-lp-splitter',
-      'wb-lp-shelves', 'wb-lp-header', 'wb-drawbar', 'wb-lp-props',
+      'wb-lp-shelves', 'wb-drawbar', 'wb-lp-props',
     ]);
     const shelves = host.querySelector('#wb-lp-shelves')!;
     // columns + components are now collapsible sections wrapping their mounts;
