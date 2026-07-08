@@ -220,6 +220,28 @@ body {
 }
 .wb-snap-del:hover { color: #d13438; background: rgba(209, 52, 56, .08); }
 
+.wb-kebab-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 6px 8px; font-size: 12px; cursor: pointer; text-align: left;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text);
+  font-family: inherit;
+}
+.wb-kebab-item:hover:not(:disabled) {
+  background: var(--wb-lp-seg-track); color: var(--wb-accent);
+}
+.wb-kebab-item:disabled {
+  opacity: .35; cursor: default;
+}
+.wb-kebab-item svg {
+  flex: 0 0 auto;
+}
+.wb-kebab-shortcut {
+  margin-left: auto; font-size: 10.5px; color: var(--wb-text-2);
+}
+.wb-kebab-sep {
+  height: 1px; background: var(--wb-border); margin: 4px 0;
+}
+
 /* ── Components library (the ⬡ section — formatting without a column) ─────── */
 /* tree-density stack: rows sit tight like the structure tree; the headings
    carry the breathing room instead of a fat flex gap (owner redesign 2026-07-05) */
@@ -2869,14 +2891,14 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-nav-back, .wb-snap-btn {
+.wb-nav-back, .wb-snap-btn, .wb-kebab-btn {
   flex: 0 0 auto; display: inline-flex; align-items: center;
   justify-content: center; width: 28px; height: 28px;
   border: none; border-radius: 6px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
   font-size: 16px; line-height: 1;
 }
-.wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover {
+.wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover, .wb-kebab-btn:hover {
   background: var(--wb-lp-seg-track); color: var(--wb-accent);
 }
 .wb-nav-back:disabled { opacity: .35; cursor: default; }
@@ -2932,8 +2954,12 @@ body.wb-dark .wb-ce-save { color: #10393b; }
    one scroll region between the splitter and the lens tabs, sharing the
    pane's remaining height with the inspector below. */
 .wb-lp-shelves {
-  flex: 1 1 0; min-height: 72px; overflow-y: auto;
+  flex: 0 1 auto; min-height: 72px; overflow-y: auto;
   border-bottom: 1px solid var(--wb-lp-border);
+}
+/* If properties/code is collapsed, let shelves fill the space. */
+.wb-leftpane:not(.wb-lens-code):has(.wb-lp-sec-inspector.wb-collapsed) .wb-lp-shelves {
+  flex: 1 1 0;
 }
 
 /* ── collapsible pane sections (issue #236): Columns · Components · the property

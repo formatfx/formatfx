@@ -36,7 +36,7 @@ describe('structure (§3, top to bottom)', () => {
   it('keeps the nav row (back + snapshots) and buries the old chrome', () => {
     const host = mount();
     expect(host.querySelector('#wb-nav-back')).not.toBeNull();
-    expect(host.querySelector('#wb-snap-btn')).not.toBeNull();
+    expect(host.querySelector('#wb-kebab-btn')).not.toBeNull();
     // the dead chrome: no formatter tablist, no document pill, no view strip
     expect(host.querySelector('.wb-fmt-tablist')).toBeNull();
     expect(host.querySelector('.wb-fmt-tab')).toBeNull();
@@ -50,7 +50,7 @@ describe('structure (§3, top to bottom)', () => {
     const ids = [...host.children].map((el) => el.id || el.className.split(' ')[0]);
     expect(ids).toEqual([
       'wb-lp-nav', 'wb-lp-viewcard', 'wb-lp-tree', 'wb-lp-splitter',
-      'wb-lp-shelves', 'wb-drawbar', 'wb-lp-props',
+      'wb-lp-shelves', 'wb-lp-props',
     ]);
     const shelves = host.querySelector('#wb-lp-shelves')!;
     // columns + components are now collapsible sections wrapping their mounts;
@@ -145,12 +145,19 @@ describe('the kept workspace (lens tabs · draw toolbar · back)', () => {
 
   it('the draw toolbar inserts (one undo step) and its undo/redo track the stack', () => {
     const host = mount();
-    const undoBtn = host.querySelector<HTMLButtonElement>('.wb-tool-undo')!;
-    expect(undoBtn.disabled).toBe(true);
-    host.querySelector<HTMLButtonElement>('.wb-tool[data-tool="text"]')!.click();
+    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
+    let menu = document.body.querySelector('.wb-snapmenu')!;
+    const undoBtn1 = menu.querySelector<HTMLButtonElement>('.wb-tool-undo')!;
+    expect(undoBtn1.disabled).toBe(true);
+    
+    menu.querySelector<HTMLButtonElement>('[data-tool="text"]')!.click();
     const kids = state.doc.root.children!;
     expect(kids[kids.length - 1]._elmName).toBe('Text');
-    expect(undoBtn.disabled).toBe(false);
+    
+    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
+    menu = document.body.querySelector('.wb-snapmenu')!;
+    const undoBtn2 = menu.querySelector<HTMLButtonElement>('.wb-tool-undo')!;
+    expect(undoBtn2.disabled).toBe(false);
   });
 
   it('back retraces surface switches (navigation, not undo)', () => {
