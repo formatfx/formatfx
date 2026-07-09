@@ -545,8 +545,8 @@ const refreshLintBadge = ({ errors, warnings, runtime }: { errors: number; warni
   lintBadge.hidden = false;
   lintBadge.classList.toggle('wb-badge-warn', errorTotal === 0);
   const label = errorTotal
-    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open Advanced to review`
-    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open Advanced to review`;
+    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open the JSON pane to review`
+    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open the JSON pane to review`;
   lintBadge.setAttribute('aria-label', label);
   lintBadge.title = label;
 };

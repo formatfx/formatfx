@@ -318,9 +318,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const kebabWrap = kebabBtn.parentElement as HTMLElement;
   const kebabPanel = host.querySelector('#wb-json-kebab-panel') as HTMLDivElement;
   kebabBtn.addEventListener('click', () => { kebabPanel.hidden = !kebabPanel.hidden; });
-  document.addEventListener('pointerdown', (e) => {
+  // named so the host's _unsub teardown can remove it (document-level listener;
+  // tests remount this panel — see jsonPanel.sync.test.ts's teardown discipline)
+  const closeKebabOnOutside = (e: PointerEvent): void => {
     if (!kebabPanel.hidden && !kebabWrap.contains(e.target as Node)) kebabPanel.hidden = true;
-  });
+  };
+  document.addEventListener('pointerdown', closeKebabOnOutside);
   kebabPanel.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('button')) kebabPanel.hidden = true;
   });
@@ -456,7 +459,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   if (typeof hostAny._unsub === 'function') {
     hostAny._unsub();
   }
-  hostAny._unsub = state.subscribe((reason) => {
+  const stateUnsub = state.subscribe((reason) => {
     if (reason === 'selection') {
       // #218 canvas → code — unless the selection ORIGINATED here (the echo
       // guard): a code-side caret move must not bounce back and scroll/flash
@@ -468,6 +471,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
     if (reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
   });
+  hostAny._unsub = () => {
+    stateUnsub();
+    document.removeEventListener('pointerdown', closeKebabOnOutside);
+  };
   regenerate();
   renderLint([]);
 

@@ -173,7 +173,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`
   depth, and more. Written for low-code makers, not compiler authors.
-- **Explain — the formatter, read back in plain English** (Advanced pane →
+- **Explain — the formatter, read back in plain English** (JSON pane →
   Explain tab) — the comprehension half of the teaching linter. Paste a wall
   of community JSON and read what it *does*: "Shows “Status”. The background
   color is: if “Status” is ‘Blocked’, then ‘#d13438’, otherwise ‘#107c10’.
