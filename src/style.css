@@ -607,7 +607,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
      JS node-moving at the breakpoint risks pane state. Tab order remains
      logical and identical at every width: edit pane → canvas → JSON. */
   .wb-layout > .wb-pane-canvas {
-    order: -1; flex: 0 0 auto; min-height: 60vh;
+    order: -1; flex: 0 0 auto; height: fit-content; min-height: 200px; max-height: 60vh;
   }
   .wb-layout > .wb-leftpane {
     flex: 0 0 auto; border-right: none; border-top: 1px solid var(--wb-lp-border);
@@ -3879,6 +3879,21 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
   border: 1px solid var(--wb-accent); border-radius: 3px;
   background: var(--wb-surface); color: var(--wb-text);
   font: inherit; font-size: 12px; font-weight: 600;
+}
+.wb-canvastabs-add {
+  align-self: center;
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border: none; background: none; cursor: pointer;
+  margin: 0 4px 2px; border-radius: 4px;
+  font-size: 14px; font-weight: 600; color: var(--wb-text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.wb-canvastabs-add:hover {
+  background: color-mix(in srgb, var(--wb-accent) 8%, transparent);
+  color: var(--wb-accent);
+}
+.wb-canvastabs-add:active {
+  background: color-mix(in srgb, var(--wb-accent) 15%, transparent);
 }
 
 /* ── the component WORKSHOP host — fills the canvas region while a component

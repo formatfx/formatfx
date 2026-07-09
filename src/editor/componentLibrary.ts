@@ -150,6 +150,26 @@ export function customComponents(): ComponentDef[] {
   return readCustom();
 }
 
+/** Create a new blank component, write it to custom components, open its workshop tab and toast. */
+export function createNewComponent(onToast: (m: string) => void): void {
+  const taken = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...readCustom()].map((c) => c.name);
+  const def: ComponentDef = {
+    id: componentId(new Date()),
+    // deduped: "Save as component" replaces by NAME, so two blanks must
+    // never collide ("New component 2", …)
+    name: uniqueName('New component', taken),
+    description: 'A blank component — build it in the workshop.',
+    slots: [],
+    root: { elmType: 'div', _elmName: 'New component', txtContent: 'New component' },
+  };
+  if (!writeCustom(addComponent(readCustom(), def))) {
+    onToast('Could not create the component — browser storage is full or blocked.');
+    return;
+  }
+  state.openComponentTab(def.id); // emits 'data' → the library re-renders
+  onToast(`Started “${def.name}” — build it in the workshop and Save when it's ready`);
+}
+
 /** Drag payload for component cards → the canvas (carries the def id). */
 export const COMPONENT_MIME = 'application/x-wb-component';
 
@@ -631,24 +651,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   newComp.className = 'wb-comp-rowlink wb-comp-newdef';
   newComp.innerHTML = '<span class="wb-comp-rowlink-name">＋ New component…</span>';
   newComp.title = 'Start a blank component and open its workshop tab — build its elements there, then Save.';
-  newComp.addEventListener('click', () => {
-    const taken = [...BUILTIN_COMPONENTS, ...paletteComponents(), ...readCustom()].map((c) => c.name);
-    const def: ComponentDef = {
-      id: componentId(new Date()),
-      // deduped: "Save as component" replaces by NAME, so two blanks must
-      // never collide ("New component 2", …)
-      name: uniqueName('New component', taken),
-      description: 'A blank component — build it in the workshop.',
-      slots: [],
-      root: { elmType: 'div', _elmName: 'New component', txtContent: 'New component' },
-    };
-    if (!writeCustom(addComponent(readCustom(), def))) {
-      onToast('Could not create the component — browser storage is full or blocked.');
-      return;
-    }
-    state.openComponentTab(def.id); // emits 'data' → the library re-renders
-    onToast(`Started “${def.name}” — build it in the workshop and Save when it's ready`);
-  });
+  newComp.addEventListener('click', () => createNewComponent(onToast));
   addBody.appendChild(newComp);
 
   // ── the row-scoped siblings: whole-row components + New rowview ───────────

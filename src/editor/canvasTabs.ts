@@ -25,12 +25,14 @@
  */
 
 import { state, tabKey, type CanvasTab } from './state';
-import { componentById, rawComponentById, COMPONENT_MIME } from './componentLibrary';
+import { componentById, rawComponentById, COMPONENT_MIME, createNewComponent } from './componentLibrary';
 import { FIELD_MIME } from './templateUi';
 import {
   mountComponentWorkshop,
   type WorkshopHandle, type WorkshopStaging,
 } from './componentEditor';
+import { openMenu } from './menu';
+import { openTemplateModal } from './templateModal';
 
 /** Drag payload for rearranging tabs (carries the source index). */
 export const TAB_MIME = 'application/x-wb-canvastab';
@@ -331,6 +333,37 @@ export function mountCanvasTabs(
     stripHost.replaceChildren();
     const activeKey = state.activeTabKey;
     state.openTabs.forEach((t, i) => stripHost.appendChild(tabEl(t, i, activeKey)));
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'wb-canvastabs-add';
+    addBtn.textContent = '＋';
+    addBtn.title = 'Add new view or component';
+    addBtn.setAttribute('aria-label', 'Add new view or component');
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMenu(addBtn, 'Create new...', [
+        {
+          icon: 'AlignLeft',
+          label: 'New rowview…',
+          title: 'Start a new row view from a template',
+          fn: () => openTemplateModal(onToast, { target: 'row', createNew: true }),
+        },
+        {
+          icon: 'Tiles',
+          label: 'New tileview…',
+          title: 'Start a new tile view from a template',
+          fn: () => openTemplateModal(onToast, { target: 'tile', createNew: true }),
+        },
+        {
+          icon: 'CubeShape',
+          label: 'New component…',
+          title: 'Start a blank component and open its workshop tab',
+          fn: () => createNewComponent(onToast),
+        },
+      ]);
+    });
+    stripHost.appendChild(addBtn);
   };
 
   const render = (): void => {
