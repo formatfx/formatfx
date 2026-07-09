@@ -80,9 +80,15 @@ export function openPalettePop(anchor: HTMLElement): void {
   document.body.appendChild(pop);
 
   const r = anchor.getBoundingClientRect();
+  // Keep the palette inside the left pane so it never covers the canvas. The
+  // canvas is the drop zone for dragging elements in; a palette overlapping it
+  // would intercept the drop (the old drawbar palette lived in the pane too).
+  const pane = anchor.closest('.wb-leftpane');
+  const paneRight = pane ? pane.getBoundingClientRect().right : window.innerWidth;
+  const w = pop.offsetWidth || 320;
   pop.style.position = 'fixed';
   pop.style.top = `${Math.min(r.bottom + 6, Math.max(8, window.innerHeight - 370))}px`;
-  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 330))}px`;
+  pop.style.left = `${Math.max(8, Math.min(r.left, paneRight - w - 8))}px`;
 
   let done = false;
   const close = (): void => { if (!done) { done = true; closePalettePop(); } };
