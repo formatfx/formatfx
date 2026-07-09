@@ -22,6 +22,12 @@ guidance in your environment.
   anyway (next bullet). HANDOFF §7 keeps the no-CDN container recipe for
   when a local browser run IS wanted.
 - PR body: what changed and why, in plain language, plus test counts.
+- Docs ride the code commit: fold HANDOFF/README/CLAUDE.md updates into
+  the same commit (or at least the same push) as the code they describe —
+  never trail an open PR with a docs-only push, because every push
+  restarts the full required CI (owner call 2026-07-09). ci.yml
+  short-circuits its heavy jobs for docs-only PR diffs, so a stray docs
+  push now costs seconds, not minutes — but don't lean on that.
 - Auto-fix is part of opening a PR, not a follow-up: the moment the PR is
   open, switch it on in this same session — call `subscribe_pr_activity`
   for the new PR so the session keeps watching its CI runs and review
