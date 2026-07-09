@@ -178,7 +178,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
   let zoomBox: HTMLElement | null = null;
   let stageEl: HTMLElement | null = null;
   let viewBar: {
-    out: HTMLButtonElement; pct: HTMLButtonElement; zin: HTMLButtonElement;
+    out: HTMLButtonElement; pct: HTMLButtonElement; zin: HTMLButtonElement; reset: HTMLButtonElement;
     presets: HTMLButtonElement[]; px: HTMLElement;
   } | null = null;
   const persistView = (): void => viewPrefs?.set({ ...view });
@@ -191,6 +191,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
       : 'Reset zoom to 100%';
     viewBar.out.disabled = view.zoom <= ZOOM_MIN;
     viewBar.zin.disabled = view.zoom >= ZOOM_MAX;
+    viewBar.reset.disabled = view.zoom === 1;
     for (const b of viewBar.presets) {
       const on = b.dataset.viewportWidth === String(view.viewportWidth);
       b.classList.toggle('active', on);
@@ -253,6 +254,10 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
       'Zoom in (Ctrl+scroll) — magnifies pixels only, the layout never reflows',
       () => setZoom(stepZoom(view.zoom, 1)));
     zin.dataset.zoom = 'in';
+    const reset = mk(zoomSeg, 'wb-canvas-zoombtn', '↺',
+      'Reset zoom to 100%',
+      () => setZoom(1));
+    reset.dataset.zoom = 'reset';
     bar.appendChild(zoomSeg);
 
     // #224: the viewport WIDTH presets — a separate, labeled control so
@@ -278,7 +283,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     vpSeg.appendChild(px);
     bar.appendChild(vpSeg);
 
-    viewBar = { out, pct, zin, presets, px };
+    viewBar = { out, pct, zin, reset, presets, px };
     refreshViewBar();
     return bar;
   };
