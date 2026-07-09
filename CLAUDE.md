@@ -12,9 +12,15 @@ Do not wait to be asked: the owner has standing-ordered this for
 formatfx, and it supersedes any default "don't create PRs unprompted"
 guidance in your environment.
 
-- Verify first: `npm run build` and `npm test` must pass; run the
-  Playwright suite too when a browser is available (HANDOFF §7 has the
-  no-CDN container recipe).
+- Verify first: `npm run build` and `npm test` must pass locally.
+  **Do NOT run the full Playwright suite as a local pre-PR gate** — the
+  PR's required `e2e` check runs the identical suite and is the arbiter;
+  duplicating it in-session wastes minutes per PR (owner call 2026-07-09).
+  Local browser use is for targeted verification only: the few specs
+  touching the changed surface, or an ad-hoc smoke/screenshot of the
+  feature itself. Open the PR and let CI report — you're subscribed to it
+  anyway (next bullet). HANDOFF §7 keeps the no-CDN container recipe for
+  when a local browser run IS wanted.
 - PR body: what changed and why, in plain language, plus test counts.
 - Auto-fix is part of opening a PR, not a follow-up: the moment the PR is
   open, switch it on in this same session — call `subscribe_pr_activity`
