@@ -23,6 +23,7 @@
  */
 
 import { tokenizeJson, matchBracketAt, renderJsonHtml } from './jsonHighlight';
+import { typingAssist, pasteReindent } from './jsonFormat';
 import { jsonCompletionAt, signatureHintAt, type JsonCompletion } from './jsonComplete';
 import { openAcMenu, type AcMenu } from './acMenu';
 import { lineOfOffset } from './codeSync';
@@ -49,6 +50,9 @@ export interface JsonIdeApi {
 
 /** Gutter width — keep in step with the CSS (.wb-json-gutter / padding-left). */
 const GUTTER_W = 38;
+
+/** Keys the completion menu owns while open — assists must not steal them. */
+const MENU_KEYS = new Set(['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape']);
 
 export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, deps: JsonIdeDeps): JsonIdeApi {
   const gutter = document.createElement('div');
@@ -245,6 +249,24 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   };
 
   textEl.addEventListener('input', () => { repaint(); updateMenu(false); });
+  textEl.addEventListener('beforeinput', (e) => {
+    // #PR-B: multi-line pastes re-base to the caret line's indentation
+    if (e.inputType !== 'insertFromPaste') return;
+    const raw = e.dataTransfer?.getData('text/plain') ?? e.data ?? '';
+    if (!raw.includes('\n')) return;
+    const selStart = textEl.selectionStart ?? 0;
+    const adjusted = pasteReindent(textEl.value, selStart, raw);
+    if (adjusted === raw) return;
+    e.preventDefault();
+    if (!spliceKeepingUndo(selStart, textEl.selectionEnd ?? selStart, adjusted)) {
+      const v = textEl.value;
+      textEl.value = v.slice(0, selStart) + adjusted + v.slice(textEl.selectionEnd ?? selStart);
+      deps.onSplice();
+    }
+    const pos = selStart + adjusted.length;
+    textEl.setSelectionRange(pos, pos);
+    repaint();
+  });
   textEl.addEventListener('click', () => { closeMenu(); repaint(); });
   textEl.addEventListener('keyup', (e) => {
     // caret-only moves (arrows, Home/End, PgUp/PgDn) — input already repainted
@@ -259,6 +281,28 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
       e.preventDefault();
       updateMenu(true);
       return;
+    }
+    // #PR-B typing assists. The menu owns its navigation keys while open;
+    // everything else (brackets, quotes — and Enter when no menu is up)
+    // flows to the pure decision layer. Splices ride the same undo path
+    // as accepted completions.
+    if (!e.defaultPrevented && (!ac || !MENU_KEYS.has(e.key))) {
+      const a = typingAssist(textEl.value, textEl.selectionStart ?? 0, textEl.selectionEnd ?? 0, e.key);
+      if (a) {
+        e.preventDefault();
+        if (a.kind === 'caret') {
+          textEl.setSelectionRange(a.caret, a.caret);
+        } else {
+          if (!spliceKeepingUndo(a.from, a.to, a.insert)) {
+            const v = textEl.value;
+            textEl.value = v.slice(0, a.from) + a.insert + v.slice(a.to);
+            deps.onSplice();
+          }
+          textEl.setSelectionRange(a.caret, a.caret);
+        }
+        repaint();
+        return;
+      }
     }
     if (!ac) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); ac.move(1); return; }

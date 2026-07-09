@@ -33,6 +33,7 @@ import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange } from '../core/jsonMap';
 import { preserveCaret, lineSpanOf, SyncEcho } from './codeSync';
 import { mountJsonIde } from './jsonIde';
+import { formatDocument } from './jsonFormat';
 import { ctxForRow } from './previewCtx';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
@@ -88,6 +89,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
         <button id="wb-json-download" title="Download .json">Download</button>
         <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
+        <button id="wb-json-format" title="Pretty-print the buffer: canonical when it parses (Alt+Shift+F). Does not Apply.">Format document</button>
         <hr>
         <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
         <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>`;
@@ -246,6 +248,42 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // an accepted completion is buffer input like any other keystroke (the
     // execCommand path re-enters via the input listener instead)
     onSplice: () => { setDirty(); clearImportError(); clearFlash(); },
+  });
+
+  // ── #PR-B Format document: buffer-only pretty print, never an Apply.
+  // Canonical (importJson → the deterministic serializer) when the buffer
+  // parses; tolerant re-indent + the parse error when it doesn't. The dirty
+  // flag is deliberately untouched — a formatted hand-edit still needs Apply,
+  // and a clean buffer is already canonical so the swap is a no-op. ──
+  const formatCmd = (): void => {
+    const res = formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
+    if (res.text !== textEl.value) {
+      const selStart = textEl.selectionStart ?? 0;
+      const selEnd = textEl.selectionEnd ?? selStart;
+      const { scrollTop, scrollLeft } = textEl;
+      const prev = textEl.value;
+      textEl.value = res.text;
+      textEl.setSelectionRange(preserveCaret(prev, res.text, selStart), preserveCaret(prev, res.text, selEnd));
+      textEl.scrollTop = scrollTop;
+      textEl.scrollLeft = scrollLeft;
+      clearFlash();
+      ide.repaint();
+    }
+    if (res.tier === 'reindent') {
+      importErrorEl.textContent = `Format is re-indent only until the JSON parses — ${res.error}`;
+      importErrorEl.hidden = false;
+      onToast('Re-indented. Fix the parse error for canonical formatting.');
+    } else {
+      clearImportError();
+      onToast('Formatted');
+    }
+  };
+  menuHost.querySelector('#wb-json-format')!.addEventListener('click', formatCmd);
+  textEl.addEventListener('keydown', (e) => {
+    if (e.altKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+      e.preventDefault();
+      formatCmd();
+    }
   });
 
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
