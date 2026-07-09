@@ -6,6 +6,7 @@ import {
   newFieldItem, newComponentItem, wireframeById,
   childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem, type WireframeId,
+  type ZoneAlign, type ZoneVAlign, type RootVAlign,
 } from './rowTemplates';
 import type { ComponentDef } from './components';
 import { themePalette } from '../core/theme';
@@ -16,6 +17,7 @@ const base = (over: Partial<RowTemplateConfig> = {}): RowTemplateConfig => ({
   wireframeId: 'equal', target: 'row', rowStyle: 'flat', density: 'roomy',
   zebraStriping: false, hoverHighlight: false, hoverToken: 'themeLighter',
   borderStyle: 'none', borderColor: 'neutralQuaternaryAlt', leftStripe: 'none',
+  rootVAlign: 'middle', rootAlign: 'left',
   zones: [], kebab: { enabled: false, behavior: 'custom', position: 'right',
     actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } },
   ...over,
@@ -158,7 +160,7 @@ describe('wireframe seeding (defaultConfigFor)', () => {
 
 describe('buildZone — the flex behavior contract', () => {
   const zone = (over: Partial<ZoneConfig>): ZoneConfig =>
-    ({ label: 'Z', size: 'normal', flow: 'side', align: 'left', items: [], ...over });
+    ({ label: 'Z', size: 'normal', flow: 'side', align: 'left', valign: 'middle', items: [], ...over });
 
   it('hug zones take only their content (no grow, no min-width:0)', () => {
     const el = buildZone(zone({ size: 'hug' }), FIELDS, {}, []);
@@ -236,15 +238,107 @@ describe('buildZone — the flex behavior contract', () => {
     const { ALLOWED_STYLES } = await import('../core/schema');
     for (const flow of ['side', 'wrap', 'stack'] as const) {
       for (const align of ['left', 'center', 'right'] as const) {
-        const z = zone({ flow, align, size: flow === 'stack' ? 'hug' : 'wide' });
-        z.items = [newFieldItem('Title', z), { ...newFieldItem('Status', z), width: 'natural' }];
-        const el = buildZone(z, FIELDS, {}, []);
-        for (const k of Object.keys(el.style!)) expect(ALLOWED_STYLES.has(k), `zone ${k}`).toBe(true);
-        for (const item of el.children!) {
-          for (const k of Object.keys(item.style!)) expect(ALLOWED_STYLES.has(k), `item ${k}`).toBe(true);
+        for (const valign of ['top', 'middle', 'bottom', 'baseline'] as const) {
+          const z = zone({ flow, align, valign, size: flow === 'stack' ? 'hug' : 'wide' });
+          z.items = [newFieldItem('Title', z), { ...newFieldItem('Status', z), width: 'natural' }];
+          const el = buildZone(z, FIELDS, {}, []);
+          for (const k of Object.keys(el.style!)) expect(ALLOWED_STYLES.has(k), `zone ${k}`).toBe(true);
+          for (const item of el.children!) {
+            for (const k of Object.keys(item.style!)) expect(ALLOWED_STYLES.has(k), `item ${k}`).toBe(true);
+          }
         }
       }
     }
+  });
+});
+
+describe('alignment — two axes at every level (the container owns alignment: there is no per-child align-self on real SP)', () => {
+  const zone = (over: Partial<ZoneConfig>): ZoneConfig =>
+    ({ label: 'Z', size: 'normal', flow: 'side', align: 'left', valign: 'middle', items: [], ...over });
+
+  it('side/wrap zones drive align-items from valign — middle stays the classic center', () => {
+    expect(buildZone(zone({}), FIELDS, {}, []).style!['align-items']).toBe('center');
+    expect(buildZone(zone({ valign: 'top' }), FIELDS, {}, []).style!['align-items']).toBe('flex-start');
+    expect(buildZone(zone({ flow: 'wrap', valign: 'bottom' }), FIELDS, {}, []).style!['align-items']).toBe('flex-end');
+    expect(buildZone(zone({ valign: 'baseline' }), FIELDS, {}, []).style!['align-items']).toBe('baseline');
+  });
+
+  it('stack zones place their pile via justify-content — top (the CSS start) emits nothing', () => {
+    const stack = (v: ZoneVAlign) =>
+      buildZone(zone({ flow: 'stack', valign: v }), FIELDS, {}, []).style!;
+    expect(stack('top')['justify-content']).toBeUndefined();
+    expect(stack('middle')['justify-content']).toBe('center');
+    expect(stack('bottom')['justify-content']).toBe('flex-end');
+    expect(stack('baseline')['justify-content']).toBeUndefined(); // a column axis has no baseline
+    // the horizontal axis of a stack stays align-items, exactly as before
+    expect(buildZone(zone({ flow: 'stack', align: 'center', valign: 'top' }), FIELDS, {}, []).style!['align-items']).toBe('center');
+  });
+
+  it('row root: rootVAlign drives align-items — middle default, stretch lets zones fill the height', () => {
+    const root = (v: RootVAlign) =>
+      buildTemplateView({ ...defaultConfigFor('equal', FIELDS), rootVAlign: v }, FIELDS, {}, PAL).root.style!;
+    expect(root('middle')['align-items']).toBe('center');
+    expect(root('top')['align-items']).toBe('flex-start');
+    expect(root('bottom')['align-items']).toBe('flex-end');
+    expect(root('baseline')['align-items']).toBe('baseline');
+    expect(root('stretch')['align-items']).toBe('stretch');
+  });
+
+  it('row root: rootAlign packs hugging zones via justify-content — left emits nothing', () => {
+    const root = (a: ZoneAlign) =>
+      buildTemplateView({ ...defaultConfigFor('equal', FIELDS), rootAlign: a }, FIELDS, {}, PAL).root.style!;
+    expect(root('left')['justify-content']).toBeUndefined();
+    expect(root('center')['justify-content']).toBe('center');
+    expect(root('right')['justify-content']).toBe('flex-end');
+  });
+
+  it('tile root: rootVAlign places the zone stack via justify-content; row-only ideas land as top', () => {
+    const tile = (v: RootVAlign) =>
+      buildTemplateView({ ...defaultConfigFor('tile-headline', FIELDS), rootVAlign: v }, FIELDS, {}, PAL).root.style!;
+    expect(tile('top')['justify-content']).toBeUndefined();
+    expect(tile('middle')['justify-content']).toBe('center');
+    expect(tile('bottom')['justify-content']).toBe('flex-end');
+    expect(tile('stretch')['justify-content']).toBeUndefined();  // stretch is a row idea
+    expect(tile('baseline')['justify-content']).toBeUndefined(); // so is baseline
+    // tiles never emit a root align-items — zones span the tile's width
+    expect(tile('middle')['align-items']).toBeUndefined();
+    // and rootAlign stays a row-only knob
+    expect(buildTemplateView({ ...defaultConfigFor('tile-headline', FIELDS), rootAlign: 'center' },
+      FIELDS, {}, PAL).root.style!['align-items']).toBeUndefined();
+  });
+
+  it('defaults emit byte-identical trees to the pre-alignment builder (old layouts still reopen)', () => {
+    const { root } = buildTemplateView(defaultConfigFor('avatar-card', FIELDS), FIELDS, {}, PAL);
+    expect(root.style).toEqual({
+      'display': 'flex', 'align-items': 'center', 'width': '100%',
+      'gap': '16px', 'padding': '10px 12px',
+    });
+    expect(root.children![0].style!['align-items']).toBe('center');        // side zone
+    expect(root.children![1].style!['justify-content']).toBeUndefined();   // stack zone
+  });
+
+  it('every alignment knob round-trips apply → reopen (row and tile)', () => {
+    let c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), rootVAlign: 'stretch', rootAlign: 'right' };
+    c = patchZoneAt(c, [0], { valign: 'top' });      // side zone
+    c = patchZoneAt(c, [1], { valign: 'bottom' });   // stack zone
+    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, PAL, [CHIP], { prune: true });
+    const parsed = configFromView(root, additionalRowClass, FIELDS, {}, [CHIP])!;
+    expect(parsed).toMatchObject({ rootVAlign: 'stretch', rootAlign: 'right' });
+    expect(parsed.zones[0].valign).toBe('top');
+    expect(parsed.zones[1].valign).toBe('bottom');
+
+    let t: RowTemplateConfig = { ...defaultConfigFor('tile-headline', FIELDS), rootVAlign: 'bottom' };
+    t = patchZoneAt(t, [0], { valign: 'baseline' }); // side zone in a tile
+    const built = buildTemplateView(t, FIELDS, {}, PAL, [], { prune: true });
+    const p2 = configFromView(built.root, undefined, FIELDS, {}, [], 'tile')!;
+    expect(p2.rootVAlign).toBe('bottom');
+    expect(p2.zones[0].valign).toBe('baseline');
+  });
+
+  it('baseline on a stack zone reopens as top — what actually painted', () => {
+    const c = patchZoneAt(defaultConfigFor('avatar-card', FIELDS), [1], { valign: 'baseline' });
+    const { root } = buildTemplateView(c, FIELDS, {}, PAL, [], { prune: true });
+    expect(configFromView(root, undefined, FIELDS, {}, [])!.zones[1].valign).toBe('top');
   });
 });
 

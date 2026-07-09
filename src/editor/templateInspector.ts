@@ -21,13 +21,15 @@
 import { state } from './state';
 import {
   composeRowStyle, nodeAt, ZONE_SIZE_LABEL, TILE_DEFAULT_WIDTH, TILE_DEFAULT_HEIGHT,
+  defaultZoneVAlign, defaultRootVAlign,
   type BuilderTarget, type RowStyle, type KebabBehavior, type KebabPosition, type KebabActionFlags,
-  type ZoneSize, type ZoneFlow, type ZoneAlign, type ItemWidth, type ZonePath, type ZoneConfig,
+  type ZoneSize, type ZoneFlow, type ZoneAlign, type ZoneVAlign, type RootVAlign,
+  type ItemWidth, type ZonePath, type ZoneConfig,
   type FieldZoneItem, type ComponentZoneItem, type ZoneItem,
 } from './rowTemplates';
 import type { RowDensity } from './areas';
 import type { ComponentDef } from './components';
-import { el, segmented, toggleCtl, type ModalUI, type ModalApi } from './templateUi';
+import { el, segmented, alignPad, toggleCtl, type ModalUI, type ModalApi, type Peek } from './templateUi';
 
 const isZone = (node: ZoneConfig | ZoneItem): node is ZoneConfig => 'items' in node;
 
@@ -64,7 +66,7 @@ function inspectorTitle(node: ZoneConfig | ZoneItem | null, target: BuilderTarge
 
 /** A section wrapper that PEEKS its setting onto the preview's zone tags while
  *  hovered (data-peek stamp — see templateModal.setPeek; no rerender). */
-function peekSection(api: ModalApi, peek: 'size' | 'flow' | 'align', ...children: HTMLElement[]): HTMLElement {
+function peekSection(api: ModalApi, peek: Peek, ...children: HTMLElement[]): HTMLElement {
   const wrap = el('div', 'wb-template-peeksec');
   wrap.dataset.peekSection = peek;
   wrap.addEventListener('mouseenter', () => api.setPeek(peek));
@@ -88,17 +90,33 @@ function renderZoneView(host: HTMLElement, api: ModalApi, path: ZonePath, zone: 
     section('Items'),
     segmented<ZoneFlow>('zoneflow',
       [['side', 'Side by side'], ['wrap', 'Wrap when tight'], ['stack', 'Stacked']], zone.flow,
-      (f) => api.patchZone(path, { flow: f })),
+      // crossing the stack boundary flips what "vertical" means, so the
+      // vertical axis resets to the new flow's natural default there
+      (f) => api.patchZone(path, {
+        flow: f,
+        ...((f === 'stack') !== (zone.flow === 'stack') ? { valign: defaultZoneVAlign(f) } : {}),
+      })),
     hintNote(zone.flow === 'wrap'
       ? 'Items sit side by side; when the zone runs out of room, the right item moves beneath the left one. Squeeze the preview to watch it.'
       : zone.flow === 'stack' ? 'Items always stack vertically.'
         : 'Items stay on one line; fill items truncate when squeezed.')));
 
+  host.appendChild(section('Align'));
   host.appendChild(peekSection(api, 'align',
-    section('Align'),
-    segmented<ZoneAlign>('align',
+    axisRow('Horizontal', alignPad<ZoneAlign>('align', 'h',
       [['left', 'Left'], ['center', 'Center'], ['right', 'Right']], zone.align,
-      (al) => api.patchZone(path, { align: al }))));
+      (al) => api.patchZone(path, { align: al })))));
+  const vOpts: readonly (readonly [ZoneVAlign, string])[] = zone.flow === 'stack'
+    ? [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]
+    : [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom'], ['baseline', 'Text baseline']];
+  host.appendChild(peekSection(api, 'valign',
+    axisRow('Vertical', alignPad<ZoneVAlign>('valign', 'v', vOpts, zone.valign,
+      (v) => api.patchZone(path, { valign: v }))),
+    hintNote(zone.flow === 'stack'
+      ? 'Where the pile sits when the zone is taller than its content — e.g. sharing a tile\'s height, or on a Fill-height row.'
+      : zone.valign === 'baseline'
+        ? 'Items sit on their first line of text — the cleanest look when sizes differ.'
+        : 'How the items line up with each other inside the zone. Alignment lives on the zone — SharePoint has no per-item override.')));
 
   const nest = el('button', 'wb-template-mini wb-template-addnested', '＋ Nested zone') as HTMLButtonElement;
   nest.type = 'button';
@@ -201,15 +219,49 @@ function renderRowView(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.appendChild(section('Applies as'));
   host.appendChild(segmented<BuilderTarget>('target',
     [['row', 'Row view'], ['tile', 'Tile']], config.target,
-    (t) => api.setConfig({
-      ...config, target: t,
-      ...(t === 'tile'
-        ? { tileWidth: config.tileWidth ?? TILE_DEFAULT_WIDTH, tileHeight: config.tileHeight ?? TILE_DEFAULT_HEIGHT }
-        : {}),
-    })));
+    (t) => {
+      // an untouched default follows the new target's default; the row-only
+      // ideas (stretch/baseline) can't paint in a tile and land as top
+      const rootVAlign: RootVAlign = config.rootVAlign === defaultRootVAlign(config.target)
+        ? defaultRootVAlign(t)
+        : t === 'tile' && (config.rootVAlign === 'stretch' || config.rootVAlign === 'baseline')
+          ? 'top' : config.rootVAlign;
+      api.setConfig({
+        ...config, target: t, rootVAlign,
+        ...(t === 'tile'
+          ? { tileWidth: config.tileWidth ?? TILE_DEFAULT_WIDTH, tileHeight: config.tileHeight ?? TILE_DEFAULT_HEIGHT }
+          : {}),
+      });
+    }));
   host.appendChild(hintNote(tile
     ? 'A gallery tile: the zones stack top to bottom inside a fixed tile.'
     : 'A list row: the zones sit side by side across the full row.'));
+
+  // the TOP-LEVEL relationship: how the zones line up against each other —
+  // this is the row's own alignment, selectable via the ▦ tree row / canvas tag
+  host.appendChild(section(tile ? 'Content placement' : 'Align zones'));
+  if (tile) {
+    host.appendChild(peekSection(api, 'rootvalign',
+      axisRow('Vertical', alignPad<RootVAlign>('rootvalign', 'v',
+        [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']], config.rootVAlign,
+        (v) => api.setConfig({ ...config, rootVAlign: v }))),
+      hintNote('Where the zone stack sits when it doesn\'t fill the tile box.')));
+  } else {
+    host.appendChild(peekSection(api, 'rootvalign',
+      axisRow('Vertical', alignPad<RootVAlign>('rootvalign', 'v',
+        [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom'], ['baseline', 'Text baseline'], ['stretch', 'Fill height']],
+        config.rootVAlign, (v) => api.setConfig({ ...config, rootVAlign: v }))),
+      hintNote(config.rootVAlign === 'stretch'
+        ? 'Zones fill the row\'s height — each zone\'s own vertical alignment now places its content.'
+        : config.rootVAlign === 'baseline'
+          ? 'Zones sit on their first line of text — titles, dates and chips share one line.'
+          : 'How the zones line up against each other across the row.')));
+    host.appendChild(peekSection(api, 'rootalign',
+      axisRow('Horizontal', alignPad<ZoneAlign>('rootalign', 'h',
+        [['left', 'Left'], ['center', 'Center'], ['right', 'Right']], config.rootAlign,
+        (a) => api.setConfig({ ...config, rootAlign: a }))),
+      hintNote('Packs the zones together when none of them fills the row.')));
+  }
 
   host.appendChild(section(tile ? 'Tile style' : 'Row style'));
   host.appendChild(segmented<RowStyle>('rowstyle',
@@ -300,6 +352,13 @@ function renderKebabSection(host: HTMLElement, ui: ModalUI, api: ModalApi): void
 
 function section(label: string): HTMLElement {
   return el('div', 'wb-template-section', label);
+}
+
+/** One alignment axis: a small fixed label beside its icon pad. */
+function axisRow(label: string, pad: HTMLElement): HTMLElement {
+  const row = el('div', 'wb-template-axisrow');
+  row.append(el('span', 'wb-template-axislabel', label), pad);
+  return row;
 }
 
 function hint(text: string): HTMLElement {

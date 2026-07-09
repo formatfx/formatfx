@@ -562,6 +562,34 @@ Key structural invariants:
   structurally impossible. Root-zone drag axis + dividers follow the
   target (vertical seams, `wb-edit-divider--h`); nested-zone drop axis
   now follows the parent zone's flow everywhere.
+  **Alignment pass (2026-07-09, owner brief — "visually edit the relationship
+  between child elements, not just the elements")**: every level has TWO
+  alignment axes in maker language. A zone keeps `align` (Left/Center/Right,
+  semantics unchanged) and gains `valign` — Top/Middle/Bottom (+ **Text
+  baseline** on row flows; a stack's vertical is `justify-content`, where
+  baseline has no meaning and paints as top). The ROOT gets the same pair:
+  `rootVAlign` (row = `align-items`, incl. **Fill height** = stretch — the
+  legitimate door to per-zone vertical placement, since per-child `align-self`
+  stays unverified/refused (§3b); tile = `justify-content`, vertical only) and
+  `rootAlign` (row-only horizontal packing). Defaults emit byte-identical
+  trees to the pre-alignment builder and the round-trip parser recovers every
+  knob, so old applied layouts reopen unchanged (rowTemplates.test.ts pins
+  both). The ROOT is a first-class selection now — the old selection
+  confusion is gone: a standing "▦ Row layout / ▢ Tile layout" tree row
+  (highlighted whenever the selection is null, which always meant the root)
+  plus a clickable ▦/▢ tag pill on the edit exemplar. Alignment edits are
+  VISUAL: icon pads (self-drawn inline-SVG bar glyphs — no icon font, no
+  network) on labelled axis rows, and hovering an Align control PEEKS (new
+  'valign'/'rootvalign' keys): zone tags flip to their vertical value and
+  every zone paints a dashed guide line at its alignment level
+  (`data-zone-valign` / `data-root-valign` stamps + pure-CSS ::after — no
+  rerender). Same-day scrubber repair (owner's live bug): the width handle
+  painted UNDER the position:relative stage and could not be grabbed (it is
+  position:relative itself now), and the squeeze is HONEST — non-tile
+  preview rows `overflow-x: clip` at the simulated width the way a real
+  narrow screen cuts off, with a measured "doesn't fit — ~Npx too wide" note
+  under the edit row instead of content silently painting past the moved
+  boundary.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 

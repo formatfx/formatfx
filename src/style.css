@@ -2809,6 +2809,9 @@ body.wb-dark {
 .wb-template-widthhandle {
   flex: 0 0 auto; width: 14px; margin-left: -14px; cursor: ew-resize;
   display: flex; align-items: center; justify-content: center; touch-action: none;
+  /* positioned so it PAINTS ABOVE the (position:relative) stage it overlaps —
+     without this the stage's right padding covers it and it can't be grabbed */
+  position: relative;
 }
 .wb-template-widthhandle::before {
   content: ''; width: 4px; height: 42px; border-radius: 2px; background: var(--wb-border);
@@ -2825,6 +2828,12 @@ body.wb-dark {
 
 /* preview rows */
 .wb-template-prow { padding: 2px 0; }
+/* honest squeeze: a row that can't shrink to the simulated width CLIPS at the
+   stage edge — the way a real narrow screen cuts it off — instead of silently
+   painting past the boundary (tiles keep their own overflow rules; y stays
+   visible so the zone tags above the row survive) */
+.wb-template-prow:not(.wb-template-ptile) { overflow-x: clip; }
+.wb-template-overflow-note { font-size: 11px; color: var(--wb-warn, #c08a00); padding: 2px 2px 0; }
 .wb-template-prow--edit { outline: 1px dashed var(--wb-border); border-radius: 6px; padding: 4px; }
 .wb-prow-hoverable:hover { background: var(--wb-surface); }
 /* tile target: the edit tile + the live tile deck (the real gallery box) */
@@ -2847,7 +2856,18 @@ body.wb-dark {
 }
 
 /* edit affordances on the rendered row: ZONES hold ITEMS */
-.wb-template-prow--edit { padding-top: 18px; overflow: visible; }
+.wb-template-prow--edit { padding-top: 18px; overflow: visible; position: relative; }
+/* the ROOT is a first-class selection: a standing tag pill (the zone tags'
+   sibling) selects the whole row/tile; the prow outline shows it's selected */
+.wb-edit-root-tag {
+  position: absolute; top: 1px; left: 4px; z-index: 1;
+  border: none; background: transparent; padding: 0 4px; border-radius: 3px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--wb-text-2); cursor: pointer;
+}
+.wb-edit-root-tag:hover { color: var(--wb-accent); background: var(--wb-surface); }
+.wb-edit-root-on { outline-color: var(--wb-accent); }
+.wb-edit-root-on > .wb-edit-root-tag { color: var(--wb-accent); font-weight: 600; }
 .wb-edit-zone {
   position: relative; cursor: pointer; border-radius: 6px;
   outline: 1px dashed var(--wb-border); outline-offset: 2px; min-height: 26px;
@@ -2863,7 +2883,31 @@ body.wb-dark {
 .wb-template-modal:not([data-peek]) .wb-zt-name { display: inline; }
 .wb-template-modal[data-peek="size"] .wb-zt-size,
 .wb-template-modal[data-peek="flow"] .wb-zt-flow,
-.wb-template-modal[data-peek="align"] .wb-zt-align { display: inline; color: var(--wb-accent); font-weight: 600; }
+.wb-template-modal[data-peek="align"] .wb-zt-align,
+.wb-template-modal[data-peek="valign"] .wb-zt-valign { display: inline; color: var(--wb-accent); font-weight: 600; }
+
+/* ALIGNMENT GUIDES: hovering a vertical-align control draws the relationship
+   being edited — a dashed line across every zone (or across the whole row for
+   the root control) at its current value. Pure CSS off the data-peek stamp. */
+.wb-edit-rowroot { position: relative; }
+.wb-template-modal[data-peek="valign"] .wb-edit-zone::after,
+.wb-template-modal[data-peek="rootvalign"] .wb-edit-rowroot::after {
+  content: ''; position: absolute; left: 3px; right: 3px; height: 0;
+  border-top: 1px dashed var(--wb-accent); pointer-events: none; opacity: .85;
+}
+.wb-template-modal[data-peek="valign"] .wb-edit-zone[data-zone-valign="top"]::after,
+.wb-template-modal[data-peek="rootvalign"] .wb-edit-rowroot[data-root-valign="top"]::after { top: 2px; }
+.wb-template-modal[data-peek="valign"] .wb-edit-zone[data-zone-valign="middle"]::after,
+.wb-template-modal[data-peek="rootvalign"] .wb-edit-rowroot[data-root-valign="middle"]::after { top: 50%; }
+.wb-template-modal[data-peek="valign"] .wb-edit-zone[data-zone-valign="bottom"]::after,
+.wb-template-modal[data-peek="rootvalign"] .wb-edit-rowroot[data-root-valign="bottom"]::after { top: auto; bottom: 2px; }
+.wb-template-modal[data-peek="valign"] .wb-edit-zone[data-zone-valign="baseline"]::after,
+.wb-template-modal[data-peek="rootvalign"] .wb-edit-rowroot[data-root-valign="baseline"]::after {
+  top: 62%; border-top-style: dotted;
+}
+.wb-template-modal[data-peek="rootvalign"] .wb-edit-rowroot[data-root-valign="stretch"]::after {
+  top: 2px; bottom: 2px; height: auto; border-bottom: 1px dashed var(--wb-accent);
+}
 /* the empty-zone hint is a ZERO-FOOTPRINT overlay: it never drives the zone's
    size (a hug zone hugs real content, not helper text), and the pruned live
    rows below never see it at all */
@@ -2922,6 +2966,8 @@ body.wb-dark {
 .wb-ztree-item { padding-left: 22px; font-size: 11.5px; color: var(--wb-text-2); }
 .wb-ztree-comp { color: var(--wb-component, #038387); }
 .wb-ztree-on { background: var(--wb-accent) !important; color: var(--wb-accent-text) !important; }
+/* the standing ROOT row sits above the zones, visually the container of them */
+.wb-ztree-root { margin-bottom: 2px; border-bottom: 1px solid var(--wb-border); border-radius: 4px 4px 0 0; }
 .wb-ztree-icon { font-size: 10px; opacity: .7; }
 .wb-ztree-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-template-addzone { align-self: stretch; text-align: center; }
@@ -2934,6 +2980,12 @@ body.wb-dark {
 .wb-seg-btn { background: var(--wb-bg); color: var(--wb-text); border: none; border-right: 1px solid var(--wb-border); padding: 5px 10px; font-size: 12px; cursor: pointer; }
 .wb-seg-btn:last-child { border-right: none; }
 .wb-seg-on { background: var(--wb-accent); color: var(--wb-accent-text); }
+/* alignment pads: icon-only segmented buttons (self-drawn SVG bar glyphs) on
+   small labelled axis rows — the visual way to edit how children line up */
+.wb-alignpad .wb-seg-btn { display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px; }
+.wb-alignpad svg { display: block; }
+.wb-template-axisrow { display: flex; align-items: center; gap: 7px; margin: 6px 0; }
+.wb-template-axislabel { flex: 0 0 auto; width: 52px; font-size: 11px; color: var(--wb-text-2); }
 .wb-template-ctl { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12px; color: var(--wb-text-2); }
 .wb-template-ctl input[type="text"], .wb-template-ctl input[type="number"], .wb-template-ctl select { border: 1px solid var(--wb-border); border-radius: 4px; background: var(--wb-bg); color: var(--wb-text); padding: 5px 6px; font-size: 12px; }
 .wb-template-toggle { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }

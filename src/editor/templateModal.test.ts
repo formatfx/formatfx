@@ -155,14 +155,33 @@ describe('row view builder — direct manipulation on the preview', () => {
 });
 
 describe('row view builder — the zone tree + name-first tags', () => {
-  it('the tree lists every zone with its items nested, and selects deterministically', () => {
+  it('the tree leads with the standing ROOT row, then every zone with its items nested', () => {
     enterEditor();
     const labels = [...document.querySelectorAll('.wb-ztree-row .wb-ztree-label')].map((n) => n.textContent);
-    expect(labels).toEqual(['Lead', 'Title', 'Details', 'Status', 'Due']);
+    expect(labels).toEqual(['Row layout', 'Lead', 'Title', 'Details', 'Status', 'Due']);
     (document.querySelector('[data-tree-zone="1"]') as HTMLElement).click();
     expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Details zone');
     (document.querySelector('[data-tree-item="0:0"]') as HTMLElement).click();
     expect(document.querySelector('.wb-template-insp-title')?.textContent).toContain('Title');
+  });
+
+  it('the ROOT is a first-class selection: highlighted when nothing deeper is, and the tree row/canvas tag select it', () => {
+    enterEditor();
+    // nothing selected = the row itself: the root tree row shows selected
+    const rootRow = document.querySelector('[data-tree-root]') as HTMLElement;
+    expect(rootRow.classList.contains('wb-ztree-on')).toBe(true);
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Row');
+    expect((document.querySelector('.wb-template-prow--edit') as HTMLElement).classList.contains('wb-edit-root-on')).toBe(true);
+    // select a zone → the root row un-highlights…
+    (document.querySelector('[data-tree-zone="0"]') as HTMLElement).click();
+    expect((document.querySelector('[data-tree-root]') as HTMLElement).classList.contains('wb-ztree-on')).toBe(false);
+    // …and BOTH root affordances bring the row back: the tree row…
+    (document.querySelector('[data-tree-root]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Row');
+    // …and the canvas tag pill
+    (document.querySelector('[data-tree-zone="0"]') as HTMLElement).click();
+    (document.querySelector('.wb-edit-root-tag') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Row');
   });
 
   it('zone tags lead with the NAME; hovering an inspector section peeks that setting', () => {
@@ -185,6 +204,64 @@ describe('row view builder — the zone tree + name-first tags', () => {
     const headrow = document.querySelector('.wb-template-tree-headrow') as HTMLElement;
     expect(headrow.querySelector('.wb-template-tree-head')?.textContent).toBe('Zones');
     expect(headrow.querySelector('.wb-template-layouts')).toBeTruthy();
+  });
+});
+
+describe('row view builder — alignment editing (two axes, root + zone)', () => {
+  it('the row inspector aligns the zones against each other: vertical incl. Fill height, horizontal packing', () => {
+    enterEditor();
+    // nothing selected = the Row inspector; its pads carry icon buttons
+    expect(document.querySelectorAll('[data-rootvalign]').length).toBe(5); // top/middle/bottom/baseline/stretch
+    expect(document.querySelector('[data-rootvalign="middle"]')?.classList.contains('wb-seg-on')).toBe(true);
+    (document.querySelector('[data-rootvalign="stretch"]') as HTMLElement).click();
+    const root = document.querySelector('.wb-edit-rowroot') as HTMLElement;
+    expect(root.style.alignItems).toBe('stretch');
+    expect(root.dataset.rootValign).toBe('stretch');
+    (document.querySelector('[data-rootalign="center"]') as HTMLElement).click();
+    expect((document.querySelector('.wb-edit-rowroot') as HTMLElement).style.justifyContent).toBe('center');
+  });
+
+  it('a zone gets both axes: vertical drives align-items on the real canvas zone', () => {
+    enterEditor();
+    zone(0).click(); // Lead — a side-flow zone
+    expect(document.querySelectorAll('[data-valign]').length).toBe(4); // + baseline on row flows
+    (document.querySelector('[data-valign="top"]') as HTMLElement).click();
+    expect(zone(0).style.alignItems).toBe('flex-start');
+    expect(zone(0).dataset.zoneValign).toBe('top');
+    (document.querySelector('[data-valign="baseline"]') as HTMLElement).click();
+    expect(zone(0).style.alignItems).toBe('baseline');
+  });
+
+  it('a stack zone offers no baseline, and crossing the stack boundary resets the vertical axis', () => {
+    enterEditor('avatar-card');
+    (document.querySelector('[data-tree-zone="1"]') as HTMLElement).click(); // Main — stacked
+    expect(document.querySelectorAll('[data-valign]').length).toBe(3); // no baseline on a column axis
+    (document.querySelector('[data-valign="bottom"]') as HTMLElement).click();
+    expect(zone(1).style.justifyContent).toBe('flex-end');
+    // stack → side flips what "vertical" means → back to the flow default
+    (document.querySelector('[data-zoneflow="side"]') as HTMLElement).click();
+    expect(document.querySelector('[data-valign="middle"]')?.classList.contains('wb-seg-on')).toBe(true);
+    expect(zone(1).style.alignItems).toBe('center');
+  });
+
+  it('hovering an Align control peeks: tags show the value, zones carry their guide stamp', () => {
+    enterEditor();
+    zone(0).click();
+    const modal = document.querySelector('.wb-template-modal') as HTMLElement;
+    const vSec = document.querySelector('[data-peek-section="valign"]') as HTMLElement;
+    vSec.dispatchEvent(new Event('mouseenter'));
+    expect(modal.dataset.peek).toBe('valign');
+    expect((zone(0).querySelector('.wb-zt-valign') as HTMLElement).textContent).toBe('Middle');
+    vSec.dispatchEvent(new Event('mouseleave'));
+    expect(modal.dataset.peek).toBe('');
+  });
+
+  it('a tile places its content vertically only (no stretch/baseline, no horizontal packing)', () => {
+    enterEditor('tile-headline');
+    expect(document.querySelectorAll('[data-rootvalign]').length).toBe(3);
+    expect(document.querySelector('[data-rootalign]')).toBeNull();
+    (document.querySelector('[data-rootvalign="bottom"]') as HTMLElement).click();
+    expect((document.querySelector('.wb-edit-rowroot') as HTMLElement).style.justifyContent).toBe('flex-end');
   });
 });
 

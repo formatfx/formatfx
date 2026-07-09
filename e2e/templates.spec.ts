@@ -74,6 +74,56 @@ test('the width presets squeeze the preview stage (watch zones wrap)', async ({ 
   await openBuilder(page, 'title-chips');
   await page.locator('[data-stagewidth="narrow"]').click();
   await expect(page.locator('.wb-template-stage')).toHaveCSS('width', '360px');
+  // the squeeze is REAL: the edit row's box narrows with the stage (and rows
+  // clip at the boundary instead of painting past it)
+  const prow = await page.locator('.wb-template-prow--edit').boundingBox();
+  expect(prow!.width).toBeLessThanOrEqual(360);
+});
+
+test('the stage edge handle drag-resizes the preview (it must be grabbable)', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page, 'title-chips');
+  await page.locator('[data-stagewidth="narrow"]').click();
+  await expect(page.locator('.wb-template-stage')).toHaveCSS('width', '360px');
+  const handle = await page.locator('.wb-template-widthhandle').boundingBox();
+  // the handle must be the hit target at its own center (it once painted
+  // UNDER the stage and could not be grabbed at all)
+  const hit = await page.evaluate(([x, y]) =>
+    document.elementFromPoint(x, y)?.className ?? '', [handle!.x + handle!.width / 2, handle!.y + handle!.height / 2]);
+  expect(hit).toContain('wb-template-widthhandle');
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle!.x + handle!.width / 2 + 150, handle!.y + handle!.height / 2, { steps: 4 });
+  await page.mouse.up();
+  const w = await page.locator('.wb-template-stage').evaluate((n) => n.getBoundingClientRect().width);
+  expect(w).toBeGreaterThan(450); // ~360 + 150, minus rounding
+});
+
+test('alignment edits: the root row is selectable and both levels write real flex alignment', async ({ page }) => {
+  await enterRowView(page);
+  await openBuilder(page); // lead-detail
+  // the tree leads with the standing ROOT row, selected while nothing else is
+  await expect(page.locator('[data-tree-root]')).toHaveClass(/wb-ztree-on/);
+  await expect(page.locator('.wb-template-insp-title')).toHaveText('Row');
+  // top-level: zones line up at the top instead of centered
+  await page.locator('[data-rootvalign="top"]').click();
+  await expect(page.locator('.wb-edit-rowroot')).toHaveCSS('align-items', 'flex-start');
+  // zone level: select Lead via the tree, bottom-align its items
+  await page.locator('[data-tree-zone="0"]').click();
+  await expect(page.locator('[data-tree-root]')).not.toHaveClass(/wb-ztree-on/);
+  await page.locator('[data-valign="bottom"]').click();
+  await expect(page.locator('[data-edit-zone="0"]')).toHaveCSS('align-items', 'flex-end');
+  // the canvas ▦ tag re-selects the root without hunting for empty canvas
+  await page.locator('.wb-edit-root-tag').click();
+  await expect(page.locator('.wb-template-insp-title')).toHaveText('Row');
+  // Save, reopen: the alignment round-trips into the builder's controls
+  await page.locator('.wb-template-apply').click();
+  await expect(page.locator('.wb-template-modal')).toHaveCount(0);
+  await page.locator('.wb-rowview-templates').click();
+  await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+  await expect(page.locator('[data-rootvalign="top"]')).toHaveClass(/wb-seg-on/);
+  await page.locator('[data-tree-zone="0"]').click();
+  await expect(page.locator('[data-valign="bottom"]')).toHaveClass(/wb-seg-on/);
 });
 
 test('reopening the builder edits the applied layout in place (no gallery restart)', async ({ page }) => {
@@ -142,8 +192,8 @@ test('zones nest: drop a zone onto a zone, and the nest survives Apply → reope
 });
 
 test('New rowview is reachable from the views list on the landing screen', async ({ page }) => {
-  await page.goto('/');
-  // straight from the grid landing — the views list's ＋ is the on-ramp
+  // straight from the grid landing (freshApp already navigated) — the views
+  // list's ＋ is the on-ramp; a second goto would race the beforeEach reload
   await page.locator('.wb-viewslist-newrow').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   // pick a layout, apply — the grid graduates into a row view
@@ -153,7 +203,6 @@ test('New rowview is reachable from the views list on the landing screen', async
 });
 
 test('the builder makes a TILE view: tile gallery → tile editor → Save → the tile deck, then reopen', async ({ page }) => {
-  await page.goto('/');
   await page.locator('.wb-viewslist-newtile').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   // the tile ask leads the gallery with the tile layouts
