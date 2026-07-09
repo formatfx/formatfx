@@ -2913,8 +2913,10 @@ body.wb-dark {
 }
 /* the empty-zone hint is a ZERO-FOOTPRINT overlay: it never drives the zone's
    size (a hug zone hugs real content, not helper text), and the pruned live
-   rows below never see it at all */
-.wb-edit-zone--empty { min-width: 88px; min-height: 26px; }
+   rows below never see it at all. !important: a fill zone carries inline
+   min-width:0 (it must shrink when full), which would otherwise collapse an
+   EMPTY nested zone inside a stack to 0px — an invisible drop target */
+.wb-edit-zone--empty { min-width: 88px !important; min-height: 26px; }
 .wb-edit-zone-hint {
   position: absolute; inset: 0; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
@@ -2932,6 +2934,13 @@ body.wb-dark {
 .wb-edit-item { cursor: pointer; border-radius: 4px; outline: 1px solid transparent; }
 .wb-edit-item:hover { outline-color: var(--wb-accent); }
 .wb-edit-selected { outline: 2px solid var(--wb-accent) !important; outline-offset: 1px; }
+/* a selected zone's DIRECT child zones echo the selection quietly — the same
+   accent, translucent, so the substructure reads without shouting (a child
+   that is itself selected or drop-hovered keeps its full-strength ring) */
+.wb-edit-zone.wb-edit-selected > .wb-edit-zone:not(.wb-drop-hover) {
+  outline: 2px solid color-mix(in srgb, var(--wb-accent) 40%, transparent);
+  outline-offset: 1px;
+}
 .wb-edit-zone.wb-drop-hover, .wb-edit-item.wb-drop-hover, .wb-ztree-row.wb-drop-hover {
   outline: 2px solid var(--wb-accent); background: rgba(0, 120, 212, .08);
 }
@@ -2943,11 +2952,14 @@ body.wb-dark {
 .wb-ins-before-v { box-shadow: 0 -3px 0 0 var(--wb-accent); }
 .wb-ins-after-v { box-shadow: 0 3px 0 0 var(--wb-accent); }
 .wb-edit-kebab { cursor: pointer; }
+/* the between-zones drop seam: INVISIBLE at rest (the grey bars read as
+   clutter — owner call 2026-07-09), still a live target — it paints the
+   accent only while a payload actually hovers it */
 .wb-edit-divider {
   flex: 0 0 auto; width: 6px; align-self: stretch; min-height: 20px; margin: 0 1px;
-  border-radius: 3px; background: var(--wb-border); opacity: .5;
+  border-radius: 3px; background: transparent;
 }
-.wb-edit-divider:hover { opacity: 1; background: var(--wb-accent); }
+.wb-edit-divider.wb-drop-hover { background: var(--wb-accent); }
 /* between STACKED zones (tile target) the divider is a horizontal seam */
 .wb-edit-divider--h {
   width: auto; min-height: 0; height: 6px; align-self: stretch;

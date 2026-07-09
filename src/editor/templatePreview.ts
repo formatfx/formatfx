@@ -635,9 +635,10 @@ function decorateItem(node: HTMLElement, itemPath: ZonePath, item: ZoneItem, zon
 function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLElement {
   const tile = ui.config.target === 'tile';
   const d = el('div', `wb-edit-divider${tile ? ' wb-edit-divider--h' : ''}`);
-  d.title = 'Drop a field, component or zone here for a new zone between. Size a zone from its inspector.';
   // the divider IS the between-zones gap — dropping a chip, item or zone here
-  // lands it right at this seam (zones stay zones, leaves get a zone of their own)
+  // lands it right at this seam (zones stay zones, leaves get a zone of their
+  // own). Invisible at rest (no tooltip — a ghost strip must not chat); it
+  // paints only while a payload hovers it.
   d.addEventListener('dragover', (e) => {
     if (!hasAny((e as DragEvent).dataTransfer, PAYLOADS)) return;
     e.preventDefault();

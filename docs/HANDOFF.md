@@ -589,7 +589,13 @@ Key structural invariants:
   preview rows `overflow-x: clip` at the simulated width the way a real
   narrow screen cuts off, with a measured "doesn't fit — ~Npx too wide" note
   under the edit row instead of content silently painting past the moved
-  boundary.
+  boundary. Same-day polish (owner brief): a selected zone's DIRECT child
+  zones echo the selection ring in translucent accent (pure CSS, full ring
+  stays on the selected/drop-hovered node), the between-zones divider is
+  INVISIBLE at rest — still the drop seam, painting only while a payload
+  hovers it — and the empty-zone min-width floor is !important because a
+  fill zone's inline min-width:0 collapsed an empty nested zone inside a
+  stack to an invisible 0px drop target.
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
