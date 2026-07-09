@@ -161,7 +161,8 @@ export function matchBracketAt(text: string, tokens: JsonToken[], caret: number)
 }
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
-const escapeHtml = (s: string): string => s.replace(/[&<>]/g, (c) => HTML_ESCAPES[c]);
+/** Shared by every overlay layer (highlight, squiggles) — one escaping rule. */
+export const escapeHtml = (s: string): string => s.replace(/[&<>]/g, (c) => HTML_ESCAPES[c]);
 
 /**
  * Render the buffer as highlight-overlay HTML: every token wrapped in
