@@ -325,16 +325,22 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const kebabPanel = document.getElementById('wb-json-kebab-panel') as HTMLDivElement | null;
   // named so the host's _unsub teardown can remove it (document-level listener;
   // tests remount this panel — see jsonPanel.sync.test.ts's teardown discipline)
+  // All three handlers are NAMED and removed in the host's _unsub below: the
+  // kebab elements are persistent shell DOM (not recreated by host.innerHTML),
+  // so a re-mount would otherwise stack listeners — and a doubled toggle
+  // opens-then-closes, presenting as a dead button.
   const closeKebabOnOutside = (e: PointerEvent): void => {
     if (kebabBtn && kebabPanel && !kebabPanel.hidden
       && !(kebabBtn.parentElement as HTMLElement).contains(e.target as Node)) kebabPanel.hidden = true;
   };
+  const toggleKebab = (): void => { if (kebabPanel) kebabPanel.hidden = !kebabPanel.hidden; };
+  const closeKebabOnItem = (e: Event): void => {
+    if (kebabPanel && (e.target as HTMLElement).closest('button')) kebabPanel.hidden = true;
+  };
   if (kebabBtn && kebabPanel) {
-    kebabBtn.addEventListener('click', () => { kebabPanel.hidden = !kebabPanel.hidden; });
+    kebabBtn.addEventListener('click', toggleKebab);
     document.addEventListener('pointerdown', closeKebabOnOutside);
-    kebabPanel.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('button')) kebabPanel.hidden = true;
-    });
+    kebabPanel.addEventListener('click', closeKebabOnItem);
   }
 
   menuHost.querySelector('#wb-json-deploy')!.addEventListener('click', () => {
@@ -486,6 +492,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   hostAny._unsub = () => {
     stateUnsub();
     document.removeEventListener('pointerdown', closeKebabOnOutside);
+    kebabBtn?.removeEventListener('click', toggleKebab);
+    kebabPanel?.removeEventListener('click', closeKebabOnItem);
   };
   regenerate();
   renderLint([]);
