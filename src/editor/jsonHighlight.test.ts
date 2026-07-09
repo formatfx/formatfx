@@ -191,6 +191,16 @@ describe('renderJsonHtml — expression sub-tokens', () => {
     expect(flat(html)).toBe(text);
   });
 
+  it('an unterminated string ending in an escaped quote keeps the pair in content (Copilot, PR #265)', () => {
+    // buffer ends mid-literal, right after the JSON-escaped opening quote: \"
+    // scanString stops at EOF with closed:false — but the token's last char IS
+    // a quote (the escape pair's second half), which must not read as a closer
+    const text = '{"txtContent": "=if([$x], \\"';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-xstr">\\"</span>');
+    expect(flat(html)).toBe(text);
+  });
+
   it('a bracket-matched expr token keeps rendering losslessly', () => {
     const text = '{"a": "=1"}';
     const toks = tokenizeJson(text);

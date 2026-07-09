@@ -174,9 +174,13 @@ const escapeHtml = (s: string): string => s.replace(/[&<>]/g, (c) => HTML_ESCAPE
  * shorter than the textarea and the layers would shear on the final line.
  */
 /** [contentStart, contentEnd) between a string token's quotes, or null for
- *  a token too small to have content (a lone opening quote, an empty string). */
+ *  a token too small to have content (a lone opening quote, an empty string).
+ *  Closed-ness comes from re-running scanString — the function that produced
+ *  the token — NOT from peeking at the last char: an unterminated string can
+ *  legitimately END with '"' when its final chars are an escape pair (\") at
+ *  EOF, and that quote is content, not a delimiter (Copilot, PR #265). */
 function innerOf(text: string, t: JsonToken): [number, number] | null {
-  const closed = t.end - t.start >= 2 && text[t.end - 1] === '"';
+  const { closed } = scanString(text, t.start);
   const s = t.start + 1;
   const e = closed ? t.end - 1 : t.end;
   return e > s ? [s, e] : null;
