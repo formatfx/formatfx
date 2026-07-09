@@ -2,7 +2,7 @@
 // JSON door into the JSON pane (#257), and the canvas tab strip (not a Type
 // dropdown) saying where you are.
 import { test, expect } from '@playwright/test';
-import { freshApp, loadExample, openJson } from './helpers';
+import { freshApp, loadExample, openJsonKebab } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page); });
 
@@ -43,9 +43,9 @@ test('the canvas tab strip states where you are, not a Type dropdown', async ({ 
   await expect(page.locator('#wb-canvastabs .wb-canvastab')).toHaveCount(1);
 });
 
-test('the kind control lives in the Advanced pane; a column example becomes a LOOK, not a surface', async ({ page }) => {
-  // the kind select moved into the side/JSON pane (revealed by Advanced)
-  await openJson(page);
+test('the kind control lives in the JSON pane head kebab; a column example becomes a LOOK, not a surface', async ({ page }) => {
+  // the kind select lives in the pane's head kebab (⋮ beside the tabs)
+  await openJsonKebab(page);
   await expect(page.locator('#wb-pane-side #wb-kind')).toBeVisible();
   // a column-kind example doesn't open anything — it dresses the current
   // column and the grid stays up ("Format this column" is no longer a gesture)

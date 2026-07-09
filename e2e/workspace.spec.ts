@@ -6,7 +6,7 @@
  * Select/Live canvas toggle.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { freshApp, header, openGridTab, openJson, openPalette } from './helpers';
+import { freshApp, header, openGridTab, openJson, openJsonKebab, openPalette } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -23,7 +23,9 @@ async function loadRowFixture(page: Page): Promise<void> {
     },
   }));
   await page.click('#wb-json-apply'); // on the floor: the grid now holds the fixture tree
-  // graduate it into a row-view SHEET so the row surface renders it
+  // graduate it into a row-view SHEET so the row surface renders it (the kind
+  // select lives in the pane's head kebab)
+  await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
 }
 
@@ -141,7 +143,7 @@ test('workshop save re-bakes a worn column: edit YOUR component, every column we
 test('the JSON pane Copy puts the compiled view JSON on the clipboard — looks embedded, no references', async ({ page, context }) => {
   // #257: the topbar JSON button opens the pane; copying lives on the pane
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await openJson(page);
+  await openJsonKebab(page);
   await page.click('#wb-json-copy');
   await expect(page.locator('#wb-toast')).toContainText('JSON copied');
   const text = await page.evaluate(() => navigator.clipboard.readText());
@@ -167,9 +169,13 @@ test('element naming: showcase and presets arrive named, double-click renames, s
   // the JSON pane keeps names so Apply round-trips losslessly…
   await openJson(page);
   expect(await page.inputValue('#wb-json-text')).toContain('"_elmName": "My title"');
-  // …copies keep them by default (SP ignores them); clean is opt-in
+  // …copies keep them by default (SP ignores them); clean is opt-in — Copy and
+  // the names option both live in the pane's head kebab (a copy click closes
+  // the dropdown; toggling an option keeps it open)
+  await openJsonKebab(page);
   await page.click('#wb-json-copy');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('"_elmName": "My title"');
+  await openJsonKebab(page);
   await page.uncheck('#wb-json-names');
   await page.click('#wb-json-copy');
   expect(await page.evaluate(() => navigator.clipboard.readText())).not.toContain('_elmName');
@@ -404,8 +410,8 @@ test('the pane sections fold away and back (Columns · Components · Inspector),
 });
 
 test('the This-view card: density + row class + scanned behaviors with jump-to-element', async ({ page }) => {
-  // a view via the kind select (carries the grid's columns)
-  await openJson(page);
+  // a view via the kind select in the pane's head kebab (carries the grid's columns)
+  await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
   const cardHost = page.locator('#wb-lp-viewcard');

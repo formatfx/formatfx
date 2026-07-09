@@ -50,22 +50,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
   host.innerHTML = `
     <div class="wb-json-toolbar">
       <div class="wb-json-actions">
-        <button id="wb-json-copy" class="wb-json-primary" title="Copy to clipboard">Copy</button>
-        <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
-        <button id="wb-json-download" title="Download .json">Download</button>
-      </div>
-      <div class="wb-json-options">
-        <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
-        <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>
-      </div>
-      <div class="wb-json-deploy-row">
         <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
-        <div class="wb-menu wb-json-more">
-          <button id="wb-json-kebab" aria-haspopup="menu" aria-label="More actions" title="More actions — Deploy"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></button>
-          <div class="wb-json-kebab-panel" id="wb-json-kebab-panel" hidden>
-            <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
-          </div>
-        </div>
       </div>
     </div>
     <div id="wb-deploy-panel" class="wb-deploy" hidden>
@@ -87,12 +72,32 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     <div id="wb-lint" class="wb-lint"></div>
   `;
 
+  // The pane chrome is one slim head row (JSON ⇄ Explain + ⋮, owned by the app
+  // shell) plus the Apply row above the editor — every other JSON action lives
+  // in the head's ⋮ dropdown (owner call, #257 follow-up). The shell provides
+  // the dropdown slot; bare test mounts get a hidden local stand-in so the
+  // controls (and regenerate's option reads) keep existing.
+  const menuHost = document.getElementById('wb-json-kebab-slot') ?? (() => {
+    const d = document.createElement('div');
+    d.hidden = true;
+    host.appendChild(d);
+    return d;
+  })();
+  menuHost.innerHTML = `
+        <button id="wb-json-copy" title="Copy to clipboard">Copy</button>
+        <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
+        <button id="wb-json-download" title="Download .json">Download</button>
+        <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
+        <hr>
+        <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
+        <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>`;
+
   // .wb-codesync (the flash bar's positioning context) moved from the host to
   // the shell with #244 — the bar overlays the editor box, not the whole pane
   const shellEl = host.querySelector('#wb-json-shell') as HTMLDivElement;
   const textEl = host.querySelector('#wb-json-text') as HTMLTextAreaElement;
-  const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
-  const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
+  const sanitizeEl = menuHost.querySelector('#wb-json-sanitize') as HTMLInputElement;
+  const namesEl = menuHost.querySelector('#wb-json-names') as HTMLInputElement;
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
   const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
@@ -243,7 +248,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     onSplice: () => { setDirty(); clearImportError(); clearFlash(); },
   });
 
-  host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
+  menuHost.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }));
       onToast('Formatter JSON copied');
@@ -251,7 +256,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
-  host.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
+  menuHost.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked, csomSafe: true }));
       onToast('CSOM-safe JSON copied (& and < escaped)');
@@ -259,7 +264,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
-  host.querySelector('#wb-json-download')!.addEventListener('click', () => {
+  menuHost.querySelector('#wb-json-download')!.addEventListener('click', () => {
     const blob = new Blob([exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked })], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -312,23 +317,36 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     deployViewEl.hidden = false;
   };
 
-  // #257: Deploy waits inside the deploy-row kebab (⋮) — same open/close
-  // contract as the topbar ☰ menu: outside pointerdown closes, choosing closes.
-  const kebabBtn = host.querySelector('#wb-json-kebab') as HTMLButtonElement;
-  const kebabWrap = kebabBtn.parentElement as HTMLElement;
-  const kebabPanel = host.querySelector('#wb-json-kebab-panel') as HTMLDivElement;
-  kebabBtn.addEventListener('click', () => { kebabPanel.hidden = !kebabPanel.hidden; });
+  // The head kebab (⋮ beside the JSON ⇄ Explain tabs, markup owned by the app
+  // shell) — same open/close contract as the topbar ☰ menu: outside pointerdown
+  // closes, choosing an action closes; checkbox options keep it open. Absent in
+  // bare test mounts, so wiring is conditional.
+  const kebabBtn = document.getElementById('wb-json-kebab') as HTMLButtonElement | null;
+  const kebabPanel = document.getElementById('wb-json-kebab-panel') as HTMLDivElement | null;
   // named so the host's _unsub teardown can remove it (document-level listener;
   // tests remount this panel — see jsonPanel.sync.test.ts's teardown discipline)
+  // All three handlers are NAMED and removed in the host's _unsub below: the
+  // kebab elements are persistent shell DOM (not recreated by host.innerHTML),
+  // so a re-mount would otherwise stack listeners — and a doubled toggle
+  // opens-then-closes, presenting as a dead button.
   const closeKebabOnOutside = (e: PointerEvent): void => {
-    if (!kebabPanel.hidden && !kebabWrap.contains(e.target as Node)) kebabPanel.hidden = true;
+    if (kebabBtn && kebabPanel && !kebabPanel.hidden
+      && !(kebabBtn.parentElement as HTMLElement).contains(e.target as Node)) kebabPanel.hidden = true;
   };
-  document.addEventListener('pointerdown', closeKebabOnOutside);
-  kebabPanel.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('button')) kebabPanel.hidden = true;
-  });
+  const toggleKebab = (): void => { if (kebabPanel) kebabPanel.hidden = !kebabPanel.hidden; };
+  const closeKebabOnItem = (e: Event): void => {
+    if (kebabPanel && (e.target as HTMLElement).closest('button')) kebabPanel.hidden = true;
+  };
+  if (kebabBtn && kebabPanel) {
+    kebabBtn.addEventListener('click', toggleKebab);
+    document.addEventListener('pointerdown', closeKebabOnOutside);
+    kebabPanel.addEventListener('click', closeKebabOnItem);
+  }
 
-  host.querySelector('#wb-json-deploy')!.addEventListener('click', () => {
+  menuHost.querySelector('#wb-json-deploy')!.addEventListener('click', () => {
+    // the deploy config lives in the JSON tab — surface it if Explain is up front
+    const jsonTab = document.getElementById('wb-side-tab-json');
+    if (jsonTab && !jsonTab.classList.contains('active')) jsonTab.click();
     deployPanel.hidden = !deployPanel.hidden;
     refreshDeployPanel();
   });
@@ -474,6 +492,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   hostAny._unsub = () => {
     stateUnsub();
     document.removeEventListener('pointerdown', closeKebabOnOutside);
+    kebabBtn?.removeEventListener('click', toggleKebab);
+    kebabPanel?.removeEventListener('click', closeKebabOnItem);
   };
   regenerate();
   renderLint([]);

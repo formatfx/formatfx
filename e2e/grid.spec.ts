@@ -7,7 +7,7 @@
  * One undoable document mutation per gesture.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, header, canvasTab, openJson, expectAppUndoDisabled } from './helpers';
+import { freshApp, header, canvasTab, openJsonKebab, expectAppUndoDisabled } from './helpers';
 
 // dialogs accepted: applying name-less JSON over a named design asks first
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
@@ -169,13 +169,14 @@ test('header menu compiles a look to real column-formatter JSON on demand', asyn
 
 test('Type→row starts a NEW view carrying the grid; picking grid minimizes back, groups intact', async ({ page }) => {
   await header(page, 'DueDate').dragTo(header(page, 'Status'));
-  await openJson(page);
+  await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
   // a new SHEET carrying a copy of the grid's tree — renders once per mock row
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
   await expect(page.locator('.wb-mock-viewrow').first()).toContainText('In Progress');
   await expect(canvasTab(page, 'View 1')).toHaveClass(/active/);
   // picking grid MINIMIZES — the floor is its own document, groups intact
+  await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'grid');
   await expect(page.locator('.wb-grid-header-label')).toHaveText(
     ['Title', 'Status + DueDate group', 'Progress', 'AssignedTo', 'Project']);
