@@ -389,6 +389,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         if (dirty) return [];
         const out: Array<{ line: number; folded: boolean; label: string }> = [];
         for (const r of mapRanges) {
+          if (r.path.length === 0) continue; // the root never folds — it IS the document
           const cut = cutForRange(fullText, r);
           if (!cut) continue;
           const key = pathKey(r.path);
@@ -407,6 +408,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       toggleAtFoldedLine: (line: number) => {
         if (dirty) return;
         for (const r of mapRanges) {
+          if (r.path.length === 0) continue; // the root never folds
           const cut = cutForRange(fullText, r);
           if (!cut) continue;
           if (lineOfOffset(textEl.value, fullToDisplayed(r.start)) !== line) continue;
@@ -467,7 +469,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       e.preventDefault();
       if (dirty) return;
       const path = pathAtOffset(mapRanges, displayedToFull(textEl.selectionStart ?? 0));
-      if (path) {
+      if (path && path.length > 0) { // the root never folds — it IS the document
         foldedPaths.add(pathKey(path));
         applyFolds();
       }

@@ -71,10 +71,13 @@ describe('buildFoldView', () => {
     expect(view.toFull(foldedStart + 1)).toBe(cut.start);
   });
 
-  it('cutIndexAtFolded is inclusive across the sentinel span, -1 elsewhere', () => {
+  it('cutIndexAtFolded matches only the sentinel INTERIOR (boundary carets belong to the braces)', () => {
     const foldedStart = view.toFolded(cut.start);
-    expect(view.cutIndexAtFolded(foldedStart)).toBe(0);
-    expect(view.cutIndexAtFolded(foldedStart + FOLD_SENTINEL.length)).toBe(0);
+    expect(view.cutIndexAtFolded(foldedStart + 1)).toBe(0);
+    expect(view.cutIndexAtFolded(foldedStart + FOLD_SENTINEL.length - 1)).toBe(0);
+    // boundaries: a caret against the opener/closer is NOT a fold click
+    expect(view.cutIndexAtFolded(foldedStart)).toBe(-1);
+    expect(view.cutIndexAtFolded(foldedStart + FOLD_SENTINEL.length)).toBe(-1);
     expect(view.cutIndexAtFolded(0)).toBe(-1);
     expect(view.cutIndexAtFolded(view.text.length)).toBe(-1);
   });

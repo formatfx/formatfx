@@ -295,7 +295,9 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   textEl.addEventListener('beforeinput', (e) => {
     // #PR-B: multi-line pastes re-base to the caret line's indentation
     if (e.inputType !== 'insertFromPaste') return;
-    if (deps.folds?.active()) return; // the panel's fold guard owns this event
+    // an earlier listener (the panel's fold guard) may have consumed this
+    // event and re-applied the paste itself — running again would double it
+    if (e.defaultPrevented) return;
     const raw = e.dataTransfer?.getData('text/plain') ?? e.data ?? '';
     if (!raw.includes('\n')) return;
     const selStart = textEl.selectionStart ?? 0;

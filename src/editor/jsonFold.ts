@@ -29,7 +29,9 @@ export interface FoldView {
   toFull(folded: number): number;
   /** Full offset → folded offset; offsets inside a cut clamp to its folded start. */
   toFolded(full: number): number;
-  /** Index of the cut whose sentinel spans this folded offset (inclusive ends), or -1. */
+  /** Index of the cut whose sentinel INTERIOR contains this folded offset
+   *  (exclusive ends: only a caret landing within the ` ⋯ ` glyphs counts —
+   *  clicking the adjacent braces must not read as clicking the fold), or -1. */
   cutIndexAtFolded(folded: number): number;
 }
 
@@ -101,7 +103,9 @@ export function buildFoldView(fullText: string, cuts: FoldCut[]): FoldView {
   };
   const cutIndexAtFolded = (fo: number): number => {
     for (let k = 0; k < marks.length; k++) {
-      if (fo >= marks[k].foldedStart && fo <= marks[k].foldedStart + FOLD_SENTINEL.length) return k;
+      // strict interior: a caret at the sentinel's boundary sits against the
+      // opener/closer the user actually clicked — not on the fold itself
+      if (fo > marks[k].foldedStart && fo < marks[k].foldedStart + FOLD_SENTINEL.length) return k;
     }
     return -1;
   };
