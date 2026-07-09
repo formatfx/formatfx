@@ -45,7 +45,7 @@ test('a column example applies as the current column\'s LOOK — the grid render
 
 test('palette click inserts an element and selects it', async ({ page }) => {
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Traffic light' }).click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Traffic light' }).click();
   // on the grid it arrives as a new column, rendered per row and selected
   await expect(page.locator('.wb-grid-header-label')).toHaveCount(7);
   await expect(page.locator('#wb-tree-body .wb-tree-row.selected')).toHaveCount(1);
@@ -80,7 +80,7 @@ test('lint panel teaches: nested = gets a verbose, positioned error', async ({ p
 
 test('hover card opens as flyout and its content is selectable', async ({ page }) => {
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
   await page.locator('.wb-grid .wb-has-card').first().click();
   const flyout = page.locator('.wb-flyout');
   await expect(flyout).toBeVisible();
@@ -112,14 +112,14 @@ test('one unified surface — left pane, canvas tab strip and fx bar all present
 
   // the Left Edit Pane: lens tabs (Simple/Pro/Code), the structure tree, the
   // columns shelf, the always-on components library, the views list and the
-  // draw toolbar are all visible
+  // kebab (⋮) menu button (tools + snapshots) are all visible
   await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-lens-tab')).toHaveCount(3);
   await expect(page.locator('#wb-tree-body')).toBeVisible();
   await expect(page.locator('.wb-colshelf-rack')).toBeVisible();
   await expect(page.locator('#wb-lp-library')).toBeVisible();
   await expect(page.locator('#wb-lp-views')).toBeVisible();
-  await expect(page.locator('.wb-drawbar')).toBeVisible();
+  await expect(page.locator('#wb-kebab-btn')).toBeVisible();
   await expect(page.locator('#wb-fxbar')).toBeVisible();
   // the canvas tab strip is the one navigation surface
   await expect(page.locator('#wb-canvastabs')).toBeVisible();
@@ -132,7 +132,7 @@ test('one unified surface — left pane, canvas tab strip and fx bar all present
 
   // the palette popover shows the FULL set — basics AND actions/people/shells
   await openPalette(page);
-  const pop = page.locator('#wb-palette-pop');
+  const pop = page.locator('.wb-palette-pop');
   await expect(pop.locator('.wb-palette-item', { hasText: 'Status pill' })).toBeVisible();
   await expect(pop.locator('.wb-palette-item', { hasText: 'Start Flow button' })).toBeVisible();
   await expect(pop.locator('.wb-palette-item', { hasText: 'Facepile' })).toBeVisible();
@@ -162,7 +162,7 @@ test('applying name-less JSON over a named design warns before dropping names', 
 test('drag from palette to canvas highlights the target and drops there', async ({ page }) => {
   const source = async () => {
     await openPalette(page);
-    return page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first();
+    return page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first();
   };
   const target = page.locator('.wb-grid-cell[data-col="0"] [data-sp-path]').first();
   await (await source()).dragTo(target);

@@ -1,7 +1,8 @@
 /**
  * E2E: snapshots (issue #140) + navigation back.
  *
- * The 🕘 button on the left pane's nav row opens the snapshot menu. Snapshots
+ * The ⋮ (kebab) button on the left pane's nav row opens the unified menu, where
+ * the Snapshots section lives (alongside the insert/undo tools). Snapshots
  * are full-workspace-only (owner decision, 2026-07-03): the ONE take action
  * captures the floor + every view + every column LOOK, and every restore is
  * one undoable step. Legacy scoped captures (pre-full-only storage) stay
@@ -16,7 +17,7 @@ test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true
 
 test('take a snapshot, mutate the view, restore it — and Ctrl+Z brings the mutation back', async ({ page }) => {
   // ONE take action — always the whole workspace, no scoped variant
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   const menu = page.locator('.wb-snapmenu');
   await expect(menu.locator('.wb-snap-take')).toHaveCount(1);
   await expect(menu.locator('.wb-snap-take')).toContainText('Take a snapshot');
@@ -30,7 +31,7 @@ test('take a snapshot, mutate the view, restore it — and Ctrl+Z brings the mut
   await expect(header(page, 'Status')).toHaveCount(0);
 
   // restore — Status is back
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await page.locator('.wb-snapmenu .wb-snap-restore').first().click();
   await expect(page.locator('.wb-snapmenu')).toHaveCount(0); // restore closes the menu
   await expect(header(page, 'Status')).toHaveCount(1);
@@ -42,7 +43,7 @@ test('take a snapshot, mutate the view, restore it — and Ctrl+Z brings the mut
 });
 
 test('a snapshot captures the column LOOKS: remove one, restore brings it back', async ({ page }) => {
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await page.locator('.wb-snapmenu .wb-snap-take').click();
   await page.keyboard.press('Escape');
 
@@ -52,7 +53,7 @@ test('a snapshot captures the column LOOKS: remove one, restore brings it back',
   await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(0);
 
   // restore — the look (and its ⬡ mark) is back
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await page.locator('.wb-snapmenu .wb-snap-restore').first().click();
   await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(1);
   await expect(page.locator('.wb-grid-row').first().locator('.wb-grid-cell[data-col="1"] [style*="border-radius"]').first())
@@ -60,7 +61,7 @@ test('a snapshot captures the column LOOKS: remove one, restore brings it back',
 });
 
 test('a snapshot restores the layout AND a column look in one undoable step', async ({ page }) => {
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await page.locator('.wb-snapmenu .wb-snap-take').click();
   await expect(page.locator('.wb-snapmenu .wb-snap-row')).toHaveCount(1);
   await page.keyboard.press('Escape');
@@ -74,7 +75,7 @@ test('a snapshot restores the layout AND a column look in one undoable step', as
   await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(0);
 
   // restore: both revert together
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await page.locator('.wb-snapmenu .wb-snap-restore').first().click();
   await expect(header(page, 'DueDate')).toHaveCount(1);
   await expect(header(page, 'Status').locator('.wb-grid-look')).toHaveCount(1);
@@ -86,11 +87,11 @@ test('a snapshot restores the layout AND a column look in one undoable step', as
 });
 
 test('snapshots persist across a reload (their own additive storage key)', async ({ page }) => {
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await page.locator('.wb-snapmenu .wb-snap-take').click();
   await page.keyboard.press('Escape');
   await page.reload();
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   await expect(page.locator('.wb-snapmenu .wb-snap-row')).toHaveCount(1);
   // deleting removes it from the list
   await page.locator('.wb-snapmenu .wb-snap-del').click();
@@ -113,7 +114,7 @@ test('legacy scoped snapshots stay restorable under the collapsed group', async 
   });
   await page.reload();
 
-  await page.click('#wb-snap-btn');
+  await page.click('#wb-kebab-btn');
   const menu = page.locator('.wb-snapmenu');
   // it is NOT in the main list, and there is no scoped take action anywhere
   await expect(menu.locator('.wb-snap-take')).toHaveCount(1);

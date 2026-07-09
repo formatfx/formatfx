@@ -352,7 +352,7 @@ test('dark mode recolors sp-css background token classes — engine probe', asyn
 test('customCardProps flyout renders a beak (isBeakVisible)', async ({ page }) => {
   // inserts at the grid root — arrives as a new grid column
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Hover card' }).click();
   await page.locator('.wb-grid .wb-has-card').first().click();
   await expect(page.locator('.wb-flyout-beak')).toBeVisible();
 });
@@ -421,7 +421,7 @@ test('the This-view card: density + row class + scanned behaviors with jump-to-e
   await page.keyboard.press('Control+z');
   // a behavior lands in the scan: insert an Action button, its row appears
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Action button' }).click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Action button' }).click();
   const behavior = cardHost.locator('.wb-viewcard-behavior');
   await expect(behavior).toContainText('editProps');
   // clicking it jumps to (selects) the carrying element
@@ -432,7 +432,7 @@ test('the This-view card: density + row class + scanned behaviors with jump-to-e
 test('Select/Live canvas toggle: Live fires customRowAction, Select selects instead', async ({ page }) => {
   // insert an Action button (customRowAction: editProps) — a new grid column
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Action button' }).click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Action button' }).click();
   const btn = page.locator('.wb-grid .wb-grid-cell div[role="button"]').first();
   await expect(btn).toBeVisible();
 

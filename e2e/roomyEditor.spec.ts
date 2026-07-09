@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true
 test('no Apply button; commits a typed formula on blur; accepts a column drop', async ({ page }) => {
   // a Text element gives the fx bar a formattable slot; it selects on insert
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Text' }).first().click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Text' }).first().click();
   await expect(page.locator('.wb-fx-expand')).toBeVisible();
 
   // open the roomy editor — the Apply button is gone (instant now)
