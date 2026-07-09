@@ -31,12 +31,18 @@ export interface AcMenu {
 /** How many completions the menu shows at once (the filter reaches the rest). */
 const MAX_SHOWN = 12;
 
+/** An explicit anchor point (viewport coordinates) — the JSON pane passes the
+ *  caret's rect so the menu opens AT the caret instead of under the whole
+ *  (tall) textarea. Absent, the menu anchors to the editor box as always. */
+export interface AcAnchor { left: number; bottom: number; }
+
 /**
- * Open the typeahead under `editor`, anchored and sized to it. `onPick`
+ * Open the typeahead under `editor`, anchored and sized to it (or to
+ * `anchor`, when the caller knows a better point — see AcAnchor). `onPick`
  * receives the picked item's insert text; the caller splices it into the
  * formula and re-runs its completion to chain.
  */
-export function openAcMenu(editor: HTMLElement, items: SuggestItem[], onPick: (value: string) => void): AcMenu {
+export function openAcMenu(editor: HTMLElement, items: SuggestItem[], onPick: (value: string) => void, anchor?: AcAnchor): AcMenu {
   const el = document.createElement('div');
   el.className = 'wb-fx-acmenu';
   const shown = items.slice(0, MAX_SHOWN);
@@ -61,9 +67,10 @@ export function openAcMenu(editor: HTMLElement, items: SuggestItem[], onPick: (v
   };
   document.body.appendChild(el);
   const r = editor.getBoundingClientRect();
-  el.style.top = `${Math.min(r.bottom + 4, window.innerHeight - 12)}px`;
-  el.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))}px`;
-  el.style.minWidth = `${Math.max(180, r.width)}px`;
+  const a = anchor ?? { left: r.left, bottom: r.bottom };
+  el.style.top = `${Math.min(a.bottom + 4, window.innerHeight - 12)}px`;
+  el.style.left = `${Math.max(8, Math.min(a.left, window.innerWidth - el.offsetWidth - 8))}px`;
+  el.style.minWidth = anchor ? '280px' : `${Math.max(180, r.width)}px`;
   return {
     el,
     move: (d) => setActive(active + d),

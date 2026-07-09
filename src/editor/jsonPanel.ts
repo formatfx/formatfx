@@ -20,12 +20,20 @@
  *     the serialization walk) and a SyncEcho guard so a code-originated
  *     selection never bounces back onto its own caret. Sync is pure view
  *     work: it never creates undo entries.
+ *
+ * #244 — the IDE dressing (editor/jsonIde.ts): the textarea sits transparent
+ * over a scroll-synced highlight overlay inside .wb-json-shell, with a line
+ * gutter, bracket matching, the selected element's scope bar, contextual
+ * completions (jsonComplete.ts) and expression signature hints. All of it is
+ * view/buffer work — the one document write remains the Apply button.
  */
 
 import { state, samePath } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange } from '../core/jsonMap';
 import { preserveCaret, lineSpanOf, SyncEcho } from './codeSync';
+import { mountJsonIde } from './jsonIde';
+import { ctxForRow } from './previewCtx';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
 import { serializeApplyPayload } from '../bridge/applyPayload';
@@ -39,7 +47,6 @@ export interface JsonPanelApi {
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
-  host.classList.add('wb-codesync'); // positioning context for the flash bar
   host.innerHTML = `
     <div class="wb-json-toolbar">
       <div class="wb-json-actions">
@@ -68,11 +75,16 @@ It reads the target, shows you exactly what changes, and asks before the ONE wri
 Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
-    <textarea id="wb-json-text" spellcheck="false"></textarea>
+    <div id="wb-json-shell" class="wb-json-shell wb-codesync">
+      <textarea id="wb-json-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+    </div>
     <div id="wb-json-import-error" class="wb-import-error" role="alert" aria-live="assertive" hidden></div>
     <div id="wb-lint" class="wb-lint"></div>
   `;
 
+  // .wb-codesync (the flash bar's positioning context) moved from the host to
+  // the shell with #244 — the bar overlays the editor box, not the whole pane
+  const shellEl = host.querySelector('#wb-json-shell') as HTMLDivElement;
   const textEl = host.querySelector('#wb-json-text') as HTMLTextAreaElement;
   const sanitizeEl = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
   const namesEl = host.querySelector('#wb-json-names') as HTMLInputElement;
@@ -85,11 +97,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const setDirty = () => {
     dirty = true;
     textEl.classList.add('wb-json-dirty');
+    shellEl.classList.add('wb-json-dirty'); // the border lives on the shell now
     applyBtn.classList.add('wb-json-apply-pending');
+    ide.refreshScope(); // stale offsets: the scope bar hides until Apply
   };
   const clearDirty = () => {
     dirty = false;
     textEl.classList.remove('wb-json-dirty');
+    shellEl.classList.remove('wb-json-dirty');
     applyBtn.classList.remove('wb-json-apply-pending');
   };
 
@@ -115,6 +130,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       textEl.scrollTop = scrollTop;
       textEl.scrollLeft = scrollLeft;
     }
+    ide.repaint(); // programmatic value swaps fire no input event
     clearImportError(); // stale error no longer matches what's in the textarea
   };
 
@@ -190,7 +206,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     bar.style.left = `${textEl.offsetLeft + textEl.clientLeft}px`;
     bar.style.width = textEl.clientWidth ? `${textEl.clientWidth}px` : '100%';
     bar.style.height = `${h}px`;
-    host.appendChild(bar);
+    shellEl.appendChild(bar); // the shell is the positioning context (#244)
     flashBar = bar;
     const done = (): void => {
       if (flashBar === bar) flashBar = null;
@@ -202,6 +218,25 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); });
   sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
+
+  // ── #244 the IDE dressing: highlight overlay, gutter, completions ──
+  // Mounted AFTER the input listener above so on every keystroke the buffer
+  // is marked dirty first, then the overlay repaints — the scope bar never
+  // paints one frame of stale offsets.
+  const ide = mountJsonIde(shellEl, textEl, {
+    fields: () => state.fields,
+    completionOpts: () => ({
+      current: state.fields.find((f) => f.name === state.currentFieldName),
+      ctx: state.rows.length ? ctxForRow(0) : undefined,
+    }),
+    selectionRange: () => {
+      if (dirty || !state.selection) return null; // hand-edit: offsets are stale
+      return rangeForPath(mapRanges, state.selection);
+    },
+    // an accepted completion is buffer input like any other keystroke (the
+    // execCommand path re-enters via the input listener instead)
+    onSplice: () => { setDirty(); clearImportError(); clearFlash(); },
+  });
 
   host.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
     try {
@@ -407,8 +442,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (reason === 'selection') {
       // #218 canvas → code — unless the selection ORIGINATED here (the echo
       // guard): a code-side caret move must not bounce back and scroll/flash
-      // the very textarea it came from.
+      // the very textarea it came from. The scope bar tracks EVERY selection
+      // (echoed included) — marking where you are is its whole job.
       if (!echo.from('code')) revealSelection();
+      ide.refreshScope();
       return;
     }
     if (reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
