@@ -9,7 +9,7 @@
  *
  * Modeled on the official schema:
  * https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json
- * https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json
+ * https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json
  */
 
 export type ElmType =
@@ -119,10 +119,10 @@ export interface FormatterDocument {
 
 export const SCHEMA_URLS: Record<DocumentKind, string> = {
   column: 'https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json',
-  row: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
-  tile: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+  row: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
+  tile: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
   // a grid is a row formatter in embryo — same wrapper, different canvas
-  grid: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+  grid: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
 };
 
 // ─── Mock data model ─────────────────────────────────────────────────────────

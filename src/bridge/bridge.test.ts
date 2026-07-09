@@ -36,7 +36,7 @@ const STATUS_FORMATTER = JSON.stringify({
   style: { 'background-color': "=if(@currentField=='Done','#107c10','#737a7f')" },
 });
 const VIEW_FORMATTER = JSON.stringify({
-  $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+  $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
   rowFormatter: { elmType: 'div', txtContent: '[$Title]' },
 });
 

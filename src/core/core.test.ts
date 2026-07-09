@@ -588,7 +588,7 @@ describe('linter — unknown fields', () => {
 describe('serializer', () => {
   it('round-trips a view formatter', () => {
     const doc = importJson(JSON.stringify({
-      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
       hideSelection: true,
       rowFormatter: { elmType: 'div', txtContent: '[$Title]' },
     }));
@@ -600,7 +600,7 @@ describe('serializer', () => {
 
   it('preserves footer/group/commandBar siblings of a rowFormatter across import → export', () => {
     const doc = importJson(JSON.stringify({
-      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
       hideSelection: true,
       footerFormatter: { elmType: 'div', txtContent: "='Total: '+[$Amount]" },
       groupProps: { menuActionOverrides: [{ key: 'collapseAll' }] },
