@@ -136,3 +136,77 @@ describe('renderJsonHtml', () => {
     expect(plain).toBe(text);
   });
 });
+
+describe('renderJsonHtml — expression sub-tokens', () => {
+  /** The overlay must carry EXACTLY the buffer text once tags are stripped —
+   *  the transparent textarea sits over it, so any drift shears alignment. */
+  const flat = (html: string): string => html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+  it('nests sub-token spans inside the expr span', () => {
+    const text = '{"txtContent": "=if([$Due] <= @now, \'Late\', \'\')"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-xfield">[$Due]</span>');
+    expect(html).toContain('<span class="wb-tok-xtoken">@now</span>');
+    expect(html).toContain('<span class="wb-tok-xfn">if</span>');
+    expect(html).toContain("<span class=\"wb-tok-xstr\">'Late'</span>");
+    expect(flat(html)).toBe(text);
+  });
+
+  it('bare whole-string refs sub-paint too', () => {
+    const text = '{"a": "[$Title]"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-xfield">[$Title]</span>');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('forEach values are live: spec lex inside an expr span', () => {
+    const text = '{"forEach": "item in [$Colors]", "x": "item in a sentence"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-xkw">in</span>');
+    expect(html).toContain('<span class="wb-tok-xfield">[$Colors]</span>');
+    // the same-shaped string under a DIFFERENT key stays a plain string
+    expect(html).toContain('<span class="wb-tok-str">"item in a sentence"</span>');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('unknown function names render with the error class', () => {
+    const text = '{"txtContent": "=iff([$x], 1, 2)"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-err">iff</span>');
+  });
+
+  it('HTML inside expression strings stays escaped', () => {
+    const text = '{"txtContent": "=if([$a] < 3, \'<b>\', \'\')"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).not.toContain('<b>');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('an unterminated expression string still paints and stays lossless', () => {
+    const text = '{"txtContent": "=if([$Due';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-xfield">[$Due</span>');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('an unterminated string ending in an escaped quote keeps the pair in content (Copilot, PR #265)', () => {
+    // buffer ends mid-literal, right after the JSON-escaped opening quote: \"
+    // scanString stops at EOF with closed:false — but the token's last char IS
+    // a quote (the escape pair's second half), which must not read as a closer
+    const text = '{"txtContent": "=if([$x], \\"';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('<span class="wb-tok-xstr">\\"</span>');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('a bracket-matched expr token keeps rendering losslessly', () => {
+    const text = '{"a": "=1"}';
+    const toks = tokenizeJson(text);
+    const expr = toks.find((t) => t.kind === 'expr')!;
+    const html = renderJsonHtml(text, toks, [expr.start, expr.start] as const);
+    // match stamping is punct-only in practice; the expr path must not crash
+    expect(flat(html)).toBe(text);
+  });
+});

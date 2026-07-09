@@ -11,11 +11,15 @@
  * point of an editor) still paints sensibly — an unterminated string simply
  * runs to the end of its line, garbage words get the error tint. Formula
  * strings (values starting with `=`) get their own token kind so the SP
- * expression layer reads distinctly from plain string data.
+ * expression layer reads distinctly from plain string data. exprTokens.ts
+ * sub-lexes INSIDE those strings (and forEach values) so refs / functions /
+ * literals read distinctly; the renderer nests its spans.
  *
  * The structural half (what to SUGGEST at the caret) lives in
  * jsonComplete.ts; the DOM shell that paints all of this is jsonIde.ts.
  */
+
+import { tokenizeExpr, tokenizeForEach, type ExprToken } from './exprTokens';
 
 export type JsonTokenKind =
   | 'key'    // "elmType" (a string in key position — `:` follows)
@@ -169,17 +173,71 @@ const escapeHtml = (s: string): string => s.replace(/[&<>]/g, (c) => HTML_ESCAPE
  * (empty) line still has height — otherwise the <pre> would be one line
  * shorter than the textarea and the layers would shear on the final line.
  */
+/** [contentStart, contentEnd) between a string token's quotes, or null for
+ *  a token too small to have content (a lone opening quote, an empty string).
+ *  Closed-ness comes from re-running scanString — the function that produced
+ *  the token — NOT from peeking at the last char: an unterminated string can
+ *  legitimately END with '"' when its final chars are an escape pair (\") at
+ *  EOF, and that quote is content, not a delimiter (Copilot, PR #265). */
+function innerOf(text: string, t: JsonToken): [number, number] | null {
+  const { closed } = scanString(text, t.start);
+  const s = t.start + 1;
+  const e = closed ? t.end - 1 : t.end;
+  return e > s ? [s, e] : null;
+}
+
+/** Emit one live string: the outer expr span with sub-token spans nested. */
+function renderLiveString(text: string, t: JsonToken, subs: ExprToken[], cls: string): string {
+  const out: string[] = [`<span class="${cls}">`];
+  const inner = innerOf(text, t);
+  if (!inner) {
+    out.push(escapeHtml(text.slice(t.start, t.end)), '</span>');
+    return out.join('');
+  }
+  const [cs, ce] = inner;
+  out.push(escapeHtml(text.slice(t.start, cs)));
+  let p = cs;
+  for (const s of subs) {
+    if (s.start > p) out.push(escapeHtml(text.slice(p, s.start)));
+    const subCls = s.kind === 'xfn-unknown' ? 'wb-tok-err' : `wb-tok-${s.kind}`;
+    out.push(`<span class="${subCls}">`, escapeHtml(text.slice(s.start, s.end)), '</span>');
+    p = s.end;
+  }
+  if (p < ce) out.push(escapeHtml(text.slice(p, ce)));
+  out.push(escapeHtml(text.slice(ce, t.end)), '</span>');
+  return out.join('');
+}
+
 export function renderJsonHtml(text: string, tokens: JsonToken[], match?: readonly [number, number] | null): string {
   const out: string[] = [];
   let pos = 0;
+  // the key a value token hangs under — set by a key token, kept through its
+  // ':', consumed by the next value token (so forEach values can be promoted)
+  let pendingKey: string | null = null;
   for (const t of tokens) {
     if (t.start > pos) out.push(escapeHtml(text.slice(pos, t.start)));
     const matched = match && (t.start === match[0] || t.start === match[1]);
-    out.push(
-      `<span class="wb-tok-${t.kind}${matched ? ' wb-tok-match' : ''}">`,
-      escapeHtml(text.slice(t.start, t.end)),
-      '</span>',
-    );
+    const matchCls = matched ? ' wb-tok-match' : '';
+    const forEachValue = t.kind === 'str' && pendingKey === 'forEach';
+    if (t.kind === 'expr' || forEachValue) {
+      const inner = innerOf(text, t);
+      const subs = inner
+        ? (forEachValue ? tokenizeForEach : tokenizeExpr)(text, inner[0], inner[1])
+        : [];
+      out.push(renderLiveString(text, t, subs, `wb-tok-expr${matchCls}`));
+    } else {
+      out.push(
+        `<span class="wb-tok-${t.kind}${matchCls}">`,
+        escapeHtml(text.slice(t.start, t.end)),
+        '</span>',
+      );
+    }
+    // key tracking (after emission — this token's own class never depends on it)
+    if (t.kind === 'key') {
+      pendingKey = text.slice(t.start + 1, t.end - 1);
+    } else if (!(t.kind === 'punct' && text[t.start] === ':')) {
+      pendingKey = null; // any value or structural move consumes/clears it
+    }
     pos = t.end;
   }
   if (pos < text.length) out.push(escapeHtml(text.slice(pos)));
