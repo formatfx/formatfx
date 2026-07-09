@@ -26,14 +26,27 @@
  * gutter, bracket matching, the selected element's scope bar, contextual
  * completions (jsonComplete.ts) and expression signature hints. All of it is
  * view/buffer work — the one document write remains the Apply button.
+ *
+ * #PR-D — the live working map (spec 2026-07-09 §4–5): while dirty, a
+ * per-frame-debounced tolerant parse (core/jsonText) refreshes a WORKING
+ * path map + positioned errors, so the scope bar, the breadcrumb strip and
+ * the squiggle layer keep understanding a half-typed buffer. View affordances
+ * read `rangesNow()` (live while dirty, serializer map while clean);
+ * caret→canvas selection deliberately does NOT (#218 — a half-typed buffer
+ * must never drive selection). Lint issues underline their element's opening
+ * line; hovers explain squiggles, refs, functions and formulas (jsonHover).
  */
 
-import { state, samePath } from './state';
+import { state, samePath, CARD_SEGMENT } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange } from '../core/jsonMap';
+import { parseJsonWithMap, type TextParseError } from '../core/jsonText';
 import { preserveCaret, lineSpanOf, lineOfOffset, SyncEcho } from './codeSync';
 import { mountJsonIde } from './jsonIde';
+import { decorationsFrom, type Decoration } from './jsonDecorations';
+import { hoverAt as hoverInfoAt } from './jsonHover';
 import { formatDocument } from './jsonFormat';
+import type { NodePath } from '../core/types';
 import {
   cutForRange, outermost, buildFoldView, fullLineOfFoldedLine,
   type FoldCut, type FoldView,
@@ -70,6 +83,7 @@ It reads the target, shows you exactly what changes, and asks before the ONE wri
 Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
+    <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
     <div id="wb-json-shell" class="wb-json-shell wb-codesync">
       <textarea id="wb-json-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
     </div>
@@ -117,7 +131,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     textEl.classList.add('wb-json-dirty');
     shellEl.classList.add('wb-json-dirty'); // the border lives on the shell now
     applyBtn.classList.add('wb-json-apply-pending');
-    ide.refreshScope(); // stale offsets: the scope bar hides until Apply
+    ide.refreshScope(); // stale offsets: hidden until the live parse lands (#PR-D, a frame)
   };
   const clearDirty = () => {
     dirty = false;
@@ -129,6 +143,20 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // ── #218 split-view sync state ──
   let mapRanges: JsonRange[] = []; // offset↔path map for the FULL (unfolded) text
   const echo = new SyncEcho();
+
+  // ── #PR-D the live working map + decorations. While dirty, the debounced
+  // parse below refreshes these so VIEW affordances (scope bar, breadcrumb,
+  // squiggles, lint-row flash) keep tracking the hand-edited buffer; they
+  // reset to the serializer's truth on every regenerate. `decorations` is
+  // kept in DISPLAYED coordinates (fold-translated) — folds only exist on
+  // clean buffers, so the two coordinate systems are never both non-trivial. ──
+  let liveRanges: JsonRange[] | null = null;
+  let liveErrors: TextParseError[] = [];
+  let liveLabels: Record<string, string> = {};
+  let lintIssues: LintIssue[] = [];
+  let decorations: Decoration[] = [];
+  const rangesNow = (): JsonRange[] => (dirty && liveRanges ? liveRanges : mapRanges);
+  const crumbsEl = host.querySelector('#wb-json-crumbs') as HTMLDivElement;
 
   // ── #PR-C subtree folding: a clean-buffer-only VIEW over the textarea.
   // `fullText` is authoritative; the textarea shows foldView.text when folds
@@ -171,7 +199,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     textEl.setSelectionRange(fullToDisplayed(fullSelStart), fullToDisplayed(fullSelEnd));
     textEl.scrollTop = scrollTop;
     textEl.scrollLeft = scrollLeft;
+    refreshDecorations(); // displayed coordinates changed with the view
     ide.repaint();
+    refreshCrumbs();
   };
 
   /** Toggle-path entry: capture the caret through the OLD view, rebuild, swap. */
@@ -197,6 +227,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // the editor view keeps _elmName so "Apply to canvas" never loses names
     const { text, ranges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
     mapRanges = ranges;
+    liveRanges = null; // the serializer's map is the truth again
+    liveErrors = [];
+    liveLabels = {};
     const oldFull = fullText;
     // caret: displayed → old full → (deterministic-serializer diff) → new full
     const selStart = preserveCaret(oldFull, text, displayedToFull(textEl.selectionStart ?? 0));
@@ -231,8 +264,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       }
     }
     syncSelectionFromCaret();
+    refreshCrumbs();
   });
-  textEl.addEventListener('keyup', syncSelectionFromCaret);
+  textEl.addEventListener('keyup', () => { syncSelectionFromCaret(); refreshCrumbs(); });
 
   // ── #PR-C edit guards: folds and edits never coexist. Any beforeinput on a
   // folded view is cancelled, everything expands, and the common edit kinds
@@ -312,16 +346,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     return Number.isFinite(fs) && fs > 0 ? fs * 1.3 : 14;
   };
 
-  /** Show where the primary selection lives in the JSON: scroll it into view
-   *  if needed and flash its lines. NEVER moves the caret or focus — the
-   *  reading/edit position is sacred (that's the whole echo-guard deal). */
-  const revealSelection = (): void => {
-    clearFlash();
-    if (dirty) return; // don't fight a hand-edit in progress
-    const path = state.selection;
-    if (!path) return;
-    const range = rangeForPath(mapRanges, path);
-    if (!range) return; // stale map (shouldn't happen) — just skip
+  /** Scroll a FULL-coordinate range into view and flash its lines — shared by
+   *  canvas-selection reveals and lint-row jumps. NEVER moves the caret or
+   *  focus — the reading/edit position is sacred (the echo-guard deal). */
+  const flashRange = (range: { start: number; end: number }): void => {
     // folded view: a fully-hidden element clamps to its fold's sentinel line
     const { first, last } = lineSpanOf(textEl.value, fullToDisplayed(range.start), fullToDisplayed(range.end));
     const lh = lineHeightPx();
@@ -362,7 +390,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     flashTimer = window.setTimeout(done, 1600); // fallback for DOMs without CSS animation
   };
 
-  textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); });
+  /** Show where the primary selection lives in the JSON (canvas → code). */
+  const revealSelection = (): void => {
+    clearFlash();
+    if (dirty) return; // don't fight a hand-edit in progress
+    const path = state.selection;
+    if (!path) return;
+    const range = rangeForPath(mapRanges, path);
+    if (!range) return; // stale map (shouldn't happen) — just skip
+    flashRange(range);
+  };
+
+  textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); scheduleLiveParse(); });
   sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
 
   // ── #244 the IDE dressing: highlight overlay, gutter, completions ──
@@ -376,10 +415,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ctx: state.rows.length ? ctxForRow(0) : undefined,
     }),
     selectionRange: () => {
-      if (dirty || !state.selection) return null; // hand-edit: offsets are stale
-      const r = rangeForPath(mapRanges, state.selection);
+      if (!state.selection) return null;
+      // #PR-D: while dirty the LIVE map takes over — hidden only for the
+      // frame before the first parse lands (stale offsets must never paint)
+      if (dirty && !liveRanges) return null;
+      const r = rangeForPath(rangesNow(), state.selection);
       return r ? { start: fullToDisplayed(r.start), end: fullToDisplayed(r.end) } : null;
     },
+    // #PR-D squiggles + hovers: decisions live in jsonDecorations/jsonHover;
+    // the panel just hands them its decoration list and field/row context
+    decorations: () => decorations,
+    hoverAt: (off) => hoverInfoAt(textEl.value, off, decorations, state.fields,
+      { ctx: state.rows.length ? ctxForRow(0) : undefined }),
     // #PR-C: the fold bridge — chevrons, gapped numbers, edit guards
     folds: {
       usable: () => !dirty,
@@ -423,8 +470,88 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     },
     // an accepted completion is buffer input like any other keystroke (the
     // execCommand path re-enters via the input listener instead)
-    onSplice: () => { setDirty(); clearImportError(); clearFlash(); },
+    onSplice: () => { setDirty(); clearImportError(); clearFlash(); scheduleLiveParse(); },
   });
+
+  // ── #PR-D: the debounced live parse + the decoration pipeline ──
+  let liveParsePending = false;
+  const scheduleLiveParse = (): void => {
+    if (liveParsePending) return;
+    liveParsePending = true;
+    const raf: (cb: () => void) => void = typeof requestAnimationFrame === 'function'
+      ? (cb) => requestAnimationFrame(() => cb())
+      : (cb) => { window.setTimeout(cb, 16); };
+    raf(() => {
+      liveParsePending = false;
+      if (!dirty) return; // regenerated/applied meanwhile — the clean map rules
+      const res = parseJsonWithMap(textEl.value); // dirty ⇒ no folds ⇒ value IS the full text
+      liveRanges = res.ranges;
+      liveErrors = res.errors;
+      liveLabels = res.labels;
+      refreshDecorations();
+      ide.refreshScope();
+      refreshCrumbs();
+    });
+  };
+
+  /** Rebuild the displayed-coordinate decoration list (parse errors while
+   *  dirty + lint issues on their element's opening line) and repaint the
+   *  squiggle layer. Fold translation drops fully-hidden decorations. */
+  const refreshDecorations = (): void => {
+    const full = dirty ? textEl.value : fullText;
+    const decos = decorationsFrom(dirty ? liveErrors : [], lintIssues, rangesNow(), full);
+    decorations = foldView
+      ? decos
+          .map((d) => ({ ...d, start: fullToDisplayed(d.start), end: fullToDisplayed(d.end) }))
+          .filter((d) => d.end > d.start)
+      : decos;
+    ide.repaintSquiggles();
+  };
+
+  // ── #PR-D breadcrumb: the caret's element chain, labelled from the buffer
+  // while dirty (jsonText labels) and from the doc while clean. A crumb click
+  // is a code-originated selection — echoed exactly like a caret move, so the
+  // pane never flashes/scrolls itself. ──
+  const crumbLabel = (prefix: NodePath): string => {
+    if (dirty) {
+      const live = liveLabels[prefix.join('/')];
+      if (live) return live;
+    }
+    const node = state.nodeAt(prefix) as { _elmName?: string; elmType?: string } | null;
+    if (node) return node._elmName ?? node.elmType ?? 'element';
+    const last = prefix[prefix.length - 1];
+    return last === CARD_SEGMENT ? 'card' : `#${last ?? 0}`;
+  };
+  const refreshCrumbs = (): void => {
+    if (dirty && !liveRanges) { crumbsEl.hidden = true; return; } // pre-parse frame
+    const path = pathAtOffset(rangesNow(), displayedToFull(textEl.selectionStart ?? 0));
+    if (!path) { crumbsEl.hidden = true; return; } // wrapper chrome — no element here
+    crumbsEl.hidden = false;
+    const parts: Node[] = [];
+    for (let i = 0; i <= path.length; i++) {
+      const prefix = path.slice(0, i);
+      if (i > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'wb-crumb-sep';
+        sep.setAttribute('aria-hidden', 'true');
+        sep.textContent = '›';
+        parts.push(sep);
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'wb-crumb';
+      b.textContent = crumbLabel(prefix);
+      if (state.nodeAt(prefix)) {
+        b.title = 'Select this element on the canvas';
+        b.addEventListener('click', () => echo.run('code', () => state.select(prefix)));
+      } else {
+        b.disabled = true; // typed by hand — becomes selectable after Apply
+        b.title = 'Not applied yet — Apply to select it on the canvas';
+      }
+      parts.push(b);
+    }
+    crumbsEl.replaceChildren(...parts);
+  };
 
   // ── #PR-B Format document: buffer-only pretty print, never an Apply.
   // Canonical (importJson → the deterministic serializer) when the buffer
@@ -446,6 +573,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       textEl.scrollLeft = scrollLeft;
       clearFlash();
       ide.repaint();
+      if (dirty) scheduleLiveParse(); // the swap moved every live-map offset
     }
     if (res.tier === 'reindent') {
       importErrorEl.textContent = `Format is re-indent only until the JSON parses — ${res.error}`;
@@ -685,6 +813,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       state.fields.map((f) => f.name),
       Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
     );
+    lintIssues = issues; // #PR-D: the squiggle layer mirrors the footer
+    refreshDecorations();
     lintEl.innerHTML = '';
     const all: Array<{ sev: string; text: string; path: number[] }> = [
       ...issues.map((i: LintIssue) => ({ sev: i.severity, text: `${i.rule}: ${i.message}`, path: i.path })),
@@ -720,7 +850,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       // its severity announceable — by keyboard, not mouse only.
       row.tabIndex = 0;
       row.setAttribute('role', 'button');
-      const jump = (): void => state.select(issue.path);
+      // #PR-D flash symmetry: on clean buffers the selection emit reveals and
+      // flashes; when it didn't (dirty — reveal bails), flash via the live map
+      const jump = (): void => {
+        state.select(issue.path);
+        if (!flashBar && (!dirty || liveRanges)) {
+          const r = rangeForPath(rangesNow(), issue.path);
+          if (r) { clearFlash(); flashRange(r); }
+        }
+      };
       row.addEventListener('click', jump);
       row.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }

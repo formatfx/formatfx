@@ -96,3 +96,19 @@ describe('positioned errors + recovery', () => {
     expect(parseJsonWithMap('!!!').errors.length).toBeGreaterThan(0);
   });
 });
+
+describe('element labels (the dirty-buffer breadcrumb rides these)', () => {
+  it('prefers _elmName over elmType, keyed by path', () => {
+    const text = '{"elmType": "div", "_elmName": "Card", "children": [{"elmType": "span"}]}';
+    const res = parseJsonWithMap(text);
+    expect(res.labels['']).toBe('Card');
+    expect(res.labels['0']).toBe('span');
+  });
+
+  it('resolves behind the row wrapper, and skips elements with neither key', () => {
+    const text = '{"$schema": "x", "rowFormatter": {"elmType": "div", "children": [{"txtContent": "no type yet"}]}}';
+    const res = parseJsonWithMap(text);
+    expect(res.labels['']).toBe('div');
+    expect(res.labels['0']).toBeUndefined();
+  });
+});
