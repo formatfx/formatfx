@@ -67,8 +67,13 @@ export function mountTree(
   onToast: (m: string) => void = () => {},
 ): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
-  // because selecting a row re-renders the whole tree mid-double-click
+  // because selecting a row re-renders the whole tree mid-double-click.
+  // renameRoot pins WHICH tree the rename began under: a numeric path means
+  // nothing across a surface⇄workshop retarget, so a root change drops the
+  // rename instead of letting it land on an unrelated node (PR #270 review).
   let renamePath: NodePath | null = null;
+  let renameRoot: SPElement | null = null;
+  let currentRoot: SPElement | null = null;
 
   /** The tree's editing seams, resolved per render: the app document, or the
    *  workshop's staged tree while its tab covers the canvas. */
@@ -110,6 +115,11 @@ export function mountTree(
     host.innerHTML = '';
     const ctx = state.activeComponentTab !== null ? state.workshopCtx : null;
     ops = ctx ? workshopOps(ctx) : surfaceOps;
+    currentRoot = ctx ? ctx.root() : state.doc.root;
+    if (renamePath && renameRoot !== currentRoot) {
+      renamePath = null;
+      renameRoot = null;
+    }
     if (ctx) {
       host.appendChild(renderNode(ctx.root(), []));
       const renameInp0 = host.querySelector<HTMLInputElement>('.wb-tree-rename');
@@ -172,6 +182,15 @@ export function mountTree(
       row.appendChild(label0);
       row.title = `The embedded “${embedName}” component — restyle it in its OWN workshop`;
       row.addEventListener('click', () => ops.select(path));
+      // the row is focusable (tabIndex above) — keep it keyboard-operable
+      // even though it short-circuits the rest of the row chrome (PR #270)
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          ops.select(path);
+        }
+      });
       wrap.appendChild(row);
       return wrap;
     }
@@ -249,7 +268,7 @@ export function mountTree(
         });
       });
     }
-    const startRename = () => { renamePath = path; render(); };
+    const startRename = () => { renamePath = path; renameRoot = currentRoot; render(); };
     row.addEventListener('dblclick', (e) => { e.stopPropagation(); startRename(); });
     row.title = 'Double-click to rename';
 

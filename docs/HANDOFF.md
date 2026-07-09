@@ -1010,7 +1010,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1369 vitest unit tests across 72 files (engine semantics incl.
+- `npm test` — 1387 vitest unit tests across 73 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -1119,3 +1119,4 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.
+
