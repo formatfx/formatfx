@@ -129,6 +129,22 @@ overlay over core/stressTest), explainPanel.ts (the Explain tab, a side-pane
 peer of JSON). The autosave BACKUP key `….project.v1.bak` is additive —
 the frozen keys stay frozen.
 
+IDE-style JSON pane (issue #244, built 2026-07-09): the textarea stays the
+real editor but paints transparent over a scroll-synced highlight overlay
+inside `.wb-json-shell` — jsonIde.ts is the DOM dressing (line gutter,
+bracket match, active-line band, the selected element's scope bar, the
+caret-anchored typeahead + the =function( signature chip) over two pure
+brains: jsonHighlight.ts (the tolerant lexer — mid-edit buffers paint, no
+parser) and jsonComplete.ts (the context scanner: element/style/attributes/
+wrapper key catalogs with docs, value catalogs per key, and the expression
+layer riding fxSuggest's engine-grounded items + SP_FUNCTION_DOCS — never a
+standalone `!`). All of it is BUFFER work: the one document write stays the
+Apply button, and bare-structure menus open on Ctrl+Space only (auto-pop
+would fight plain typing). acMenu gained an optional caret anchor (additive).
+Prior art: thechriskent/jsonify's HorseScript IntelliSense — the feature
+shape (completions + signature help + expression highlighting inside JSON),
+not the code.
+
 Key structural invariants:
 - **Columns · Components · Views (2026-07-06/07 — the model-B migration;
   spec: docs/specs/COLUMNS-COMPONENTS-VIEWS.md, all phases shipped)**: a
@@ -902,7 +918,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1009 vitest unit tests across 52 files (engine semantics incl.
+- `npm test` — 1260 vitest unit tests across 65 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -918,8 +934,10 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   autosave-pause never-clobber guarantee), the Mockup-B left-pane sections
   (shelf, library, view card, views list), the column tab-groups brain,
   the pure-grid Apply-to-canvas guard, the palette-derived components'
-  definitely-renders contract, and the Select/Live canvas mode). Run
-  headlessly anywhere.
+  definitely-renders contract, the Select/Live canvas mode, and the IDE-style
+  JSON pane — the tolerant tokenizer/bracket matcher, the contextual
+  completion brain incl. its no-standalone-`!` guarantee, and the mounted
+  shell's DOM contracts). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
 - `npm run test:ui` — 136 Playwright tests across 15 spec files:

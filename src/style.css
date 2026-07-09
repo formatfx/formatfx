@@ -1465,22 +1465,93 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-json-toolbar button.wb-json-primary:hover { filter: brightness(1.08); color: var(--wb-accent-text); }
 .wb-check { font-size: 11px; color: var(--wb-text-2); display: flex; align-items: center; gap: 3px; }
 .wb-check input { width: auto; }
-#wb-json-text {
-  flex: 1; min-height: 220px; resize: vertical; white-space: pre;
-  font: 11px Consolas, monospace; padding: 8px;
+/* ── #244 IDE-style JSON pane: the shell owns the box (border, resize); the
+      textarea floats TRANSPARENT (native caret/selection/undo intact) over a
+      scroll-synced highlight overlay, beside a line gutter (jsonIde.ts) ── */
+.wb-json-shell {
+  position: relative; flex: 1; min-height: 220px; resize: vertical; overflow: hidden;
   border: 1px solid var(--wb-border); border-radius: 3px;
-  background: var(--wb-bg); color: var(--wb-text);
+  background: var(--wb-bg);
 }
-#wb-json-text.wb-json-dirty {
+.wb-json-shell.wb-json-dirty {
   border-color: var(--wb-accent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--wb-accent) 30%, transparent);
+}
+/* identical metrics on all three layers — layer alignment is arithmetic */
+#wb-json-text, .wb-json-hl, .wb-json-gutter {
+  font: 11px/16px Consolas, 'Cascadia Code', monospace; tab-size: 2;
+}
+#wb-json-text, .wb-json-hl { padding: 8px 8px 8px 46px; white-space: pre; }
+#wb-json-text {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  border: 0; border-radius: 0; resize: none; z-index: 3;
+  background: transparent; color: transparent; caret-color: var(--wb-text);
+}
+#wb-json-text::selection {
+  background: color-mix(in srgb, var(--wb-accent) 25%, transparent);
+  color: transparent;
+}
+.wb-json-hl {
+  position: absolute; inset: 0; margin: 0; overflow: hidden;
+  pointer-events: none; z-index: 1; color: var(--wb-text);
+}
+.wb-json-gutter {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 38px; overflow: hidden;
+  padding: 8px 0; text-align: right; z-index: 2; pointer-events: none;
+  background: var(--wb-surface); border-right: 1px solid var(--wb-border);
+  color: var(--wb-text-2);
+}
+.wb-json-ln { padding-right: 7px; opacity: .65; }
+.wb-json-ln.active { opacity: 1; color: var(--wb-accent); }
+.wb-json-lineband {
+  position: absolute; left: 0; right: 0; z-index: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--wb-text) 5%, transparent);
+}
+.wb-json-scopebar {
+  position: absolute; left: 38px; width: 2px; z-index: 2; border-radius: 1px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--wb-accent) 55%, transparent);
+}
+.wb-json-sighint {
+  position: absolute; z-index: 6; transform: translateY(-100%); margin-top: -3px;
+  max-width: calc(100% - 46px); overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 8px; border: 1px solid var(--wb-border); border-radius: 6px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+  font: 11px/16px Consolas, monospace; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none;
+}
+.wb-json-sighint b { color: var(--wb-accent); }
+/* the token palette (Monaco-familiar hues, re-tuned per theme) */
+:root {
+  --wb-syn-key: #0451a5; --wb-syn-str: #a31515; --wb-syn-expr: #795e26;
+  --wb-syn-num: #098658; --wb-syn-kw: #0c46bd; --wb-syn-err: #d13438;
+}
+body.wb-dark {
+  --wb-syn-key: #9cdcfe; --wb-syn-str: #ce9178; --wb-syn-expr: #dcdcaa;
+  --wb-syn-num: #b5cea8; --wb-syn-kw: #569cd6; --wb-syn-err: #f1707b;
+}
+.wb-tok-key { color: var(--wb-syn-key); }
+.wb-tok-str { color: var(--wb-syn-str); }
+.wb-tok-expr { color: var(--wb-syn-expr); }
+.wb-tok-num { color: var(--wb-syn-num); }
+.wb-tok-bool, .wb-tok-null { color: var(--wb-syn-kw); }
+.wb-tok-punct { color: var(--wb-text-2); }
+.wb-tok-err {
+  color: var(--wb-syn-err);
+  text-decoration: underline wavy color-mix(in srgb, var(--wb-syn-err) 60%, transparent);
+  text-underline-offset: 2px;
+}
+.wb-tok-match {
+  background: color-mix(in srgb, var(--wb-accent) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--wb-accent) 45%, transparent);
+  border-radius: 2px;
 }
 .wb-json-toolbar button#wb-json-apply.wb-json-apply-pending {
   border-color: var(--wb-accent); color: var(--wb-accent); font-weight: 600;
 }
 
 /* ── #218 split-view sync: flash the selected element's JSON lines ────── */
-/* the JSON pane host becomes the positioning context for the flash bar */
+/* the editor shell is the positioning context for the flash bar (#244) */
 .wb-codesync { position: relative; }
 .wb-code-flashbar {
   position: absolute; pointer-events: none; z-index: 5; border-radius: 2px;
