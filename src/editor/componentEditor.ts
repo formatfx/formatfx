@@ -5,8 +5,11 @@
  * editor/componentEditor.ts — the component WORKSHOP: edit a component
  * DEFINITION itself — its name/description, what each slot ASKS for
  * (labels/tooltips; slot KEYS are immutable, they're the tree's field refs),
- * and its elements visually (click the live preview or the mini structure
- * list to select, restyle with the compact Format-cells vocabulary).
+ * and its elements visually: click the live preview (or the Structure tree,
+ * which renders the STAGED tree while this tab is up) to select, then style
+ * in the real Properties pane — both ride the WorkshopContext seam this
+ * mount registers on state (spec §C, 2026-07-09; the embedded style panel
+ * and mini structure list died with it).
  * Everything stages into a deep copy; nothing commits until a Save button.
  *
  * COLUMNS-COMPONENTS-VIEWS §2 (Phase B): the workshop is a CANVAS TAB, not a
@@ -30,12 +33,10 @@
  *     reverts everything.
  */
 
-import { state, CARD_SEGMENT } from './state';
+import { state, CARD_SEGMENT, type WorkshopContext } from './state';
 import { renderElement } from '../core/renderer';
 import { ctxForRow } from './previewCtx';
 import { gridColumnField, gridCellForField } from './gridScaffold';
-import { FONT_SIZES, RADII, INK_SWATCHES, HAIRLINE } from './formatCells';
-import { COND_COLORS } from './condRules';
 import type { SPElement, SPExpr, NodePath } from '../core/types';
 import {
   COMPONENTS_KEY, BUILTIN_COMPONENTS, loadComponents, serializeComponents, addComponent,
@@ -79,17 +80,12 @@ function libraryDefs(): ComponentDef[] {
   return [...BUILTIN_COMPONENTS, ...paletteComponents(), ...readCustom()];
 }
 
-/** Managed by the compact style panel — the Format-cells vocabulary, compact. */
-const CE_MANAGED = [
-  'font-size', 'font-weight', 'font-style', 'color',
-  'background-color', 'border', 'border-radius', 'text-align',
-];
-
-// SPExpr classification for the style panel (exported as the pure seam the
-// unit tests pin). A FORMULA is an '='-prefixed string or the AST object form
-// ({operator, operands}); plain strings, NUMBERS and BOOLEANS are static
-// literals (e.g. `opacity: 0.6`, `font-weight: 600`) — the same split the
-// engine and the inspector make.
+// SPExpr classification (exported as the pure seam the unit tests pin; the
+// embedded style panel that used it died 2026-07-09 — the real inspector
+// styles staged elements through state.workshopCtx now). A FORMULA is an
+// '='-prefixed string or the AST object form ({operator, operands}); plain
+// strings, NUMBERS and BOOLEANS are static literals (e.g. `opacity: 0.6`,
+// `font-weight: 600`) — the same split the engine and the inspector make.
 
 /** A style prop's committed literal value, stringified ('' = unset/formula). */
 export function stylePlainValue(style: Record<string, SPExpr | undefined> | undefined, prop: string): string {
@@ -198,10 +194,9 @@ export function mountComponentWorkshop(
     else delete staged.embeds;
     if (!nodeAtStaged(sel)) sel = [];
     renderPreview();
-    renderStruct();
-    renderStylePanel();
     renderEmbeds();
     muButtons.refresh();
+    state.emit('workshop'); // the tree + inspector ride the staged seam now
   }
   const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
   const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
@@ -333,9 +328,8 @@ export function mountComponentWorkshop(
     mu.commit(muBag());
     muButtons.refresh();
     renderPreview();
-    renderStruct();
-    renderStylePanel();
     renderEmbeds();
+    state.emit('workshop');
   };
 
   const renderEmbeds = (): void => {
@@ -409,13 +403,12 @@ export function mountComponentWorkshop(
   };
 
   // ── live preview: best-guess bound, click-to-select via data-sp-path ──
-  const prevSec = section(right, 'Elements — click to select, restyle below');
+  const prevSec = section(right, 'Elements — click to select; style them in the Properties pane');
   const previewHost = document.createElement('div');
   previewHost.className = 'wb-ce-preview';
   prevSec.appendChild(previewHost);
-  const structHost = document.createElement('div');
-  structHost.className = 'wb-ce-struct';
-  prevSec.appendChild(structHost);
+  // (the mini structure list died with the style panel — the Structure tree
+  //  renders the staged tree itself now, card content included)
 
   const previewMapping = (def2: ComponentDef): Record<string, string> => {
     const m = bestGuessMapping(def2, state.fields);
@@ -453,6 +446,14 @@ export function mountComponentWorkshop(
     }
     return ok;
   };
+  /** THE staged-selection setter — preview clicks, struct rows and the
+   *  tree (via ctx.select) all land here so the seam always announces. */
+  const setSel = (p: NodePath): void => {
+    sel = p;
+    refreshSelection();
+    state.emit('workshop');
+  };
+
   // selection only — preview clicks never trigger card flyouts/row actions
   previewHost.addEventListener('click', (e) => {
     e.preventDefault();
@@ -460,175 +461,17 @@ export function mountComponentWorkshop(
     const t = (e.target as HTMLElement).closest?.('[data-sp-path]');
     if (!(t instanceof Element) || !previewHost.contains(t)) return;
     const raw = (t as HTMLElement).dataset.spPath ?? '';
-    sel = clampToStaged(raw === '' ? [] : raw.split('.').map(Number));
-    refreshSelection();
+    setSel(clampToStaged(raw === '' ? [] : raw.split('.').map(Number)));
   }, true);
 
-  // mini structure list (card content included — it only renders in flyouts,
-  // so the list is how you reach it)
-  const renderStruct = (): void => {
-    structHost.replaceChildren();
-    const walk = (el: SPElement, path: NodePath, depth: number, card: boolean): void => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'wb-ce-struct-row' + (path.join('.') === sel.join('.') ? ' active' : '');
-      row.style.paddingLeft = `${8 + depth * 12}px`;
-      // an embed placeholder (#225) reads as the component it stands in for
-      const embedName = el._embed !== undefined
-        ? (staged.embeds ?? []).find((em) => em.ns === el._embed)?.name ?? el._embed
-        : null;
-      row.textContent = embedName !== null
-        ? `${card ? 'card · ' : ''}⬡ ${embedName}`
-        : `${card ? 'card · ' : ''}${el._elmName ?? `<${el.elmType}>`}`;
-      row.addEventListener('click', () => { sel = path; refreshSelection(); });
-      structHost.appendChild(row);
-      el.children?.forEach((c, i) => walk(c, [...path, i], depth + 1, false));
-      if (el.customCardProps?.formatter) walk(el.customCardProps.formatter, [...path, CARD_SEGMENT], depth + 1, true);
-    };
-    walk(staged.root, [], 0, false);
-  };
 
-  // ── the compact staged style panel (the Format-cells vocabulary) ──
-  const styleSec = section(right, 'Style the selected element');
-  const styleHost = document.createElement('div');
-  styleHost.className = 'wb-ce-style';
-  styleSec.appendChild(styleHost);
-
-  const plainOf = stylePlainValue;
-  const isFormula = styleIsFormula;
-  const setStyle = (prop: string, value: string | null): void => {
-    const node = nodeAtStaged(sel);
-    if (!node) return;
-    node.style = node.style ?? {};
-    if (value === null) delete node.style[prop];
-    else node.style[prop] = value;
-    if (Object.keys(node.style).length === 0) delete node.style;
-    setDirty(true);
-    mu.commit(muBag()); // one gesture = one ↶ step
-    muButtons.refresh();
-    renderPreview();
-    renderStylePanel();
-  };
-
-  const renderStylePanel = (): void => {
-    styleHost.replaceChildren();
-    const node = nodeAtStaged(sel);
-    if (!node) {
-      const none = document.createElement('div');
-      none.className = 'wb-ce-note';
-      none.textContent = 'Select an element in the preview or the list above.';
-      styleHost.appendChild(none);
-      return;
-    }
-    if (node._embed !== undefined) {
-      // refuse-and-teach: styles set on a placeholder would vanish when
-      // flatten swaps the child's tree in — point at the honest surface
-      const em = (staged.embeds ?? []).find((e) => e.ns === node._embed);
-      const none = document.createElement('div');
-      none.className = 'wb-ce-note';
-      none.textContent = `This is the embedded “${em?.name ?? node._embed}” component — restyle it in its OWN workshop (open it from the ⬡ library), or remove it under Embedded components.`;
-      styleHost.appendChild(none);
-      return;
-    }
-    const style = node.style;
-    const row = (label: string, ...kids: HTMLElement[]): void => {
-      const r = document.createElement('div');
-      r.className = 'wb-ce-row';
-      const lab = document.createElement('span');
-      lab.className = 'wb-ce-rowlab';
-      lab.textContent = label;
-      r.appendChild(lab);
-      for (const k of kids) r.appendChild(k);
-      styleHost.appendChild(r);
-    };
-    const chips = (): HTMLElement => {
-      const s = document.createElement('span');
-      s.className = 'wb-ce-chips';
-      return s;
-    };
-    const chip = (label: string, active: boolean, fn: () => void, titleTxt?: string): HTMLElement => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'wb-ce-chip' + (active ? ' active' : '');
-      b.textContent = label;
-      if (titleTxt) b.title = titleTxt;
-      b.addEventListener('click', fn);
-      return b;
-    };
-    const swatch = (color: string, active: boolean, fn: () => void): HTMLElement => {
-      const s = document.createElement('button');
-      s.type = 'button';
-      s.className = 'wb-ce-swatch' + (active ? ' active' : '');
-      s.title = color;
-      s.style.background = color;
-      s.addEventListener('click', fn);
-      return s;
-    };
-
-    const sizes = chips();
-    sizes.appendChild(chip('auto', plainOf(style, 'font-size') === '', () => setStyle('font-size', null)));
-    for (const s of FONT_SIZES) {
-      sizes.appendChild(chip(s.replace('px', ''), plainOf(style, 'font-size') === s, () => setStyle('font-size', s), s));
-    }
-    row('Size', sizes);
-
-    const face = chips();
-    const weight = plainOf(style, 'font-weight');
-    const bold = weight === '600' || weight === '700' || weight === 'bold';
-    face.appendChild(chip('Bold', bold, () => setStyle('font-weight', bold ? null : '600'), 'Semibold 600 — the SP emphasis weight'));
-    const italic = plainOf(style, 'font-style') === 'italic';
-    face.appendChild(chip('Italic', italic, () => setStyle('font-style', italic ? null : 'italic')));
-    row('Style', face);
-
-    const ink = chips();
-    ink.appendChild(chip('auto', plainOf(style, 'color') === '', () => setStyle('color', null), 'No explicit color — the theme decides'));
-    for (const c of INK_SWATCHES) ink.appendChild(swatch(c, plainOf(style, 'color') === c, () => setStyle('color', c)));
-    row('Text', ink);
-
-    const fill = chips();
-    fill.appendChild(chip('none', plainOf(style, 'background-color') === '', () => setStyle('background-color', null)));
-    for (const c of COND_COLORS) fill.appendChild(swatch(c.soft, plainOf(style, 'background-color') === c.soft, () => setStyle('background-color', c.soft)));
-    for (const c of COND_COLORS) fill.appendChild(swatch(c.strong, plainOf(style, 'background-color') === c.strong, () => setStyle('background-color', c.strong)));
-    row('Fill', fill);
-
-    const borderVal = plainOf(style, 'border');
-    const borderColor = borderVal.split(/\s+/).find((t) => t.startsWith('#')) ?? HAIRLINE;
-    const bd = chips();
-    bd.appendChild(chip('none', borderVal === '', () => setStyle('border', null)));
-    bd.appendChild(chip('outline', borderVal !== '', () => setStyle('border', `1px solid ${borderColor}`), 'A 1px border on all four sides'));
-    for (const c of [HAIRLINE, ...INK_SWATCHES.slice(0, 6)]) {
-      bd.appendChild(swatch(c, borderVal !== '' && borderColor === c, () => setStyle('border', `1px solid ${c}`)));
-    }
-    row('Border', bd);
-
-    const corners = chips();
-    corners.appendChild(chip('square', plainOf(style, 'border-radius') === '', () => setStyle('border-radius', null)));
-    for (const r of RADII) {
-      corners.appendChild(chip(r === '50%' ? 'circle' : r, plainOf(style, 'border-radius') === r, () => setStyle('border-radius', r)));
-    }
-    row('Corners', corners);
-
-    const align = chips();
-    align.appendChild(chip('auto', plainOf(style, 'text-align') === '', () => setStyle('text-align', null)));
-    for (const a of ['left', 'center', 'right']) {
-      align.appendChild(chip(a, plainOf(style, 'text-align') === a, () => setStyle('text-align', a)));
-    }
-    row('Align', align);
-
-    const driven = CE_MANAGED.filter((p) => isFormula(style, p));
-    if (driven.length) {
-      const warn = document.createElement('div');
-      warn.className = 'wb-ce-note';
-      warn.textContent = `𝑓x drives ${driven.join(', ')} on this element — picking a plain value here replaces that formula.`;
-      styleHost.appendChild(warn);
-    }
-  };
+  // (The compact staged style panel died 2026-07-09 — spec §C. The real
+  //  inspector styles staged elements through the WorkshopContext below,
+  //  with the full element vocabulary instead of the eight-property chip set.)
 
   const refreshSelection = (): void => {
     previewHost.querySelector('.wb-ce-picked')?.classList.remove('wb-ce-picked');
     previewHost.querySelector(`[data-sp-path="${sel.join('.')}"]`)?.classList.add('wb-ce-picked');
-    renderStruct();
-    renderStylePanel();
   };
 
   // ── usages + "keep as-found" pinning (customs with usages only) ──
@@ -937,17 +780,44 @@ export function mountComponentWorkshop(
   };
 
   renderPreview();
-  renderStruct();
-  renderStylePanel();
   renderEmbeds();
   refreshFoot();
   if (!opts.resume) panel.querySelector<HTMLElement>('.wb-ce-name')?.focus();
+
+  // ── the staged-editing seam (spec §C): while this workshop is mounted the
+  //    Structure tree and the inspector resolve against the STAGED tree.
+  //    commit() is the one staged-mutation chokepoint — dirty + a modal-undo
+  //    step + preview/struct refresh + the 'workshop' announce; the app undo
+  //    stack never hears about it (Save stays the one app-level step). ──────
+  const ctx: WorkshopContext = {
+    root: () => staged.root,
+    selection: () => sel,
+    select: (p: NodePath) => setSel(clampToStaged(p)),
+    nodeAt: (p: NodePath) => nodeAtStaged(p),
+    embedNameOf: (el: SPElement) => el._embed !== undefined
+      ? ((staged.embeds ?? []).find((em) => em.ns === el._embed)?.name ?? String(el._embed))
+      : null,
+    commit: (fn: () => void): void => {
+      fn();
+      if (!nodeAtStaged(sel)) sel = [];
+      setDirty(true);
+      mu.commit(muBag());
+      muButtons.refresh();
+      renderPreview();
+      state.emit('workshop');
+    },
+  };
+  state.registerWorkshop(ctx);
 
   return {
     staging: (): WorkshopStaging => ({
       staged: JSON.parse(JSON.stringify(staged)) as ComponentDef,
       dirty,
     }),
-    destroy: (): void => { detachMuKeys(); },
+    destroy: (): void => {
+      detachMuKeys();
+      state.unregisterWorkshop(ctx);
+    },
   };
 }
+

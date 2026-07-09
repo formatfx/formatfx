@@ -6,7 +6,7 @@
  * Select/Live canvas toggle.
  */
 import { test, expect, type Page } from '@playwright/test';
-import { freshApp, header, openGridTab, openJson, openJsonKebab, openPalette } from './helpers';
+import { freshApp, header, openGridTab, openJson, openJsonKebab, openPalette, stageWorkshopColor } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -124,7 +124,7 @@ test('workshop save re-bakes a worn column: edit YOUR component, every column we
   await node.locator('.wb-comp-rowedit').click();
   const ce = page.locator('#wb-workshop .wb-ce');
   const purple = '[style*="rgb(92, 45, 145)"]';
-  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await stageWorkshopColor(page, '#5c2d91');
   // staged ≠ saved: the grid (under the workshop cover) has no purple yet
   await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
   // the save counts every usage: the worn column + its placed grid cell
@@ -521,3 +521,5 @@ test('Select/Live canvas toggle: Live fires customRowAction, Select selects inst
   await page.locator('.wb-canvas-mode', { hasText: 'Select' }).click();
   await expect(page.locator('.wb-canvas-mode.active')).toHaveText('Select');
 });
+
+
