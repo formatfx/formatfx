@@ -89,7 +89,9 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
     const kebab = document.createElement('button');
     kebab.type = 'button';
     kebab.className = 'wb-viewcard-kebab';
-    kebab.setAttribute('aria-haspopup', 'menu');
+    // a settings popover with live controls, not an action menu — announce
+    // as a dialog (Copilot review, PR #267)
+    kebab.setAttribute('aria-haspopup', 'dialog');
     kebab.setAttribute('aria-label', 'View settings');
     kebab.title = 'View settings — density, row class, and what SharePoint shows around this view';
     kebab.innerHTML = KEBAB_ICON;

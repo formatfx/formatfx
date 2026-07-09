@@ -63,7 +63,8 @@ export function openViewKebab(anchor: HTMLElement, onToast: (m: string) => void)
 
   const panel = document.createElement('div');
   panel.className = 'wb-viewkebab wb-esc-owner';
-  panel.setAttribute('role', 'group');
+  // announced as a newly opened surface, not a grouping container (PR #267)
+  panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'View settings');
 
   // ── row builders ──────────────────────────────────────────────────────────
@@ -367,10 +368,13 @@ export function openViewKebab(anchor: HTMLElement, onToast: (m: string) => void)
   redraw();
   document.body.appendChild(panel);
 
-  // fixed under the anchor, right edge pinned to the anchor's right
+  // fixed under the anchor, right edge pinned to the anchor's right; clamp
+  // against the panel's ACTUAL rendered height so a tall panel never hangs
+  // off-screen (PR #267)
   const r = anchor.getBoundingClientRect();
   const w = panel.offsetWidth || 280;
-  panel.style.top = `${Math.max(8, Math.min(r.bottom + 4, window.innerHeight - 120))}px`;
+  const h = panel.offsetHeight || 320;
+  panel.style.top = `${Math.max(8, Math.min(r.bottom + 4, window.innerHeight - h - 8))}px`;
   panel.style.left = `${Math.max(8, r.right - w)}px`;
 
   let done = false;

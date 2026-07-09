@@ -15,7 +15,10 @@ const channel = process.env.PW_CHANNEL ?? 'msedge';
 // worktrees), and reuseExistingServer would otherwise attach the tests to
 // whichever session's server got there first, silently testing THEIR code.
 // --strictPort keeps vite from hopping ports and desyncing from webServer.port.
-const port = Number(process.env.PW_PORT ?? 5173);
+// A non-numeric PW_PORT falls back to 5173 rather than poisoning the command
+// with NaN.
+const parsedPort = Number(process.env.PW_PORT);
+const port = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65536 ? parsedPort : 5173;
 
 export default defineConfig({
   testDir: './e2e',

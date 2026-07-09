@@ -220,8 +220,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     const startY = e.clientY;
     const startH = propsRegion.getBoundingClientRect().height;
     const move = (ev: PointerEvent) => {
-      // dragging UP grows the props region
-      const next = Math.max(110, Math.min(host.clientHeight - 260, startH + (startY - ev.clientY)));
+      // dragging UP grows the props region; on a squeezed pane the ceiling
+      // can dip below the 110px floor — the ceiling wins so the region never
+      // overflows the space that actually exists (PR #267)
+      const ceiling = Math.max(56, host.clientHeight - 260);
+      const next = Math.min(ceiling, Math.max(Math.min(110, ceiling), startH + (startY - ev.clientY)));
       propsRegion.style.height = `${next}px`;
       propsRegion.style.flex = '0 0 auto';
     };

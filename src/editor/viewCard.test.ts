@@ -81,7 +81,7 @@ describe('the view kebab (spec §A — the card holds the door, viewKebab the se
     expect(host.querySelector('.wb-viewcard-rowclass')).toBeNull();
     const kebab = host.querySelector('.wb-viewcard-kebab') as HTMLButtonElement;
     expect(kebab).toBeTruthy();
-    expect(kebab.getAttribute('aria-haspopup')).toBe('menu');
+    expect(kebab.getAttribute('aria-haspopup')).toBe('dialog');
     kebab.click();
     const panel = document.body.querySelector('.wb-viewkebab')!;
     expect(panel.querySelector('[data-prop="density"]')).toBeTruthy();
