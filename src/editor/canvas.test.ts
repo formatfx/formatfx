@@ -165,22 +165,37 @@ describe('canvas zoom (#216) — a read-only VIEW control', () => {
     return { host, sets };
   };
 
-  it('renders −/%/＋ on the toolbar; stepping scales the zoom box and persists', () => {
+  it('renders −/%/＋/↺ on the toolbar; stepping scales the zoom box and persists', () => {
     state.resetAll();
     const { host, sets } = mount();
     const box = host.querySelector('.wb-canvas-zoombox') as HTMLElement;
     expect(box.style.transform).toBe(''); // 100% = no transform (e2e-safe default)
     expect(host.querySelector('.wb-canvas-zoompct')?.textContent).toBe('100%');
 
+    const resetBtn = host.querySelector('[data-zoom="reset"]') as HTMLButtonElement;
+    expect(resetBtn).toBeTruthy();
+    expect(resetBtn.textContent).toBe('↺');
+    expect(resetBtn.disabled).toBe(true); // disabled at 100%
+
     (host.querySelector('[data-zoom="in"]') as HTMLButtonElement).click();
     expect(box.style.transform).toBe('scale(1.1)');
     expect(host.querySelector('.wb-canvas-zoompct')?.textContent).toBe('110%');
     expect(sets.at(-1)).toMatchObject({ zoom: 1.1 });
+    expect(resetBtn.disabled).toBe(false); // enabled now
 
-    // the % readout is the reset button
+    // clicking resetBtn resets to 100%
+    resetBtn.click();
+    expect(box.style.transform).toBe('');
+    expect(sets.at(-1)).toMatchObject({ zoom: 1 });
+    expect(resetBtn.disabled).toBe(true); // disabled again
+
+    // the % readout also still works as a reset button
+    (host.querySelector('[data-zoom="in"]') as HTMLButtonElement).click();
+    expect(resetBtn.disabled).toBe(false);
     (host.querySelector('.wb-canvas-zoompct') as HTMLButtonElement).click();
     expect(box.style.transform).toBe('');
     expect(sets.at(-1)).toMatchObject({ zoom: 1 });
+    expect(resetBtn.disabled).toBe(true);
     state.resetAll();
   });
 
