@@ -10,6 +10,8 @@
  * carries line numbers, and thin absolute bars mark the active line and the
  * selected element's span. Completions ride the shared acMenu drop-down,
  * anchored at the caret; a signature chip floats above it inside `=` calls.
+ * Typing assists (Enter indent, pair auto-close, paste re-base) ride
+ * jsonFormat.ts decisions through the same splice path (#PR-B).
  *
  * Decision logic is all elsewhere and pure: jsonHighlight.ts (tokens,
  * brackets), jsonComplete.ts (what to offer, signature hints). This module is
