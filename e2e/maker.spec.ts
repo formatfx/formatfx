@@ -2,7 +2,7 @@
 // JSON door into the JSON pane (#257), and the canvas tab strip (not a Type
 // dropdown) saying where you are.
 import { test, expect } from '@playwright/test';
-import { freshApp, loadExample, openJson, openJsonKebab } from './helpers';
+import { freshApp, loadExample, openJsonKebab } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page); });
 
