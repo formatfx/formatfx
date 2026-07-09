@@ -37,7 +37,9 @@ guidance in your environment.
   toggle by hand. Stay subscribed until the PR is merged or closed.
 - Never merge it yourself and never push to `main` — it's protected, and
   merging is the owner's call.
-- **Clean up when done**: Once the PR is successfully created and pushed, check out `main` and pull (`git checkout main && git pull origin main`) to leave the local workspace clean and ready for the next session.
+- **Clean up when done**: Once the PR is open and there are no further fixes to push in this session,
+  check out `main` and pull (`git checkout main && git pull origin main`) to leave the local
+  workspace clean and ready for the next session.
 
 ## Start-of-session contract (branch hygiene)
 
