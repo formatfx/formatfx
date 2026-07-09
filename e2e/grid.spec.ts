@@ -7,7 +7,7 @@
  * One undoable document mutation per gesture.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, header, canvasTab, openJson } from './helpers';
+import { freshApp, header, canvasTab, openJson, expectAppUndoDisabled } from './helpers';
 
 // dialogs accepted: applying name-less JSON over a named design asks first
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
@@ -383,8 +383,8 @@ test('column tab groups: group via multi-select, pill actions, collapse/expand, 
   await expect(pill).toHaveText('Group 1');
   await expect(page.locator('.wb-grid-header-grouped')).toHaveCount(2);
   // grouping is display-only — nothing landed on the undo stack (metadata,
-  // like sheet renames), so the undo toolbar button stays disabled
-  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+  // like sheet renames), so the app undo control (now in the kebab menu) stays disabled
+  await expectAppUndoDisabled(page);
 
   // collapse via the pill menu — the columns wait intact behind a slim track
   await pill.click();
@@ -438,13 +438,16 @@ test('format cells: modal-local ↶↷ walks the staged gestures; the stack bott
   await expect(fc.locator('.wb-mu-undo')).toBeDisabled();
   await fc.locator('.wb-mu-redo').click();
   await expect(fc.locator('.wb-fc-toggle', { hasText: 'Bold' })).toHaveClass(/active/);
-  // in-dialog gestures never touched the APP stack (no document mutation)
-  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+  // (the app undo control now lives in the kebab menu, which can't open behind
+  // the modal overlay — the "app stack untouched" check moves below, post-Apply)
   // Apply commits the surviving staged patch as ONE app-level step
   await fc.locator('.wb-fc-ok').click();
   await expect(page.locator('.wb-grid [data-sp-path="0"]').first()).toHaveCSS('font-weight', '600');
   await page.keyboard.press('Control+z');
   await expect(page.locator('.wb-grid [data-sp-path="0"]').first()).toHaveCSS('font-weight', '400');
+  // ONE Ctrl+Z reached the baseline: the whole in-dialog session collapsed into a
+  // single app step (the modal-local gestures never leaked onto the app stack)
+  await expectAppUndoDisabled(page);
 });
 
 test('conditional formatting: modal-local ↶↷ over the rules list; Ctrl+Z inside the dialog stays local', async ({ page }) => {
@@ -462,8 +465,12 @@ test('conditional formatting: modal-local ↶↷ over the rules list; Ctrl+Z ins
   await page.keyboard.press('Control+z');
   await expect(cf).toBeVisible();
   await expect(cf.locator('.wb-cf-rule')).toHaveCount(0);
-  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
   await cf.locator('.wb-mu-redo').click();
   await expect(cf.locator('.wb-cf-rule')).toHaveCount(1);
   await expect(cf.locator('.wb-cf-rule-when')).toContainText('DueDate is overdue');
+  // none of the in-dialog rule gestures reached the app stack: close the dialog
+  // (nothing applied) and the app undo control is still disabled
+  await page.keyboard.press('Escape');
+  await expect(cf).toHaveCount(0);
+  await expectAppUndoDisabled(page);
 });

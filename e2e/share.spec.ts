@@ -38,7 +38,8 @@ async function recipient(browser: Browser, ownWork?: string | null): Promise<Pag
 
 /** The sender's "own work": an edit on the default grid, waited into autosave. */
 async function makeOwnWork(page: Page): Promise<string> {
-  await page.click('.wb-tool[data-tool="text"]');
+  await page.click('#wb-kebab-btn');
+  await page.click('.wb-snapmenu .wb-kebab-item[data-tool="text"]');
   await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), KEY), { timeout: 5_000 }).not.toBeNull();
   return (await page.evaluate((k) => localStorage.getItem(k), KEY))!;
 }

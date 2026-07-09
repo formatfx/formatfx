@@ -3,7 +3,7 @@
  * only. The assertions (the actual contracts) stay in each spec file; nothing
  * in here should ever encode an expectation about app behavior.
  */
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * A fresh app for one test: land on '/', wipe the autosaved project, reload.
@@ -48,10 +48,21 @@ export async function openJson(page: Page): Promise<void> {
   if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
-// The full palette is a popover off the draw toolbar. Items live in
-// #wb-palette-pop .wb-palette-item; clicking one inserts AND closes the popover.
+// The full palette now lives in the kebab (⋮) menu: open it, click "More
+// elements", and the popover (.wb-palette-pop) opens. Its items are
+// .wb-palette-item; clicking one inserts AND closes the popover.
 export async function openPalette(page: Page): Promise<void> {
-  await page.click('.wb-tool[data-tool="palette"]');
+  await page.click('#wb-kebab-btn');
+  await page.click('.wb-snapmenu .wb-kebab-item[data-tool="palette"]');
+}
+
+// The app-level Undo control moved into the kebab (⋮) menu. Open it, assert the
+// Undo item is disabled (the app undo stack is empty), then close it again.
+export async function expectAppUndoDisabled(page: Page): Promise<void> {
+  await page.click('#wb-kebab-btn');
+  await expect(page.locator('.wb-snapmenu .wb-tool-undo')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wb-snapmenu')).toHaveCount(0);
 }
 
 // the example/sample loader lives in the ☰ menu — open it, then pick

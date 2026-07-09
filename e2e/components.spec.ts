@@ -14,7 +14,7 @@
  * self-contained — nothing resolves references anymore).
  */
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { freshApp, header, canvasTab, openGridTab, makeRowView } from './helpers';
+import { freshApp, header, canvasTab, openGridTab, makeRowView, expectAppUndoDisabled } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -473,7 +473,7 @@ test('workshop: modal-local ↶↷ over element edits; staged means staged (the 
   await ce.locator('.wb-mu-redo').click();
   await expect(ce.locator(`.wb-ce-preview ${purple}`)).not.toHaveCount(0);
   // nothing reached the document or the app stack — staged means staged
-  await expect(page.locator('.wb-tool-undo')).toBeDisabled();
+  await expectAppUndoDisabled(page);
   // closing the dirty tab asks (auto-accepted) and discards
   await canvasTab(page, 'Deadline chip').locator('.wb-canvastab-close').click();
   await expect(ce).not.toBeVisible();

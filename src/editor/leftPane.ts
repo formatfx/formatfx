@@ -48,7 +48,7 @@ const COLLAPSIBLE_SECTIONS: { id: PaneSectionId; label: string }[] = [
 
 function sectionHead(id: PaneSectionId, title: string, controls: string): string {
   return `
-    <button class="wb-lp-sec-head" data-sec-head="${id}" aria-controls="${controls}" aria-expanded="true">
+    <button type="button" class="wb-lp-sec-head" data-sec-head="${id}" aria-controls="${controls}" aria-expanded="true">
       <span class="wb-lp-sec-caret" aria-hidden="true">▸</span>
       <span class="wb-lp-sec-title">${title}</span>
     </button>
@@ -66,11 +66,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   if (typeof hostAny._unsub === 'function') {
     hostAny._unsub();
   }
-  // Auto-scroll anchor container for e2e structure clicks.
-  host.addEventListener('click', (e) => {
-    const row = (e.target as HTMLElement).closest('.wb-tree-row');
-    if (row) {
-      row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  host.querySelectorAll('*').forEach((el: any) => {
+    if (typeof el._unsub === 'function') {
+      el._unsub();
     }
   });
 

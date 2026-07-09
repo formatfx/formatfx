@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true
 test('fx bar Icon slot: preview chips + searchable gallery applies a name', async ({ page }) => {
   // insert an Icon element (a span with iconName) — it selects on insert
   await openPalette(page);
-  await page.locator('#wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first().click();
+  await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Icon' }).first().click();
   // the fx bar offers an Icon slot
   const slot = page.locator('.wb-fx-slot');
   await expect(slot).toBeVisible();

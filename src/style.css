@@ -2954,12 +2954,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
    one scroll region between the splitter and the lens tabs, sharing the
    pane's remaining height with the inspector below. */
 .wb-lp-shelves {
-  flex: 0 1 auto; min-height: 72px; overflow-y: auto;
+  flex: 1 1 0; min-height: 72px; overflow-y: auto;
   border-bottom: 1px solid var(--wb-lp-border);
-}
-/* If properties/code is collapsed, let shelves fill the space. */
-.wb-leftpane:not(.wb-lens-code):has(.wb-lp-sec-inspector.wb-collapsed) .wb-lp-shelves {
-  flex: 1 1 0;
 }
 
 /* ── collapsible pane sections (issue #236): Columns · Components · the property
