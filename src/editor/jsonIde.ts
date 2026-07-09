@@ -10,6 +10,8 @@
  * carries line numbers, and thin absolute bars mark the active line and the
  * selected element's span. Completions ride the shared acMenu drop-down,
  * anchored at the caret; a signature chip floats above it inside `=` calls.
+ * Typing assists (Enter indent, pair auto-close, paste re-base) ride
+ * jsonFormat.ts decisions through the same splice path (#PR-B).
  *
  * Decision logic is all elsewhere and pure: jsonHighlight.ts (tokens,
  * brackets), jsonComplete.ts (what to offer, signature hints). This module is
@@ -23,6 +25,7 @@
  */
 
 import { tokenizeJson, matchBracketAt, renderJsonHtml } from './jsonHighlight';
+import { typingAssist, pasteReindent } from './jsonFormat';
 import { jsonCompletionAt, signatureHintAt, type JsonCompletion } from './jsonComplete';
 import { openAcMenu, type AcMenu } from './acMenu';
 import { lineOfOffset } from './codeSync';
@@ -45,10 +48,16 @@ export interface JsonIdeApi {
   repaint: () => void;
   /** Reposition the selected-element bar (selection changed, buffer didn't). */
   refreshScope: () => void;
+  /** Close the completion menu — for programmatic buffer swaps (Format) that
+   *  fire no input event and would otherwise leave a stale menu (PR #266). */
+  closeMenu: () => void;
 }
 
 /** Gutter width — keep in step with the CSS (.wb-json-gutter / padding-left). */
 const GUTTER_W = 38;
+
+/** Keys the completion menu owns while open — assists must not steal them. */
+const MENU_KEYS = new Set(['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape']);
 
 export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, deps: JsonIdeDeps): JsonIdeApi {
   const gutter = document.createElement('div');
@@ -245,6 +254,25 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   };
 
   textEl.addEventListener('input', () => { repaint(); updateMenu(false); });
+  textEl.addEventListener('beforeinput', (e) => {
+    // #PR-B: multi-line pastes re-base to the caret line's indentation
+    if (e.inputType !== 'insertFromPaste') return;
+    const raw = e.dataTransfer?.getData('text/plain') ?? e.data ?? '';
+    if (!raw.includes('\n')) return;
+    const selStart = textEl.selectionStart ?? 0;
+    const adjusted = pasteReindent(textEl.value, selStart, raw);
+    if (adjusted === raw) return;
+    e.preventDefault();
+    if (!spliceKeepingUndo(selStart, textEl.selectionEnd ?? selStart, adjusted)) {
+      const v = textEl.value;
+      textEl.value = v.slice(0, selStart) + adjusted + v.slice(textEl.selectionEnd ?? selStart);
+      deps.onSplice();
+    }
+    const pos = selStart + adjusted.length;
+    textEl.setSelectionRange(pos, pos);
+    repaint();
+    updateMenu(false); // the manual-splice fallback fires no input event
+  });
   textEl.addEventListener('click', () => { closeMenu(); repaint(); });
   textEl.addEventListener('keyup', (e) => {
     // caret-only moves (arrows, Home/End, PgUp/PgDn) — input already repainted
@@ -259,6 +287,32 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
       e.preventDefault();
       updateMenu(true);
       return;
+    }
+    // #PR-B typing assists. The menu owns its navigation keys while open;
+    // everything else (brackets, quotes — and Enter when no menu is up)
+    // flows to the pure decision layer. Splices ride the same undo path
+    // as accepted completions.
+    if (!e.defaultPrevented && (!ac || !MENU_KEYS.has(e.key))) {
+      const a = typingAssist(textEl.value, textEl.selectionStart ?? 0, textEl.selectionEnd ?? 0, e.key);
+      if (a) {
+        e.preventDefault();
+        if (a.kind === 'caret') {
+          textEl.setSelectionRange(a.caret, a.caret);
+        } else {
+          if (!spliceKeepingUndo(a.from, a.to, a.insert)) {
+            const v = textEl.value;
+            textEl.value = v.slice(0, a.from) + a.insert + v.slice(a.to);
+            deps.onSplice();
+          }
+          textEl.setSelectionRange(a.caret, a.caret);
+        }
+        repaint();
+        // caret-only moves and manual-splice fallbacks fire no input event,
+        // and even the execCommand path updates the menu BEFORE the final
+        // caret lands — re-evaluate at the true caret so it never goes stale
+        updateMenu(false);
+        return;
+      }
     }
     if (!ac) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); ac.move(1); return; }
@@ -277,5 +331,5 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   });
 
   repaint();
-  return { repaint, refreshScope };
+  return { repaint, refreshScope, closeMenu };
 }
