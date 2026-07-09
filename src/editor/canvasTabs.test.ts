@@ -18,8 +18,7 @@ describe('canvasTabs add new button and dropdown', () => {
     toasts = [];
 
     // Clear custom components from local storage
-    localStorage.removeItem('wb-components');
-
+    localStorage.removeItem('wb-components.v1');
     stripHost = document.createElement('div');
     workshopHost = document.createElement('div');
     document.body.appendChild(stripHost);
