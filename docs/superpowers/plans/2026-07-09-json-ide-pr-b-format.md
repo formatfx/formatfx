@@ -58,8 +58,14 @@ describe('formatDocument', () => {
     expect(res.tier).toBe('canonical');
     expect(res.error).toBeUndefined();
     expect(res.text).toContain('\n  "elmType": "div"'); // 2-space pretty
-    // same document, not just similar text
-    expect(importJson(res.text).root).toEqual(importJson(messy).root);
+    // canonical is a FIXED POINT: formatting formatted text changes nothing
+    expect(formatDocument(res.text, { sanitizeWhitespace: true }).text).toBe(res.text);
+    // …and re-imports as the same element, modulo the export pipeline's own
+    // semantics: $schema is added, and sanitize strips expression whitespace
+    // (the Zero Whitespace Rule pass — same as the pane's regenerate/Copy)
+    const reroot = importJson(res.text).root as unknown as Record<string, unknown>;
+    expect(reroot.elmType).toBe('div');
+    expect(reroot.txtContent).toBe('=if([$x],1,2)');
   });
 
   it('reindent tier: a broken buffer gets indentation only, plus the parse error', () => {
