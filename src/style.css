@@ -1565,10 +1565,19 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 :root {
   --wb-syn-key: #0451a5; --wb-syn-str: #a31515; --wb-syn-expr: #795e26;
   --wb-syn-num: #098658; --wb-syn-kw: #0c46bd; --wb-syn-err: #d13438;
+  /* expression sub-tokens (spec 2026-07-09 §1) — owner-tunable slots.
+     Field refs are the loudest voice: distinct teal + a tint pill (no bold —
+     bold glyph metrics could shear the overlay off the transparent textarea).
+     Steers clear of the reserved --wb-shared violet channel. */
+  --wb-syn-xfield: #267f99; --wb-syn-xtoken: var(--wb-syn-kw);
+  --wb-syn-xfn: var(--wb-syn-expr); --wb-syn-xstr: var(--wb-syn-str);
+  --wb-syn-xnum: var(--wb-syn-num); --wb-syn-xop: var(--wb-text);
+  --wb-syn-xkw: var(--wb-syn-kw);
 }
 body.wb-dark {
   --wb-syn-key: #9cdcfe; --wb-syn-str: #ce9178; --wb-syn-expr: #dcdcaa;
   --wb-syn-num: #b5cea8; --wb-syn-kw: #569cd6; --wb-syn-err: #f1707b;
+  --wb-syn-xfield: #4ec9b0;
 }
 .wb-tok-key { color: var(--wb-syn-key); }
 .wb-tok-str { color: var(--wb-syn-str); }
@@ -1576,6 +1585,19 @@ body.wb-dark {
 .wb-tok-num { color: var(--wb-syn-num); }
 .wb-tok-bool, .wb-tok-null { color: var(--wb-syn-kw); }
 .wb-tok-punct { color: var(--wb-text-2); }
+/* expression sub-tokens — nested inside .wb-tok-expr by the renderer */
+.wb-tok-xfield {
+  color: var(--wb-syn-xfield);
+  background: color-mix(in srgb, var(--wb-syn-xfield) 12%, transparent);
+  border-radius: 3px;
+}
+.wb-tok-xtoken { color: var(--wb-syn-xtoken); font-style: italic; }
+.wb-tok-xfn { color: var(--wb-syn-xfn); }
+.wb-tok-xstr { color: var(--wb-syn-xstr); }
+.wb-tok-xnum { color: var(--wb-syn-xnum); }
+.wb-tok-xop { color: var(--wb-syn-xop); }
+.wb-tok-xparen { color: var(--wb-text-2); }
+.wb-tok-xkw { color: var(--wb-syn-xkw); }
 .wb-tok-err {
   color: var(--wb-syn-err);
   text-decoration: underline wavy color-mix(in srgb, var(--wb-syn-err) 60%, transparent);
