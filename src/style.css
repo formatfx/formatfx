@@ -2831,8 +2831,11 @@ body.wb-dark {
 /* honest squeeze: a row that can't shrink to the simulated width CLIPS at the
    stage edge — the way a real narrow screen cuts it off — instead of silently
    painting past the boundary (tiles keep their own overflow rules; y stays
-   visible so the zone tags above the row survive) */
-.wb-template-prow:not(.wb-template-ptile) { overflow-x: clip; }
+   visible so the zone tags above the row survive). `hidden` first is the
+   fallback for browsers without overflow:clip (old Safari): they drop the
+   clip declaration and keep hidden — still honest, at the cost of the y axis
+   computing to auto there; clip-supporting browsers take the later clip. */
+.wb-template-prow:not(.wb-template-ptile) { overflow-x: hidden; overflow-x: clip; }
 .wb-template-overflow-note { font-size: 11px; color: var(--wb-warn, #c08a00); padding: 2px 2px 0; }
 .wb-template-prow--edit { outline: 1px dashed var(--wb-border); border-radius: 6px; padding: 4px; }
 .wb-prow-hoverable:hover { background: var(--wb-surface); }
