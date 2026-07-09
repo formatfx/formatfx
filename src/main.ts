@@ -17,7 +17,6 @@ import './chromeIcons.css';
 import { state, type EditorLens } from './editor/state';
 import { PRODUCT_NAME, PRODUCT_TAGLINE, PROJECT_FILE_NAME } from './branding';
 import { applyTheme, setCustomPalette } from './core/theme';
-import { exportJson } from './core/serializer';
 import { mountCanvas } from './editor/canvas';
 import { mountCanvasTabs } from './editor/canvasTabs';
 import { mountFxBar } from './editor/fxBar';
@@ -54,12 +53,11 @@ app.innerHTML = `
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
     <div class="wb-topbar-controls">
-      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything">🔎</button>
-      <button id="wb-copy" title="Copy the compiled JSON of what you're editing — paste straight into SharePoint's format pane"><i class="ms-Icon ms-Icon--Copy"></i> JSON</button>
+      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything">Search</button>
+      <button id="wb-json-toggle" title="Show or hide the validated-JSON pane (the escape hatch, with Deploy and Copy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> JSON<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
       <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere"><i class="ms-Icon ms-Icon--Share"></i> Share</button>
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
-      <button id="wb-json-toggle" title="Advanced — show or hide the validated-JSON pane (the escape hatch, with Deploy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> Advanced<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
       <button id="wb-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
@@ -67,24 +65,28 @@ app.innerHTML = `
           <button id="wb-save" title="Save project file (formatter + schema + mock data) — Ctrl+S"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
           <button id="wb-restore-backup" hidden title="Restore the project that was backed up when you saved a shared workspace over it — the current workspace swaps into the backup slot, so nothing is lost"><i class="ms-Icon ms-Icon--Undo"></i> Restore backed-up work</button>
-          <label class="wb-menu-row" title="Load a ready-made example formatter to start from"><i class="ms-Icon ms-Icon--Lightbulb"></i> Load example
-            <select id="wb-example">
-              <option value="">— pick one —</option>
-              <option value="status-pill">Status pill column</option>
-              <option value="facepile">Facepile column</option>
-              <option value="data-bar">Progress data bar</option>
-              <option value="row-card">Row card view</option>
-              <option value="tile-card">Gallery tile (3-layer)</option>
-            </select>
-          </label>
           <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon" id="wb-theme-icon"></i> <span id="wb-theme-label"></span></button>
-          <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
-          <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
-          <button id="wb-stress" title="Will this break in production? Render this formatter against generated edge-case data — empty items, extreme dates, boundary numbers, crowded multi-values — without touching your workspace">🧪 Stress test</button>
-          <button id="wb-guide" title="What lists really are (SQL under React), the column type system and its constraints, the formatting JSON layer, and the field-tested gotchas — written for developers">📖 Field guide</button>
           <button id="wb-about" title="Version, build revision and the last merged pull request"><i class="ms-Icon ms-Icon--Info"></i> About</button>
-          <hr>
-          <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i> Reset to default example</button>
+          <button id="wb-menu-more" aria-expanded="false" title="Everything else — examples, outlines, playground, stress test, field guide, reset">More…</button>
+          <div class="wb-menu-extra" id="wb-menu-extra" hidden>
+            <hr>
+            <label class="wb-menu-row" title="Load a ready-made example formatter to start from"><i class="ms-Icon ms-Icon--Lightbulb"></i> Load example
+              <select id="wb-example">
+                <option value="">— pick one —</option>
+                <option value="status-pill">Status pill column</option>
+                <option value="facepile">Facepile column</option>
+                <option value="data-bar">Progress data bar</option>
+                <option value="row-card">Row card view</option>
+                <option value="tile-card">Gallery tile (3-layer)</option>
+              </select>
+            </label>
+            <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
+            <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
+            <button id="wb-stress" title="Will this break in production? Render this formatter against generated edge-case data — empty items, extreme dates, boundary numbers, crowded multi-values — without touching your workspace">🧪 Stress test</button>
+            <button id="wb-guide" title="What lists really are (SQL under React), the column type system and its constraints, the formatting JSON layer, and the field-tested gotchas — written for developers">📖 Field guide</button>
+            <hr>
+            <button id="wb-reset" title="Reset to the default example project"><i class="ms-Icon ms-Icon--EraseTool"></i> Reset to default example</button>
+          </div>
         </div>
       </div>
     </div>
@@ -203,7 +205,7 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
 }
 applyLayout();
 
-// Advanced: show/hide the validated-JSON pane (the left pane + canvas stay put)
+// JSON: show/hide the validated-JSON pane (the left pane + canvas stay put)
 document.getElementById('wb-json-toggle')!.addEventListener('click', () => {
   uiPrefs.jsonOpen = !uiPrefs.jsonOpen;
   applyLayout();
@@ -260,17 +262,28 @@ dataSplit.addEventListener('pointerdown', (e) => {
 });
 applyDataDock();
 
-// ─── topbar ☰ menu (save/open/theme/outlines/reset live here) ───────────────
+// ─── topbar ☰ menu — slim by default (save/open/theme/about, #257); the rest
+//     waits behind More… so the everyday menu stays four choices tall ─────────
 const menuEl = document.getElementById('wb-menu')!;
 const menuPanel = document.getElementById('wb-menu-panel') as HTMLDivElement;
+const menuMoreBtn = document.getElementById('wb-menu-more') as HTMLButtonElement;
+const menuExtra = document.getElementById('wb-menu-extra') as HTMLDivElement;
+const setMenuMore = (open: boolean): void => {
+  menuExtra.hidden = !open;
+  menuMoreBtn.setAttribute('aria-expanded', String(open));
+  menuMoreBtn.textContent = open ? 'Less…' : 'More…';
+};
 document.getElementById('wb-menu-btn')!.addEventListener('click', () => {
   menuPanel.hidden = !menuPanel.hidden;
+  if (!menuPanel.hidden) setMenuMore(false); // always reopens slim
 });
 document.addEventListener('pointerdown', (e) => {
   if (!menuPanel.hidden && !menuEl.contains(e.target as Node)) menuPanel.hidden = true;
 });
+menuMoreBtn.addEventListener('click', () => setMenuMore(Boolean(menuExtra.hidden)));
 menuPanel.addEventListener('click', (e) => {
-  if ((e.target as HTMLElement).closest('button')) menuPanel.hidden = true;
+  const btn = (e.target as HTMLElement).closest('button');
+  if (btn && btn !== menuMoreBtn) menuPanel.hidden = true; // More expands in place
 });
 document.getElementById('wb-search-open')!.addEventListener('click', () => openSearch(toast));
 document.getElementById('wb-playground')!.addEventListener('click', () => openPlayground());
@@ -354,17 +367,8 @@ state.subscribe((reason) => {
   }
 });
 
-// one-click copy of whatever is being edited
-document.getElementById('wb-copy')!.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: true }));
-    toast(state.doc.kind === 'grid'
-      ? 'View (row) formatter JSON copied — the grid ships as a row layout; per-column JSON comes from the column\'s header menu'
-      : 'Main formatter JSON copied — paste into the view\'s Format pane');
-  } catch {
-    toast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
-  }
-});
+// (The topbar copy button is gone (#257): the JSON button opens the pane,
+//  and copying lives on the pane's own Copy / Copy (CSOM-safe) / Download row.)
 
 // examples
 const exampleSel = document.getElementById('wb-example') as HTMLSelectElement;
@@ -541,8 +545,8 @@ const refreshLintBadge = ({ errors, warnings, runtime }: { errors: number; warni
   lintBadge.hidden = false;
   lintBadge.classList.toggle('wb-badge-warn', errorTotal === 0);
   const label = errorTotal
-    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open Advanced to review`
-    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open Advanced to review`;
+    ? `${errorTotal} lint error${errorTotal === 1 ? '' : 's'} — open the JSON pane to review`
+    : `${warnings} lint warning${warnings === 1 ? '' : 's'} — open the JSON pane to review`;
   lintBadge.setAttribute('aria-label', label);
   lintBadge.title = label;
 };

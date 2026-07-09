@@ -128,15 +128,15 @@ export const VIEWPORT_PRESETS: readonly ViewportPreset[] = [
     hint: 'No simulated viewport — the preview uses all the room the canvas has',
   },
   {
-    id: 'monitor', label: '🖥 Monitor', width: 1420,
+    id: 'monitor', label: 'Monitor', width: 1420,
     hint: 'Approximate (~1420px): the room a maximized list gets on a common 1920px-wide desktop, after SharePoint\'s nav rail and page padding',
   },
   {
-    id: 'half', label: '◧ Half', width: 860,
+    id: 'half', label: 'Half', width: 860,
     hint: 'Approximate (~860px): a split-screen half of a 1920px desktop — SharePoint collapses its left nav and the list keeps about this much',
   },
   {
-    id: 'phone', label: '📱 Phone', width: 360,
+    id: 'phone', label: 'Phone', width: 360,
     hint: 'Approximate (~360px): a small phone viewport — the wrap-everything case',
   },
 ];

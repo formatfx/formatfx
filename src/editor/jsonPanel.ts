@@ -53,14 +53,19 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
         <button id="wb-json-copy" class="wb-json-primary" title="Copy to clipboard">Copy</button>
         <button id="wb-json-copy-csom" title="Copy with & and < escaped as \\u0026/\\u003c — safe for CSOM deploys">Copy (CSOM-safe)</button>
         <button id="wb-json-download" title="Download .json">Download</button>
-        <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
       </div>
       <div class="wb-json-options">
         <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
         <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>
       </div>
       <div class="wb-json-deploy-row">
-        <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
+        <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
+        <div class="wb-menu wb-json-more">
+          <button id="wb-json-kebab" aria-haspopup="menu" aria-label="More actions" title="More actions — Deploy"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></button>
+          <div class="wb-json-kebab-panel" id="wb-json-kebab-panel" hidden>
+            <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
+          </div>
+        </div>
       </div>
     </div>
     <div id="wb-deploy-panel" class="wb-deploy" hidden>
@@ -307,6 +312,22 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     deployViewEl.hidden = false;
   };
 
+  // #257: Deploy waits inside the deploy-row kebab (⋮) — same open/close
+  // contract as the topbar ☰ menu: outside pointerdown closes, choosing closes.
+  const kebabBtn = host.querySelector('#wb-json-kebab') as HTMLButtonElement;
+  const kebabWrap = kebabBtn.parentElement as HTMLElement;
+  const kebabPanel = host.querySelector('#wb-json-kebab-panel') as HTMLDivElement;
+  kebabBtn.addEventListener('click', () => { kebabPanel.hidden = !kebabPanel.hidden; });
+  // named so the host's _unsub teardown can remove it (document-level listener;
+  // tests remount this panel — see jsonPanel.sync.test.ts's teardown discipline)
+  const closeKebabOnOutside = (e: PointerEvent): void => {
+    if (!kebabPanel.hidden && !kebabWrap.contains(e.target as Node)) kebabPanel.hidden = true;
+  };
+  document.addEventListener('pointerdown', closeKebabOnOutside);
+  kebabPanel.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('button')) kebabPanel.hidden = true;
+  });
+
   host.querySelector('#wb-json-deploy')!.addEventListener('click', () => {
     deployPanel.hidden = !deployPanel.hidden;
     refreshDeployPanel();
@@ -438,7 +459,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   if (typeof hostAny._unsub === 'function') {
     hostAny._unsub();
   }
-  hostAny._unsub = state.subscribe((reason) => {
+  const stateUnsub = state.subscribe((reason) => {
     if (reason === 'selection') {
       // #218 canvas → code — unless the selection ORIGINATED here (the echo
       // guard): a code-side caret move must not bounce back and scroll/flash
@@ -450,6 +471,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
     if (reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
   });
+  hostAny._unsub = () => {
+    stateUnsub();
+    document.removeEventListener('pointerdown', closeKebabOnOutside);
+  };
   regenerate();
   renderLint([]);
 

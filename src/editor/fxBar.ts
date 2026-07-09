@@ -586,15 +586,17 @@ function dropCaret(ta: HTMLTextAreaElement, e: DragEvent): number {
   return ta.selectionStart ?? ta.value.length;
 }
 
-/** One-click shortcut to open the Advanced panel from a read-only fx-bar note. */
+/** One-click shortcut to open the JSON pane (the Advanced escape hatch) from a
+ *  read-only fx-bar note. The prose around it may say "Advanced mode" — that's
+ *  the surface's name; the topbar door it clicks is labeled JSON (#257). */
 function advancedLink(): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'wb-fx-adv-link';
-  btn.textContent = 'Open Advanced';
-  btn.title = 'Open the Advanced panel to edit this formula in the raw SP dialect';
+  btn.textContent = 'Open the JSON pane';
+  btn.title = 'Open the JSON pane (Advanced) to edit this formula in the raw SP dialect';
   btn.addEventListener('click', () => {
-    // The "Advanced" topbar toggle opens the validated-JSON pane — the raw-SP
+    // The "JSON" topbar toggle opens the validated-JSON pane — the raw-SP
     // escape hatch this link points at. (Was #wb-studio-toggle, which no longer
     // exists; the pane IS the JSON surface, so there's no separate tab to click.)
     const toggle = document.getElementById('wb-json-toggle') as HTMLButtonElement | null;

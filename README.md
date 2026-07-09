@@ -30,10 +30,11 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
    columns the view references (`⤷ in view` / `unused` / missing). Click any
    header to put that formatter on the canvas; edits to a column formatter
    propagate live into the view's `columnFormatterReference`s.
-3. **Ship it** — one-click topbar **JSON** copy (sanitized, `$schema`-wrapped)
-   for SharePoint's Format pane, per-column copy buttons in the registry,
-   download / CSOM-safe variants from the JSON tab — or **🚀 Deploy…**
-   (JSON tab, Advanced): a generated, confirm-first snippet that writes the
+3. **Ship it** — the topbar **JSON** button opens the validated-JSON pane:
+   one-click **Copy** (sanitized, `$schema`-wrapped) for SharePoint's Format
+   pane, per-column copy buttons in the registry, download / CSOM-safe
+   variants — or **🚀 Deploy…**
+   (behind the pane's ⋮ menu): a generated, confirm-first snippet that writes the
    formatter to your column or view from the list page itself, using only
    your own permissions. It refuses to generate while the linter sees
    errors, and it shows exactly what it will replace before the one write.
@@ -94,8 +95,8 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   **Format cells**, **conditional formatting** and **Alignment** dialogs — so
   a misclick can't corrupt the formatter, and every gesture is undoable. The
   developer furniture is one door away, not a different mode: the topbar
-  **Advanced** toggle opens the validated-JSON pane (the escape hatch, with
-  **Deploy**) without moving the editor or canvas, and the Palette, Structure
+  **JSON** button opens the validated-JSON pane (the escape hatch, with
+  **Deploy** and **Copy**) without moving the editor or canvas, and the Palette, Structure
   and Properties panes — every preset, all element/style/attribute properties,
   the box model, `forEach` loops, row actions, hover cards, inline edit, the
   CFR registry and tenant themes — stay reachable the whole time.
@@ -131,7 +132,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   layers…), a no-jargon explanation, «syntax shapes», clickable examples
   that apply themselves, longhand groups (one card serves `padding` and all
   its sides) and a full flex glossary — plus a one-click jump into the
-  **⚗ Style playground** (also in the ☰ menu): a consequence-free overlay
+  **⚗ Style playground** (also in the ☰ menu under More…): a consequence-free overlay
   organized as labeled steps. **Quick looks** apply whole style bundles in
   one click (pill, card, accent edge, one-line ellipsis…); a mini
   **structure tree** beside the live stage shows ancestors and children
@@ -172,7 +173,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   `_comment` placement, div-with-children card triggers, CFR-in-card,
   unsupported CSS, unknown `[$Field]` references against your schema, `if()`
   depth, and more. Written for low-code makers, not compiler authors.
-- **Explain — the formatter, read back in plain English** (Advanced pane →
+- **Explain — the formatter, read back in plain English** (JSON pane →
   Explain tab) — the comprehension half of the teaching linter. Paste a wall
   of community JSON and read what it *does*: "Shows “Status”. The background
   color is: if “Status” is ‘Blocked’, then ‘#d13438’, otherwise ‘#107c10’.
@@ -180,7 +181,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   clicking a card selects that element, exactly like a lint warning; and
   anything outside its vocabulary says "can't explain this yet" rather than
   guessing.
-- **🧪 Stress test** (☰ menu) — "will this break in production?" One click
+- **🧪 Stress test** (☰ menu → More…) — "will this break in production?" One click
   renders your formatter against a generated edge-case matrix: the
   empty item (blank dates are *null* on real SP — the classic silent-blank
   trap), maximum-length text and unbreakable tokens, extreme past/future
@@ -190,7 +191,7 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
   unicode/RTL/emoji. Read-only by contract — browsing it never touches your
   rows, document, undo stack or autosave; expression failures that would
   render silently blank on SP are flagged per row.
-- **Built-in field guide** (☰ menu → 📖) — a full-screen, Learn-style reference
+- **Built-in field guide** (☰ menu → More… → 📖) — a full-screen, Learn-style reference
   with a nested chapter tree, "in this article" rail, diagrams and Microsoft
   Learn links, arranged as a technicality gradient: the further down the tree
   (and the deeper a page nests), the more it assumes. It opens on a

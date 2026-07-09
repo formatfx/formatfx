@@ -823,7 +823,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    2026-06-16 (the transpiler + fx bar, then the shell — SHEET-MODE.md is
    the history; the 2026-07-05 §6 cleanup fixed this line's stale "next").
 1.9. **Field guide — BUILT 2026-06-12** (owner request; landed via PR #7,
-   renumbered from 1.7 in the merge): ☰ menu → 📖 opens a
+   renumbered from 1.7 in the merge): ☰ menu → More… → 📖 opens a
    full-screen Learn-style reader (`editor/guide.ts` UI + `editor/guideContent.ts`
    pages: chapter tree, in-this-article rail with scroll spy, filter,
    prev/next, inline SVG diagrams). Content = the SQL-under-React story,

@@ -1,5 +1,5 @@
 // e2e/maker.spec.ts — the maker-first shell: grid-first landing, the single
-// Advanced door into the JSON pane, and the canvas tab strip (not a Type
+// JSON door into the JSON pane (#257), and the canvas tab strip (not a Type
 // dropdown) saying where you are.
 import { test, expect } from '@playwright/test';
 import { freshApp, loadExample, openJson } from './helpers';
@@ -10,10 +10,11 @@ test('first load is grid-first: left pane + canvas visible, JSON pane hidden', a
   // the Left Edit Pane and the grid canvas are always on screen
   await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-grid')).toBeVisible();
-  // the JSON pane (Advanced escape hatch) folds away by default
+  // the JSON pane (the escape hatch) folds away by default
   await expect(page.locator('#wb-pane-side')).toBeHidden();
-  // the single door into JSON is labeled Advanced
-  await expect(page.locator('#wb-json-toggle')).toContainText('Advanced');
+  // the single door into JSON is labeled JSON (#257 — the old copy button's
+  // label, wearing the Advanced toggle's behavior)
+  await expect(page.locator('#wb-json-toggle')).toContainText('JSON');
 });
 
 test('Advanced toggle reveals the JSON pane and persists', async ({ page }) => {
@@ -25,9 +26,12 @@ test('Advanced toggle reveals the JSON pane and persists', async ({ page }) => {
   await expect(page.locator('#wb-pane-side')).toBeVisible();
 });
 
-test('the example/sample loader lives in the ☰ menu, not the topbar', async ({ page }) => {
+test('the example/sample loader lives in the ☰ menu behind More…, not the topbar', async ({ page }) => {
   await expect(page.locator('.wb-topbar-controls > #wb-example')).toHaveCount(0);
   await page.click('#wb-menu-btn');
+  // the menu opens slim (#257): four everyday choices + More…
+  await expect(page.locator('#wb-menu-panel #wb-example')).toBeHidden();
+  await page.click('#wb-menu-more');
   await expect(page.locator('#wb-menu-panel #wb-example')).toBeVisible();
 });
 

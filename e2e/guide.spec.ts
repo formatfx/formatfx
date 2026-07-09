@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => { await freshApp(page); });
 
 async function openGuide(page: Page): Promise<void> {
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more'); // #257: the guide lives behind More…
   await page.click('#wb-guide');
   await expect(page.locator('.wb-guide-overlay')).toBeVisible();
 }
