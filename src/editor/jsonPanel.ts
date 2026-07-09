@@ -31,9 +31,13 @@
 import { state, samePath } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange } from '../core/jsonMap';
-import { preserveCaret, lineSpanOf, SyncEcho } from './codeSync';
+import { preserveCaret, lineSpanOf, lineOfOffset, SyncEcho } from './codeSync';
 import { mountJsonIde } from './jsonIde';
 import { formatDocument } from './jsonFormat';
+import {
+  cutForRange, outermost, buildFoldView, fullLineOfFoldedLine,
+  type FoldCut, type FoldView,
+} from './jsonFold';
 import { ctxForRow } from './previewCtx';
 import { lintDocument, type LintIssue } from '../core/linter';
 import { buildDeploySnippet } from '../bridge/deploySnippet';
@@ -90,6 +94,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         <button id="wb-json-download" title="Download .json">Download</button>
         <button id="wb-json-deploy" title="Generate a deploy snippet: run it on your list page and it writes this formatter to the column/view — confirm-first, lint-gated, with a clobber guard before replacing a view's formatting">🚀 Deploy…</button>
         <button id="wb-json-format" title="Pretty-print the buffer: canonical when it parses (Alt+Shift+F). Does not Apply.">Format document</button>
+        <button id="wb-json-fold-others" title="Collapse every element outside the selected element's chain (Ctrl+Shift+[ folds the element at the caret)">Fold others</button>
+        <button id="wb-json-expand-all" title="Unfold everything (Ctrl+Shift+] unfolds at the caret)">Expand all</button>
         <hr>
         <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
         <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>`;
@@ -121,28 +127,83 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   };
 
   // ── #218 split-view sync state ──
-  let mapRanges: JsonRange[] = []; // offset↔path map for the CURRENT textarea text
+  let mapRanges: JsonRange[] = []; // offset↔path map for the FULL (unfolded) text
   const echo = new SyncEcho();
+
+  // ── #PR-C subtree folding: a clean-buffer-only VIEW over the textarea.
+  // `fullText` is authoritative; the textarea shows foldView.text when folds
+  // are active. Every offset consumer translates through these two maps.
+  // Edits never coexist with folds (the beforeinput guard below expands
+  // first), so folds never meet the undo stack. ──
+  let fullText = '';
+  const foldedPaths = new Set<string>();   // path keys ('0/2') the user folded
+  let foldView: FoldView | null = null;
+  let activeFoldKeys: string[] = [];       // aligned with foldView.cuts
+
+  const displayedToFull = (o: number): number => (foldView ? foldView.toFull(o) : o);
+  const fullToDisplayed = (o: number): number => (foldView ? foldView.toFolded(o) : o);
+  const pathKey = (p: number[]): string => p.join('/');
+
+  /** Re-derive the fold view from foldedPaths against the current map.
+   *  Pure state — callers own the textarea swap (they know their caret rules). */
+  const rebuildFoldView = (): void => {
+    const resolved: Array<{ key: string; cut: FoldCut }> = [];
+    for (const key of [...foldedPaths]) {
+      const path = key === '' ? [] : key.split('/').map(Number);
+      const range = rangeForPath(mapRanges, path);
+      const cut = range ? cutForRange(fullText, range) : null;
+      if (cut) resolved.push({ key, cut });
+      else foldedPaths.delete(key); // the node no longer exists / no longer folds
+    }
+    const outer = outermost(resolved.map((r) => r.cut));
+    activeFoldKeys = outer.map(
+      (c) => resolved.find((r) => r.cut.start === c.start && r.cut.end === c.end)!.key,
+    );
+    foldView = outer.length ? buildFoldView(fullText, outer) : null;
+  };
+
+  /** Swap the textarea to the current view, keeping a FULL-coordinate
+   *  selection and the scroll position. No-op when the display is current. */
+  const syncFoldDisplay = (fullSelStart: number, fullSelEnd: number): void => {
+    const next = foldView ? foldView.text : fullText;
+    const { scrollTop, scrollLeft } = textEl;
+    if (next !== textEl.value) textEl.value = next;
+    textEl.setSelectionRange(fullToDisplayed(fullSelStart), fullToDisplayed(fullSelEnd));
+    textEl.scrollTop = scrollTop;
+    textEl.scrollLeft = scrollLeft;
+    ide.repaint();
+  };
+
+  /** Toggle-path entry: capture the caret through the OLD view, rebuild, swap. */
+  const applyFolds = (): void => {
+    const selStart = displayedToFull(textEl.selectionStart ?? 0);
+    const selEnd = displayedToFull(textEl.selectionEnd ?? selStart);
+    rebuildFoldView();
+    syncFoldDisplay(selStart, selEnd);
+  };
+
+  /** Show the full text (foldedPaths survive for the next clean regenerate). */
+  const expandAllFolds = (): void => {
+    if (!foldView) return;
+    const selStart = foldView.toFull(textEl.selectionStart ?? 0);
+    const selEnd = foldView.toFull(textEl.selectionEnd ?? selStart);
+    foldView = null;
+    activeFoldKeys = [];
+    syncFoldDisplay(selStart, selEnd);
+  };
 
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
-    const prev = textEl.value;
     const { text, ranges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
     mapRanges = ranges;
-    if (text !== prev) {
-      // refresh IN PLACE: the serializer is deterministic, so untouched parts
-      // of the text are byte-identical — keep the reader's caret + scroll
-      // instead of resetting them (a visual edit must not lose their place)
-      const selStart = textEl.selectionStart ?? 0;
-      const selEnd = textEl.selectionEnd ?? selStart;
-      const { scrollTop, scrollLeft } = textEl;
-      textEl.value = text;
-      textEl.setSelectionRange(preserveCaret(prev, text, selStart), preserveCaret(prev, text, selEnd));
-      textEl.scrollTop = scrollTop;
-      textEl.scrollLeft = scrollLeft;
-    }
-    ide.repaint(); // programmatic value swaps fire no input event
+    const oldFull = fullText;
+    // caret: displayed → old full → (deterministic-serializer diff) → new full
+    const selStart = preserveCaret(oldFull, text, displayedToFull(textEl.selectionStart ?? 0));
+    const selEnd = preserveCaret(oldFull, text, displayedToFull(textEl.selectionEnd ?? textEl.selectionStart ?? 0));
+    fullText = text;
+    rebuildFoldView(); // folds are path-keyed: survivors re-apply, the rest drop
+    syncFoldDisplay(selStart, selEnd);
     clearImportError(); // stale error no longer matches what's in the textarea
   };
 
@@ -152,13 +213,85 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // before keyup fires, so hand-edits (stale offsets) never mis-select.
   const syncSelectionFromCaret = (): void => {
     if (dirty) return; // hand-edited text: offsets are stale until Apply
-    const path = pathAtOffset(mapRanges, textEl.selectionStart ?? 0);
+    const path = pathAtOffset(mapRanges, displayedToFull(textEl.selectionStart ?? 0));
     if (!path) return; // wrapper chrome ($schema line) selects nothing
     if (state.selection && samePath(state.selection, path)) return; // already there — no churn
     echo.run('code', () => state.select(path));
   };
-  textEl.addEventListener('click', syncSelectionFromCaret);
+  textEl.addEventListener('click', () => {
+    // #PR-C: a caret landing inside a fold's sentinel unfolds just that region
+    if (foldView) {
+      const idx = foldView.cutIndexAtFolded(textEl.selectionStart ?? 0);
+      if (idx >= 0) {
+        const caretFull = foldView.cuts[idx].start;
+        foldedPaths.delete(activeFoldKeys[idx]);
+        rebuildFoldView();
+        syncFoldDisplay(caretFull, caretFull);
+        return;
+      }
+    }
+    syncSelectionFromCaret();
+  });
   textEl.addEventListener('keyup', syncSelectionFromCaret);
+
+  // ── #PR-C edit guards: folds and edits never coexist. Any beforeinput on a
+  // folded view is cancelled, everything expands, and the common edit kinds
+  // re-apply at the remapped selection (a selection visually spanning a
+  // sentinel expands to cover the hidden interior — WYSIWYG delete). IME
+  // composition can't be cancelled mid-flight, so it expands preemptively. ──
+  const reapplyInsert = (ins: string): void => {
+    const s = textEl.selectionStart ?? 0;
+    const e2 = textEl.selectionEnd ?? s;
+    if (typeof document.execCommand === 'function') {
+      textEl.focus();
+      try { if (document.execCommand('insertText', false, ins)) return; } catch { /* fall through */ }
+    }
+    const v = textEl.value;
+    textEl.value = v.slice(0, s) + ins + v.slice(e2);
+    const pos = s + ins.length;
+    textEl.setSelectionRange(pos, pos);
+    setDirty(); clearImportError(); clearFlash();
+    ide.repaint();
+  };
+  const reapplyDelete = (dir: 'back' | 'fwd'): void => {
+    let s = textEl.selectionStart ?? 0;
+    let e2 = textEl.selectionEnd ?? s;
+    if (s === e2) {
+      if (dir === 'back' && s > 0) s--;
+      else if (dir === 'fwd' && e2 < textEl.value.length) e2++;
+    }
+    if (s === e2) return;
+    textEl.setSelectionRange(s, e2);
+    if (typeof document.execCommand === 'function') {
+      textEl.focus();
+      try { if (document.execCommand('delete')) return; } catch { /* fall through */ }
+    }
+    const v = textEl.value;
+    textEl.value = v.slice(0, s) + v.slice(e2);
+    textEl.setSelectionRange(s, s);
+    setDirty(); clearImportError(); clearFlash();
+    ide.repaint();
+  };
+  textEl.addEventListener('beforeinput', (e) => {
+    if (!foldView) return;
+    e.preventDefault();
+    expandAllFolds(); // remaps the selection through the dying view
+    switch (e.inputType) {
+      case 'insertText': if (e.data) reapplyInsert(e.data); break;
+      case 'insertLineBreak':
+      case 'insertParagraph': reapplyInsert('\n'); break;
+      case 'insertFromPaste':
+      case 'insertFromDrop': {
+        const t = e.dataTransfer?.getData('text/plain') ?? e.data ?? '';
+        if (t) reapplyInsert(t);
+        break;
+      }
+      case 'deleteContentBackward': reapplyDelete('back'); break;
+      case 'deleteContentForward': reapplyDelete('fwd'); break;
+      default: break; // rare kinds: expanded only — the user repeats the gesture
+    }
+  });
+  textEl.addEventListener('compositionstart', () => expandAllFolds());
 
   // ── #218 canvas → code: scroll to + flash the selected element's lines ──
   let flashBar: HTMLDivElement | null = null;
@@ -189,7 +322,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (!path) return;
     const range = rangeForPath(mapRanges, path);
     if (!range) return; // stale map (shouldn't happen) — just skip
-    const { first, last } = lineSpanOf(textEl.value, range.start, range.end);
+    // folded view: a fully-hidden element clamps to its fold's sentinel line
+    const { first, last } = lineSpanOf(textEl.value, fullToDisplayed(range.start), fullToDisplayed(range.end));
     const lh = lineHeightPx();
     const padTop = parseFloat(window.getComputedStyle(textEl).paddingTop) || 0;
     const top = first * lh + padTop;
@@ -243,7 +377,47 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }),
     selectionRange: () => {
       if (dirty || !state.selection) return null; // hand-edit: offsets are stale
-      return rangeForPath(mapRanges, state.selection);
+      const r = rangeForPath(mapRanges, state.selection);
+      return r ? { start: fullToDisplayed(r.start), end: fullToDisplayed(r.end) } : null;
+    },
+    // #PR-C: the fold bridge — chevrons, gapped numbers, edit guards
+    folds: {
+      usable: () => !dirty,
+      active: () => !!foldView,
+      expandAll: () => expandAllFolds(),
+      foldableFoldedLines: () => {
+        if (dirty) return [];
+        const out: Array<{ line: number; folded: boolean; label: string }> = [];
+        for (const r of mapRanges) {
+          const cut = cutForRange(fullText, r);
+          if (!cut) continue;
+          const key = pathKey(r.path);
+          const foldedHere = activeFoldKeys.includes(key);
+          const openerDisplayed = fullToDisplayed(r.start);
+          // hidden inside an ANCESTOR's fold: its opener sits in a sentinel
+          if (!foldedHere && foldView && foldView.cutIndexAtFolded(openerDisplayed) >= 0) continue;
+          out.push({
+            line: lineOfOffset(textEl.value, openerDisplayed),
+            folded: foldedHere,
+            label: `element ${key.replaceAll('/', '.')}`,
+          });
+        }
+        return out;
+      },
+      toggleAtFoldedLine: (line: number) => {
+        if (dirty) return;
+        for (const r of mapRanges) {
+          const cut = cutForRange(fullText, r);
+          if (!cut) continue;
+          if (lineOfOffset(textEl.value, fullToDisplayed(r.start)) !== line) continue;
+          const key = pathKey(r.path);
+          if (foldedPaths.has(key)) foldedPaths.delete(key);
+          else foldedPaths.add(key);
+          applyFolds();
+          return;
+        }
+      },
+      fullLineNumber: (l: number) => (foldView ? fullLineOfFoldedLine(foldView, fullText, l) : l),
     },
     // an accepted completion is buffer input like any other keystroke (the
     // execCommand path re-enters via the input listener instead)
@@ -256,6 +430,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // flag is deliberately untouched — a formatted hand-edit still needs Apply,
   // and a clean buffer is already canonical so the swap is a no-op. ──
   const formatCmd = (): void => {
+    expandAllFolds(); // format is a buffer op on the full text (no-op when clean+canonical)
     const res = formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
     if (res.text !== textEl.value) {
       ide.closeMenu(); // a swapped buffer would orphan the menu's offsets
@@ -284,7 +459,47 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (e.altKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
       e.preventDefault();
       formatCmd();
+      return;
     }
+    // #PR-C fold commands (clean buffer only): Ctrl+Shift+[ folds the element
+    // at the caret; Ctrl+Shift+] unfolds the fold containing it
+    if (e.ctrlKey && e.shiftKey && (e.key === '{' || e.key === '[')) {
+      e.preventDefault();
+      if (dirty) return;
+      const path = pathAtOffset(mapRanges, displayedToFull(textEl.selectionStart ?? 0));
+      if (path) {
+        foldedPaths.add(pathKey(path));
+        applyFolds();
+      }
+      return;
+    }
+    if (e.ctrlKey && e.shiftKey && (e.key === '}' || e.key === ']')) {
+      e.preventDefault();
+      if (!foldView) return;
+      const fullCaret = foldView.toFull(textEl.selectionStart ?? 0);
+      const idx = foldView.cuts.findIndex((c) => fullCaret >= c.start && fullCaret <= c.end);
+      if (idx >= 0) {
+        foldedPaths.delete(activeFoldKeys[idx]);
+        applyFolds();
+      }
+    }
+  });
+
+  // #PR-C kebab commands: focus the selection / show everything
+  const isPrefix = (p: number[], q: number[]): boolean => p.length <= q.length && p.every((v, i) => q[i] === v);
+  menuHost.querySelector('#wb-json-fold-others')!.addEventListener('click', () => {
+    if (dirty) return;
+    const sel = state.selection;
+    for (const r of mapRanges) {
+      if (r.path.length === 0) continue; // never fold the root — that's the whole doc
+      if (sel && (isPrefix(r.path, sel) || isPrefix(sel, r.path))) continue; // keep the selection's chain open
+      if (cutForRange(fullText, r)) foldedPaths.add(pathKey(r.path));
+    }
+    applyFolds();
+  });
+  menuHost.querySelector('#wb-json-expand-all')!.addEventListener('click', () => {
+    foldedPaths.clear();
+    expandAllFolds();
   });
 
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
@@ -313,7 +528,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   });
   host.querySelector('#wb-json-apply')!.addEventListener('click', () => {
     try {
-      const doc = importJson(textEl.value);
+      // #PR-C: folds are a view — Apply always parses the FULL text
+      const doc = importJson(foldView ? fullText : textEl.value);
       // soft guard: name-less JSON replacing a named design silently drops
       // every _elmName — the Structure pane falls back to type/class hints
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
