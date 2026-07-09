@@ -12,18 +12,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        # depth 2 = the pull_request merge commit AND both its parents, so
+        # HEAD^1 below IS the exact base the merge was built on (no extra
+        # fetch, no fetch-by-SHA server dependence, no base-branch drift)
+        with: { fetch-depth: 2 }
       # Docs-only PR diffs short-circuit the heavy steps (owner call
       # 2026-07-09: a HANDOFF/README touch-up must not cost a full CI run).
       # The JOB still runs and reports success, so the required check stays
       # satisfied — never convert this to paths-ignore/[skip ci], which would
       # leave the protected checks "expected" forever and block the merge.
       # Push-to-main events skip the detection and always run everything.
+      # Fail-safe: if the diff can't be computed, the sentinel forces a run.
       - name: Detect a docs-only diff (PRs only)
         id: docsonly
         if: github.event_name == 'pull_request'
         run: |
-          git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
-          changed=$(git diff --name-only ${{ github.event.pull_request.base.sha }} HEAD)
+          changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null || echo __diff_failed__)
           echo "changed files:"; echo "$changed"
           if [ -n "$changed" ] && ! echo "$changed" | grep -qvE '^(docs/|LICENSE|.*\.md$)'; then
             echo "docs-only diff — skipping tests/build for this run" >> "$GITHUB_STEP_SUMMARY"
@@ -70,13 +74,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # same docs-only fast path as test-build (see the comment there)
+        with: { fetch-depth: 2 }
+      # same docs-only fast path as test-build (see the comments there)
       - name: Detect a docs-only diff (PRs only)
         id: docsonly
         if: github.event_name == 'pull_request'
         run: |
-          git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
-          changed=$(git diff --name-only ${{ github.event.pull_request.base.sha }} HEAD)
+          changed=$(git diff --name-only HEAD^1 HEAD 2>/dev/null || echo __diff_failed__)
           echo "changed files:"; echo "$changed"
           if [ -n "$changed" ] && ! echo "$changed" | grep -qvE '^(docs/|LICENSE|.*\.md$)'; then
             echo "docs-only diff — skipping the browser suite for this run" >> "$GITHUB_STEP_SUMMARY"
