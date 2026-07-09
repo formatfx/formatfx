@@ -148,6 +148,7 @@ test('Explain tab reads the formatter back in plain English and refuses honestly
 test('Stress test renders the edge-case matrix read-only; adding a row is explicit', async ({ page }) => {
   const before = await page.evaluate((k) => localStorage.getItem(k), KEY);
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
   await page.click('#wb-stress');
   const overlay = page.locator('.wb-stress-overlay');
   await expect(overlay).toBeVisible();
@@ -162,6 +163,7 @@ test('Stress test renders the edge-case matrix read-only; adding a row is explic
 
   // the one explicit write: Add to my rows
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
   await page.click('#wb-stress');
   await page.locator('.wb-stress-add').first().click();
   await page.keyboard.press('Escape');

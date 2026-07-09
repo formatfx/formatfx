@@ -191,7 +191,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     if (pro) {
       const condBtn = document.createElement('button');
       condBtn.className = 'wb-inspector-cond';
-      condBtn.textContent = '✨ Conditional formatting…';
+      condBtn.textContent = 'Conditional formatting…';
       condBtn.title = 'Paint this element by a field\'s value — Excel-style rules, built by clicking, previewed on your rows';
       condBtn.addEventListener('click', () => {
         if (state.selection) openCondFormat({ kind: 'element', path: state.selection });

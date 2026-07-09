@@ -31,6 +31,7 @@ test('fx bar Icon slot: preview chips + searchable gallery applies a name', asyn
 
 test('Field guide: the icon gallery page embeds a searchable wall', async ({ page }) => {
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more'); // #257: the guide lives behind More…
   await page.click('#wb-guide');
   await page.locator('.wb-guide-navitem', { hasText: 'The icon gallery' }).click();
   const wall = page.locator('#wb-guide-iconwall');

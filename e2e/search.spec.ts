@@ -36,7 +36,7 @@ test.describe('universal search', () => {
     expect(after).toBe(before); // browsing search never mutates the project
   });
 
-  test('the topbar 🔎 button opens the same overlay', async ({ page }) => {
+  test('the topbar Search button opens the same overlay', async ({ page }) => {
     await page.click('#wb-search-open');
     await expect(page.locator('.wb-search-panel')).toBeVisible();
     // empty query = the starter hint, not results

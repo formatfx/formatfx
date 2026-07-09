@@ -42,8 +42,8 @@ export async function makeRowView(page: Page, labels: string[]): Promise<void> {
   await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
 }
 
-// The JSON pane (the "Advanced" escape hatch) is hidden by default — reveal it
-// idempotently. The left edit pane and canvas are always visible.
+// The JSON pane (the escape hatch behind the topbar JSON button) is hidden by
+// default — reveal it idempotently. The left edit pane and canvas stay visible.
 export async function openJson(page: Page): Promise<void> {
   if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
@@ -65,9 +65,11 @@ export async function expectAppUndoDisabled(page: Page): Promise<void> {
   await expect(page.locator('.wb-snapmenu')).toHaveCount(0);
 }
 
-// the example/sample loader lives in the ☰ menu — open it, then pick
+// the example/sample loader lives in the ☰ menu behind More… (#257) — open
+// the menu, expand the drawer, then pick
 export async function loadExample(page: Page, value: string): Promise<void> {
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
   await page.selectOption('#wb-example', value);
 }
 

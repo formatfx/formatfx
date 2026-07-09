@@ -150,6 +150,7 @@ test('list snapshot without a default-view formatter rebuilds the grid; the view
 test('deploy panel: lint-gated snippet generation from the JSON tab', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openJson(page);
+  await page.click('#wb-json-kebab'); // #257: Deploy lives in the deploy-row kebab
   await page.click('#wb-json-deploy');
   // grid/row documents deploy as VIEW formatting
   await expect(page.locator('#wb-deploy-target')).toContainText('view');

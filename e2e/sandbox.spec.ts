@@ -100,8 +100,9 @@ test('dark mode (the default) keeps the row card readable (theme classes, not he
   await expect(title).toHaveCSS('color', 'rgb(255, 255, 255)');
 });
 
-test('outlines toggle (in the ☰ menu) draws element boxes', async ({ page }) => {
+test('outlines toggle (in the ☰ menu, behind More…) draws element boxes', async ({ page }) => {
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
   await page.check('#wb-outlines');
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
@@ -140,12 +141,13 @@ test('one unified surface — left pane, canvas tab strip and fx bar all present
   // close the popover so the menu click below is unobstructed
   await page.keyboard.press('Escape');
 
-  // outlines lives in the ☰ menu
+  // outlines lives in the ☰ menu, behind More… (#257)
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
   await expect(page.locator('#wb-outlines')).toBeVisible();
   await page.click('#wb-menu-btn');
 
-  // the Advanced door reveals the validated-JSON pane (one click away)
+  // the JSON door reveals the validated-JSON pane (one click away)
   await openJson(page);
   await expect(page.locator('#wb-json-text')).toBeVisible();
 });

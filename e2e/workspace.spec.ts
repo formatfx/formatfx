@@ -138,9 +138,11 @@ test('workshop save re-bakes a worn column: edit YOUR component, every column we
   await expect(page.locator(`#wb-canvas ${purple}`)).toHaveCount(0);
 });
 
-test('one-click topbar copy puts the compiled view JSON on the clipboard — looks embedded, no references', async ({ page, context }) => {
+test('the JSON pane Copy puts the compiled view JSON on the clipboard — looks embedded, no references', async ({ page, context }) => {
+  // #257: the topbar JSON button opens the pane; copying lives on the pane
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.click('#wb-copy');
+  await openJson(page);
+  await page.click('#wb-json-copy');
   await expect(page.locator('#wb-toast')).toContainText('JSON copied');
   const text = await page.evaluate(() => navigator.clipboard.readText());
   const parsed = JSON.parse(text);
@@ -222,8 +224,9 @@ test('doc card groups longhands: padding-left gets the padding card, variants sw
 test('style playground: value chips style the sample live, apply merges into selection', async ({ page }) => {
   // select the DueDate grid column's element to apply onto
   await page.locator('.wb-tree-row', { has: page.locator('.wb-tree-name', { hasText: 'DueDate' }) }).locator('.wb-tree-label').click();
-  // entry via ☰ menu — consequence-free overlay
+  // entry via ☰ menu (behind More…, #257) — consequence-free overlay
   await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
   await page.click('#wb-playground');
   const pg = page.locator('.wb-pg');
   await expect(pg).toBeVisible();

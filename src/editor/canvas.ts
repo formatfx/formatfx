@@ -100,7 +100,7 @@ function canvasModeBar(onToast: (m: string) => void): HTMLElement {
     seg.appendChild(b);
   };
   mk('select', 'Select', 'Clicking an element selects it for editing (the default)');
-  mk('live', '⚡ Live', 'Clicks behave like real SharePoint — action buttons fire, cards open, nothing gets selected');
+  mk('live', 'Live', 'Clicks behave like real SharePoint — action buttons fire, cards open, nothing gets selected');
   bar.appendChild(seg);
 
   // Simulate-hover pin (issue #203): a hidden-on-hover element is invisible in
