@@ -331,11 +331,14 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     // everything else (brackets, quotes — and Enter when no menu is up)
     // flows to the pure decision layer. Splices ride the same undo path
     // as accepted completions.
-    if (!e.defaultPrevented && (!ac || !MENU_KEYS.has(e.key))) {
+    // assists only ever fire on UNMODIFIED typing keys — Ctrl/Alt/Meta combos
+    // are commands (fold/format/copy…), never text (shift stays: '{' IS
+    // Shift+[ on US layouts)
+    if (!e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey && (!ac || !MENU_KEYS.has(e.key))) {
       // #PR-C: edit-intent keys expand folds first (selection remapped by the
       // panel); navigation keys read the folded view freely. The panel's
       // beforeinput guard remains the net for mouse paste / drop / IME.
-      const willEdit = (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)
+      const willEdit = e.key.length === 1
         || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete';
       if (willEdit && deps.folds?.active()) deps.folds.expandAll();
       const a = typingAssist(textEl.value, textEl.selectionStart ?? 0, textEl.selectionEnd ?? 0, e.key);
