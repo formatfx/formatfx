@@ -24,7 +24,7 @@ import { evaluate, type EvalContext } from '../core/expressions';
 import { ctxForRow } from './previewCtx';
 import {
   buildTemplateView, childSlotOrder, WIREFRAMES,
-  ZONE_SIZE_LABEL, ZONE_FLOW_LABEL,
+  ZONE_SIZE_LABEL, ZONE_FLOW_LABEL, ZONE_VALIGN_LABEL,
   type Wireframe, type ZoneConfig, type ZoneItem, type ZonePath,
 } from './rowTemplates';
 import { WEIGHT_FLEX } from './areas';
@@ -257,6 +257,44 @@ export function renderZoneTree(host: HTMLElement, ui: ModalUI, api: ModalApi): v
   host.appendChild(head);
 
   const rows = el('div', 'wb-template-tree-rows');
+  // the STANDING root row: the row/tile itself is a first-class selection —
+  // its alignment (how the zones line up) and style live in the inspector.
+  // Selected whenever nothing deeper is (Selection null = the root).
+  const tile = ui.config.target === 'tile';
+  const rootRow = el('button', 'wb-ztree-row wb-ztree-zone wb-ztree-root') as HTMLButtonElement;
+  rootRow.type = 'button';
+  rootRow.dataset.treeRoot = '1';
+  rootRow.title = tile
+    ? 'The tile itself — content placement, style, size'
+    : 'The row itself — how the zones line up, style, density';
+  rootRow.append(
+    el('span', 'wb-ztree-icon', tile ? '▢' : '▦'),
+    el('span', 'wb-ztree-label', tile ? 'Tile layout' : 'Row layout'));
+  if (ui.selected === null) rootRow.classList.add('wb-ztree-on');
+  rootRow.addEventListener('click', () => api.deselect());
+  // a drop on the root row lands at the END of the row — the quick
+  // "make this top-level" gesture, mirroring a drop on the canvas edge
+  rootRow.addEventListener('dragover', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, PAYLOADS)) return;
+    e.preventDefault();
+    rootRow.classList.add('wb-drop-hover');
+  });
+  rootRow.addEventListener('dragleave', () => rootRow.classList.remove('wb-drop-hover'));
+  rootRow.addEventListener('drop', (e) => {
+    const dt = (e as DragEvent).dataTransfer;
+    if (!hasAny(dt, PAYLOADS)) return;
+    e.preventDefault();
+    rootRow.classList.remove('wb-drop-hover');
+    const field = dt!.getData(FIELD_MIME);
+    if (field) { api.newRootZoneAt(ui.config.zones.length, { field }); return; }
+    const componentId = dt!.getData(COMPONENT_MIME);
+    if (componentId) { api.newRootZoneAt(ui.config.zones.length, { componentId }); return; }
+    const moved = nodePayload(dt!);
+    if (moved) api.moveNode(moved, [], Number.MAX_SAFE_INTEGER);
+  });
+  rows.appendChild(rootRow);
+
   const comps = api.components();
   ui.config.zones.forEach((zone, zi) => treeZoneRows(rows, zone, [zi], 0, ui, api, comps));
   host.appendChild(rows);
@@ -444,8 +482,36 @@ function renderEditExemplar(
   const editRoot = rendered.cloneNode(true) as HTMLElement;
   prow.appendChild(editRoot);
   decorateEditRow(editRoot, ui, api);
+  // the root is a first-class selection: builder chrome for the guide lines +
+  // a standing tag pill that selects the whole row/tile (zone tags' sibling)
+  editRoot.classList.add('wb-edit-rowroot');
+  editRoot.dataset.rootValign = ui.config.rootVAlign;
+  const rootTag = el('button', 'wb-edit-root-tag', tile ? '▢ Tile' : '▦ Row') as HTMLButtonElement;
+  rootTag.type = 'button';
+  rootTag.title = tile
+    ? 'Select the tile itself — content placement, style, size'
+    : 'Select the whole row — how the zones line up, style, density';
+  rootTag.addEventListener('click', (e) => { e.stopPropagation(); api.deselect(); });
+  prow.appendChild(rootTag);
+  if (ui.selected === null) prow.classList.add('wb-edit-root-on');
   prow.addEventListener('click', () => api.deselect()); // bare-canvas click deselects
   body.appendChild(prow);
+
+  // honest squeeze: rows clip at the simulated width (CSS), and a row that
+  // CAN'T shrink to it says so instead of silently painting past the edge
+  if (!tile) {
+    const note = el('div', 'wb-template-overflow-note');
+    note.style.display = 'none';
+    body.appendChild(note);
+    requestAnimationFrame(() => {
+      const over = editRoot.scrollWidth - editRoot.clientWidth;
+      if (over > 1) {
+        note.textContent = `⚠ Doesn't fit — the content needs about ${over}px more than this width. `
+          + 'Let zones Fill instead of Hug, or set items to Wrap, so the row can shrink.';
+        note.style.display = '';
+      }
+    });
+  }
 }
 
 function decorateEditRow(editRoot: HTMLElement, ui: ModalUI, api: ModalApi): void {
@@ -490,6 +556,10 @@ function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: M
   node.classList.add('wb-edit-zone');
   if (path.length > 1) node.classList.add('wb-edit-zone--nested');
   node.dataset.editZone = pathKey(path);
+  // the valign stamp feeds the hover guide lines (peeking a vertical-align
+  // control draws each zone's line at ITS value — pure CSS, no rerender);
+  // namespaced so the inspector pad's data-valign buttons stay unique
+  node.dataset.zoneValign = zone.valign;
   if (samePath(ui.selected, path)) node.classList.add('wb-edit-selected');
   // the tag leads with the zone's NAME; the other spans are the hover-peek
   // values (data-peek on the modal picks which one paints — pure CSS, no rerender)
@@ -499,8 +569,9 @@ function decorateZone(node: HTMLElement, path: ZonePath, zone: ZoneConfig, ui: M
     el('span', 'wb-zt wb-zt-size', ZONE_SIZE_LABEL[zone.size]),
     el('span', 'wb-zt wb-zt-flow', ZONE_FLOW_LABEL[zone.flow]),
     el('span', 'wb-zt wb-zt-align', zone.align[0].toUpperCase() + zone.align.slice(1)),
+    el('span', 'wb-zt wb-zt-valign', ZONE_VALIGN_LABEL[zone.valign]),
   );
-  tag.title = `${zone.label} — ${ZONE_SIZE_LABEL[zone.size]} · ${ZONE_FLOW_LABEL[zone.flow]}`;
+  tag.title = `${zone.label} — ${ZONE_SIZE_LABEL[zone.size]} · ${ZONE_FLOW_LABEL[zone.flow]} · ${ZONE_VALIGN_LABEL[zone.valign]}`;
   node.appendChild(tag);
   if (zone.items.length === 0) {
     node.classList.add('wb-edit-zone--empty');
@@ -564,9 +635,10 @@ function decorateItem(node: HTMLElement, itemPath: ZonePath, item: ZoneItem, zon
 function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLElement {
   const tile = ui.config.target === 'tile';
   const d = el('div', `wb-edit-divider${tile ? ' wb-edit-divider--h' : ''}`);
-  d.title = 'Drop a field, component or zone here for a new zone between. Size a zone from its inspector.';
   // the divider IS the between-zones gap — dropping a chip, item or zone here
-  // lands it right at this seam (zones stay zones, leaves get a zone of their own)
+  // lands it right at this seam (zones stay zones, leaves get a zone of their
+  // own). Invisible at rest (no tooltip — a ghost strip must not chat); it
+  // paints only while a payload hovers it.
   d.addEventListener('dragover', (e) => {
     if (!hasAny((e as DragEvent).dataTransfer, PAYLOADS)) return;
     e.preventDefault();

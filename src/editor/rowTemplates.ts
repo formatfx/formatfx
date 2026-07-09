@@ -52,6 +52,19 @@ export type ZoneSize = 'hug' | AreaWeight;
 /** How a zone's items share its space (the wrap-when-tight behavior lives here). */
 export type ZoneFlow = 'side' | 'wrap' | 'stack';
 export type ZoneAlign = 'left' | 'center' | 'right';
+/**
+ * The VERTICAL axis of a zone — how its items line up with each other:
+ * for side/wrap flows this is the cross axis (`align-items`; 'middle' is the
+ * classic centered row), for stack it's where the pile sits when the zone is
+ * taller than its content (`justify-content`; 'baseline' has no meaning on a
+ * column axis and paints as 'top'). Alignment always lives on the CONTAINER:
+ * per-child `align-self` is reported broken on real SP (unverified — see
+ * KNOWN_UNSUPPORTED_STYLES), so the builder never offers a per-item override.
+ */
+export type ZoneVAlign = 'top' | 'middle' | 'bottom' | 'baseline';
+/** The row root adds 'stretch': zones fill the row's height, which is what
+ *  lets each zone then place its own content via its `valign`. */
+export type RootVAlign = ZoneVAlign | 'stretch';
 /** How an item takes zone space: its natural width, or grow to fill. */
 export type ItemWidth = 'natural' | 'fill';
 
@@ -91,6 +104,7 @@ export interface ZoneConfig {
   size: ZoneSize;
   flow: ZoneFlow;
   align: ZoneAlign;
+  valign: ZoneVAlign;
   items: ZoneItem[];
 }
 
@@ -120,6 +134,16 @@ export interface RowTemplateConfig {
   borderStyle: BorderStyle;
   borderColor: string;         // a theme token name for sp-css-borderColor-*
   leftStripe: LeftStripe;
+  /** The TOP-LEVEL vertical relationship: how the zones line up against each
+   *  other on the row (`align-items`; 'middle' is SP's classic row centering),
+   *  or where the zone stack sits inside a tile box (`justify-content`; 'top'
+   *  is where a column naturally starts — stretch/baseline are row ideas and
+   *  paint as top there). */
+  rootVAlign: RootVAlign;
+  /** ROW only: how zones pack horizontally when none of them fills
+   *  (`justify-content`; 'left' emits nothing). Tiles ignore it — their zones
+   *  span the tile's width. */
+  rootAlign: ZoneAlign;
   zones: ZoneConfig[];
   kebab: KebabConfig;
   /** The tile box (the wrapper's width/height) — meaningful only when
@@ -270,6 +294,7 @@ export interface WireframeZoneSpec {
   size: ZoneSize;
   flow: ZoneFlow;
   align?: ZoneAlign;
+  valign?: ZoneVAlign;
   want: FieldType[][];
 }
 export interface Wireframe {
@@ -393,7 +418,7 @@ export function newComponentItem(componentId: string, map: Record<string, string
 export function newZone(label = 'Zone'): ZoneConfig {
   // 'wrap' is the default flow: side by side until the zone tightens — the
   // graceful-shrink behavior makers almost always want.
-  return { label, size: 'normal', flow: 'wrap', align: 'left', items: [] };
+  return { label, size: 'normal', flow: 'wrap', align: 'left', valign: 'middle', items: [] };
 }
 
 /** Seed a config from a wireframe: each zone's want-slots pick the first
@@ -410,7 +435,10 @@ export function defaultConfigFor(wireframeId: WireframeId, fields: MockField[]):
     return types.length === 0 ? usable.find((x) => !taken.has(x.name)) : undefined;
   };
   const zones: ZoneConfig[] = wf.zones.map((zs) => {
-    const zone: ZoneConfig = { label: zs.label, size: zs.size, flow: zs.flow, align: zs.align ?? 'left', items: [] };
+    const zone: ZoneConfig = {
+      label: zs.label, size: zs.size, flow: zs.flow,
+      align: zs.align ?? 'left', valign: zs.valign ?? defaultZoneVAlign(zs.flow), items: [],
+    };
     for (const want of zs.want) {
       const f = pick(want);
       if (!f) continue;
@@ -428,6 +456,7 @@ export function defaultConfigFor(wireframeId: WireframeId, fields: MockField[]):
     wireframeId, target: wf.target, rowStyle: 'flat', density: 'roomy',
     zebraStriping: false, hoverHighlight: false, hoverToken: 'themeLighter',
     borderStyle: 'none', borderColor: 'neutralQuaternaryAlt', leftStripe: 'none',
+    rootVAlign: defaultRootVAlign(wf.target), rootAlign: 'left',
     zones, kebab: { enabled: false, behavior: 'custom', position: 'right', actions: { ...EMPTY_ACTIONS } },
     ...(wf.target === 'tile' ? { tileWidth: TILE_DEFAULT_WIDTH, tileHeight: TILE_DEFAULT_HEIGHT } : {}),
   };
@@ -436,6 +465,22 @@ export function defaultConfigFor(wireframeId: WireframeId, fields: MockField[]):
 // ─── zone + item → SPElement ─────────────────────────────────────────────────
 
 const ALIGN_JUSTIFY: Record<ZoneAlign, string> = { left: 'flex-start', center: 'center', right: 'flex-end' };
+/** valign → align-items (the cross axis of a row flow). */
+const VALIGN_ITEMS: Record<RootVAlign, string> = {
+  top: 'flex-start', middle: 'center', bottom: 'flex-end', baseline: 'baseline', stretch: 'stretch',
+};
+
+/** The vertical default per flow: row flows center (SP's classic look), a
+ *  stack starts at the top like text. These are also what pre-alignment
+ *  builder trees carry, so defaults keep old layouts reopening byte-identically. */
+export function defaultZoneVAlign(flow: ZoneFlow): ZoneVAlign {
+  return flow === 'stack' ? 'top' : 'middle';
+}
+/** The root default per target: a row centers its zones, a tile stack starts
+ *  at the top of the box. Same byte-compatibility contract as zone valign. */
+export function defaultRootVAlign(target: BuilderTarget): RootVAlign {
+  return target === 'tile' ? 'top' : 'middle';
+}
 
 /** The item's flex behavior given its width and the zone's flow. The wrap-flow
  *  rules are the heart of the feature: NO min-width:0 there, so a squeezed item
@@ -524,10 +569,16 @@ export function buildZone(
     style['flex-direction'] = 'column';
     style['gap'] = '2px';
     style['align-items'] = ALIGN_JUSTIFY[zone.align];
+    // valign is the MAIN axis here: where the pile sits when the zone is
+    // taller than its content (a stretched row zone, a tile height share).
+    // 'top' is the CSS start and emits nothing — exactly what old trees carry;
+    // 'baseline' has no meaning on a column axis and paints as top too.
+    if (zone.valign === 'middle') style['justify-content'] = 'center';
+    else if (zone.valign === 'bottom') style['justify-content'] = 'flex-end';
   } else {
     if (zone.flow === 'wrap') style['flex-wrap'] = 'wrap';
     style['gap'] = '8px';
-    style['align-items'] = 'center';
+    style['align-items'] = VALIGN_ITEMS[zone.valign]; // 'middle' = the old hardcoded center
     if (zone.align !== 'left') style['justify-content'] = ALIGN_JUSTIFY[zone.align];
   }
   if (zone.align !== 'left') style['text-align'] = zone.align;
@@ -581,6 +632,13 @@ export function buildTemplateView(
   }
   const children = placeKebab(zoneEls, kebab, config.kebab.position);
 
+  // the root's own alignment (the top-level relationship the zones share):
+  // a tile places its stack on the column main axis — 'top' emits nothing
+  // (byte-compatible with pre-alignment trees), and the row-only ideas
+  // (stretch/baseline) land as top rather than emitting something unverified.
+  const tileJustify: Record<string, string> = config.rootVAlign === 'middle'
+    ? { 'justify-content': 'center' }
+    : config.rootVAlign === 'bottom' ? { 'justify-content': 'flex-end' } : {};
   const root: SPElement = config.target === 'tile'
     ? {
       // the tile stack: zones top to bottom, filling the fixed tile box
@@ -589,13 +647,18 @@ export function buildTemplateView(
       elmType: 'div', _elmName: 'Tile layout',
       style: {
         'display': 'flex', 'flex-direction': 'column', 'box-sizing': 'border-box',
-        'width': '100%', 'height': '100%', 'overflow': 'hidden', ...composed.rootStyle,
+        'width': '100%', 'height': '100%', 'overflow': 'hidden',
+        ...tileJustify, ...composed.rootStyle,
       },
       children,
     }
     : {
       elmType: 'div', _elmName: 'Row layout',
-      style: { 'display': 'flex', 'align-items': 'center', 'width': '100%', ...composed.rootStyle },
+      style: {
+        'display': 'flex', 'align-items': VALIGN_ITEMS[config.rootVAlign], 'width': '100%',
+        ...(config.rootAlign !== 'left' ? { 'justify-content': ALIGN_JUSTIFY[config.rootAlign] } : {}),
+        ...composed.rootStyle,
+      },
       children,
     };
   const cls = composed.rootClass.slice();
@@ -768,6 +831,14 @@ export const ZONE_FLOW_LABEL: Record<ZoneFlow, string> = {
   side: 'Side by side', wrap: 'Wrap when tight', stack: 'Stacked',
 };
 
+export const ZONE_ALIGN_LABEL: Record<ZoneAlign, string> = {
+  left: 'Left', center: 'Center', right: 'Right',
+};
+
+export const ZONE_VALIGN_LABEL: Record<RootVAlign, string> = {
+  top: 'Top', middle: 'Middle', bottom: 'Bottom', baseline: 'Text baseline', stretch: 'Fill height',
+};
+
 /** Why Apply is blocked, or null when it may proceed (refuse-and-teach: an
  *  unmapped component slot would silently render blank on real SP). */
 export function applyBlocker(config: RowTemplateConfig, components: ComponentDef[]): string | null {
@@ -918,6 +989,14 @@ function parseZone(el: SPElement, index: number, fields: MockField[]): ZoneConfi
     : (['normal', 'wide', 'widest'] as const).find((w) => WEIGHT_FLEX[w] === el.style?.['flex']) ?? 'normal';
   const alignKey = flow === 'stack' ? el.style['align-items'] : el.style['justify-content'];
   const align: ZoneAlign = alignKey === 'center' ? 'center' : alignKey === 'flex-end' ? 'right' : 'left';
+  // the vertical axis mirrors buildZone: a stack's pile position rides
+  // justify-content (absent = top), a row flow's cross axis rides align-items
+  const valignKey = flow === 'stack' ? el.style['justify-content'] : el.style['align-items'];
+  const valign: ZoneVAlign = valignKey === 'center' ? 'middle'
+    : valignKey === 'flex-end' ? 'bottom'
+      : valignKey === 'baseline' ? 'baseline'
+        : valignKey === 'flex-start' ? 'top'
+          : flow === 'stack' ? 'top' : 'middle'; // absent/foreign → the flow default (gate verifies)
   const label = typeof el._elmName === 'string' && el._elmName.endsWith(' zone')
     ? el._elmName.slice(0, -' zone'.length)
     : `Zone ${index + 1}`;
@@ -927,7 +1006,7 @@ function parseZone(el: SPElement, index: number, fields: MockField[]): ZoneConfi
     if (!item) return null;
     items.push(item);
   }
-  return { label, size, flow, align, items };
+  return { label, size, flow, align, valign, items };
 }
 
 /**
@@ -986,6 +1065,18 @@ export function configFromView(
     zones.push(zone);
   }
 
+  // the root's alignment knobs, mirroring the build emission exactly:
+  // row valign ← align-items (center = the default 'middle'); row halign ←
+  // justify-content (absent = 'left'); tile valign ← justify-content (absent = 'top')
+  const rvi = root.style['align-items'];
+  const rji = root.style['justify-content'];
+  const rootVAlign: RootVAlign = target === 'tile'
+    ? (rji === 'center' ? 'middle' : rji === 'flex-end' ? 'bottom' : 'top')
+    : (rvi === 'flex-start' ? 'top' : rvi === 'flex-end' ? 'bottom'
+      : rvi === 'baseline' ? 'baseline' : rvi === 'stretch' ? 'stretch' : 'middle');
+  const rootAlign: ZoneAlign = target === 'tile' ? 'left'
+    : rji === 'center' ? 'center' : rji === 'flex-end' ? 'right' : 'left';
+
   const config: RowTemplateConfig = {
     // the source wireframe isn't recoverable (and nothing rebuilds from it)
     wireframeId: target === 'tile' ? 'tile-blank' : 'blank',
@@ -998,6 +1089,8 @@ export function configFromView(
     borderStyle: genericBorder ? (root.style['border-style'] as BorderStyle) : 'none',
     borderColor: borderColorClass?.slice('sp-css-borderColor-'.length) ?? 'neutralQuaternaryAlt',
     leftStripe: stripe ? 'neutral' : 'none',
+    rootVAlign,
+    rootAlign,
     zones,
     kebab,
     // the tile box size lives on the DOCUMENT wrapper, not the tree — the

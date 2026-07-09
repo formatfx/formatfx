@@ -22,9 +22,10 @@ export const NODE_MIME = 'application/x-wb-node';
 /** 'pick' = the wireframe gallery; 'edit' = the zone canvas. */
 export type Stage = 'pick' | 'edit';
 
-/** Which zone setting the preview tags currently PEEK (hovering an inspector
- *  section swaps every zone tag from its name to that setting's value). */
-export type Peek = 'size' | 'flow' | 'align';
+/** Which setting the preview currently PEEKS (hovering an inspector section
+ *  swaps every zone tag from its name to that setting's value; the two
+ *  vertical-alignment peeks also draw dashed guide lines on the canvas). */
+export type Peek = 'size' | 'flow' | 'align' | 'valign' | 'rootvalign' | 'rootalign';
 
 /** What's selected: a path into the nested zone structure (a zone or an item —
  *  nodeAt decides), or nothing. */
@@ -142,6 +143,56 @@ export function segmented<T extends string>(
     const b = el('button', 'wb-seg-btn', label) as HTMLButtonElement;
     b.type = 'button';
     b.dataset[dataKey] = v;
+    if (v === value) b.classList.add('wb-seg-on');
+    b.addEventListener('click', (e) => { e.stopPropagation(); onPick(v); });
+    wrap.appendChild(b);
+  }
+  return wrap;
+}
+
+/** The bars of one alignment glyph — three rounded rects laid out the way the
+ *  option aligns content ('h' = left↔right placement, 'v' = top↕bottom). */
+function alignGlyphRects(axis: 'h' | 'v', v: string): string {
+  const bar = (x: number, y: number, w: number, h: number): string =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="0.8"/>`;
+  if (axis === 'h') {
+    return [11, 6, 9].map((w, i) => {
+      const x = v === 'left' ? 1 : v === 'right' ? 13 - w : (14 - w) / 2;
+      return bar(x, 1.5 + i * 4.25, w, 2.5);
+    }).join('');
+  }
+  if (v === 'stretch') {
+    return [0, 1, 2].map((i) => bar(1.5 + i * 4.25, 1, 2.5, 12)).join('');
+  }
+  if (v === 'baseline') {
+    // bars of different heights sitting ON a line — the first-line-of-text story
+    return [7, 4, 6].map((h, i) => bar(1.5 + i * 4.25, 10 - h, 2.5, h)).join('')
+      + bar(0.5, 11, 13, 1);
+  }
+  return [11, 6, 9].map((h, i) => {
+    const y = v === 'top' ? 1 : v === 'bottom' ? 13 - h : (14 - h) / 2;
+    return bar(1.5 + i * 4.25, y, 2.5, h);
+  }).join('');
+}
+
+/**
+ * An icon segmented group for ALIGNMENT — same one-of-N semantics and
+ * data-<key> stamping as segmented(), but each option paints a self-drawn
+ * inline-SVG bars glyph (no icon font, no network) with its label as the
+ * tooltip and accessible name. The visual way to edit how children relate.
+ */
+export function alignPad<T extends string>(
+  dataKey: string, axis: 'h' | 'v',
+  opts: readonly (readonly [T, string])[], value: T, onPick: (v: T) => void,
+): HTMLElement {
+  const wrap = el('div', 'wb-seg wb-alignpad');
+  for (const [v, label] of opts) {
+    const b = el('button', 'wb-seg-btn') as HTMLButtonElement;
+    b.type = 'button';
+    b.dataset[dataKey] = v;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.innerHTML = `<svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true">${alignGlyphRects(axis, v)}</svg>`;
     if (v === value) b.classList.add('wb-seg-on');
     b.addEventListener('click', (e) => { e.stopPropagation(); onPick(v); });
     wrap.appendChild(b);
