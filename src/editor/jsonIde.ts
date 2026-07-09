@@ -27,6 +27,8 @@
 import { tokenizeJson, matchBracketAt, renderJsonHtml } from './jsonHighlight';
 import { typingAssist, pasteReindent } from './jsonFormat';
 import { jsonCompletionAt, signatureHintAt, type JsonCompletion } from './jsonComplete';
+import { renderSquigglesHtml, type Decoration } from './jsonDecorations';
+import type { HoverInfo } from './jsonHover';
 import { openAcMenu, type AcMenu } from './acMenu';
 import { lineOfOffset } from './codeSync';
 import type { MockField } from '../core/types';
@@ -41,6 +43,13 @@ export interface JsonIdeDeps {
   /** Called after an accepted completion splices the buffer — the panel marks
    *  itself dirty exactly as it does for typed input. */
   onSplice: () => void;
+  /** #PR-D squiggles: DISPLAYED-coordinate decorations for the wb-json-sq
+   *  overlay layer (the panel owns merging/translating; this shell only
+   *  paints). Absent = no squiggle layer content. */
+  decorations?: () => Decoration[];
+  /** #PR-D hover: what to show at a displayed-buffer offset (the panel wires
+   *  jsonHover.hoverAt with its decoration + field context). null = nothing. */
+  hoverAt?: (offset: number) => HoverInfo | null;
   /** #PR-C fold bridge — the panel owns fold state; the shell paints chevrons,
    *  gapped line numbers, and expands before any assist/paste edit lands. */
   folds?: {
@@ -61,6 +70,9 @@ export interface JsonIdeApi {
   /** Close the completion menu — for programmatic buffer swaps (Format) that
    *  fire no input event and would otherwise leave a stale menu (PR #266). */
   closeMenu: () => void;
+  /** #PR-D: rebuild only the squiggle layer — for decoration changes that
+   *  arrive without a buffer change (the debounced live parse, lint refresh). */
+  repaintSquiggles: () => void;
 }
 
 /** Left rail width: 38px number gutter + 14px fold column — keep in step
@@ -88,6 +100,25 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   const code = document.createElement('code');
   hl.appendChild(code);
 
+  // #PR-D squiggle layer: the buffer text again, glyphs transparent, only the
+  // wavy text-decorations visible — the highlight layer's lossless invariant
+  // is never involved. Sits right above hl (later sibling), under the gutter.
+  const sq = document.createElement('pre');
+  sq.className = 'wb-json-sq';
+  sq.setAttribute('aria-hidden', 'true');
+  const sqCode = document.createElement('code');
+  sq.appendChild(sqCode);
+
+  // #PR-D hover card: floats above the pointer's line, never interactive
+  const hovercard = document.createElement('div');
+  hovercard.className = 'wb-json-hover';
+  hovercard.hidden = true;
+  const hoverTitle = document.createElement('div');
+  hoverTitle.className = 'wb-hover-title';
+  const hoverBody = document.createElement('div');
+  hoverBody.className = 'wb-hover-body';
+  hovercard.append(hoverTitle, hoverBody);
+
   const scopebar = document.createElement('div');
   scopebar.className = 'wb-json-scopebar';
   scopebar.setAttribute('aria-hidden', 'true');
@@ -103,9 +134,11 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
 
   shell.insertBefore(lineband, textEl);
   shell.insertBefore(hl, textEl);
+  shell.insertBefore(sq, textEl);
   shell.insertBefore(gutter, textEl);
   shell.insertBefore(scopebar, textEl);
   shell.appendChild(sig);
+  shell.appendChild(hovercard);
   shell.appendChild(foldcol); // above the textarea (z-index) — buttons stay clickable
 
   // ── metrics (monospace: geometry is arithmetic, not measurement) ──
@@ -219,9 +252,71 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     sig.style.left = `${Math.max(GUTTER_W, GUTTER_W + 8 + col * charW() - textEl.scrollLeft)}px`;
   };
 
+  // ── #PR-D: the hover card. Geometry only — content comes from deps.hoverAt.
+  // A settle delay keeps casual mouse-crossings quiet; anything that moves the
+  // text or the viewport hides the card instantly. ──
+  const HOVER_SETTLE_MS = 150;
+  let hoverTimer = 0;
+  const hideHover = (): void => {
+    window.clearTimeout(hoverTimer);
+    hoverTimer = 0;
+    hovercard.hidden = true;
+  };
+
+  /** clientX/Y → buffer offset in the monospace grid; null beyond the text
+   *  (past the line end, below the last line, in the gutter). */
+  const offsetAtPoint = (clientX: number, clientY: number): { off: number; line: number; x: number } | null => {
+    const r = textEl.getBoundingClientRect();
+    const y = clientY - r.top - padTop() + textEl.scrollTop;
+    if (y < 0) return null;
+    const line = Math.floor(y / lineHeight());
+    const x = clientX - r.left;
+    const col = Math.round((x - (GUTTER_W + 8) + textEl.scrollLeft) / charW());
+    if (col < 0) return null;
+    const text = textEl.value;
+    let lineStart = 0;
+    for (let i = 0; i < line; i++) {
+      const nl = text.indexOf('\n', lineStart);
+      if (nl === -1) return null; // below the last line
+      lineStart = nl + 1;
+    }
+    const nl = text.indexOf('\n', lineStart);
+    const lineEnd = nl === -1 ? text.length : nl;
+    if (lineStart + col > lineEnd) return null; // beyond the line's end — no hover
+    return { off: lineStart + col, line, x };
+  };
+
+  const showHover = (clientX: number, clientY: number): void => {
+    const pt = offsetAtPoint(clientX, clientY);
+    const info = pt ? deps.hoverAt!(pt.off) : null;
+    if (!pt || !info) { hideHover(); return; }
+    hoverTitle.textContent = info.title;
+    hoverBody.textContent = info.body;
+    hovercard.classList.toggle('wb-hover-mono', !!info.mono);
+    // above the pointer's LINE (translateY(-100%) in CSS), clamped into the box
+    hovercard.style.top = `${padTop() + pt.line * lineHeight() - textEl.scrollTop - 2}px`;
+    hovercard.style.left = `${Math.max(4, Math.min(pt.x, Math.max(4, shell.clientWidth - 260)))}px`;
+    hovercard.hidden = false;
+  };
+
+  if (deps.hoverAt) {
+    textEl.addEventListener('mousemove', (e) => {
+      window.clearTimeout(hoverTimer);
+      hoverTimer = window.setTimeout(() => showHover(e.clientX, e.clientY), HOVER_SETTLE_MS);
+    });
+    textEl.addEventListener('mouseleave', hideHover);
+    textEl.addEventListener('blur', hideHover);
+  }
+
+  const repaintSquiggles = (): void => {
+    sqCode.innerHTML = renderSquigglesHtml(textEl.value, deps.decorations?.() ?? []);
+  };
+
   const syncScroll = (): void => {
     hl.scrollTop = textEl.scrollTop;
     hl.scrollLeft = textEl.scrollLeft;
+    sq.scrollTop = textEl.scrollTop;
+    sq.scrollLeft = textEl.scrollLeft;
     gutterIn.style.transform = `translateY(${-textEl.scrollTop}px)`;
     positionLineband();
     refreshScope();
@@ -233,6 +328,7 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     const text = textEl.value;
     const tokens = tokenizeJson(text);
     code.innerHTML = renderJsonHtml(text, tokens, matchBracketAt(text, tokens, caretPos()));
+    repaintSquiggles();
     refreshGutter();
     syncScroll();
   };
@@ -291,7 +387,7 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     ac = openAcMenu(textEl, comp.items, (value) => accept(comp, value), caretAnchor());
   };
 
-  textEl.addEventListener('input', () => { repaint(); updateMenu(false); });
+  textEl.addEventListener('input', () => { hideHover(); repaint(); updateMenu(false); });
   textEl.addEventListener('beforeinput', (e) => {
     // #PR-B: multi-line pastes re-base to the caret line's indentation
     if (e.inputType !== 'insertFromPaste') return;
@@ -321,7 +417,7 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     if (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End'
       || e.key === 'PageUp' || e.key === 'PageDown') repaint();
   });
-  textEl.addEventListener('scroll', () => { closeMenu(); syncScroll(); });
+  textEl.addEventListener('scroll', () => { closeMenu(); hideHover(); syncScroll(); });
   textEl.addEventListener('blur', () => closeMenu());
   textEl.addEventListener('keydown', (e) => {
     if (e.key === ' ' && e.ctrlKey) {
@@ -381,5 +477,5 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   });
 
   repaint();
-  return { repaint, refreshScope, closeMenu };
+  return { repaint, refreshScope, closeMenu, repaintSquiggles };
 }
