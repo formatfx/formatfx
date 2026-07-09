@@ -41,6 +41,16 @@ export interface JsonIdeDeps {
   /** Called after an accepted completion splices the buffer — the panel marks
    *  itself dirty exactly as it does for typed input. */
   onSplice: () => void;
+  /** #PR-C fold bridge — the panel owns fold state; the shell paints chevrons,
+   *  gapped line numbers, and expands before any assist/paste edit lands. */
+  folds?: {
+    usable(): boolean;
+    active(): boolean;
+    expandAll(): void;
+    foldableFoldedLines(): Array<{ line: number; folded: boolean; label: string }>;
+    toggleAtFoldedLine(line: number): void;
+    fullLineNumber(foldedLine: number): number;
+  };
 }
 
 export interface JsonIdeApi {
@@ -53,8 +63,9 @@ export interface JsonIdeApi {
   closeMenu: () => void;
 }
 
-/** Gutter width — keep in step with the CSS (.wb-json-gutter / padding-left). */
-const GUTTER_W = 38;
+/** Left rail width: 38px number gutter + 14px fold column — keep in step
+ *  with the CSS (.wb-json-gutter, .wb-json-foldcol, the 60px padding-left). */
+const GUTTER_W = 52;
 
 /** Keys the completion menu owns while open — assists must not steal them. */
 const MENU_KEYS = new Set(['Enter', 'Tab', 'ArrowDown', 'ArrowUp', 'Escape']);
@@ -86,11 +97,16 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   sig.setAttribute('aria-hidden', 'true');
   sig.hidden = true;
 
+  // #PR-C fold column: chevrons OUTSIDE the aria-hidden gutter (interactive)
+  const foldcol = document.createElement('div');
+  foldcol.className = 'wb-json-foldcol';
+
   shell.insertBefore(lineband, textEl);
   shell.insertBefore(hl, textEl);
   shell.insertBefore(gutter, textEl);
   shell.insertBefore(scopebar, textEl);
   shell.appendChild(sig);
+  shell.appendChild(foldcol); // above the textarea (z-index) — buttons stay clickable
 
   // ── metrics (monospace: geometry is arithmetic, not measurement) ──
   const lineHeight = (): number => {
@@ -126,14 +142,35 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     const text = textEl.value;
     const lines = text.split('\n').length;
     const active = lineColOf(caretPos()).line;
-    if (lines === lastLineCount && active === lastActiveLine) return;
+    const foldsOn = deps.folds?.active() ?? false;
+    // the short-circuit assumes contiguous numbering — skip it when folds gap it
+    if (!foldsOn && lines === lastLineCount && active === lastActiveLine) return;
     lastLineCount = lines;
     lastActiveLine = active;
     const rows: string[] = [];
     for (let i = 0; i < lines; i++) {
-      rows.push(`<div class="wb-json-ln${i === active ? ' active' : ''}">${i + 1}</div>`);
+      const n = deps.folds ? deps.folds.fullLineNumber(i) + 1 : i + 1;
+      rows.push(`<div class="wb-json-ln${i === active ? ' active' : ''}">${n}</div>`);
     }
     gutterIn.innerHTML = rows.join('');
+  };
+
+  // ── #PR-C: chevrons absolutely positioned per foldable opener line ──
+  const refreshFoldcol = (): void => {
+    if (!deps.folds || !deps.folds.usable()) { foldcol.replaceChildren(); return; }
+    const lh = lineHeight();
+    const top0 = padTop() - textEl.scrollTop;
+    foldcol.replaceChildren(...deps.folds.foldableFoldedLines().map(({ line, folded, label }) => {
+      const b = document.createElement('button');
+      b.className = 'wb-json-chev';
+      b.type = 'button';
+      b.textContent = folded ? '▸' : '▾';
+      b.setAttribute('aria-expanded', String(!folded));
+      b.setAttribute('aria-label', `${folded ? 'Unfold' : 'Fold'} ${label}`);
+      b.style.top = `${top0 + line * lh}px`;
+      b.addEventListener('click', () => deps.folds!.toggleAtFoldedLine(line));
+      return b;
+    }));
   };
 
   const positionLineband = (): void => {
@@ -189,6 +226,7 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     positionLineband();
     refreshScope();
     refreshSig();
+    refreshFoldcol();
   };
 
   const repaint = (): void => {
@@ -257,6 +295,9 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   textEl.addEventListener('beforeinput', (e) => {
     // #PR-B: multi-line pastes re-base to the caret line's indentation
     if (e.inputType !== 'insertFromPaste') return;
+    // an earlier listener (the panel's fold guard) may have consumed this
+    // event and re-applied the paste itself — running again would double it
+    if (e.defaultPrevented) return;
     const raw = e.dataTransfer?.getData('text/plain') ?? e.data ?? '';
     if (!raw.includes('\n')) return;
     const selStart = textEl.selectionStart ?? 0;
@@ -292,7 +333,16 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     // everything else (brackets, quotes — and Enter when no menu is up)
     // flows to the pure decision layer. Splices ride the same undo path
     // as accepted completions.
-    if (!e.defaultPrevented && (!ac || !MENU_KEYS.has(e.key))) {
+    // assists only ever fire on UNMODIFIED typing keys — Ctrl/Alt/Meta combos
+    // are commands (fold/format/copy…), never text (shift stays: '{' IS
+    // Shift+[ on US layouts)
+    if (!e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey && (!ac || !MENU_KEYS.has(e.key))) {
+      // #PR-C: edit-intent keys expand folds first (selection remapped by the
+      // panel); navigation keys read the folded view freely. The panel's
+      // beforeinput guard remains the net for mouse paste / drop / IME.
+      const willEdit = e.key.length === 1
+        || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete';
+      if (willEdit && deps.folds?.active()) deps.folds.expandAll();
       const a = typingAssist(textEl.value, textEl.selectionStart ?? 0, textEl.selectionEnd ?? 0, e.key);
       if (a) {
         e.preventDefault();

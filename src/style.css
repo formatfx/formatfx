@@ -1521,7 +1521,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 #wb-json-text, .wb-json-hl, .wb-json-gutter {
   font: 11px/16px Consolas, 'Cascadia Code', monospace; tab-size: 2;
 }
-#wb-json-text, .wb-json-hl { padding: 8px 8px 8px 46px; white-space: pre; }
+#wb-json-text, .wb-json-hl { padding: 8px 8px 8px 60px; white-space: pre; }
 #wb-json-text {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
   border: 0; border-radius: 0; resize: none; z-index: 3;
@@ -1543,12 +1543,25 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 }
 .wb-json-ln { padding-right: 7px; opacity: .65; }
 .wb-json-ln.active { opacity: 1; color: var(--wb-accent); }
+/* #PR-C fold column — interactive, so NOT inside the aria-hidden gutter */
+.wb-json-foldcol {
+  position: absolute; left: 38px; top: 0; bottom: 0; width: 14px; z-index: 4;
+  overflow: hidden; background: var(--wb-surface);
+  border-right: 1px solid var(--wb-border);
+}
+.wb-json-chev {
+  position: absolute; left: 0; width: 14px; height: 16px; padding: 0;
+  border: 0; background: transparent; cursor: pointer;
+  font: 9px/16px Consolas, monospace; color: var(--wb-text-2);
+}
+.wb-json-chev:hover { color: var(--wb-accent); }
+.wb-json-chev:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
 .wb-json-lineband {
   position: absolute; left: 0; right: 0; z-index: 0; pointer-events: none;
   background: color-mix(in srgb, var(--wb-text) 5%, transparent);
 }
 .wb-json-scopebar {
-  position: absolute; left: 38px; width: 2px; z-index: 2; border-radius: 1px;
+  position: absolute; left: 52px; width: 2px; z-index: 2; border-radius: 1px;
   pointer-events: none;
   background: color-mix(in srgb, var(--wb-accent) 55%, transparent);
 }
