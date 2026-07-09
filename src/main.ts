@@ -118,13 +118,19 @@ app.innerHTML = `
           <button class="wb-side-tab active" id="wb-side-tab-json" role="tab" aria-selected="true" data-tab="wb-tab-json">JSON</button>
           <button class="wb-side-tab" id="wb-side-tab-explain" role="tab" aria-selected="false" data-tab="wb-tab-explain" title="Read this formatter back in plain English — what shows, what turns which color when, what clicking does">Explain</button>
         </div>
-        <div class="wb-side-adv" title="Advanced: the surface on the canvas. On a view, switching row/tile changes its wrapper; picking Grid minimizes back to the floor (the view is untouched). On the grid, picking row/tile starts a new view carrying the grid's columns.">
-          <span>Type</span>
-          <select id="wb-kind">
-            <option value="grid">Grid — view columns</option>
-            <option value="row">View (row) formatter</option>
-            <option value="tile">Tile / Gallery</option>
-          </select>
+        <div class="wb-menu wb-side-more">
+          <button id="wb-json-kebab" aria-haspopup="menu" aria-label="JSON pane actions" title="Everything else — copy, download, deploy, output options and the surface type"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></button>
+          <div class="wb-json-kebab-panel" id="wb-json-kebab-panel" hidden>
+            <div class="wb-json-kebab-slot" id="wb-json-kebab-slot"></div>
+            <hr>
+            <label class="wb-menu-row" title="Advanced: the surface on the canvas. On a view, switching row/tile changes its wrapper; picking Grid minimizes back to the floor (the view is untouched). On the grid, picking row/tile starts a new view carrying the grid's columns."><span>Type</span>
+              <select id="wb-kind">
+                <option value="grid">Grid — view columns</option>
+                <option value="row">View (row) formatter</option>
+                <option value="tile">Tile / Gallery</option>
+              </select>
+            </label>
+          </div>
         </div>
       </div>
       <div id="wb-tab-json" class="wb-tab active"></div>
@@ -170,8 +176,15 @@ const saveUiPrefs = () => {
 };
 const sidePane = document.getElementById('wb-pane-side')!;
 const sideResizer = layout.querySelector<HTMLElement>('.wb-resizer[data-col="side"]')!;
+// The pane's width ceiling tracks the window, not a fixed 720px (which read as
+// "a third of a widescreen" — owner): everything the left pane and a workable
+// canvas (~420px) don't need is the pane's to take.
+const leftPaneEl = document.getElementById('wb-leftpane')!;
+const sideMax = (): number =>
+  Math.max(220, layout.clientWidth - leftPaneEl.offsetWidth - 5 - 420);
 const applyLayout = () => {
-  const side = uiPrefs.cols.side;
+  // clamp for display only — the saved pref keeps its value for roomier windows
+  const side = Math.min(uiPrefs.cols.side, sideMax());
   // Left Edit Pane is always visible (spec); the JSON pane (Advanced escape
   // hatch) can fold away so the maker default is left pane + canvas.
   layout.style.gridTemplateColumns = uiPrefs.jsonOpen
@@ -191,7 +204,7 @@ for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
     const startW = uiPrefs.cols.side;
     const move = (ev: PointerEvent) => {
       // the JSON pane grows leftwards
-      uiPrefs.cols.side = Math.max(220, Math.min(720, startW - (ev.clientX - startX)));
+      uiPrefs.cols.side = Math.max(220, Math.min(sideMax(), startW - (ev.clientX - startX)));
       applyLayout();
     };
     const up = () => {
@@ -339,7 +352,9 @@ state.subscribe((reason) => {
   if (reason === 'theme' || reason === 'load') applyAppTheme();
 });
 
-// kind switch (Advanced: the surface on the canvas — FLOOR-AND-SHEETS Stage 1)
+// kind switch (in the JSON pane's head kebab: the surface on the canvas —
+// FLOOR-AND-SHEETS Stage 1). Picking a type is an action, so it closes the
+// kebab, same as the ☰ menu's example loader.
 const kindSel = document.getElementById('wb-kind') as HTMLSelectElement;
 kindSel.addEventListener('change', () => {
   const wasOnFloor = state.onFloor;
@@ -349,6 +364,7 @@ kindSel.addEventListener('change', () => {
     : wasOnFloor
     ? `Started a new ${kindSel.value === 'row' ? 'row' : 'tile'} view carrying the grid's columns — the grid itself is unchanged.`
     : `Same element tree, new wrapper: this view now lays out the whole ${kindSel.value === 'row' ? 'row' : 'tile'} and can embed column formatters via references.`);
+  (document.getElementById('wb-json-kebab-panel') as HTMLDivElement).hidden = true;
 });
 
 // the wrapper kind only makes sense on a surface (floor or sheet): it stays

@@ -30,11 +30,11 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
    columns the view references (`⤷ in view` / `unused` / missing). Click any
    header to put that formatter on the canvas; edits to a column formatter
    propagate live into the view's `columnFormatterReference`s.
-3. **Ship it** — the topbar **JSON** button opens the validated-JSON pane:
-   one-click **Copy** (sanitized, `$schema`-wrapped) for SharePoint's Format
-   pane, per-column copy buttons in the registry, download / CSOM-safe
-   variants — or **🚀 Deploy…**
-   (behind the pane's ⋮ menu): a generated, confirm-first snippet that writes the
+3. **Ship it** — the topbar **JSON** button opens the validated-JSON pane;
+   its ⋮ menu (beside the JSON ⇄ Explain tabs) carries one-click **Copy**
+   (sanitized, `$schema`-wrapped) for SharePoint's Format pane, download /
+   CSOM-safe variants (per-column copy buttons stay in the registry) — or
+   **🚀 Deploy…**: a generated, confirm-first snippet that writes the
    formatter to your column or view from the list page itself, using only
    your own permissions. It refuses to generate while the linter sees
    errors, and it shows exactly what it will replace before the one write.

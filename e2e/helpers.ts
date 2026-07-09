@@ -48,6 +48,14 @@ export async function openJson(page: Page): Promise<void> {
   if (!(await page.locator('#wb-pane-side').isVisible())) await page.click('#wb-json-toggle');
 }
 
+// The pane's head kebab (⋮ beside the JSON ⇄ Explain tabs) carries everything
+// but Apply: copy/download/deploy, output options, the surface Type select.
+// Idempotent — a blind click would toggle an already-open panel closed.
+export async function openJsonKebab(page: Page): Promise<void> {
+  await openJson(page);
+  if (!(await page.locator('#wb-json-kebab-panel').isVisible())) await page.click('#wb-json-kebab');
+}
+
 // The full palette now lives in the kebab (⋮) menu: open it, click "More
 // elements", and the popover (.wb-palette-pop) opens. Its items are
 // .wb-palette-item; clicking one inserts AND closes the popover.
