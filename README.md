@@ -1,213 +1,133 @@
-# FormatFX — visual special effects for SharePoint lists
+# <img src="public/favicon.svg" width="30" alt="" valign="middle"> FormatFX
 
 [![CI](https://github.com/formatfx/formatfx/actions/workflows/ci.yml/badge.svg)](https://github.com/formatfx/formatfx/actions/workflows/ci.yml)
 
-> The visual sandbox and layout editor for SharePoint list formatting.
+**The visual editor for SharePoint List Formatting.** Lay out column, row and
+gallery formatters on a canvas, watch them render live against your real list
+data, and export JSON that is schema-valid and checked against the quirks that
+make formatters silently break on real SharePoint.
 
-An interactive, fully client-side sandbox and **visual layout editor for SharePoint
-List Formatting** (column formatters, view/row formatters, and tile/gallery
-formatters). Lay out formatting elements graphically, watch them render live
-against real or mock list data, and export valid, schema-compliant SharePoint
-JSON — or paste any existing formatter (e.g. a sample from
-[pnp/List-Formatting](https://github.com/pnp/List-Formatting)) and edit it visually.
+**Try it: [formatfx.dev](https://formatfx.dev)** — fully client-side. No
+sign-in, no tenant connection, and nothing you paste ever leaves your browser.
 
-No server, no tenant connection, no framework runtime — vanilla TypeScript + Vite.
+<!--
+  Screenshot placeholder. When adding shots, prefer tight feature crops —
+  a formatted column on the grid, the conditional-formatting builder, the
+  Explain tab — over a full-app capture:
 
-## The workflow
+  <p align="center"><img src="docs/assets/<crop>.png" width="720" alt="…"></p>
+-->
 
-1. **Import your list** — Data tab → *Import schema…*. Fastest path:
-   **⚡ Live from SharePoint** — copy the read-only extract snippet, run it
-   in the console on your list page, paste the captured snapshot back. No
-   install, no app registration, just your own session; it brings the
-   columns (types, choices, read-only flags), up to 10 real rows, **every
-   column's live formatter** (auto-registered) *and your views' row
-   formatting* — the default view's formatter loads straight onto the
-   canvas. Also accepted: the file from **Export → Export to CSV** with
-   *Include schema*, JSON from `tools/Export-ListSchema.ps1`, or a
-   hand-written CSV (see in-app help).
-2. **Edit visually** — the Structure pane is a **workspace tree**: your view
-   formatter plus every registered column formatter, with badges showing which
-   columns the view references (`⤷ in view` / `unused` / missing). Click any
-   header to put that formatter on the canvas; edits to a column formatter
-   propagate live into the view's `columnFormatterReference`s.
-3. **Ship it** — the topbar **JSON** button opens the validated-JSON pane;
-   its ⋮ menu (beside the JSON ⇄ Explain tabs) carries one-click **Copy**
-   (sanitized, `$schema`-wrapped) for SharePoint's Format pane, download /
-   CSOM-safe variants (per-column copy buttons stay in the registry) — or
-   **🚀 Deploy…**: a generated, confirm-first snippet that writes the
-   formatter to your column or view from the list page itself, using only
-   your own permissions. It refuses to generate while the linter sees
-   errors, and it shows exactly what it will replace before the one write.
-4. **Share it** — topbar **Share** mints a link carrying the *whole
-   workspace inside the URL* (same schema, same mock rows, same half-built
-   formatter). Nothing is uploaded anywhere: the payload rides in the URL
-   fragment, which browsers never send to a server. Whoever opens it lands
-   in your exact workspace — and their own saved work stays untouched until
-   they explicitly choose *Save a copy* (with a backup) or *Discard*. Stuck?
-   Share the link; whoever helps you fixes it visually and shares one back.
-   The encoding is stable and documented for third parties — a raw
-   pnp/List-Formatting sample JSON encodes directly into a working live
-   link: [docs/SHARE-URL.md](docs/SHARE-URL.md).
+List Formatting can do far more than most lists ever show — status pills, data
+bars, personas, hover cards, whole gallery tiles — but the native experience is
+raw JSON in a narrow sidebar, with quirks you learn from scattered blog posts
+and mistakes that render as nothing at all. FormatFX is the missing editor. It
+is also the missing teacher: every linter rule, doc card and Explain sentence
+is written for the person who owns the list, not the person who wrote the
+schema.
 
-## Editor features
+Vanilla TypeScript + Vite, zero runtime dependencies.
 
-- **Grid-first workspace** — the app lands on your list as a
-  **Microsoft-Lists-style grid**: one column per view column, real headers,
-  each column rendered with its current formatter (import a list and its
-  pills/bars show up live). Header menus hold the per-column actions —
-  *format this column* (scaffolds and opens a column formatter),
-  *conditional formatting*, *style*, *copy JSON*, *hide* — plus a
-  **“+ column”** chip for the rest of your schema. Drag a header left/right
-  to reorder; **drop one column onto another** and the two become named
-  row-formatter scaffolding ("Status + DueDate group") you can immediately
-  reposition, wrap, border or shadow with the same click-only tools. The
-  grid stays a grid until you group; every grid gesture is exactly one undo
-  step; switch Type to *row layout* any time to see the same tree as a free
-  layout.
-- **Right-click anywhere in the preview** — every element, column and group
-  carries a context menu with the actions that apply to nearly everything:
-  restyle in the playground, conditional formatting, **Format cells…**
-  (the comfortable dialog: Font / Border / Fill / Alignment tabs, a live
-  preview box, OK applies everything as one undo step), rename, wrap in a
-  container, ungroup, duplicate, copy its JSON, remove. All click-only and
-  undoable, so a misclick can't corrupt the formatter; grid headers answer
-  right-click with their column menu.
-- **Conditional formatting builder** — "when the value …, make it look …",
-  without the dialog maze. The field's type
-  drives the suggestions: choice columns arrive with **one ready chip per
-  choice** and a one-click **“✨ a color for each choice”** (the words pick
-  the colors — *Done* goes green, *Blocked* goes red); dates get
-  overdue/today/within-N-days;
-  people get *is you*; numbers get thresholds. Rules can watch a
-  **different column** than the one they paint ("color DueDate by Status")
-  — the watched column is picked from a type-labeled dropdown, never
-  typed. Pick a look — text color,
-  soft fill, solid pill, edge stripe, strike out — and a swatch, watch every
-  rule render against **your actual rows** through the real engine, then
-  apply: one undoable mutation that compiles the rules into schema-valid
-  `=if(…)` chains (first match wins; an element's existing look becomes the
-  no-match fallback). From a grid header it lands on that column's
-  registered formatter, exactly like *format this column*.
-- **One maker-first surface** — there is no mode switch to get wrong. The app
-  lands on your list as a grid with the pieces people actually reach for
-  (status pills, traffic lights, date badges, data bars, personas, stars…),
-  the canvas, your data, the inspect-outlines toggle, and click-only
-  **Format cells**, **conditional formatting** and **Alignment** dialogs — so
-  a misclick can't corrupt the formatter, and every gesture is undoable. The
-  developer furniture is one door away, not a different mode: the topbar
-  **JSON** button opens the validated-JSON pane (the escape hatch, with
-  **Deploy** and **Copy**) without moving the editor or canvas, and the Palette, Structure
-  and Properties panes — every preset, all element/style/attribute properties,
-  the box model, `forEach` loops, row actions, hover cards, inline edit, the
-  CFR registry and tenant themes — stay reachable the whole time.
-- **Named elements** — every element can carry a friendly name (double-click
-  it in the Structure pane, or the ✎ action): presets arrive pre-named
-  ("Status pill", not "div"). Names use the `_elmName` convention — SharePoint
-  ignores it — and stay in exported JSON by default; untick "names" in the
-  JSON tab for schema-pristine output. Project files always preserve them.
-- **Element palette** — schema primitives plus ~25 ready-made components
-  distilled from years of community samples: status pills, traffic lights,
-  severity classes, tag pills, due-date badges, day counters, personas,
-  facepiles, action / Flow / setValue / mailto buttons, hover cards, data
-  bars, progress donuts, key-value tables, star ratings, lookup chips, row
-  cards and the canonical 3-layer gallery card. **Schema-aware**: presets
-  rebind their field references to your best-matching columns by type.
-  Collapsible to an icon rail (drag still works).
-- **Interactive canvas** — renders against every data row in a context
-  matching the formatter type (Lists grid, list cell, full-width row, or
-  gallery tile);
-  click-to-select (including inside customCardProps flyouts), drag-drop with
-  per-element target highlighting, light/dark Fluent theme toggle, and an
-  inspect-outlines mode. The selection highlight is a pulsing dashed outline
-  offset *outside* the element, so it can't be confused with your design.
-- **Visual inspector** — a plain-language **Alignment** control: a summary
-  chip reads out the current arrangement ("Side by side · centered · middle ·
-  gap 8px") and expands into a picker whose 3×3 grid buttons sit *where their
-  result puts the content*, plus click-only direction/spread/spacing chips.
-  Alongside it, a devtools-style **box model** (per-side margin/padding with
-  ↑/↓ stepping) and full property editing with per-key value suggestions
-  (theme class tokens, Fluent icon names, style values), row actions, hover
-  cards, inline edit and CFRs. Every style property and attribute carries an
-  ⓘ **doc card**: an SVG concept diagram (the box, the flex shelf, paint
-  layers…), a no-jargon explanation, «syntax shapes», clickable examples
-  that apply themselves, longhand groups (one card serves `padding` and all
-  its sides) and a full flex glossary — plus a one-click jump into the
-  **⚗ Style playground** (also in the ☰ menu under More…): a consequence-free overlay
-  organized as labeled steps. **Quick looks** apply whole style bundles in
-  one click (pill, card, accent edge, one-line ellipsis…); a mini
-  **structure tree** beside the live stage shows ancestors and children
-  (click any row to restyle that element instead; unapplied picks stash per
-  element); the selected property gets a **formatted description card**
-  whose examples apply themselves; the element's **current styles** are
-  listed (expressions as 𝑓x) with your picks shown replacing them; and
-  nothing touches the formatter until the explicit, undoable Apply.
-- **customCardProps are first-class** — card formatters appear nested in the
-  structure tree, are click-selectable inside the live flyout, and edit with
-  the same palette/inspector as everything else.
-- **Structure tree** — elmType icons, behavior chips (⟳ loop · ▶ action ·
-  ▣ card · ⤷ reference · ✎ inline edit), drag-reorder/reparent, duplicate,
-  and **wrap-in-parent** (works on the root — a formatter has exactly one
-  root element; wrapping is how you add a parent).
-- **Real expression engine** — full parser/evaluator for the SP expression
-  language: the complete operator/function set, `[$Field.prop]` /
-  `[!Field.DisplayName]` references, `@currentField`, `@me`, `@now`,
-  `@rowIndex`, `forEach` + `loopIndex()`, lookup values
-  (`.lookupValue`/`.lookupId`) — **both syntaxes**: Excel-style strings and
-  the older Abstract Syntax Tree object form (including the legacy `":"`
-  ternary alias), verified against real pnp/List-Formatting samples.
-- **Tenant theme import** — Data tab → *Tenant theme*: paste
-  `JSON.stringify(window.__themeState__.theme)` from your real site (or pick
-  a Fluent Theme Designer JSON) and the preview wears your actual palette;
-  partial palettes merge over the stock light/dark base. Saved with the
-  project.
-- **Faithful renderer emulation** — SP style allow-list enforcement
-  (unsupported properties silently dropped, exactly like the real renderer),
-  `sp-css-*` / `ms-*` / `sp-card-*` / `sp-field-*` class emulation, `iconName`
-  Fluent icons, customRowAction stubs, CFR resolution with correct
-  `@currentField` swapping and circular-reference protection.
-- **Built-in linter that teaches** — the silent-failure quirks, each explained
-  in plain language with a ▶ position marker in the formula: the Zero
-  Whitespace Rule, no `not()` and no standalone `!` (`!=` is fine — negate
-  inside the expression), nested `=` inside expressions,
-  XML-entity-escaped operators (`&amp;&amp;`), `forEach`+`split()` scope,
-  `_comment` placement, div-with-children card triggers, CFR-in-card,
-  unsupported CSS, unknown `[$Field]` references against your schema, `if()`
-  depth, and more. Written for low-code makers, not compiler authors.
-- **Explain — the formatter, read back in plain English** (JSON pane →
-  Explain tab) — the comprehension half of the teaching linter. Paste a wall
-  of community JSON and read what it *does*: "Shows “Status”. The background
-  color is: if “Status” is ‘Blocked’, then ‘#d13438’, otherwise ‘#107c10’.
-  Clicking runs the Power Automate flow …". Covers both expression syntaxes;
-  clicking a card selects that element, exactly like a lint warning; and
-  anything outside its vocabulary says "can't explain this yet" rather than
-  guessing.
-- **🧪 Stress test** (☰ menu → More…) — "will this break in production?" One click
-  renders your formatter against a generated edge-case matrix: the
-  empty item (blank dates are *null* on real SP — the classic silent-blank
-  trap), maximum-length text and unbreakable tokens, extreme past/future
-  dates, boundary numbers **including the thresholds mined from your own
-  formatter's comparisons** (exactly-at and just-under, so `>=` vs `>`
-  off-by-ones show side by side), crowded and empty multi-values, and
-  unicode/RTL/emoji. Read-only by contract — browsing it never touches your
-  rows, document, undo stack or autosave; expression failures that would
-  render silently blank on SP are flagged per row.
-- **Built-in field guide** (☰ menu → More… → 📖) — a full-screen, Learn-style reference
-  with a nested chapter tree, "in this article" rail, diagrams and Microsoft
-  Learn links, arranged as a technicality gradient: the further down the tree
-  (and the deeper a page nests), the more it assumes. It opens on a
-  plain-language lists-and-libraries floor, then descends into what lists
-  really are (SQL tables behind a React UI, with the view threshold and
-  12-join lookup limit explained from the engine), the column type system
-  (person/metadata columns ARE lookups, projected fields, calculated-column
-  boundaries, the single-vs-multi capability matrix), the formatting JSON
-  layer (allow-listed CSS — no `var()` / `calc()` / grid — plus
-  `customRowAction`, `inlineEditField`, hover cards), and every field-tested
-  gotcha the linter knows, cross-referenced to its rules.
-- **Projects & autosave** — the whole workspace (formatters + schema + data +
-  references) autosaves to localStorage and saves/opens as portable
-  `.sandbox.json` files. Panes are drag-resizable; the side pane has 📌
-  auto-hide (hover the rail to open, click elsewhere to close) and ⛶
-  maximize modes.
+## The loop
+
+1. **Bring your list in** — Data tab → *Import schema…*. Fastest path is the
+   ⚡ live snippet: copy it, run it in the browser console on your list page,
+   paste the snapshot back. Read-only, no install, no app registration — it
+   captures your columns (types, choices, read-only flags), up to 10 real
+   rows, every column's live formatter and your views' row formatting.
+   CSV-with-schema exports, `tools/Export-ListSchema.ps1` JSON and
+   hand-written CSVs work too.
+2. **Edit on your list, not a toy** — the app lands on a
+   Microsoft-Lists-style grid of your view: real headers, every column
+   rendered through its current formatter. Header menus hold *format this
+   column*, *conditional formatting* and *style*; drop one column onto
+   another and the pair becomes row-formatter scaffolding you can restyle
+   with the same click-only tools. Every gesture is exactly one undo step.
+3. **Let it check your work** — the linter flags each silent-failure quirk
+   with a plain-language explanation and a ▶ position marker; the Explain tab
+   reads any formatter back in English; the 🧪 stress test renders yours
+   against null dates, boundary numbers mined from your own comparisons,
+   crowded multi-values, unicode/RTL and maximum-length text.
+4. **Ship it** — one-click Copy from the JSON pane (sanitized,
+   `$schema`-wrapped, straight into SharePoint's Format pane), or the
+   confirm-first 🚀 Deploy snippet that writes the formatter from your list
+   page using only your own permissions — it shows exactly what it will
+   replace, and refuses to generate while the linter sees errors.
+5. **Share the whole workspace** — one link carries the schema, mock rows and
+   half-built formatter in the URL fragment, which browsers never send to a
+   server. Whoever opens it lands in your exact workspace; their own saved
+   work stays untouched until they choose *Save a copy* or *Discard*. The
+   encoding is stable and documented for third parties:
+   [docs/SHARE-URL.md](docs/SHARE-URL.md).
+
+## What's inside
+
+### Build
+
+- **~25 schema-aware components** distilled from years of community samples:
+  status pills, traffic lights, due-date badges, day counters, data bars,
+  progress donuts, personas, facepiles, action / Flow / mailto buttons, hover
+  cards, star ratings, lookup chips, row cards, the canonical 3-layer gallery
+  card. Presets rebind their field references to your best-matching columns
+  by type.
+- **A conditional-formatting builder** driven by the field's type: choice
+  columns arrive with one ready chip per choice and a one-click *✨ a color
+  for each choice* (*Done* goes green, *Blocked* goes red); dates get
+  overdue/today/within-N-days; people get *is you*; numbers get thresholds.
+  Rules can watch a different column than the one they paint, preview against
+  your actual rows through the real engine, and compile into schema-valid
+  `=if(…)` chains as one undoable apply.
+- **Comfortable dialogs where they matter** — *Format cells…* (Font / Border
+  / Fill / Alignment tabs with a live preview), a plain-language alignment
+  picker, a devtools-style box model, and a consequence-free ⚗ style
+  playground whose examples apply themselves. Right-click works on every
+  element, column and group — including inside hover-card flyouts.
+- **A structure tree that tells the truth** — elmType icons, behavior chips
+  (⟳ loop · ▶ action · ▣ card · ⤷ reference · ✎ inline edit), drag-reorder,
+  wrap-in-parent, and friendly element names ("Status pill", not "div") that
+  survive export and never confuse SharePoint.
+
+### Trust
+
+- **A real expression engine** — the complete operator/function set,
+  `[$Field.prop]` / `@currentField` / `@me` / `@now` / `forEach` +
+  `loopIndex()` / lookups, in **both** syntaxes: Excel-style strings and the
+  older AST object form, verified against real
+  [pnp/List-Formatting](https://github.com/pnp/List-Formatting) samples.
+- **A faithful renderer** — SharePoint's style allow-list enforced
+  (unsupported properties silently dropped, exactly like the real thing),
+  `sp-css-*` / `ms-*` / `sp-card-*` class emulation, Fluent icons, CFR
+  resolution with circular-reference protection, and tenant theme import so
+  the preview wears your actual palette.
+- **1,387 unit tests and 142 Playwright e2e tests** run on every push. The
+  engine test files are the spec: generated-expression semantics change in
+  the test first, then the code.
+
+### Learn
+
+- **A linter that teaches** — the Zero Whitespace Rule, no `not()` and no
+  standalone `!` (`!=` is fine), nested `=`, XML-entity-escaped operators,
+  `forEach`+`split()` scope, div-with-children card triggers, unknown
+  `[$Field]` references against *your* schema, and more — each explained for
+  low-code makers, not compiler authors.
+- **Explain** — paste a wall of community JSON and read what it does:
+  "Shows “Status”. The background color is: if “Status” is ‘Blocked’, then
+  ‘#d13438’…". Clicking a sentence selects that element on the canvas.
+- **A built-in 📖 field guide** — a full-screen, Learn-style reference that
+  starts at "what a list actually is" and descends through the column type
+  system to allow-listed CSS, cross-referenced to the linter's rules.
+- **ⓘ doc cards on every style property** — an SVG concept diagram, a
+  no-jargon explanation, and clickable examples that apply themselves.
+
+### Keep
+
+- The whole workspace **autosaves to localStorage** and saves/opens as
+  portable `.sandbox.json` files.
+- `npm run build:single` emits **one self-contained HTML file** — email it,
+  drop it in a document library, open it on a phone.
+- A **companion browser extension** ([`extension/`](extension/)) turns the
+  extract/apply snippets into one click — same auth (your own page session),
+  same handful of REST endpoints, nothing more.
 
 ## Run it
 
@@ -215,21 +135,18 @@ No server, no tenant connection, no framework runtime — vanilla TypeScript + V
 npm install
 npm run dev           # local dev server
 npm test              # engine test suite (vitest + happy-dom)
-npm run test:ui       # 105 visual/E2E specs in your installed Edge (PW_CHANNEL=chrome to override)
+npm run test:ui       # 142 Playwright e2e tests in your installed Edge (PW_CHANNEL=chrome to override)
 npm run build         # type-check + production bundle in dist/
 npm run build:single  # everything inlined into one dist-single/index.html
 ```
 
-`build:single` produces a single self-contained HTML file you can email,
-drop in a doc library, or open on a phone — no server needed.
 `.github/workflows/ci.yml` runs the unit tests and the Playwright suite on
-every push (`PW_CHANNEL=bundled`), builds `dist/`, and deploys it to GitHub
-Pages from `main` (Settings → Pages → Source = "GitHub Actions" to enable).
+every push, builds `dist/`, and deploys it to GitHub Pages from `main`.
 
 ## The npm package
 
-The UI-free engine ships as **`formatfx`** on npm — the teaching linter,
-headless and dependency-free:
+The UI-free engine ships as [**`formatfx`**](https://www.npmjs.com/package/formatfx)
+on npm — the teaching linter, headless and dependency-free:
 
 ```bash
 npx formatfx lint my-formatter.json        # the silent-failure quirks, explained
@@ -241,12 +158,10 @@ npx formatfx validate my-formatter.json    # shape check only
 import { importJson, lintDocument, evaluate, buildExtractSnippet } from 'formatfx';
 ```
 
-The package exports the schema types, JSON ⇄ document serializer,
-expression engine (both syntaxes), allow-lists, the four-format schema
-importer and the connectivity snippet builders (`npm run build:lib`
-builds it; releases publish from a `v*` tag). The renderer is deliberately
-not part of the headless surface — the sandbox at formatfx.dev *is* the
-renderer.
+The package exports the schema types, JSON ⇄ document serializer, expression
+engine (both syntaxes), allow-lists, the schema importer and the connectivity
+snippet builders. The renderer is deliberately not part of the headless
+surface — the sandbox at formatfx.dev *is* the renderer.
 
 ## Architecture
 
@@ -261,39 +176,61 @@ src/
     linter.ts      #   teaching diagnostics for silent-failure quirks
     serializer.ts  #   JSON ⇄ document import/export (column/row/tile)
     schemaImport.ts#   list schema import (native CSV-with-schema, PS JSON, CSV)
+  bridge/          # self-contained, auditable SharePoint connectivity snippets
   editor/          # the visual editor shell
     state.ts       #   workspace store: main doc + column refs, undo, autosave
     presets.ts     #   palette factories + schema-aware binding
-    gridScaffold.ts#   grid-first workspace generation/mapping (pure)
-    gridView.ts    #   the grid canvas context: headers, menus, drag-to-group
+    gridView.ts    #   the grid canvas: headers, menus, drag-to-group
     palette/treeView/canvas/inspector/jsonPanel/dataPanel
   main.ts          # app shell: panes, switcher, copy, persistence
+extension/         # the Tier-1 companion extension (own package)
 tools/
   Export-ListSchema.ps1  # PnP exporter for the schema-import path
-e2e/               # Playwright visual suite (local Edge or CI chromium)
+e2e/               # Playwright suite (local Edge or CI chromium)
 ```
 
 `core/` has no editor coupling beyond DOM output and is designed to be
-reusable (CLI linting of sample JSON, tests, other UIs).
+reusable — the CLI, the tests and the npm package all sit on it.
+
+## Contributing
+
+Contributions are welcome — [`CONTRIBUTING.md`](CONTRIBUTING.md) has setup and
+the contributor terms; [`docs/HANDOFF.md`](docs/HANDOFF.md) has the
+architecture, the invariants and the verified SharePoint semantics. The house
+rules, in short:
+
+- **Zero runtime dependencies.** Vanilla TypeScript + Vite; devDependencies
+  are fine.
+- **Test files are contracts.** Engine and generated-expression semantics
+  change in the test first.
+- **Generated formatters must work on real SharePoint** — schema-valid
+  always, and never a standalone `!` (SharePoint has no logical NOT).
+- **Never rename localStorage keys or `wb-` CSS classes** — renames silently
+  wipe people's autosaved work.
+- **One user gesture = one undoable mutation.**
+- **`src/bridge/` stays dependency-free and auditable** — every line readable
+  by a maker's IT department; extraction never changes the user's data.
 
 ## Disclaimer
 
-The preview is an *emulation*, not the real SharePoint renderer. It is built to
-be pixel-plausible and quirk-faithful, but always verify the exported JSON on a
-real list before shipping. THIS CODE IS PROVIDED AS IS WITHOUT WARRANTY OF ANY KIND.
+The preview is an *emulation*, not the real SharePoint renderer. It is built
+to be pixel-plausible and quirk-faithful, but always verify the exported JSON
+on a real list before shipping. THIS CODE IS PROVIDED AS IS WITHOUT WARRANTY
+OF ANY KIND.
 
 ## License
 
-FormatFX is **dual-licensed** under **AGPL-3.0-only** (see [`LICENSE`](./LICENSE))
-**or** a commercial license — see [`LICENSING.md`](./LICENSING.md) for which track
-applies to you.
+FormatFX is **dual-licensed**: **AGPL-3.0-only** ([`LICENSE`](LICENSE)) or a
+**commercial license**. [`LICENSING.md`](LICENSING.md) is the plain-language
+guide to which track fits.
 
-- **Using formatfx.dev** and the SharePoint JSON you export from it — no obligations.
-  The generated JSON is yours to use anywhere, including closed/commercial projects.
-- **Self-hosting or forking the code** — the AGPL applies: a modified version served
-  over a network (§13) must offer its complete source under the AGPL.
-- **Embedding FormatFX in a proprietary product or SaaS** without AGPL obligations —
-  a **commercial license** is required. This also covers private/self-hosted
-  deployment (data never leaves your tenant), SSO, and priority support.
+| You are… | Your track |
+| --- | --- |
+| Using [formatfx.dev](https://formatfx.dev) and exporting JSON | Free, no obligations. The JSON is your own work product — use it anywhere, including commercial projects. |
+| Self-hosting, forking, or modifying the code | **AGPL-3.0** — serving a modified version over a network (§13) means offering its source under the same terms. |
+| Embedding FormatFX in a proprietary product or SaaS | **Commercial license** — also the track for private in-tenant deployment (list data never leaves your network), SSO and priority support. |
+
+**To purchase or ask which track fits**, open an issue on this repo or contact
+the author.
 
 © 2026 Sam Yost.
