@@ -8,7 +8,7 @@
  * pill and view strip are gone.
  */
 import { test, expect } from '@playwright/test';
-import { freshApp, canvasTab, openGridTab, makeRowView } from './helpers';
+import { freshApp, canvasTab, openGridTab, makeRowView, stageWorkshopColor } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -164,7 +164,7 @@ test('staged workshop edits survive a tab switch, show the dirty dot, and closin
   const ce = page.locator('#wb-workshop .wb-ce');
 
   // a staged style gesture dirties the tab (the dot appears)
-  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await stageWorkshopColor(page, '#5c2d91');
   await expect(page.locator('.wb-canvastab-dirty')).toHaveCount(1);
   await expect(page.locator('.wb-canvastab-dot')).toBeVisible();
 
@@ -194,3 +194,5 @@ test('"＋ New component…" starts a blank def in its own workshop tab', async 
   await page.locator('.wb-comp-newdef').click();
   await expect(canvasTab(page, 'New component 2')).toHaveClass(/active/);
 });
+
+

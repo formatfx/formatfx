@@ -14,7 +14,7 @@
  * self-contained — nothing resolves references anymore).
  */
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { freshApp, header, canvasTab, openGridTab, makeRowView, expectAppUndoDisabled } from './helpers';
+import { freshApp, header, canvasTab, openGridTab, makeRowView, expectAppUndoDisabled, stageWorkshopColor } from './helpers';
 
 test.beforeEach(async ({ page }) => { await freshApp(page, { acceptDialogs: true }); });
 
@@ -329,7 +329,7 @@ test('the workshop: edit a slot label + a style, pin one usage as-found — one 
   // default workspace uses #5c2d91, so the canvas assertion below is exact —
   // Chromium serializes the inline style as rgb(92, 45, 145))
   const purple = '[style*="rgb(92, 45, 145)"]';
-  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await stageWorkshopColor(page, '#5c2d91');
 
   // pin the SECOND usage "keep as-found"; the save button counts honestly
   await expect(ce.locator('.wb-ce-usage')).toHaveCount(2);
@@ -408,7 +408,7 @@ test('live nesting cascade (#225): saving a CHILD re-bakes every parent that emb
   await (await openDrawer(browseNode(page, 'Childlook'))).locator('.wb-comp-edit').click();
   ce = page.locator('#wb-workshop .wb-ce');
   await expect(ce).toBeVisible();
-  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await stageWorkshopColor(page, '#5c2d91');
   await ce.locator('.wb-ce-save').click();
   await expect(page.locator('#wb-toast')).toContainText('refreshed 1 place');
 
@@ -466,7 +466,7 @@ test('workshop: modal-local ↶↷ over element edits; staged means staged (the 
   await expect(ce.locator('.wb-mu-undo')).toBeDisabled(); // bottoms out at open
   // a style gesture on the selected root = one local step, live in the preview
   const purple = '[style*="rgb(92, 45, 145)"]';
-  await ce.locator('.wb-ce-style .wb-ce-swatch[title="#5c2d91"]').first().click();
+  await stageWorkshopColor(page, '#5c2d91');
   await expect(ce.locator(`.wb-ce-preview ${purple}`)).not.toHaveCount(0);
   await ce.locator('.wb-mu-undo').click();
   await expect(ce.locator(`.wb-ce-preview ${purple}`)).toHaveCount(0);
@@ -503,3 +503,5 @@ test('legacy wb-subtypes customs migrate one-way into the library as "Yours"', a
   await mine.click();
   await expect(header(page, 'DueDate').locator('.wb-grid-look')).toHaveCount(1);
 });
+
+

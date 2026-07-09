@@ -7,8 +7,10 @@
  * columnFormatterReference model. Dragover is ACCEPT-GATED: a row only
  * highlights payloads it will act on (the false-highlight fix).
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountTree } from './treeView';
+import { mountComponentWorkshop } from './componentEditor';
+import { componentById } from './componentLibrary';
 import { state } from './state';
 import type { MockField, SPElement } from '../core/types';
 
@@ -296,3 +298,136 @@ describe('field drops (§5: the shelf chip lands as its look-aware cell)', () =>
     expect(JSON.stringify(state.doc.root)).toBe(before);
   });
 });
+
+describe('workshop mode (spec §C, 2026-07-09 — supersedes the v1 "never re-targets" constraint)', () => {
+  let wsHost: HTMLElement;
+  let wsHandle: { destroy(): void } | null = null;
+
+  const openWorkshop = (): void => {
+    state.openComponentTab('builtin-deadline-chip');
+    wsHost = document.createElement('div');
+    document.body.append(wsHost);
+    wsHandle = mountComponentWorkshop(wsHost, componentById('builtin-deadline-chip')!, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+    });
+  };
+
+  afterEach(() => {
+    wsHandle?.destroy();
+    wsHandle = null;
+  });
+
+  it('renders the STAGED component tree while a workshop tab is active, back to the surface on destroy', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const gridRows = host.querySelectorAll('.wb-tree-row').length;
+    openWorkshop();
+    const ctx = state.workshopCtx!;
+    const stagedCount = (function count(el): number {
+      let n = 1;
+      (el.children ?? []).forEach((c: SPElement) => { n += count(c); });
+      if (el.customCardProps?.formatter) n += count(el.customCardProps.formatter);
+      return n;
+    })(ctx.root());
+    expect(host.querySelectorAll('.wb-tree-row').length).toBe(stagedCount);
+    // destroying the workshop re-targets the tree back to the surface
+    wsHandle!.destroy();
+    wsHandle = null;
+    state.deactivateComponentTab();
+    expect(host.querySelectorAll('.wb-tree-row').length).toBe(gridRows);
+  });
+
+  it('row clicks move the STAGED selection, never the app selection', () => {
+    openWorkshop();
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const appSel = JSON.stringify(state.selections);
+    const rows = host.querySelectorAll<HTMLElement>('.wb-tree-row');
+    const target = rows[rows.length - 1];
+    const wantPath = target.dataset.path === '' ? [] : target.dataset.path!.split('.').map(Number);
+    target.click();
+    expect(state.workshopCtx!.selection()).toEqual(wantPath);
+    expect(JSON.stringify(state.selections)).toBe(appSel);
+    // and the row shows selected on the next paint
+    const selRow = host.querySelector('.wb-tree-row.selected');
+    expect(selRow).not.toBeNull();
+  });
+
+  it('structural actions are gated off; rename and the eye ride the staged commit (modal-undo, not app undo)', () => {
+    openWorkshop();
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    expect(host.querySelector('.wb-tree-actions [aria-label="Delete"]')).toBeNull();
+    expect(host.querySelector('.wb-tree-actions [aria-label="Move up"]')).toBeNull();
+    const appUndo = (state as unknown as { undoStack: string[] }).undoStack.length;
+    // the eye hides the staged node
+    const eye = host.querySelectorAll<HTMLButtonElement>('.wb-tree-eye')[1] ?? host.querySelector<HTMLButtonElement>('.wb-tree-eye')!;
+    eye.click();
+    const ctx = state.workshopCtx!;
+    const anyHidden = (function scan(el): boolean {
+      if (el.style?.["display"] === "none") return true;
+      return (el.children ?? []).some((c: SPElement) => scan(c));
+    })(ctx.root());
+    expect(anyHidden).toBe(true);
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(appUndo);
+    // the workshop's own undo pair knows about it
+    expect(wsHost.querySelector<HTMLButtonElement>('.wb-mu-undo')!.disabled).toBe(false);
+  });
+});
+
+describe('workshop mode — Copilot findings on PR #270', () => {
+  let wsHost2: HTMLElement;
+  let wsHandle2: { destroy(): void } | null = null;
+  afterEach(() => { wsHandle2?.destroy(); wsHandle2 = null; });
+
+  const openPillWorkshop = (): void => {
+    // a def with an embed: seed a custom that embeds the deadline chip
+    state.openComponentTab('builtin-deadline-chip');
+    wsHost2 = document.createElement('div');
+    document.body.append(wsHost2);
+    wsHandle2 = mountComponentWorkshop(wsHost2, componentById('builtin-deadline-chip')!, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+    });
+  };
+
+  it('an embed placeholder row is keyboard-operable (Enter/Space select)', () => {
+    openPillWorkshop();
+    // embed the persona builtin so a placeholder row exists
+    const ctx = state.workshopCtx!;
+    ctx.commit(() => {
+      ctx.root().children = ctx.root().children ?? [];
+      ctx.root().children!.push({ elmType: 'div', _embed: 'P' });
+    });
+    (state.workshopCtx as unknown as { embedNameOf(el: SPElement): string | null });
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const rows = [...host.querySelectorAll<HTMLElement>('.wb-tree-row')];
+    const embedRow = rows.find((r) => r.querySelector('.wb-comp-mark'));
+    expect(embedRow).toBeTruthy();
+    embedRow!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const want = embedRow!.dataset.path === '' ? [] : embedRow!.dataset.path!.split('.').map(Number);
+    expect(state.workshopCtx!.selection()).toEqual(want);
+  });
+
+  it('an in-progress rename is dropped when the tree re-targets (no cross-root leak)', () => {
+    const host = mountDoc({ elmType: 'div', children: [{ elmType: 'span', txtContent: 'x' }] });
+    const row = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1];
+    row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(host.querySelector('.wb-tree-rename')).not.toBeNull();
+    // the workshop opens — the tree re-targets to the staged root (with two
+    // staged children so the stale numeric path [1] EXISTS over there)
+    openPillWorkshop();
+    const wctx = state.workshopCtx!;
+    wctx.commit(() => {
+      wctx.root().children = [{ elmType: 'span', txtContent: 'a' }, { elmType: 'span', txtContent: 'b' }];
+    });
+    expect(host.querySelector('.wb-tree-rename')).toBeNull();
+    // and no staged node silently gained the surface rename input on blur
+    expect(JSON.stringify(state.workshopCtx!.root())).not.toContain('wb-tree-rename');
+  });
+});
+

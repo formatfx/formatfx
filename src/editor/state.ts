@@ -61,7 +61,33 @@ import {
 } from './snapshots';
 
 export type ChangeReason =
-  | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load' | 'lens';
+  | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load' | 'lens'
+  | 'workshop';
+
+/** The active component workshop's staged-editing seam (spec §C, 2026-07-09 —
+ *  supersedes the v1 "a workshop tab never re-targets the tree" constraint).
+ *  Registered by mountComponentWorkshop while its tab is up; the tree and the
+ *  inspector resolve against it instead of the surface doc, so staged
+ *  elements get the full editing vocabulary. Commits land on the WORKSHOP's
+ *  modal-undo stack (one gesture = one ↶ step) and emit 'workshop' — never
+ *  the app undo stack, never autosave; Save stays the one app-level step. */
+export interface WorkshopContext {
+  /** The staged tree's root (a live object — mutate only through commit()). */
+  root(): SPElement;
+  /** The staged selection ([] = the root). */
+  selection(): NodePath;
+  /** Move the staged selection; re-highlights the preview, emits 'workshop'. */
+  select(path: NodePath): void;
+  /** Resolve a staged path (CARD_SEGMENT-aware); null when stale. */
+  nodeAt(path: NodePath): SPElement | null;
+  /** An embed placeholder's component name (#225) — null for real elements.
+   *  Placeholders are read-only stand-ins: edits on them would vanish when
+   *  flatten swaps the child's tree in, so surfaces label them and refuse. */
+  embedNameOf(el: SPElement): string | null;
+  /** Run one staged mutation: fn(), then dirty + mu.commit + preview
+   *  refresh + a 'workshop' emit. */
+  commit(fn: () => void): void;
+}
 
 /** The Left Edit Pane's three interaction lenses (progressive disclosure). */
 export type EditorLens = 'simple' | 'pro' | 'code';
@@ -232,6 +258,9 @@ export class EditorState {
    *  UI state like the lens: a component tab COVERS the canvas with the
    *  workshop; the surface (and `doc`) waits untouched underneath. */
   activeComponentTab: string | null = null;
+  /** The mounted workshop's staged-editing seam (see WorkshopContext).
+   *  Null whenever no workshop DOM is mounted. */
+  workshopCtx: WorkshopContext | null = null;
   /** The sheet last on the canvas — session-local memory for the VIEWS tab's
    *  return target (the grid lives on the COLUMNS tab since Stage 2, so the
    *  VIEWS tab needs to know which sheet to come back to). Never persisted. */
@@ -302,9 +331,23 @@ export class EditorState {
 
   emit(reason: ChangeReason): void {
     for (const fn of this.listeners) fn(reason);
-    // 'selection' and 'lens' are pure view state — neither autosaves (the lens
-    // is not part of the project file; it lives in wb-ui-prefs).
-    if (reason !== 'selection' && reason !== 'lens') this.scheduleAutosave();
+    // 'selection' and 'lens' are pure view state, and 'workshop' is STAGED
+    // state (persisted only by an explicit Save) — none of them autosave.
+    if (reason !== 'selection' && reason !== 'lens' && reason !== 'workshop') this.scheduleAutosave();
+  }
+
+  // ─── the workshop's staged-editing seam (spec §C) ──────────────────────────
+
+  registerWorkshop(ctx: WorkshopContext): void {
+    this.workshopCtx = ctx;
+    this.emit('workshop');
+  }
+
+  /** Idempotent per-context: a stale destroy never clears a newer mount. */
+  unregisterWorkshop(ctx: WorkshopContext): void {
+    if (this.workshopCtx !== ctx) return;
+    this.workshopCtx = null;
+    this.emit('workshop');
   }
 
   // ─── Left Edit Pane: lens + Save checkpoint ────────────────────────────────

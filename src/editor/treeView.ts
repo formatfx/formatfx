@@ -5,12 +5,19 @@
  * editor/treeView.ts — Structure tree: selection, drag-reorder/reparent,
  * duplicate/delete/move, and a card-formatter affordance for customCardProps.
  *
- * Renders the ACTIVE document only (state.doc) — which document that is
- * is chosen by the Left Edit Pane's navigation, not by headers in this tree.
+ * Renders the ACTIVE document (state.doc) — which document that is is chosen
+ * by the Left Edit Pane's navigation, not by headers in this tree — OR, while
+ * a component WORKSHOP tab is up, the workshop's STAGED tree via
+ * state.workshopCtx (spec §C, 2026-07-09 — supersedes the v1 "a workshop tab
+ * never re-targets the tree" constraint). Workshop mode is select + rename +
+ * eye only: those ride ctx.commit (the workshop's modal-undo, one gesture =
+ * one ↶ step); the structural gestures (wrap/move/duplicate/delete, drag and
+ * drop, the context menu) stay surface-only — the workshop never offered
+ * them, and its Save remains the one app-level undo step.
  */
 
 import type { SPElement, NodePath } from '../core/types';
-import { state, samePath, CARD_SEGMENT } from './state';
+import { state, samePath, CARD_SEGMENT, type WorkshopContext } from './state';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { openElementMenu } from './contextMenu';
@@ -60,11 +67,65 @@ export function mountTree(
   onToast: (m: string) => void = () => {},
 ): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
-  // because selecting a row re-renders the whole tree mid-double-click
+  // because selecting a row re-renders the whole tree mid-double-click.
+  // renameRoot pins WHICH tree the rename began under: a numeric path means
+  // nothing across a surface⇄workshop retarget, so a root change drops the
+  // rename instead of letting it land on an unrelated node (PR #270 review).
   let renamePath: NodePath | null = null;
+  let renameRoot: SPElement | null = null;
+  let currentRoot: SPElement | null = null;
+
+  /** The tree's editing seams, resolved per render: the app document, or the
+   *  workshop's staged tree while its tab covers the canvas. */
+  interface TreeOps {
+    isSelected(p: NodePath): boolean;
+    select(p: NodePath): void;
+    toggleSelect(p: NodePath): void;
+    /** Rename/eye — the non-structural node edits both modes allow. */
+    commitNode(p: NodePath, fn: (n: SPElement) => void): void;
+    /** Structural gestures (wrap/move/dup/delete/dnd/menu) offered? */
+    structural: boolean;
+    /** Workshop only: an embed placeholder's component name (read-only row). */
+    embedNameOf?(el: SPElement): string | null;
+  }
+  const surfaceOps: TreeOps = {
+    isSelected: (p) => state.isSelected(p),
+    select: (p) => state.select(p),
+    toggleSelect: (p) => state.toggleSelect(p),
+    commitNode: (p, fn) => state.mutateDocument(() => {
+      const n = state.nodeAt(p);
+      if (n) fn(n);
+    }),
+    structural: true,
+  };
+  const workshopOps = (ctx: WorkshopContext): TreeOps => ({
+    isSelected: (p) => samePath(ctx.selection(), p),
+    select: (p) => ctx.select(p),
+    toggleSelect: (p) => ctx.select(p), // staged selection is single-only
+    commitNode: (p, fn) => ctx.commit(() => {
+      const n = ctx.nodeAt(p);
+      if (n) fn(n);
+    }),
+    structural: false,
+    embedNameOf: (el) => ctx.embedNameOf(el),
+  });
+  let ops: TreeOps = surfaceOps;
 
   const render = () => {
     host.innerHTML = '';
+    const ctx = state.activeComponentTab !== null ? state.workshopCtx : null;
+    ops = ctx ? workshopOps(ctx) : surfaceOps;
+    currentRoot = ctx ? ctx.root() : state.doc.root;
+    if (renamePath && renameRoot !== currentRoot) {
+      renamePath = null;
+      renameRoot = null;
+    }
+    if (ctx) {
+      host.appendChild(renderNode(ctx.root(), []));
+      const renameInp0 = host.querySelector<HTMLInputElement>('.wb-tree-rename');
+      if (renameInp0) { renameInp0.focus(); renameInp0.select(); }
+      return;
+    }
     if (state.doc.kind === 'grid') {
       // Columns mode: the grid root is scaffolding (the wrapper a future
       // promotion to a row view would use — gridScaffold.buildGridRoot), not
@@ -88,7 +149,7 @@ export function mountTree(
 
   /** Indent depth for a row — on the grid the columns ARE the top level. */
   const depthOf = (path: NodePath): number =>
-    Math.max(0, path.length - (state.doc.kind === 'grid' ? 1 : 0));
+    Math.max(0, path.length - (ops.structural && state.doc.kind === 'grid' ? 1 : 0));
 
   const renderNode = (el: SPElement, path: NodePath): HTMLElement => {
     const wrap = document.createElement('div');
@@ -96,11 +157,43 @@ export function mountTree(
 
     const row = document.createElement('div');
     row.className = 'wb-tree-row';
-    if (state.isSelected(path)) row.classList.add('selected');
+    if (ops.isSelected(path)) row.classList.add('selected');
     if (el.style?.['display'] === 'none') row.classList.add('wb-tree-hidden');
-    row.draggable = path.length > 0;
+    row.draggable = ops.structural && path.length > 0;
     row.tabIndex = 0;
     row.dataset.path = path.join('.');
+
+    // workshop mode: an EMBED PLACEHOLDER (#225) is a read-only stand-in —
+    // label it as the component it stands in for (⬡ name), selectable so the
+    // inspector can teach, but no rename/eye (edits would vanish on flatten)
+    const embedName = ops.embedNameOf?.(el) ?? null;
+    if (embedName !== null) {
+      const label0 = document.createElement('span');
+      label0.className = 'wb-tree-label';
+      label0.style.paddingLeft = `${depthOf(path) * 12}px`;
+      const mark0 = document.createElement('span');
+      mark0.className = 'wb-comp-mark';
+      mark0.textContent = '⬡';
+      mark0.setAttribute('aria-hidden', 'true');
+      const nm0 = document.createElement('span');
+      nm0.className = 'wb-tree-name';
+      nm0.textContent = embedName;
+      label0.append(mark0, nm0);
+      row.appendChild(label0);
+      row.title = `The embedded “${embedName}” component — restyle it in its OWN workshop`;
+      row.addEventListener('click', () => ops.select(path));
+      // the row is focusable (tabIndex above) — keep it keyboard-operable
+      // even though it short-circuits the rest of the row chrome (PR #270)
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          ops.select(path);
+        }
+      });
+      wrap.appendChild(row);
+      return wrap;
+    }
 
     // the binding language: a bound component instance reads "⬡ Name ← Column"
     // — the teal ⬡ mark says "this is a component", the right-aligned tag says
@@ -170,12 +263,12 @@ export function mountTree(
         renamePath = null;
         if (cancelled) { render(); return; }
         const v = inp.value.trim();
-        state.mutateDocument(() => {
-          if (v) el._elmName = v; else delete el._elmName;
+        ops.commitNode(path, (n) => {
+          if (v) n._elmName = v; else delete n._elmName;
         });
       });
     }
-    const startRename = () => { renamePath = path; render(); };
+    const startRename = () => { renamePath = path; renameRoot = currentRoot; render(); };
     row.addEventListener('dblclick', (e) => { e.stopPropagation(); startRename(); });
     row.title = 'Double-click to rename';
 
@@ -191,12 +284,14 @@ export function mountTree(
       actions.appendChild(b);
     };
     mk('Rename', 'Name this element — shows in this tree, exported JSON stays clean (or double-click the row)', startRename);
-    mk('GroupObject', 'Wrap in a new container (adds a parent — works on the root too)', () => state.wrapNode(path));
-    if (path.length > 0 && path[path.length - 1] !== CARD_SEGMENT) {
-      mk('Up', 'Move up', () => state.moveNode(path, -1));
-      mk('Down', 'Move down', () => state.moveNode(path, 1));
-      mk('Copy', 'Duplicate', () => state.duplicateNode(path));
-      mk('Delete', 'Delete', () => state.removeNode(path));
+    if (ops.structural) {
+      mk('GroupObject', 'Wrap in a new container (adds a parent — works on the root too)', () => state.wrapNode(path));
+      if (path.length > 0 && path[path.length - 1] !== CARD_SEGMENT) {
+        mk('Up', 'Move up', () => state.moveNode(path, -1));
+        mk('Down', 'Move down', () => state.moveNode(path, 1));
+        mk('Copy', 'Duplicate', () => state.duplicateNode(path));
+        mk('Delete', 'Delete', () => state.removeNode(path));
+      }
     }
     // 👁 visibility toggle — flips display:none on the canvas for this node
     const eye = document.createElement('button');
@@ -207,9 +302,7 @@ export function mountTree(
     eye.setAttribute('aria-label', eye.title);
     eye.addEventListener('click', (e) => {
       e.stopPropagation();
-      state.mutateDocument(() => {
-        const n = state.nodeAt(path);
-        if (!n) return;
+      ops.commitNode(path, (n) => {
         if (n.style?.['display'] === 'none') {
           delete n.style['display'];
           if (n.style && Object.keys(n.style).length === 0) delete n.style;
@@ -241,8 +334,8 @@ export function mountTree(
 
     // selection: plain click = single-select; Ctrl/Cmd/Shift = add/remove
     row.addEventListener('click', (e) => {
-      if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
-      else state.select(path);
+      if (e.ctrlKey || e.metaKey || e.shiftKey) ops.toggleSelect(path);
+      else ops.select(path);
     });
 
     row.addEventListener('keydown', (e) => {
@@ -250,28 +343,31 @@ export function mountTree(
         if (e.target !== row) return; // let buttons inside handle their own keys
         e.preventDefault();
         e.stopPropagation();
-        if (e.ctrlKey || e.metaKey || e.shiftKey) state.toggleSelect(path);
-        else state.select(path);
+        if (e.ctrlKey || e.metaKey || e.shiftKey) ops.toggleSelect(path);
+        else ops.select(path);
       }
     });
 
     // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…),
     // headed like this very row plus a clickable parent crumb. Keep a live
     // multi-selection so "Group"/"Copy N" stay offered when several are picked.
-    row.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!state.isSelected(path)) state.select(path);
-      openElementMenu(path, { x: e.clientX, y: e.clientY }, onToast);
-    });
+    // Surface-only: the menu's actions are app-document mutations.
+    if (ops.structural) {
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!state.isSelected(path)) state.select(path);
+        openElementMenu(path, { x: e.clientX, y: e.clientY }, onToast);
+      });
+    }
 
-    // drag & drop reparent
-    row.addEventListener('dragstart', (e) => {
+    // drag & drop reparent — structural, so surface-only
+    if (ops.structural) row.addEventListener('dragstart', (e) => {
       e.stopPropagation();
       e.dataTransfer?.setData('application/x-wb-node', path.join('.'));
       e.dataTransfer!.effectAllowed = 'move';
     });
-    row.addEventListener('dragover', (e) => {
+    if (ops.structural) row.addEventListener('dragover', (e) => {
       // accept-gating: only highlight payloads this row will act on — an
       // unconditional preventDefault false-advertised drops it would ignore.
       // Accepted: palette items, tree-node reparents, column-shelf chips (§5).
@@ -282,8 +378,8 @@ export function mountTree(
       e.stopPropagation();
       row.classList.add('droptarget');
     });
-    row.addEventListener('dragleave', () => row.classList.remove('droptarget'));
-    row.addEventListener('drop', (e) => {
+    if (ops.structural) row.addEventListener('dragleave', () => row.classList.remove('droptarget'));
+    if (ops.structural) row.addEventListener('drop', (e) => {
       e.preventDefault();
       e.stopPropagation();
       row.classList.remove('droptarget');
@@ -331,7 +427,7 @@ export function mountTree(
       const pathStr = row.dataset.path;
       if (pathStr === undefined) return;
       const path = pathStr === '' ? [] : pathStr.split('.').map(Number);
-      row.classList.toggle('selected', state.isSelected(path));
+      row.classList.toggle('selected', ops.isSelected(path));
     });
   };
 
@@ -341,7 +437,10 @@ export function mountTree(
   const unsub = state.subscribe((reason) => {
     if (reason === 'selection') {
       updateSelectionOnly();
-    } else if (reason === 'document' || reason === 'load' || reason === 'kind' || reason === 'data') {
+    } else if (reason === 'document' || reason === 'load' || reason === 'kind' || reason === 'data'
+      || reason === 'workshop') {
+      // 'workshop': staged commits, staged selection moves, and the ctx
+      // registering/unregistering all reshape what this tree shows
       render();
     }
   });
