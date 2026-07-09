@@ -37,6 +37,13 @@ guidance in your environment.
   toggle by hand. Stay subscribed until the PR is merged or closed.
 - Never merge it yourself and never push to `main` — it's protected, and
   merging is the owner's call.
+- **Clean up when done**: Once the PR is successfully created and pushed, check out `main` and pull (`git checkout main && git pull origin main`) to leave the local workspace clean and ready for the next session.
+
+## Start-of-session contract (branch hygiene)
+
+At the start of every session:
+1. Check out `main` and pull the latest changes (`git checkout main && git pull origin main`) to align the local repository.
+2. Create a fresh session-specific branch before making any code modifications (e.g. `git checkout -b feature/issue-N-description` or `session/xxx`). Never code on a completed session's branch or a shared branch.
 
 ## Read before working
 
