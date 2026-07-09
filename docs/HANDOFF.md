@@ -181,6 +181,26 @@ sizes). playwright.config gained PW_PORT for this multi-session machine —
 without it, reuseExistingServer attaches tests to whichever session's dev
 server owns 5173 and silently tests THEIR code.
 
+The workshop seam (2026-07-09 owner brief, same spec §C — supersedes the v1
+"a workshop tab never re-targets the tree" constraint): `state.workshopCtx`
+(a `WorkshopContext`) is registered by `mountComponentWorkshop` and cleared
+on unmount. While a workshop tab is up, the STRUCTURE TREE renders the
+STAGED component tree (select + rename + eye only — structural gestures
+stay surface-only; embed placeholders are read-only ⬡ rows via
+`embedNameOf`) and the INSPECTOR styles staged elements with its full
+vocabulary — every write in inspector.ts routes through
+`editMutate`/`editNodes`/`docRoot`, landing on the workshop's MODAL-undo
+(one gesture = one ↶ step, `'workshop'` emits, never autosave, never the
+app stack; Save stays the one app-level step). Surface-coupled tools gate
+off in workshop mode: the instance card, conditional formatting, ▦ Map
+data, the trigger generator. The workshop's embedded style panel and mini
+struct list are GONE (the canvas got slimmer — preview + identity + slots
++ embeds + save is all that's left); its `stylePlainValue`/`styleIsFormula`
+exports remain the pure classification seam. Known follow-up: the fx bar
+still targets the covered SURFACE's selection while a workshop is up
+(pre-existing; visible now that the pane re-targets — owner call on
+whether it should hide or ride the seam).
+
 Key structural invariants:
 - **Columns · Components · Views (2026-07-06/07 — the model-B migration;
   spec: docs/specs/COLUMNS-COMPONENTS-VIEWS.md, all phases shipped)**: a
@@ -437,9 +457,11 @@ Key structural invariants:
   retired modal into a canvas TAB — `mountComponentWorkshop`): staged
   editing of
   name/description/slot labels (keys immutable) and elements visually
-  (preview click-select via `data-sp-path`, compact Format-cells-vocabulary
-  style panel; number/boolean style values are LITERALS — only `=`-strings
-  and AST objects read as formulas). "Save as new" (only option for
+  (preview click-select via `data-sp-path`; the embedded style panel and
+  mini struct list DIED 2026-07-09 — the Structure tree and the real
+  inspector ride `state.workshopCtx` instead, see the workshop-seam
+  paragraph below; number/boolean style values are LITERALS — only
+  `=`-strings and AST objects read as formulas). "Save as new" (only option for
   built-ins) vs "Save and apply to N places": re-bakes every usage via its
   own stored `_component.map` (`rebindInstance` preserves renames +
   flex/min-width), with per-usage **"keep as-found" pinning** — pinned
@@ -988,7 +1010,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1314 vitest unit tests across 68 files (engine semantics incl.
+- `npm test` — 1369 vitest unit tests across 72 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -1010,7 +1032,10 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   shell's DOM contracts — plus, 2026-07-09, the command-bar hide brain
   (`commandBar.test.ts`: catalog integrity, alias emission, foreign-entry
   preservation, presets, the serializer round trip) and the View kebab's
-  DOM/undo contracts (`viewKebab.test.ts`)). Run headlessly anywhere.
+  DOM/undo contracts (`viewKebab.test.ts`), and the workshop seam
+  (`componentEditor.test.ts` + the treeView/inspector workshop modes:
+  staged commits ride modal-undo, app undo untouched, surface tools
+  gated)). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
 - `npm run test:ui` — 142 Playwright tests across 16 spec files

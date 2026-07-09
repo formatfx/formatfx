@@ -64,6 +64,19 @@ export async function openPalette(page: Page): Promise<void> {
   await page.click('.wb-snapmenu .wb-kebab-item[data-tool="palette"]');
 }
 
+// Workshop mode (spec §C, 2026-07-09): the embedded style panel is gone — the
+// REAL inspector styles staged elements. Select the staged ROOT in the
+// workshop preview, flip to the Simple lens, and set its text color through
+// the Typography section (the old `.wb-ce-swatch` gesture's equivalent).
+export async function stageWorkshopColor(page: Page, hex: string): Promise<void> {
+  await page.locator('#wb-workshop .wb-ce-preview [data-sp-path]').first().click();
+  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  const color = page.locator('.wb-lp-inspector .wb-inspector-section', { hasText: 'Typography' })
+    .locator('.wb-color-control input').first();
+  await color.fill(hex);
+  await color.dispatchEvent('change');
+}
+
 // The app-level Undo control moved into the kebab (⋮) menu. Open it, assert the
 // Undo item is disabled (the app undo stack is empty), then close it again.
 export async function expectAppUndoDisabled(page: Page): Promise<void> {

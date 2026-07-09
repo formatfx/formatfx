@@ -12,9 +12,10 @@
  *      view-scoped behaviors & properties; a def card while a component
  *      workshop tab is up; hidden on the grid.
  *   3. the STRUCTURE TREE — always mounted, rendering the active SURFACE
- *      (state.doc — the v1 constraint: a workshop tab never re-targets it),
- *      under its own frozen "Structure" section header (2026-07-09).
- *      Drag splitter below (kept).
+ *      (state.doc) — or, while a component workshop tab is up, the STAGED
+ *      component tree via state.workshopCtx (spec §C, 2026-07-09: the owner
+ *      superseded the v1 never-re-targets constraint) — under its own frozen
+ *      "Structure" section header (2026-07-09). Drag splitter below (kept).
  *   4. the COLUMNS SHELF (columnShelf.ts) — "Columns — your data": typed
  *      chips, drag (FIELD_MIME) or click-to-insert. Data only.
  *   5. the COMPONENTS library — always visible (the old tab-swap mode died),

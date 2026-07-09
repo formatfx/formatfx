@@ -7,8 +7,10 @@
  * columnFormatterReference model. Dragover is ACCEPT-GATED: a row only
  * highlights payloads it will act on (the false-highlight fix).
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountTree } from './treeView';
+import { mountComponentWorkshop } from './componentEditor';
+import { componentById } from './componentLibrary';
 import { state } from './state';
 import type { MockField, SPElement } from '../core/types';
 
@@ -294,5 +296,84 @@ describe('field drops (§5: the shelf chip lands as its look-aware cell)', () =>
     const before = JSON.stringify(state.doc.root);
     row.dispatchEvent(drop('Ghost'));
     expect(JSON.stringify(state.doc.root)).toBe(before);
+  });
+});
+
+describe('workshop mode (spec §C, 2026-07-09 — supersedes the v1 "never re-targets" constraint)', () => {
+  let wsHost: HTMLElement;
+  let wsHandle: { destroy(): void } | null = null;
+
+  const openWorkshop = (): void => {
+    state.openComponentTab('builtin-deadline-chip');
+    wsHost = document.createElement('div');
+    document.body.append(wsHost);
+    wsHandle = mountComponentWorkshop(wsHost, componentById('builtin-deadline-chip')!, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+    });
+  };
+
+  afterEach(() => {
+    wsHandle?.destroy();
+    wsHandle = null;
+  });
+
+  it('renders the STAGED component tree while a workshop tab is active, back to the surface on destroy', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const gridRows = host.querySelectorAll('.wb-tree-row').length;
+    openWorkshop();
+    const ctx = state.workshopCtx!;
+    const stagedCount = (function count(el): number {
+      let n = 1;
+      (el.children ?? []).forEach((c: SPElement) => { n += count(c); });
+      if (el.customCardProps?.formatter) n += count(el.customCardProps.formatter);
+      return n;
+    })(ctx.root());
+    expect(host.querySelectorAll('.wb-tree-row').length).toBe(stagedCount);
+    // destroying the workshop re-targets the tree back to the surface
+    wsHandle!.destroy();
+    wsHandle = null;
+    state.deactivateComponentTab();
+    expect(host.querySelectorAll('.wb-tree-row').length).toBe(gridRows);
+  });
+
+  it('row clicks move the STAGED selection, never the app selection', () => {
+    openWorkshop();
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const appSel = JSON.stringify(state.selections);
+    const rows = host.querySelectorAll<HTMLElement>('.wb-tree-row');
+    const target = rows[rows.length - 1];
+    const wantPath = target.dataset.path === '' ? [] : target.dataset.path!.split('.').map(Number);
+    target.click();
+    expect(state.workshopCtx!.selection()).toEqual(wantPath);
+    expect(JSON.stringify(state.selections)).toBe(appSel);
+    // and the row shows selected on the next paint
+    const selRow = host.querySelector('.wb-tree-row.selected');
+    expect(selRow).not.toBeNull();
+  });
+
+  it('structural actions are gated off; rename and the eye ride the staged commit (modal-undo, not app undo)', () => {
+    openWorkshop();
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    expect(host.querySelector('.wb-tree-actions [aria-label="Delete"]')).toBeNull();
+    expect(host.querySelector('.wb-tree-actions [aria-label="Move up"]')).toBeNull();
+    const appUndo = (state as unknown as { undoStack: string[] }).undoStack.length;
+    // the eye hides the staged node
+    const eye = host.querySelectorAll<HTMLButtonElement>('.wb-tree-eye')[1] ?? host.querySelector<HTMLButtonElement>('.wb-tree-eye')!;
+    eye.click();
+    const ctx = state.workshopCtx!;
+    const anyHidden = (function scan(el): boolean {
+      if (el.style?.["display"] === "none") return true;
+      return (el.children ?? []).some((c: SPElement) => scan(c));
+    })(ctx.root());
+    expect(anyHidden).toBe(true);
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(appUndo);
+    // the workshop's own undo pair knows about it
+    expect(wsHost.querySelector<HTMLButtonElement>('.wb-mu-undo')!.disabled).toBe(false);
   });
 });

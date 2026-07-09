@@ -650,3 +650,41 @@ describe('Theme colors — the primary theme-aware color picker', () => {
     expect(node0().attributes?.class).toBe(formula);
   });
 });
+
+describe('workshop mode (spec §C, 2026-07-09): the inspector styles STAGED elements', () => {
+  it('routes commits to the workshop modal-undo, never the app stack; instance card and surface tools gate off', async () => {
+    const { mountComponentWorkshop } = await import('./componentEditor');
+    const { componentById } = await import('./componentLibrary');
+    state.openComponentTab('builtin-deadline-chip');
+    const wsHost = document.createElement('div');
+    document.body.append(wsHost);
+    const handle = mountComponentWorkshop(wsHost, componentById('builtin-deadline-chip')!, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+    });
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountInspector(host, {});
+    const ctx = state.workshopCtx!;
+    ctx.select([]);
+    // the pane renders element sections for the STAGED root
+    // (.wb-inspector-empty doubles as a note class inside sections — assert
+    // the TEACHING empty state specifically, then a real section)
+    expect(host.textContent).not.toContain('Select an element');
+    expect(host.textContent).toContain('Element');
+    // surface-coupled tools are gone in workshop mode
+    expect(host.querySelector('.wb-inspector-cond')).toBeNull();
+    expect(host.querySelector('.wb-mapdata-btn')).toBeNull();
+    expect(host.querySelector('.wb-instance-card, .wb-inst-card')).toBeNull();
+    // a name commit lands on the staged tree as a modal-undo step, not app undo
+    const appUndo = (state as unknown as { undoStack: string[] }).undoStack.length;
+    const nameInput = [...host.querySelectorAll<HTMLInputElement>('input')]
+      .find((i) => i.closest('.wb-field')?.textContent?.includes('name (_elmName)'))!;
+    nameInput.value = 'Staged name';
+    nameInput.dispatchEvent(new Event('change'));
+    expect(ctx.root()._elmName).toBe('Staged name');
+    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(appUndo);
+    expect(wsHost.querySelector<HTMLButtonElement>('.wb-mu-undo')!.disabled).toBe(false);
+    handle.destroy();
+  });
+});
+
