@@ -16,7 +16,7 @@ import {
   STYLE_PROP_DOCS, ATTRIBUTE_DOCS,
   STYLE_FAMILY_EXPLAINS, styleFamilyOf, styleGroupOf, type StyleFamily,
 } from '../core/schema';
-import { state, CARD_SEGMENT } from './state';
+import { state, CARD_SEGMENT, type WorkshopContext } from './state';
 import { focusFxSlot } from './fxBar';
 import { openPlayground } from './playground';
 import { openCondFormat } from './condFormat';
@@ -48,9 +48,37 @@ const QUICK_ADD: Array<[string, string]> = [
   ['transition', 'all .15s ease'],
 ];
 
+// ── the render-time editing context (spec §C, 2026-07-09) ────────────────────
+// Null = the surface (state.doc / state.selection / app undo). While a
+// component WORKSHOP tab is up, render() points this at state.workshopCtx and
+// EVERY write in this file routes through editMutate/editNodes/docRoot — so
+// the same sections style staged elements, with commits landing on the
+// workshop's modal-undo instead of the app stack. Module-level (like
+// selfCommit/inspectorToast) because the helper builders outside
+// mountInspector's closure write too.
+let activeCtx: WorkshopContext | null = null;
+
+/** Every node a multi-write applies to — staged selection is single-only. */
+function editNodes(): SPElement[] {
+  if (!activeCtx) return state.selectedNodes;
+  const n = activeCtx.nodeAt(activeCtx.selection());
+  return n ? [n] : [];
+}
+
+/** ONE undoable write on the active editing context. */
+function editMutate(fn: () => void): void {
+  if (activeCtx) activeCtx.commit(fn);
+  else state.mutateDocument(fn);
+}
+
+/** The tree the section helpers may walk (hover-reveal pairing etc.). */
+function docRoot(): SPElement {
+  return activeCtx ? activeCtx.root() : state.doc.root;
+}
+
 /** True when 2+ nodes are selected and they disagree on this style property. */
 function propIsMixed(prop: string): boolean {
-  const nodes = state.selectedNodes;
+  const nodes = editNodes();
   return nodes.length > 1 && !styleAcross(nodes, prop).uniform;
 }
 
@@ -61,17 +89,27 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
   inspectorToast = toast;
   const render = () => {
     host.innerHTML = '';
-    const node = state.selectedNode;
+    // workshop mode: the pane edits the STAGED tree through the seam
+    activeCtx = state.activeComponentTab !== null ? state.workshopCtx : null;
+    const node = activeCtx ? activeCtx.nodeAt(activeCtx.selection()) : state.selectedNode;
     if (!node) {
-      host.innerHTML = '<div class="wb-inspector-empty">Select an element on the canvas or in the tree.</div>';
+      host.innerHTML = activeCtx
+        ? '<div class="wb-inspector-empty">Select an element in the workshop preview or the Structure tree.</div>'
+        : '<div class="wb-inspector-empty">Select an element on the canvas or in the tree.</div>';
       return;
     }
     // Columns mode: the grid root is scaffolding, not a maker-editable
     // element (the canvas ignores its styles, and the tree doesn't list it) —
     // with it selected (the fresh-load default) the pane teaches instead of
     // exposing wrapper internals.
-    if (state.doc.kind === 'grid' && state.selection && state.selection.length === 0) {
+    if (!activeCtx && state.doc.kind === 'grid' && state.selection && state.selection.length === 0) {
       host.innerHTML = '<div class="wb-inspector-empty">You’re on the columns grid — select a column (or an element inside one) to edit it.</div>';
+      return;
+    }
+    // a staged embed placeholder: styles set here would vanish when flatten
+    // swaps the child's tree in — refuse-and-teach (the dead style panel's rule)
+    if (activeCtx && node._embed !== undefined) {
+      host.innerHTML = '<div class="wb-inspector-empty">This is an embedded component — restyle it in its OWN workshop (open it from the ⬡ library).</div>';
       return;
     }
 
@@ -79,21 +117,23 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     //    instance leads with its provenance, ahead of the element sections:
     //    which def it is, which column each slot is bound to (remappable),
     //    the workshop door, and the way OUT of the component model.
-    if (node._component && state.selection) {
+    //    Surface-only: provenance/re-bind/detach are app-document gestures.
+    if (!activeCtx && node._component && state.selection) {
       host.appendChild(instanceCard(node, state.selection, toast));
     }
     const commit = (fn: (n: SPElement) => void) => {
       selfCommit = true;
-      state.mutateDocument(() => fn(node));
+      editMutate(() => fn(node));
       selfCommit = false;
     };
     // Multi-edit: a targeted property patch applies to EVERY selected node as one
     // undo step (spec — editing a divergent property writes it to all). Used by
     // the dedicated visual controls; whole-object editors (kvEditor) and identity
-    // fields (name/elmType/txtContent) keep `commit` (primary only).
+    // fields (name/elmType/txtContent) keep `commit` (primary only). In workshop
+    // mode the staged selection is single, so both collapse to the one node.
     const commitAll = (fn: (n: SPElement) => void) => {
       selfCommit = true;
-      state.mutateDocument(() => state.selectedNodes.forEach(fn));
+      editMutate(() => editNodes().forEach(fn));
       selfCommit = false;
     };
 
@@ -119,7 +159,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     // forEach: a code-driven element is rendered once per item, so edits here
     // apply to every repeated copy. Flag it (amber, not an error) so that's
     // never a surprise — counting across the selection for multi-edit.
-    const codeDriven = state.selectedNodes.filter((n) => n.forEach !== undefined);
+    const codeDriven = editNodes().filter((n) => n.forEach !== undefined);
     if (codeDriven.length) {
       const warn = document.createElement('div');
       warn.className = 'wb-inspector-warn';
@@ -145,7 +185,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     const sectionReset = (props: string[]): SectionReset => ({
       // active when ANY selected node has one of these props set — Reset (commitAll)
       // writes to every selected node, so the dot/button must reflect all of them.
-      active: state.selectedNodes.some((n) => props.some((p) => styleOf(n, p) !== '')),
+      active: editNodes().some((n) => props.some((p) => styleOf(n, p) !== '')),
       onReset: () => commitAll((n) => {
         if (!n.style) return;
         for (const p of props) delete n.style[p];
@@ -162,9 +202,9 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
 
     // ✨ conditional formatting — click-only; the builder generates the
     // formulas itself, so a misclick can't corrupt the formatter. A FormatFX
-    // superpower → Pro lens. (The playground button is dropped: the Left Edit
-    // Pane IS the playground.)
-    if (pro) {
+    // superpower → Pro lens. Surface-only: the overlay reads/writes the app
+    // document by path, which a staged tree doesn't have.
+    if (pro && !activeCtx) {
       const condBtn = document.createElement('button');
       condBtn.className = 'wb-inspector-cond';
       condBtn.textContent = 'Conditional formatting…';
@@ -191,16 +231,19 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
           }
           n.txtContent = v;
         }), "Literal, '=expression', '[$Field]', '@currentField' or AST {\"operator\":…}")));
-      // ▦ Map data (#217) on the content slot — conditional text, click-only
-      const map = document.createElement('button');
-      map.type = 'button';
-      map.className = 'wb-mapdata-btn';
-      map.textContent = '▦ Map data…';
-      map.title = 'Drive the text from your columns with visual IF / ELSE-IF / ELSE rows — compiled to a safe formula, one undoable step';
-      map.addEventListener('click', () => {
-        if (state.selection) openMapData({ path: state.selection, slot: 'text', label: 'Text' }, toast);
-      });
-      wrap.appendChild(map);
+      // ▦ Map data (#217) on the content slot — conditional text, click-only.
+      // Surface-only: the mapper compiles against app-document paths.
+      if (!activeCtx) {
+        const map = document.createElement('button');
+        map.type = 'button';
+        map.className = 'wb-mapdata-btn';
+        map.textContent = '▦ Map data…';
+        map.title = 'Drive the text from your columns with visual IF / ELSE-IF / ELSE rows — compiled to a safe formula, one undoable step';
+        map.addEventListener('click', () => {
+          if (state.selection) openMapData({ path: state.selection, slot: 'text', label: 'Text' }, toast);
+        });
+        wrap.appendChild(map);
+      }
       return wrap;
     };
 
@@ -209,10 +252,12 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     // on the container the user will hover) as one undoable gesture. Offered in
     // BOTH lenses: it's a maker-facing concept, not a Pro superpower.
     const revealSection = (): HTMLElement => {
-      const sel = state.selection ?? [];
-      const st = hoverRevealStatus(state.doc.root, sel);
+      // hover-reveal is pure class pairing over a tree — it works on the
+      // staged tree exactly as on the surface (docRoot()/editMutate route it)
+      const sel = (activeCtx ? activeCtx.selection() : state.selection) ?? [];
+      const st = hoverRevealStatus(docRoot(), sel);
       const cb = checkbox(st.on, (v) => {
-        state.mutateDocument(() => setRevealOnHover(state.doc.root, sel, v));
+        editMutate(() => setRevealOnHover(docRoot(), sel, v));
       });
       cb.disabled = !st.can;
       const row = labeled('show only while hovered', cb);
@@ -224,7 +269,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
         : 'Hides this element until the surrounding container is hovered (like a row\'s ⋯ menu).');
       return section('Reveal on hover', [row, note], false, {
         active: st.on,
-        onReset: () => state.mutateDocument(() => setRevealOnHover(state.doc.root, sel, false)),
+        onReset: () => editMutate(() => setRevealOnHover(docRoot(), sel, false)),
       });
     };
 
@@ -286,7 +331,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
             }
             if (Object.keys(n.style).length === 0) delete n.style;
           });
-        }, governedProperties(node.attributes?.class), (prop) => {
+        }, governedProperties(node.attributes?.class), activeCtx ? undefined : (prop) => {
           if (state.selection) openMapData({ path: state.selection, slot: 'style', prop, label: prop }, toast);
         }),
       ], true));
@@ -310,7 +355,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
           b.className = 'wb-quickadd-link';
           b.textContent = p;
           b.title = `Add ${p}: ${dflt}`;
-          b.addEventListener('click', () => state.mutateDocument(() => state.selectedNodes.forEach((n) => {
+          b.addEventListener('click', () => editMutate(() => editNodes().forEach((n) => {
             n.style = n.style ?? {};
             if (n.style[p] === undefined) n.style[p] = dflt;
           })));
@@ -349,7 +394,9 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     // (refuse and teach; the completeness lint rules back it up). One
     // undoable step; the overlay gets selected so it can be tuned below.
     const clickSurface: HTMLElement[] = [];
-    if (!cra && canHostTrigger(node) && state.selection) {
+    // surface-only: the generator writes overlays by app-document path and
+    // re-selects the carrier via state.select
+    if (!activeCtx && !cra && canHostTrigger(node) && state.selection) {
       const sel = state.selection;
       // the column this element displays — inline edit's default target (#212)
       const dispName = (() => {
@@ -630,7 +677,9 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       selectCardBtn.textContent = '▣ Edit card content (select card root)';
       selectCardBtn.title = 'Selects the card formatter root — edit it like any element via the tree, palette and this inspector. It also appears nested in the Structure tree.';
       selectCardBtn.addEventListener('click', () => {
-        if (state.selection) state.select([...state.selection, CARD_SEGMENT]);
+        // card content is addressable in both modes — CARD_SEGMENT descends
+        if (activeCtx) activeCtx.select([...activeCtx.selection(), CARD_SEGMENT]);
+        else if (state.selection) state.select([...state.selection, CARD_SEGMENT]);
       });
       cardKids.push(
         selectCardBtn,
@@ -669,7 +718,9 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
   const unsub = state.subscribe((reason) => {
     // skip rebuilding for our own commits — keeps focus in the input being
     // edited (arrow-stepping, rapid toggles) while canvas/tree still update
-    if (reason === 'document' && selfCommit) return;
+    if ((reason === 'document' || reason === 'workshop') && selfCommit) return;
+    // 'workshop': staged selection moves, staged undo, ctx register/unregister
+    if (reason === 'workshop') { render(); return; }
     // 'kind' rides along like everywhere else (treeView/fxBar/explainPanel):
     // applying a row/tile template or switching kind swaps the whole document
     // shape, and the Document section must not keep naming the old kind
@@ -1407,7 +1458,7 @@ function visualRow(node: SPElement, label: string, prop: string, control: HTMLEl
       if (exValue === null || exProp !== prop) return; // variant switches just re-read
       // apply to every selected node as a normal (re-rendering) mutation so the
       // field visibly updates to the value the maker just clicked.
-      state.mutateDocument(() => state.selectedNodes.forEach((n) => {
+      editMutate(() => editNodes().forEach((n) => {
         n.style = n.style ?? {};
         if (exValue === '') delete n.style[prop]; else n.style[prop] = exValue;
         if (Object.keys(n.style).length === 0) delete n.style;
@@ -1534,7 +1585,8 @@ function exprField(
         openMapData({ path: state.selection, slot: 'style', prop, label: label ?? prop }, inspectorToast);
       }
     });
-    wrap.append(mapBtn);
+    // surface-only: the mapper compiles against app-document paths
+    if (!activeCtx) wrap.append(mapBtn);
   };
   render();
   return wrap;
@@ -1626,10 +1678,10 @@ function themeColorsSection(node: SPElement, toast: (m: string) => void): HTMLEl
   const has = (token: string) => classTokens(classAttr).includes(token);
   const pick = (role: ColorRole, token: string) => {
     let refused = false;
-    state.mutateDocument(() => state.selectedNodes.forEach((n) => { if (!setThemeClass(n, role, token)) refused = true; }));
+    editMutate(() => editNodes().forEach((n) => { if (!setThemeClass(n, role, token)) refused = true; }));
     if (refused) toast('This element’s class is a formula — edit it in the Function Bar.');
   };
-  const clear = (role: ColorRole) => state.mutateDocument(() => state.selectedNodes.forEach((n) => clearThemeClass(n, role)));
+  const clear = (role: ColorRole) => editMutate(() => editNodes().forEach((n) => clearThemeClass(n, role)));
 
   const noneChip = (role: ColorRole, active: boolean): HTMLElement => {
     const b = document.createElement('button');

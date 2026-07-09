@@ -16,6 +16,7 @@ import {
 } from './components';
 import { mountComponentWorkshop } from './componentEditor';
 import { mountCanvas } from './canvas';
+import { mountTree } from './treeView';
 import { state } from './state';
 import type { SPElement } from '../core/types';
 
@@ -410,6 +411,7 @@ describe('component nesting (#225): library resolution, delete guard, workshop c
     seedPair();
     const toasts: string[] = [];
     const dirt: boolean[] = [];
+    state.openComponentTab('c-pill'); // the tree re-targets while the tab is up
     const host = document.createElement('div');
     document.body.appendChild(host);
     const handle = mountComponentWorkshop(host, rawComponentById('c-pill')!, {
@@ -427,8 +429,15 @@ describe('component nesting (#225): library resolution, delete guard, workshop c
     const staged = handle.staging().staged;
     expect(staged.embeds).toEqual([{ ns: 'Deadlinechip', of: BUILTIN_COMPONENTS[0].id, name: 'Deadline chip' }]);
     expect(staged.root.children!.at(-1)!._embed).toBe('Deadlinechip');
-    // the struct list shows the embed as the component it stands in for
-    expect([...host.querySelectorAll('.wb-ce-struct-row')].some((r) => r.textContent === '⬡ Deadline chip')).toBe(true);
+    // the STRUCTURE TREE (workshop mode, spec §C) shows the embed as the
+    // component it stands in for — a read-only ⬡ row (the struct list died)
+    const treeHost = document.createElement('div');
+    document.body.appendChild(treeHost);
+    mountTree(treeHost);
+    const embedRow = [...treeHost.querySelectorAll<HTMLElement>('.wb-tree-row')]
+      .find((r) => r.querySelector('.wb-comp-mark') && r.textContent?.includes('Deadline chip'));
+    expect(embedRow).toBeTruthy();
+    expect(embedRow!.querySelector('.wb-tree-eye')).toBeNull(); // read-only stand-in
     // remove: the ✕ on the embed row takes reference + placeholder together
     host.querySelector<HTMLButtonElement>('.wb-ce-embeddel')!.click();
     const after = handle.staging().staged;
