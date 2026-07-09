@@ -12,15 +12,18 @@
  *      view-scoped behaviors & properties; a def card while a component
  *      workshop tab is up; hidden on the grid.
  *   3. the STRUCTURE TREE — always mounted, rendering the active SURFACE
- *      (state.doc — the v1 constraint: a workshop tab never re-targets it).
+ *      (state.doc — the v1 constraint: a workshop tab never re-targets it),
+ *      under its own frozen "Structure" section header (2026-07-09).
  *      Drag splitter below (kept).
  *   4. the COLUMNS SHELF (columnShelf.ts) — "Columns — your data": typed
  *      chips, drag (FIELD_MIME) or click-to-insert. Data only.
  *   5. the COMPONENTS library — always visible (the old tab-swap mode died),
  *      then the VIEWS list (viewMenu.ts) — composition last, the owner's
- *      left-to-right mental model.
- *   6. the Simple/Pro/Code lens tabs, and the lower workspace swapping 
- *      between the inspector and the Code declarations.
+ *      left-to-right mental model. All three are collapsible sections whose
+ *      headers stay frozen (sticky) while the shelves region scrolls.
+ *   6. splitter 2 (shelves/props boundary — drag to grow the properties
+ *      editor, double-click resets), the Simple/Pro/Code lens tabs, and the
+ *      lower workspace swapping between the inspector and Code declarations.
  */
 
 import { state, type EditorLens } from './state';
@@ -41,8 +44,10 @@ export interface LeftPaneOptions {
 }
 
 const COLLAPSIBLE_SECTIONS: { id: PaneSectionId; label: string }[] = [
+  { id: 'tree', label: 'Structure tree' },
   { id: 'columns', label: 'Columns shelf' },
   { id: 'components', label: 'Components library' },
+  { id: 'views', label: 'Views list' },
   { id: 'inspector', label: 'Properties editor' },
 ];
 
@@ -83,8 +88,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       <button class="wb-kebab-btn" id="wb-kebab-btn" aria-haspopup="menu" aria-label="Menu" title="Menu — tools and snapshots">${ICONS.kebab}</button>
     </div>
     <div id="wb-lp-viewcard"></div>
-    <div class="wb-lp-tree" id="wb-lp-tree">
-      <div class="wb-tree-sec-body" id="wb-tree-body"></div>
+    <div class="wb-lp-tree wb-lp-sec" data-sec="tree" id="wb-lp-tree">
+      ${sectionHead('tree', 'Structure', 'wb-tree-body')}
+      <div class="wb-tree-sec-body wb-lp-sec-body" id="wb-tree-body"></div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-lp-shelves" id="wb-lp-shelves">
@@ -96,8 +102,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         ${sectionHead('components', 'Components', 'wb-lp-library')}
         <div class="wb-complib wb-lp-sec-body" id="wb-lp-library"></div>
       </section>
-      <div id="wb-lp-views"></div>
+      <section class="wb-lp-sec" data-sec="views">
+        ${sectionHead('views', 'Views', 'wb-lp-views')}
+        <div class="wb-lp-sec-body" id="wb-lp-views"></div>
+      </section>
     </div>
+    <div class="wb-lp-splitter" id="wb-lp-splitter2" title="Drag to give the properties editor more or less height — double-click resets"></div>
     <div class="wb-lp-props" id="wb-lp-props">
       <section class="wb-lp-sec wb-lp-sec-inspector" data-sec="inspector">
         ${sectionHead('inspector', 'Properties', 'wb-lp-inspector')}
@@ -116,7 +126,10 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!, { toast });
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
 
-  // ── collapsible sections (issue #236): Columns · Components · Inspector ─────
+  // ── collapsible sections (issue #236 + the 2026-07-09 additions): the tree,
+  //    Columns, Components, Views and the Inspector all fold from their header.
+  //    Folding a REGION with a dragged inline size also clears that size, so a
+  //    stale drag never holds the fold open (tree height / props height).
   for (const { id, label } of COLLAPSIBLE_SECTIONS) {
     const sec = host.querySelector<HTMLElement>(`.wb-lp-sec[data-sec="${id}"]`);
     const head = host.querySelector<HTMLButtonElement>(`.wb-lp-sec-head[data-sec-head="${id}"]`);
@@ -125,6 +138,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       sec.classList.toggle('wb-collapsed', collapsed);
       head.setAttribute('aria-expanded', String(!collapsed));
       head.title = collapsed ? `Show ${label}` : `Hide ${label}`;
+      if (collapsed && id === 'tree') sec.style.height = '';
+      if (collapsed && id === 'inspector') {
+        const props = host.querySelector<HTMLElement>('#wb-lp-props');
+        if (props) { props.style.height = ''; props.style.flex = ''; }
+      }
     };
     apply(isSectionCollapsed(id));
     head.addEventListener('click', () => {
@@ -188,6 +206,38 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     };
     splitter.addEventListener('pointermove', move);
     splitter.addEventListener('pointerup', up);
+  });
+
+  // ── splitter 2: the shelves/props boundary — the answer to "why can't the
+  //    properties section take more space" (2026-07-09). Dragging pins the
+  //    props region to a height (shelves absorb the rest); double-click
+  //    resets to the default flex split. ─────────────────────────────────────
+  const propsRegion = host.querySelector<HTMLElement>('#wb-lp-props')!;
+  const splitter2 = host.querySelector<HTMLElement>('#wb-lp-splitter2')!;
+  splitter2.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    splitter2.setPointerCapture(e.pointerId);
+    const startY = e.clientY;
+    const startH = propsRegion.getBoundingClientRect().height;
+    const move = (ev: PointerEvent) => {
+      // dragging UP grows the props region; on a squeezed pane the ceiling
+      // can dip below the 110px floor — the ceiling wins so the region never
+      // overflows the space that actually exists (PR #267)
+      const ceiling = Math.max(56, host.clientHeight - 260);
+      const next = Math.min(ceiling, Math.max(Math.min(110, ceiling), startH + (startY - ev.clientY)));
+      propsRegion.style.height = `${next}px`;
+      propsRegion.style.flex = '0 0 auto';
+    };
+    const up = () => {
+      splitter2.removeEventListener('pointermove', move);
+      splitter2.removeEventListener('pointerup', up);
+    };
+    splitter2.addEventListener('pointermove', move);
+    splitter2.addEventListener('pointerup', up);
+  });
+  splitter2.addEventListener('dblclick', () => {
+    propsRegion.style.height = '';
+    propsRegion.style.flex = '';
   });
 
   // ── subscriptions ──────────────────────────────────────────────────────────

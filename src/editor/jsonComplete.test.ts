@@ -67,6 +67,23 @@ describe('key completion — element objects', () => {
     expect(names).toContain('elmType');
     expect(names).toContain('rowFormatter');
     expect(names).toContain('hideSelection');
+    expect(names).toContain('commandBarProps');
+  });
+
+  it('commandBarProps offers commands; a commands entry offers the documented props', () => {
+    expect(inserts(comp('{"commandBarProps": {"c|"}}'))).toEqual(['commands']);
+    const names = inserts(comp('{"commandBarProps": {"commands": [{"|"}]}}'));
+    expect(names).toContain('key');
+    expect(names).toContain('hide');
+    expect(names).toContain('sectionType');
+    expect(names).toContain('selectionModes');
+  });
+
+  it('a command entry key value suggests the real command keys (aliases included)', () => {
+    const c = comp('{"commandBarProps": {"commands": [{"key": "up|"}]}}');
+    const names = inserts(c);
+    expect(names).toContain('upload');
+    expect(names).toContain('UploadCommand');
   });
 });
 

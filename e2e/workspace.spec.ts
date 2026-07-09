@@ -373,7 +373,7 @@ test('the left pane frames the active surface: tree + shelf + library + views li
   await expect(page.locator('.wb-lp-sec[data-sec="columns"] .wb-lp-sec-title')).toHaveText('Columns');
   await expect(page.locator('#wb-lp-shelf .wb-colchip').first()).toBeVisible();
   await expect(page.locator('#wb-lp-library')).toBeVisible();
-  await expect(page.locator('.wb-viewslist-head')).toContainText('Views');
+  await expect(page.locator('.wb-lp-sec-head[data-sec-head="views"] .wb-lp-sec-title')).toHaveText('Views');
   // the formatter tablist and the document pill died with the drill-in model
   await expect(page.locator('.wb-fmt-tab')).toHaveCount(0);
   await expect(page.locator('#wb-doc-pill')).toHaveCount(0);
@@ -409,7 +409,7 @@ test('the pane sections fold away and back (Columns · Components · Inspector),
   await expect(shelf).toBeHidden(); // Columns still folded
 });
 
-test('the This-view card: density + row class + scanned behaviors with jump-to-element', async ({ page }) => {
+test('the This-view card: the ⋮ kebab holds density, row class, hide toggles and command buttons', async ({ page }) => {
   // a view via the kind select in the pane's head kebab (carries the grid's columns)
   await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
@@ -418,16 +418,46 @@ test('the This-view card: density + row class + scanned behaviors with jump-to-e
   await expect(cardHost).toBeVisible();
   await expect(cardHost.locator('.wb-viewcard-name')).toHaveText('View 1');
   await expect(cardHost.locator('.wb-viewcard-kind')).toHaveText('row view');
-  // density is a one-step view knob
-  await cardHost.locator('.wb-viewcard-segbtn', { hasText: 'Compact' }).click();
+  // the card carries no inline settings anymore — the ⋮ kebab does (spec §A)
+  await expect(cardHost.locator('.wb-viewcard-seg')).toHaveCount(0);
+  await expect(cardHost.locator('.wb-viewcard-rowclass')).toHaveCount(0);
+  await cardHost.locator('.wb-viewcard-kebab').click();
+  const kebab = page.locator('.wb-viewkebab');
+  await expect(kebab).toBeVisible();
+
+  // density is a one-step view knob — and the body-owned panel survives its own gesture
+  await kebab.locator('[data-prop="density"] .wb-viewcard-segbtn', { hasText: 'Compact' }).click();
   await expect(page.locator('.wb-mock-viewrow > [data-sp-path=""]').first()).toHaveCSS('gap', '8px');
+  await expect(kebab).toBeVisible();
   await page.keyboard.press('Control+z');
+
   // the row class commits on Enter as ONE mutation, lands in viewExtras
-  await cardHost.locator('.wb-viewcard-rowclass').fill('sp-row-card');
-  await cardHost.locator('.wb-viewcard-rowclass').press('Enter');
+  await kebab.locator('.wb-viewcard-rowclass').fill('sp-row-card');
+  await kebab.locator('.wb-viewcard-rowclass').press('Enter');
   await expect(page.locator('#wb-toast')).toContainText('sp-row-card');
   expect(await page.inputValue('#wb-json-text')).toContain('"additionalRowClass": "sp-row-card"');
   await page.keyboard.press('Control+z');
+
+  // a hide toggle writes the wrapper prop (Show later deletes it — clean export)
+  await kebab.locator('[data-prop="hideSelection"] .wb-viewcard-segbtn', { hasText: 'Hide' }).click();
+  expect(await page.inputValue('#wb-json-text')).toContain('"hideSelection": true');
+
+  // the Command buttons drill-in: a preset is ONE undoable step and emits the
+  // alias-complete commandBarProps (the pnp hide-all pattern)
+  await kebab.locator('.wb-viewkebab-commands').click();
+  await expect(kebab.locator('.wb-viewkebab-group')).toHaveCount(5);
+  await kebab.locator('.wb-viewkebab-preset[data-preset="entryOnly"]').click();
+  const json = await page.inputValue('#wb-json-text');
+  expect(json).toContain('"commandBarProps"');
+  expect(json).toContain('"key": "editInGridView"');
+  expect(json).not.toContain('"key": "new"'); // Collect entries keeps + New visible
+  await page.keyboard.press('Control+z');
+  expect(await page.inputValue('#wb-json-text')).not.toContain('commandBarProps');
+
+  // Escape closes the panel
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wb-viewkebab')).toHaveCount(0);
+
   // a behavior lands in the scan: insert an Action button, its row appears
   await openPalette(page);
   await page.locator('.wb-palette-pop .wb-palette-item', { hasText: 'Action button' }).click();
@@ -436,6 +466,37 @@ test('the This-view card: density + row class + scanned behaviors with jump-to-e
   // clicking it jumps to (selects) the carrying element
   await behavior.click();
   await expect(page.locator('#wb-canvas .wb-selected').first()).toBeVisible();
+});
+
+test('left pane chrome: frozen section headers, a collapsible Views section, the props splitter', async ({ page }) => {
+  // the tree region now leads with its own "Structure" header
+  await expect(page.locator('.wb-lp-sec-head[data-sec-head="tree"] .wb-lp-sec-title')).toHaveText('Structure');
+  // Views folds like its siblings (2026-07-09 owner brief)
+  const viewsHead = page.locator('.wb-lp-sec-head[data-sec-head="views"]');
+  await expect(viewsHead.locator('.wb-lp-sec-title')).toHaveText('Views');
+  await viewsHead.click();
+  await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
+  await expect(page.locator('#wb-lp-views')).toBeHidden();
+  await viewsHead.click();
+  await expect(page.locator('#wb-lp-views')).toBeVisible();
+  // section headers freeze while their region scrolls
+  await expect(page.locator('.wb-lp-sec[data-sec="columns"] > .wb-lp-sec-head')).toHaveCSS('position', 'sticky');
+  await expect(page.locator('.wb-lp-sec[data-sec="inspector"] > .wb-lp-sec-head')).toHaveCSS('position', 'sticky');
+  // the shelves/props boundary drags (props grows) and double-click resets
+  const splitter2 = page.locator('#wb-lp-splitter2');
+  await expect(splitter2).toBeVisible();
+  const props = page.locator('#wb-lp-props');
+  const before = (await props.boundingBox())!.height;
+  const box = (await splitter2.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 80, { steps: 4 });
+  await page.mouse.up();
+  const after = (await props.boundingBox())!.height;
+  expect(after).toBeGreaterThan(before + 40);
+  await splitter2.dblclick();
+  const reset = (await props.boundingBox())!.height;
+  expect(Math.abs(reset - before)).toBeLessThan(12);
 });
 
 test('Select/Live canvas toggle: Live fires customRowAction, Select selects instead', async ({ page }) => {

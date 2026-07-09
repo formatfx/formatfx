@@ -65,6 +65,12 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
                markers, plain-language "why")
   serializer.ts   JSON ⇄ document (column/row/tile wrapper detection),
                whitespace sanitization, CSOM-safe & escaping
+  commandBar.ts   the command-bar hide brain (pure, node-tested): the
+               LOGICAL-BUTTON catalog (53 buttons over 93 key aliases —
+               MS docs' rename table + the pnp hide-all field pattern:
+               hiding emits EVERY alias), presets, and the surgical
+               viewExtras.commandBarProps read/write that preserves
+               foreign entries and non-`hide` customizations verbatim
   schemaImport.ts native "Export to CSV with schema" parser (CAML field XML
                incl. live CustomFormatters), PS-script JSON, hand CSV
   share.ts     the share-link codec: project JSON ⇄ URL fragment
@@ -111,7 +117,11 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                ▦ Grid + view tabs + ⬡ workshop tabs; workshop keep-alive +
                dirty dots), leftPane.ts + viewCard/columnShelf/
                componentLibrary/viewMenu (the Mockup-B left pane sections —
-               COLUMNS-COMPONENTS-VIEWS §3)
+               COLUMNS-COMPONENTS-VIEWS §3), viewKebab.ts (the ⋮ View
+               settings panel off the view card's heading — density, row
+               class, hide toggles, tile box, the Command buttons drill-in
+               over core/commandBar; body-owned + fixed because the card
+               re-renders on every 'document' emit)
 src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
                extractSnippet.ts / deploySnippet.ts generate the auditable
                paste-into-devtools snippets. Pure + dependency-free, and
@@ -144,6 +154,32 @@ would fight plain typing). acMenu gained an optional caret anchor (additive).
 Prior art: thechriskent/jsonify's HorseScript IntelliSense — the feature
 shape (completions + signature help + expression highlighting inside JSON),
 not the code.
+
+View chrome kebab + left-pane polish (2026-07-09 owner brief; spec:
+docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md). The THIS
+VIEW card's heading gained the ⋮ VIEW SETTINGS kebab (`viewKebab.ts`) and
+lost its inline controls; the inspector's Pro "Document — {kind} formatter"
+section is GONE — density, row class, the hide toggles (Selection boxes /
+Column headers / List header — Show DELETES the prop, Hide writes true, so
+exports stay clean), the tile box, and the **Command buttons** drill-in all
+live in the kebab. Command hides ride `viewExtras.commandBarProps` through
+`core/commandBar.ts` (see the src map — logical buttons emit every key
+alias; presets: Hide all / Show all / Collect entries / Read only /
+Declutter; one preset or toggle = ONE undoable mutation; foreign entries
+and text/iconName/position customizations survive byte-for-byte). The
+panel is body-owned (snapMenu pattern, `wb-esc-owner`), redraws in place on
+'document' emits, and closes only when the tab it opened on stops being
+active. jsonComplete gained the commandBarProps/commands vocabulary (key
+values suggest the real catalog). Left pane same day: every top-level
+section (Structure tree included — it finally has a header) is a
+collapsible `wb-lp-sec` with a FROZEN (sticky) header inside the two
+scroll regions; the Views list's own title row died (the section header
+carries it); `.wb-lp-props` defaults heavier (flex 1.4) and **splitter 2**
+(`#wb-lp-splitter2`) makes the shelves/props boundary draggable
+(double-click resets; folding the inspector or tree clears stale drag
+sizes). playwright.config gained PW_PORT for this multi-session machine —
+without it, reuseExistingServer attaches tests to whichever session's dev
+server owns 5173 and silently tests THEIR code.
 
 Key structural invariants:
 - **Columns · Components · Views (2026-07-06/07 — the model-B migration;
@@ -952,7 +988,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1260 vitest unit tests across 65 files (engine semantics incl.
+- `npm test` — 1314 vitest unit tests across 68 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -971,10 +1007,15 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   definitely-renders contract, the Select/Live canvas mode, and the IDE-style
   JSON pane — the tolerant tokenizer/bracket matcher, the contextual
   completion brain incl. its no-standalone-`!` guarantee, and the mounted
-  shell's DOM contracts). Run headlessly anywhere.
+  shell's DOM contracts — plus, 2026-07-09, the command-bar hide brain
+  (`commandBar.test.ts`: catalog integrity, alias emission, foreign-entry
+  preservation, presets, the serializer round trip) and the View kebab's
+  DOM/undo contracts (`viewKebab.test.ts`)). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 136 Playwright tests across 15 spec files:
+- `npm run test:ui` — 142 Playwright tests across 16 spec files
+  (multi-session machines: set `PW_PORT` so reuseExistingServer can't attach
+  to another session's dev server — see playwright.config.ts):
   `sandbox.spec.ts` (core smoke flows: the grid-first landing with dressed
   columns, palette insert, JSON round trip, lint teaching, hover cards,
   dark mode, the one unified surface), `canvasTabs.spec.ts` (the canvas

@@ -14,10 +14,11 @@
  * rename/wipe an existing key; adding a new one is fine).
  */
 
-/** The three top-level pane sections. Nested foldables (e.g. the Components
+/** The top-level pane sections (views + tree joined 2026-07-09 — additive
+ *  values under the same frozen key). Nested foldables (e.g. the Components
  *  library's own "In this project" / "Add components" groups) use their own
  *  string ids under the same store — hence the functions take a plain string. */
-export type PaneSectionId = 'columns' | 'components' | 'inspector';
+export type PaneSectionId = 'columns' | 'components' | 'inspector' | 'views' | 'tree';
 
 /** Frozen — never rename (would silently reset everyone's collapsed sections). */
 export const PANE_SECTIONS_KEY = 'wb-lp-sections.v1';

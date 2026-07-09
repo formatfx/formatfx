@@ -45,20 +45,25 @@ describe('structure (§3, top to bottom)', () => {
     expect(host.textContent).not.toContain('§');
   });
 
-  it('mounts every section in §3 order: card, tree, splitter, shelf, library, views', () => {
+  it('mounts every section in §3 order: card, tree (headed), splitter, shelves, splitter2, props', () => {
     const host = mount();
     const ids = [...host.children].map((el) => el.id || el.className.split(' ')[0]);
     expect(ids).toEqual([
       'wb-lp-nav', 'wb-lp-viewcard', 'wb-lp-tree', 'wb-lp-splitter',
-      'wb-lp-shelves', 'wb-lp-props',
+      'wb-lp-shelves', 'wb-lp-splitter2', 'wb-lp-props',
     ]);
+    // the tree region leads with its own frozen section header (outside the
+    // scrolling body) — 2026-07-09 owner brief
+    const tree = host.querySelector('#wb-lp-tree')!;
+    expect((tree.firstElementChild as HTMLElement).dataset.secHead).toBe('tree');
+    expect(tree.querySelector('#wb-tree-body')).not.toBeNull();
     const shelves = host.querySelector('#wb-lp-shelves')!;
-    // columns + components are now collapsible sections wrapping their mounts;
-    // the views list is a plain (non-collapsible) sibling
+    // columns + components + views are ALL collapsible sections now
     expect([...shelves.children].map((el) => (el as HTMLElement).dataset.sec ?? el.id))
-      .toEqual(['columns', 'components', 'wb-lp-views']);
+      .toEqual(['columns', 'components', 'views']);
     expect(shelves.querySelector('.wb-lp-sec[data-sec="columns"] #wb-lp-shelf')).not.toBeNull();
     expect(shelves.querySelector('.wb-lp-sec[data-sec="components"] #wb-lp-library')).not.toBeNull();
+    expect(shelves.querySelector('.wb-lp-sec[data-sec="views"] #wb-lp-views')).not.toBeNull();
     // the inspector is a collapsible section down in the props region
     expect(host.querySelector('.wb-lp-props .wb-lp-sec[data-sec="inspector"] #wb-lp-inspector')).not.toBeNull();
   });
@@ -72,9 +77,12 @@ describe('structure (§3, top to bottom)', () => {
     expect(lib.hidden).toBe(false);
     expect(lib.querySelectorAll('.wb-comp-row').length).toBeGreaterThan(0);
     expect(host.classList.contains('wb-lp-library-open')).toBe(false);
-    // shelf chips and the views list are standing sections too
+    // shelf chips and the views list are standing sections too; the views
+    // list's OWN header died — the section header carries the title now
     expect(host.querySelectorAll('#wb-lp-shelf .wb-colchip').length).toBeGreaterThan(0);
-    expect(host.querySelector('#wb-lp-views .wb-viewslist-head')).not.toBeNull();
+    expect(host.querySelector('#wb-lp-views .wb-viewslist-head')).toBeNull();
+    expect(host.querySelector('.wb-lp-sec-head[data-sec-head="views"] .wb-lp-sec-title')?.textContent).toBe('Views');
+    expect(host.querySelectorAll('#wb-lp-views .wb-viewslist-new').length).toBe(2);
   });
 
   it('the this-view card hides on the grid and shows on a view', () => {
@@ -87,22 +95,47 @@ describe('structure (§3, top to bottom)', () => {
   });
 });
 
-describe('collapsible sections (issue #236: Columns · Components · Inspector)', () => {
+describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components · Views · Inspector · the tree)', () => {
   const sec = (host: HTMLElement, id: string) =>
     host.querySelector<HTMLElement>(`.wb-lp-sec[data-sec="${id}"]`)!;
   const head = (host: HTMLElement, id: string) =>
     host.querySelector<HTMLButtonElement>(`.wb-lp-sec-head[data-sec-head="${id}"]`)!;
 
-  it('mounts all three sections expanded by default, each with a header button', () => {
+  it('mounts every section expanded by default, each with a header button', () => {
     const host = mount();
-    for (const id of ['columns', 'components', 'inspector']) {
+    const controls: Record<string, string> = {
+      columns: 'wb-lp-shelf', components: 'wb-lp-library', inspector: 'wb-lp-inspector', views: 'wb-lp-views',
+    };
+    for (const id of ['columns', 'components', 'inspector', 'views']) {
       expect(sec(host, id)).not.toBeNull();
       const h = head(host, id);
       expect(h).not.toBeNull();
-      expect(h.getAttribute('aria-controls')).toBe(`wb-lp-${id === 'columns' ? 'shelf' : id === 'components' ? 'library' : 'inspector'}`);
+      expect(h.getAttribute('aria-controls')).toBe(controls[id]);
       expect(sec(host, id).classList.contains('wb-collapsed')).toBe(false);
       expect(h.getAttribute('aria-expanded')).toBe('true');
     }
+  });
+
+  it('the views section folds like its siblings and persists', () => {
+    const host = mount();
+    head(host, 'views').click();
+    expect(sec(host, 'views').classList.contains('wb-collapsed')).toBe(true);
+    (host as unknown as { _unsub?: () => void })._unsub?.();
+    const host2 = mount();
+    expect(sec(host2, 'views').classList.contains('wb-collapsed')).toBe(true);
+  });
+
+  it('the tree folds from its header: body + splitter collapse, inline height clears', () => {
+    const host = mount();
+    const tree = host.querySelector<HTMLElement>('#wb-lp-tree')!;
+    tree.style.height = '300px'; // as if the splitter had been dragged
+    const h = head(host, 'tree');
+    h.click();
+    expect(tree.classList.contains('wb-collapsed')).toBe(true);
+    expect(tree.style.height).toBe(''); // a stale drag height must not hold the fold open
+    expect(h.getAttribute('aria-expanded')).toBe('false');
+    h.click();
+    expect(tree.classList.contains('wb-collapsed')).toBe(false);
   });
 
   it('clicking a header folds the section (class + aria) and clicking again restores it', () => {
@@ -170,9 +203,18 @@ describe('the kept workspace (lens tabs · kebab menu · back)', () => {
     expect(state.onFloor).toBe(true);
   });
 
-  it('the splitter for the tree region survives the rebuild', () => {
+  it('both splitters survive the rebuild: tree/shelves and shelves/props', () => {
     const host = mount();
     expect(host.querySelector('#wb-lp-splitter')).not.toBeNull();
     expect(host.querySelector('#wb-lp-tree')).not.toBeNull();
+    expect(host.querySelector('#wb-lp-splitter2')).not.toBeNull();
+  });
+
+  it('collapsing the inspector clears a dragged props height so the fold reclaims space', () => {
+    const host = mount();
+    const props = host.querySelector<HTMLElement>('#wb-lp-props')!;
+    props.style.height = '400px'; // as if splitter2 had been dragged
+    host.querySelector<HTMLButtonElement>('.wb-lp-sec-head[data-sec-head="inspector"]')!.click();
+    expect(props.style.height).toBe('');
   });
 });

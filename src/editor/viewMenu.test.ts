@@ -39,7 +39,9 @@ describe('viewsList', () => {
 
   it('a fresh workspace teaches the model — no views yet, the on-ramps still offered', () => {
     const host = mount();
-    expect(host.querySelector('.wb-viewslist-head')?.textContent).toContain('Views');
+    // the section's own title row died 2026-07-09 — leftPane's collapsible
+    // section header carries the "Views" title now
+    expect(host.querySelector('.wb-viewslist-head')).toBeNull();
     expect(host.querySelector('.wb-viewslist-empty')?.textContent).toContain('columns and components');
     expect(host.querySelector('.wb-viewslist-row')).toBeNull();
     expect(host.querySelector('.wb-viewslist-newrow')).not.toBeNull();

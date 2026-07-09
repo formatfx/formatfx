@@ -111,11 +111,15 @@ key).
 
 Top to bottom:
 1. **Nav row** — back (retrace), snapshots. (Tabs live on the canvas.)
-2. **This view card** — name/kind of the active view tab + behaviors &
-   properties: row class + density controls; scanned rows for row-click
-   actions and hover/click cards with jump-to-element; hidden for grid
-   and component tabs (grid shows nothing; component tabs show a def
-   card: name, slots, usage count).
+2. **This view card** — name/kind of the active view tab + behaviors:
+   scanned rows for row-click actions and hover/click cards with
+   jump-to-element; hidden for grid and component tabs (grid shows
+   nothing; component tabs show a def card: name, slots, usage count).
+   *(Amended 2026-07-09, spec
+   docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md: the
+   inline row-class + density controls moved into the card's ⋮ VIEW
+   SETTINGS kebab — viewKebab.ts — together with the hide toggles, the
+   tile box, and the Command buttons drill-in over core/commandBar.ts.)*
 3. **Structure tree** — the active tab's document. Instance rows read
    "⬡ Name ← Column" (from `_component.map`); no § marks, no reference
    tags. Splitter below (kept).

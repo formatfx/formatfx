@@ -74,6 +74,22 @@ export interface SPElement {
   _field?: string;
 }
 
+/** One command-bar customization entry (view-commandbar-formatting docs).
+ *  `hide`/`text`/`title`/`iconName`/`primary`/`position` accept expressions
+ *  (string or AST object) as well as literals; the catalog of `key` values —
+ *  including Microsoft's rename aliases — lives in core/commandBar.ts. */
+export interface SPCommandBarCommand {
+  key: string;
+  hide?: boolean | string | Record<string, unknown>;
+  text?: string | Record<string, unknown>;
+  title?: string | Record<string, unknown>;
+  iconName?: string | Record<string, unknown>;
+  primary?: boolean | string | Record<string, unknown>;
+  position?: number | string | Record<string, unknown>;
+  sectionType?: 'Primary' | 'Overflow';
+  selectionModes?: Array<'NoSelection' | 'SingleSelection' | 'MultiSelection'>;
+}
+
 /** Root wrapper for a list-view (row) formatter. */
 export interface SPViewFormatter {
   $schema?: string;
@@ -81,7 +97,7 @@ export interface SPViewFormatter {
   hideColumnHeader?: boolean;
   hideListHeader?: boolean;
   additionalRowClass?: string;
-  commandBarProps?: { commands: Array<{ key: string; hide?: boolean; text?: string; position?: number }> };
+  commandBarProps?: { commands: SPCommandBarCommand[] };
   groupProps?: Record<string, unknown>;
   footerFormatter?: SPElement;
   rowFormatter?: SPElement;

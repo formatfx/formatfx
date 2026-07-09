@@ -73,63 +73,47 @@ describe('what shows when (per-tab shapes)', () => {
   });
 });
 
-describe('density (state.setRowDensity — one undoable step)', () => {
-  it('reflects the current density and switches it', () => {
-    state.makeRowView(); // roomy by default
+describe('the view kebab (spec §A — the card holds the door, viewKebab the settings)', () => {
+  it('the card carries NO inline settings anymore — density and row class live in the kebab', () => {
+    state.makeRowView();
     const host = mount();
-    const btns = [...host.querySelectorAll<HTMLButtonElement>('.wb-viewcard-segbtn')];
-    expect(btns.map((b) => b.textContent)).toEqual(['Roomy', 'Compact']);
-    expect(btns[0].classList.contains('active')).toBe(true);
-    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
-    btns[1].click();
+    expect(host.querySelector('.wb-viewcard-seg')).toBeNull();
+    expect(host.querySelector('.wb-viewcard-rowclass')).toBeNull();
+    const kebab = host.querySelector('.wb-viewcard-kebab') as HTMLButtonElement;
+    expect(kebab).toBeTruthy();
+    expect(kebab.getAttribute('aria-haspopup')).toBe('dialog');
+    kebab.click();
+    const panel = document.body.querySelector('.wb-viewkebab')!;
+    expect(panel.querySelector('[data-prop="density"]')).toBeTruthy();
+    expect(panel.querySelector('.wb-viewcard-rowclass')).toBeTruthy();
+    expect(panel.querySelector('.wb-viewkebab-commands')).toBeTruthy();
+  });
+
+  it('a settings gesture re-renders the card but the panel survives (body-owned)', () => {
+    state.makeRowView();
+    const host = mount();
+    (host.querySelector('.wb-viewcard-kebab') as HTMLButtonElement).click();
+    const compact = [...document.body.querySelectorAll<HTMLButtonElement>('.wb-viewkebab [data-prop="density"] .wb-viewcard-segbtn')]
+      .find((b) => b.textContent === 'Compact')!;
+    compact.click();
     expect(rowDensityOf(state.doc.root)).toBe('compact');
-    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth + 1);
-    // the card re-rendered on the mutation — Compact now reads active
-    expect(host.querySelector('.wb-viewcard-segbtn.active')?.textContent).toBe('Compact');
-  });
-});
-
-describe('row class (viewExtras.additionalRowClass — one mutation per commit)', () => {
-  it('sets, edits and clears the class; empty deletes the key (and an empty viewExtras)', () => {
-    state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
-    const host = mount();
-    const inp = host.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    expect(inp.value).toBe('');
-    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
-    inp.value = 'sp-zebra';
-    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-    expect(state.doc.viewExtras?.additionalRowClass).toBe('sp-zebra');
-    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth + 1);
-
-    // clearing deletes the key AND the now-empty viewExtras (clean export)
-    const inp2 = host.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    inp2.value = '';
-    inp2.dispatchEvent(new Event('blur'));
-    expect(state.doc.viewExtras).toBeUndefined();
-    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth + 2);
+    expect(document.body.querySelector('.wb-viewkebab')).toBeTruthy();
   });
 
-  it('a no-op commit pushes NO undo step', () => {
-    state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
-    const host = mount();
-    const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
-    const inp = host.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    inp.dispatchEvent(new Event('blur')); // '' → '' — nothing changed
-    expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
-  });
-
-  it('other viewExtras keys survive a clear (carried verbatim — the import contract)', () => {
+  it('the def card shows no kebab — a component has no view-scoped settings', () => {
     state.createView({
       kind: 'row',
-      root: { elmType: 'div', children: [] },
-      viewExtras: { additionalRowClass: 'x', hideListHeader: true },
+      root: {
+        elmType: 'div',
+        children: [{
+          elmType: 'div', txtContent: 'x',
+          _component: { id: 'builtin-deadline-chip', map: { Due: 'DueDate' } },
+        } as SPElement],
+      },
     });
+    state.openComponentTab('builtin-deadline-chip');
     const host = mount();
-    const inp = host.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    expect(inp.value).toBe('x');
-    inp.value = '';
-    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-    expect(state.doc.viewExtras).toEqual({ hideListHeader: true });
+    expect(host.querySelector('.wb-viewcard-kebab')).toBeNull();
   });
 });
 

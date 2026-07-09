@@ -37,6 +37,7 @@ import {
   type SPFunctionDoc,
 } from '../core/schema';
 import { SCHEMA_URLS } from '../core/types';
+import { COMMAND_BUTTONS } from '../core/commandBar';
 import {
   systemTokenItems, columnRefItems,
   type SuggestItem, type CompletionOpts, type SuggestValueType,
@@ -224,6 +225,8 @@ type JsonCtx =
   | 'attributes'
   | 'rowAction'    // customRowAction
   | 'cardProps'    // customCardProps
+  | 'commandBar'   // commandBarProps
+  | 'command'      // one commandBarProps.commands[] entry
   | 'unknown';
 
 /** The key an object frame hangs under, looking through array frames (an
@@ -247,6 +250,8 @@ function classify(frames: Frame[]): JsonCtx {
   if (key === 'attributes') return 'attributes';
   if (key === 'customRowAction') return 'rowAction';
   if (key === 'customCardProps') return 'cardProps';
+  if (key === 'commandBarProps') return 'commandBar';
+  if (viaArray && key === 'commands') return 'command';
   if (viaArray && key === 'children') return 'element';
   if (key === 'rowFormatter' || key === 'footerFormatter' || key === 'formatter') return 'element';
   return 'unknown';
@@ -285,6 +290,23 @@ const ROW_WRAPPER_KEYS: KeyDef[] = [
   { key: 'hideSelection', shape: 'boolean', type: 'boolean', doc: 'Hide the row selection checkboxes (view wrapper)' },
   { key: 'hideColumnHeader', shape: 'boolean', type: 'boolean', doc: 'Hide the column header row (view wrapper)' },
   { key: 'hideListHeader', shape: 'boolean', type: 'boolean', doc: 'Hide the list header area (view wrapper)' },
+  { key: 'commandBarProps', shape: 'object', type: 'object', doc: 'Customize the command bar — hide/rename/move buttons per key (view wrapper)' },
+];
+
+const COMMAND_BAR_KEYS: KeyDef[] = [
+  { key: 'commands', shape: 'array', type: 'array', doc: 'One entry per command-bar button, addressed by key' },
+];
+
+const COMMAND_KEYS: KeyDef[] = [
+  { key: 'key', shape: 'string', type: 'string', doc: 'Which button — "new", "share", "editInGridView"… Microsoft renamed some keys: emit old AND new (e.g. upload + UploadCommand) so hides survive rollouts' },
+  { key: 'hide', shape: 'boolean', type: 'boolean', doc: 'true hides the button AND its right-click menu entry — also takes an =expression' },
+  { key: 'text', shape: 'formula', type: 'string', doc: 'Rename the button — a literal or an =expression' },
+  { key: 'title', shape: 'formula', type: 'string', doc: 'The button’s tooltip text' },
+  { key: 'iconName', shape: 'string', type: 'string', doc: 'A Fluent UI icon name — "" removes the icon' },
+  { key: 'primary', shape: 'boolean', type: 'boolean', doc: 'Primary (accent) styling — only honored when the command sits at position 0' },
+  { key: 'position', shape: 'number', type: 'number', doc: 'Zero-based slot to move the command to' },
+  { key: 'sectionType', shape: 'string', type: 'string', doc: '"Primary" or "Overflow" — which section of the bar holds the command' },
+  { key: 'selectionModes', shape: 'array', type: 'array', doc: 'Limit to ["NoSelection","SingleSelection","MultiSelection"] states' },
 ];
 
 const TILE_WRAPPER_KEYS: KeyDef[] = [
@@ -330,6 +352,8 @@ function keyDefsFor(ctx: JsonCtx): KeyDef[] {
     case 'attributes': return attributeKeyDefs();
     case 'rowAction': return ROW_ACTION_KEYS;
     case 'cardProps': return CARD_PROPS_KEYS;
+    case 'commandBar': return COMMAND_BAR_KEYS;
+    case 'command': return COMMAND_KEYS;
     default: return [];
   }
 }
@@ -383,6 +407,17 @@ function valueItemsFor(ctx: JsonCtx, key: string | null, fields: MockField[]): J
   if (ctx === 'cardProps') {
     if (key === 'openOnEvent') return plain(['hover', 'click']);
     if (key === 'directionalHint') return plain(DIRECTIONAL_HINTS);
+    return [];
+  }
+  if (ctx === 'command') {
+    // every real command key (rename aliases included), labeled by its button
+    if (key === 'key') {
+      return plain(
+        COMMAND_BUTTONS.flatMap((btn) => [...btn.keys]),
+        Object.fromEntries(COMMAND_BUTTONS.flatMap((btn) => btn.keys.map((k) => [k, btn.label]))),
+      );
+    }
+    if (key === 'sectionType') return plain(['Primary', 'Overflow']);
     return [];
   }
   if (ctx === 'element' || ctx === 'root') {

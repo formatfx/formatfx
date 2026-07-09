@@ -62,12 +62,8 @@ export function mountViewsList(host: HTMLElement, onToast: (m: string) => void):
 
   const render = (): void => {
     host.replaceChildren();
-
-    const head = document.createElement('div');
-    head.className = 'wb-viewslist-head';
-    head.textContent = 'Views — your layouts';
-    head.title = 'Whole-row and tile layouts built from your columns and components — each opens as a canvas tab';
-    host.appendChild(head);
+    // (no title row here — leftPane's collapsible "Views" section header
+    // carries the title since 2026-07-09)
 
     for (const view of state.views) {
       const row = document.createElement('div');
