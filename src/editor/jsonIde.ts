@@ -48,6 +48,9 @@ export interface JsonIdeApi {
   repaint: () => void;
   /** Reposition the selected-element bar (selection changed, buffer didn't). */
   refreshScope: () => void;
+  /** Close the completion menu — for programmatic buffer swaps (Format) that
+   *  fire no input event and would otherwise leave a stale menu (PR #266). */
+  closeMenu: () => void;
 }
 
 /** Gutter width — keep in step with the CSS (.wb-json-gutter / padding-left). */
@@ -268,6 +271,7 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     const pos = selStart + adjusted.length;
     textEl.setSelectionRange(pos, pos);
     repaint();
+    updateMenu(false); // the manual-splice fallback fires no input event
   });
   textEl.addEventListener('click', () => { closeMenu(); repaint(); });
   textEl.addEventListener('keyup', (e) => {
@@ -303,6 +307,10 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
           textEl.setSelectionRange(a.caret, a.caret);
         }
         repaint();
+        // caret-only moves and manual-splice fallbacks fire no input event,
+        // and even the execCommand path updates the menu BEFORE the final
+        // caret lands — re-evaluate at the true caret so it never goes stale
+        updateMenu(false);
         return;
       }
     }
@@ -323,5 +331,5 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   });
 
   repaint();
-  return { repaint, refreshScope };
+  return { repaint, refreshScope, closeMenu };
 }

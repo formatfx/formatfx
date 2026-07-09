@@ -57,6 +57,20 @@ describe('Format document', () => {
     expect(err.textContent).toContain('Format is re-indent only');
   });
 
+  it('formatting closes an open completion menu (its offsets die with the swap)', () => {
+    const { textEl } = mountPanel();
+    textEl.value = '{"elmType":"div" }';
+    textEl.dispatchEvent(new Event('input', { bubbles: true }));
+    const caret = textEl.value.length - 1; // bare key position before }
+    textEl.setSelectionRange(caret, caret);
+    textEl.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(document.querySelector('.wb-fx-acmenu')).not.toBeNull(); // menu open
+
+    textEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', altKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    expect(textEl.value).toContain('\n  "elmType": "div"');
+    expect(document.querySelector('.wb-fx-acmenu')).toBeNull(); // menu closed, not stale
+  });
+
   it('Alt+Shift+F triggers the same command', () => {
     const { textEl } = mountPanel();
     textEl.value = '{"elmType":"div"}';

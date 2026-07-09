@@ -258,6 +258,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const formatCmd = (): void => {
     const res = formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
     if (res.text !== textEl.value) {
+      ide.closeMenu(); // a swapped buffer would orphan the menu's offsets
       const selStart = textEl.selectionStart ?? 0;
       const selEnd = textEl.selectionEnd ?? selStart;
       const { scrollTop, scrollLeft } = textEl;
