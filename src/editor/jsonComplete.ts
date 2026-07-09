@@ -650,10 +650,39 @@ export interface SignatureHint {
   doc: SPFunctionDoc;
 }
 
+/** A raw JSON-string slice unescaped to its logical value — the SP layer
+ *  must see `\"` as a double quote, `\\` as a backslash. Lenient: a trailing
+ *  lone backslash or malformed \u passes through instead of throwing. */
+const JSON_ESCAPES: Record<string, string> = {
+  '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t',
+};
+function unescapeJson(raw: string): string {
+  let out = '';
+  let i = 0;
+  while (i < raw.length) {
+    const c = raw[i];
+    if (c !== '\\' || i + 1 >= raw.length) { out += c; i++; continue; }
+    const n = raw[i + 1];
+    if (n === 'u' && /^[0-9a-fA-F]{4}$/.test(raw.slice(i + 2, i + 6))) {
+      out += String.fromCharCode(parseInt(raw.slice(i + 2, i + 6), 16));
+      i += 6;
+      continue;
+    }
+    out += JSON_ESCAPES[n] ?? n;
+    i += 2;
+  }
+  return out;
+}
+
 /**
  * The innermost UNCLOSED function call around the caret, when the caret sits
- * inside an `=` expression string — else null. SP-dialect strings inside the
- * expression use single quotes; parens inside them don't nest.
+ * inside an `=` expression string — else null. SP string literals may use
+ * single OR double quotes (core/expressions' tokenizer accepts both, with no
+ * escapes inside); double quotes reach this buffer JSON-escaped as `\"`, so
+ * the body is unescaped through the JSON layer before the scan. Parens and
+ * commas inside either literal style never nest. Only the call name and
+ * argument INDEX leave this function, so losing raw offsets to the unescape
+ * is free.
  */
 export function signatureHintAt(text: string, caret: number): SignatureHint | null {
   const scan = scanTo(text, caret);
@@ -661,14 +690,14 @@ export function signatureHintAt(text: string, caret: number): SignatureHint | nu
   const contentStart = scan.strStart + 1;
   if (text[contentStart] !== '=') return null;
 
-  const body = text.slice(contentStart + 1, caret);
+  const body = unescapeJson(text.slice(contentStart + 1, caret));
   const stack: Array<{ name: string; argIndex: number }> = [];
   let i = 0;
   while (i < body.length) {
     const c = body[i];
-    if (c === "'") {
-      // a single-quoted SP string literal — skip it (no escapes in SP strings)
-      const close = body.indexOf("'", i + 1);
+    if (c === "'" || c === '"') {
+      // an SP string literal (either quote style) — skip to its closer
+      const close = body.indexOf(c, i + 1);
       if (close === -1) break; // unterminated literal: nothing after it counts
       i = close + 1;
       continue;

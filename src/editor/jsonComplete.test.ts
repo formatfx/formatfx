@@ -292,6 +292,22 @@ describe('signatureHintAt', () => {
     expect(hint.argIndex).toBe(2);
   });
 
+  it('double-quoted literals (JSON-escaped \\") shield their commas and parens too', () => {
+    // the engine tokenizer accepts BOTH quote styles — in the pane's buffer a
+    // double quote arrives as the two-character sequence \" (JSON escaping)
+    const { text, caret } = at('{"children": [{"txtContent": "=substring(\\"a,(b\\", 0, |"}]}');
+    const hint = signatureHintAt(text, caret)!;
+    expect(hint.name).toBe('substring');
+    expect(hint.argIndex).toBe(2);
+  });
+
+  it('an unterminated double-quoted literal stops the scan like a single-quoted one', () => {
+    const { text, caret } = at('{"children": [{"txtContent": "=if(\\"a,b|"}]}');
+    const hint = signatureHintAt(text, caret)!;
+    expect(hint.name).toBe('if');
+    expect(hint.argIndex).toBe(0); // the comma sits inside the open literal
+  });
+
   it('a closed call no longer hints; outside expressions never hints', () => {
     const closed = at('{"children": [{"txtContent": "=if(1,2,3)|"}]}');
     expect(signatureHintAt(closed.text, closed.caret)).toBeNull();
