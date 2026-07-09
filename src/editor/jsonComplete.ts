@@ -691,7 +691,7 @@ export interface SignatureHint {
 const JSON_ESCAPES: Record<string, string> = {
   '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t',
 };
-function unescapeJson(raw: string): string {
+export function unescapeJson(raw: string): string {
   let out = '';
   let i = 0;
   while (i < raw.length) {
