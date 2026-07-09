@@ -101,7 +101,7 @@ function listSnapshot(opts: { defaultViewFormatter?: boolean } = {}): string {
         title: 'All Items', isDefault: true, viewFields: ['LinkTitle', 'Phase'],
         ...(opts.defaultViewFormatter ? {
           customFormatter: JSON.stringify({
-            $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+            $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
             rowFormatter: { elmType: 'div', _elmName: 'Imported row', txtContent: "='»'+[$Title]+'«'" },
           }),
         } : {}),
