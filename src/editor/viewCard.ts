@@ -2,28 +2,25 @@
 // Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
 
 /**
- * editor/viewCard.ts — the "THIS VIEW" card (COLUMNS-COMPONENTS-VIEWS §3.2):
- * name/kind of the active view tab plus its view-scoped behaviors &
- * properties — the things that belong to the VIEW rather than any element:
- *
- *   · density (Roomy/Compact — state.setRowDensity, one undoable step)
- *   · the extra row class (viewExtras.additionalRowClass — commit on
- *     Enter/blur as ONE document mutation; empty clears the key)
- *   · scanned behavior rows: every customRowAction / customCardProps in the
- *     document, labeled and clickable — a click jumps to (selects) the
- *     carrying element, where the inspector edits it.
+ * editor/viewCard.ts — the "THIS VIEW" card (COLUMNS-COMPONENTS-VIEWS §3.2;
+ * settings re-housed 2026-07-09, spec §A): name/kind of the active view tab,
+ * the ⋮ VIEW SETTINGS kebab at the heading's far right (density, row class,
+ * the hide toggles, the tile box and the Command buttons drill-in — all in
+ * viewKebab.ts), and the scanned behavior rows: every customRowAction /
+ * customCardProps in the document, labeled and clickable — a click jumps to
+ * (selects) the carrying element, where the inspector edits it.
  *
  * Hidden while the Grid tab is up (the grid has no view-scoped behavior);
  * while a component WORKSHOP tab is active it shows a compact DEF card
  * instead — name, slot chips, and the def's usage count (scanComponentUsages
- * over the active surface + the column looks).
+ * over the active surface + the column looks) — and no kebab.
  */
 
 import { state, CARD_SEGMENT } from './state';
 import type { NodePath, SPElement } from '../core/types';
-import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
 import { componentById } from './componentLibrary';
 import { scanComponentUsages } from './componentUsage';
+import { openViewKebab } from './viewKebab';
 
 /** One scanned behavior: where it lives + how the row reads. */
 interface BehaviorRow {
@@ -83,74 +80,25 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
 
   const renderViewCard = (): void => {
     const view = state.activeView!;
-    host.appendChild(heading(view.doc.kind === 'tile' ? '▤' : '☰', view.name,
-      view.doc.kind === 'tile' ? 'tile view' : 'row view'));
+    const head = heading(view.doc.kind === 'tile' ? '▤' : '☰', view.name,
+      view.doc.kind === 'tile' ? 'tile view' : 'row view');
 
-    // ── density: Roomy/Compact on the root (the canvas toolbar's twin) ───────
-    const density = rowDensityOf(state.doc.root);
-    const densRow = document.createElement('div');
-    densRow.className = 'wb-viewcard-row';
-    const densLab = document.createElement('span');
-    densLab.className = 'wb-viewcard-label';
-    densLab.textContent = 'Density';
-    const seg = document.createElement('span');
-    seg.className = 'wb-viewcard-seg';
-    seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', 'Row density');
-    for (const d of ['roomy', 'compact'] as RowDensity[]) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'wb-viewcard-segbtn' + (density === d ? ' active' : '');
-      b.setAttribute('aria-pressed', String(density === d));
-      b.textContent = DENSITY_LABEL[d];
-      b.title = `${DENSITY_LABEL[d]} spacing for the whole row — one undoable step`;
-      b.addEventListener('click', () => {
-        if (density === d) return;
-        state.setRowDensity(d);
-        onToast(`Row density: ${DENSITY_LABEL[d]}`);
-      });
-      seg.appendChild(b);
-    }
-    densRow.append(densLab, seg);
-    host.appendChild(densRow);
-
-    // ── the extra row class (viewExtras.additionalRowClass) ─────────────────
-    const classRow = document.createElement('label');
-    classRow.className = 'wb-viewcard-row';
-    const classLab = document.createElement('span');
-    classLab.className = 'wb-viewcard-label';
-    classLab.textContent = 'Row class';
-    const classInp = document.createElement('input');
-    classInp.type = 'text';
-    classInp.className = 'wb-viewcard-rowclass';
-    classInp.placeholder = 'none';
-    const current = state.doc.viewExtras?.additionalRowClass;
-    classInp.value = typeof current === 'string' ? current : '';
-    classInp.title = 'additionalRowClass — a CSS class SharePoint puts on every row this view renders (zebra striping and friends). Clear it to remove.';
-    const commitClass = (): void => {
-      const v = classInp.value.trim();
-      const before = state.doc.viewExtras?.additionalRowClass;
-      if (v === (typeof before === 'string' ? before : '')) return;
-      // ONE document mutation: set, or delete the key (an empty viewExtras
-      // object is dropped whole so the export stays clean)
-      state.mutateDocument(() => {
-        if (v) {
-          state.doc.viewExtras = { ...state.doc.viewExtras, additionalRowClass: v };
-        } else if (state.doc.viewExtras) {
-          const next = { ...state.doc.viewExtras };
-          delete next.additionalRowClass;
-          if (Object.keys(next).length) state.doc.viewExtras = next;
-          else delete state.doc.viewExtras;
-        }
-      });
-      onToast(v ? `Every row now carries the "${v}" class — Ctrl+Z undoes` : 'Row class removed — Ctrl+Z undoes');
-    };
-    classInp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); commitClass(); }
+    // ── the View settings kebab (spec §A): the card holds the door, the
+    //    body-owned viewKebab panel holds the settings — this card re-renders
+    //    on every 'document' emit, which would destroy an inline panel ───────
+    const kebab = document.createElement('button');
+    kebab.type = 'button';
+    kebab.className = 'wb-viewcard-kebab';
+    kebab.setAttribute('aria-haspopup', 'menu');
+    kebab.setAttribute('aria-label', 'View settings');
+    kebab.title = 'View settings — density, row class, and what SharePoint shows around this view';
+    kebab.innerHTML = KEBAB_ICON;
+    kebab.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openViewKebab(kebab, onToast);
     });
-    classInp.addEventListener('blur', commitClass);
-    classRow.append(classLab, classInp);
-    host.appendChild(classRow);
+    head.appendChild(kebab);
+    host.appendChild(head);
 
     // ── scanned behaviors: actions + cards, with jump-to-element ────────────
     const behaviors = scanBehaviors(state.doc.root);
@@ -222,3 +170,6 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
   });
   render();
 }
+
+// ⋮ — the pane toolbar's kebab glyph (leftPane ICONS), theme via currentColor.
+const KEBAB_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>';

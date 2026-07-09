@@ -3130,6 +3130,82 @@ body.wb-dark {
 .wb-viewcard-slots { display: flex; flex-wrap: wrap; gap: 4px; }
 .wb-viewcard-usage { font-size: 11px; color: var(--wb-lp-text-2); line-height: 1.45; }
 
+/* ── the View settings kebab (spec §A): the ⋮ door on the card heading and its
+   body-owned fixed panel (viewKebab.ts). Chrome matches the JSON-pane kebab
+   (radius 8, the 0 6px 18px shadow); the toggles inside wear the density
+   seg's exact classes. */
+.wb-viewcard-kebab {
+  flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center;
+  justify-content: center; width: 24px; height: 24px; padding: 0;
+  border: none; border-radius: 5px; background: transparent; cursor: pointer;
+  color: var(--wb-lp-text-2);
+}
+.wb-viewcard-kebab:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-viewcard-kebab:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
+.wb-viewkebab {
+  position: fixed; z-index: 70; min-width: 248px; max-width: 300px;
+  max-height: min(62vh, 520px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 5px; padding: 9px 10px;
+  border: 1px solid var(--wb-lp-border); border-radius: 8px;
+  background: var(--wb-lp-bg); color: var(--wb-lp-text);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+  font-size: 11.5px;
+}
+.wb-viewkebab .wb-viewcard-label { flex: 0 0 92px; }
+.wb-viewkebab-sep { flex: 0 0 auto; height: 1px; margin: 3px 0; background: var(--wb-lp-border); }
+.wb-viewkebab-num {
+  flex: 1 1 auto; min-width: 0; width: 64px; padding: 3px 7px; font: inherit; font-size: 11.5px;
+  border: 1px solid var(--wb-lp-field-border, var(--wb-lp-border)); border-radius: 4px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text);
+}
+.wb-viewkebab-num:focus { outline: none; border-color: var(--wb-accent); }
+.wb-viewkebab-commands {
+  display: flex; align-items: center; gap: 8px; padding: 6px 7px; cursor: pointer;
+  border: none; border-radius: 5px; background: transparent; color: var(--wb-lp-text);
+  font: inherit; font-size: 11.5px; text-align: left;
+}
+.wb-viewkebab-commands::after { content: '›'; margin-left: auto; color: var(--wb-lp-text-2); }
+.wb-viewkebab-commands:hover { background: var(--wb-lp-seg-track); }
+.wb-viewkebab-count {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; white-space: nowrap;
+  padding: 1px 7px; border-radius: 9px;
+  color: var(--wb-accent); background: var(--wb-lp-seg-track);
+}
+.wb-viewkebab-head { display: flex; align-items: center; gap: 8px; }
+.wb-viewkebab-back {
+  flex: 0 0 auto; border: none; border-radius: 5px; padding: 3px 8px; cursor: pointer;
+  background: transparent; color: var(--wb-lp-text-2); font: inherit; font-size: 11.5px;
+}
+.wb-viewkebab-back:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-viewkebab-title { font-weight: 600; }
+.wb-viewkebab-note { font-size: 10.5px; line-height: 1.45; color: var(--wb-lp-text-2); }
+.wb-viewkebab-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.wb-viewkebab-preset {
+  flex: 0 0 auto; padding: 2px 9px; cursor: pointer; font: inherit; font-size: 10.5px;
+  border: 1px solid var(--wb-lp-border); border-radius: 999px;
+  background: var(--wb-lp-surface); color: var(--wb-lp-text);
+}
+.wb-viewkebab-preset:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-viewkebab-group {
+  margin-top: 5px; font-size: 10px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--wb-lp-text-2);
+}
+.wb-viewkebab-cmd {
+  display: flex; align-items: center; gap: 7px; padding: 3px 7px; cursor: pointer;
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-lp-text);
+  font: inherit; font-size: 11.5px; text-align: left;
+}
+.wb-viewkebab-cmd:hover { background: var(--wb-lp-seg-track); }
+.wb-viewkebab-cmdlabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-viewkebab-cmd.wb-hidden .wb-viewkebab-cmdlabel { opacity: .45; text-decoration: line-through; }
+.wb-viewkebab-eye { flex: 0 0 auto; display: inline-flex; color: var(--wb-lp-text-2); }
+.wb-viewkebab-cmd:hover .wb-viewkebab-eye { color: var(--wb-accent); }
+.wb-viewkebab-fx {
+  flex: 0 0 auto; font-size: 9.5px; font-style: italic; font-weight: 600;
+  padding: 0 6px; border-radius: 8px;
+  color: var(--wb-accent); background: var(--wb-lp-seg-track);
+}
+
 /* ── the middle shelves (§3.4-5): columns shelf · components · views list —
    one scroll region between the splitter and the lens tabs, sharing the
    pane's remaining height with the inspector below. */
@@ -3155,6 +3231,24 @@ body.wb-dark {
   font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   transition: background .12s ease, color .12s ease;
 }
+/* ── top-level section headers (2026-07-09 owner brief): FROZEN while their
+   region scrolls, and one legibility step up from content — full ink, opaque
+   pane background, a hairline underline. Same height, nothing bigger. Scoped
+   to DIRECT section heads so the library's own fold-groups (content, inside
+   the scrolling body) never stack under them. */
+.wb-lp-tree > .wb-lp-sec-head,
+.wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head,
+.wb-lp-props > .wb-lp-sec > .wb-lp-sec-head {
+  color: var(--wb-lp-text); background: var(--wb-lp-bg);
+  border-radius: 0; border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head,
+.wb-lp-props > .wb-lp-sec > .wb-lp-sec-head {
+  position: sticky; top: 0; z-index: 3;
+}
+.wb-lp-tree > .wb-lp-sec-head:hover,
+.wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head:hover,
+.wb-lp-props > .wb-lp-sec > .wb-lp-sec-head:hover { background: var(--wb-lp-seg-track); }
 .wb-lp-sec-head:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
 .wb-lp-sec-head:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
 .wb-lp-sec-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -3254,9 +3348,14 @@ body.wb-dark {
   border-bottom: 1px solid var(--wb-lp-border);
   background: var(--wb-lp-tree-bg);
 }
+/* folding the tree (its "Structure" header) collapses the region to the bar
+   and takes the splitter with it; leftPane clears any dragged inline height */
+.wb-lp-tree.wb-collapsed { height: auto; }
+#wb-lp-tree.wb-collapsed + .wb-lp-splitter { display: none; }
 /* Simple hides the tree itself, but keeps the formatter tabs + document
    dropdown — they're navigation, not structure editing. */
 .wb-leftpane.wb-lens-simple .wb-lp-tree { height: auto; flex: 0 0 auto; }
+.wb-leftpane.wb-lens-simple .wb-lp-tree > .wb-lp-sec-head,
 .wb-leftpane.wb-lens-simple .wb-lp-tree .wb-tree-sec-body,
 .wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; }
 .wb-lp-tree .wb-tree-sec-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 12px 6px; }
@@ -3294,7 +3393,9 @@ body.wb-dark {
 
 /* ── lower workspace (inspector / code) ────────────────────────────────────── */
 .wb-lp-props {
-  flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column;
+  /* heavier than the shelves' 1 — the properties editor is where the work
+     happens (2026-07-09 owner brief); splitter2 makes the boundary draggable */
+  flex: 1.4 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column;
 }
 /* the inspector's section takes the growing role in the props column; its body
    fills the section below the fold header */

@@ -10,6 +10,13 @@ import { defineConfig } from '@playwright/test';
  */
 const channel = process.env.PW_CHANNEL ?? 'msedge';
 
+// PW_PORT: run against a private port when another dev server already owns
+// 5173 — this machine runs concurrent sessions against one checkout (plus
+// worktrees), and reuseExistingServer would otherwise attach the tests to
+// whichever session's server got there first, silently testing THEIR code.
+// --strictPort keeps vite from hopping ports and desyncing from webServer.port.
+const port = Number(process.env.PW_PORT ?? 5173);
+
 export default defineConfig({
   testDir: './e2e',
   // every test resets its own context (freshApp in e2e/helpers.ts), so tests
@@ -28,8 +35,8 @@ export default defineConfig({
     screenshot: 'on',
   },
   webServer: {
-    command: 'npm run dev',
-    port: 5173,
+    command: `npm run dev -- --port ${port} --strictPort`,
+    port,
     reuseExistingServer: true,
   },
   reporter: [['list'], ['html', { open: 'never' }]],

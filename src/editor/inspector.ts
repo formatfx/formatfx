@@ -156,33 +156,9 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     const APPEARANCE_PROPS = ['background-color', 'border-radius', 'opacity', 'overflow'];
     const BORDER_PROPS = ['border-width', 'border-style', 'border-color'];
 
-    // document-level wrapper settings when the root is selected (Pro only)
-    if (pro && state.selection && state.selection.length === 0) {
-      const kids: HTMLElement[] = [];
-      const doc = state.doc;
-      kids.push(labeled('hideSelection', checkbox(doc.hideSelection ?? false, (v) => {
-        state.mutateDocument(() => { state.doc.hideSelection = v; });
-      })));
-      if (doc.kind === 'row') {
-        kids.push(labeled('hideColumnHeader', checkbox(doc.hideColumnHeader ?? false, (v) => {
-          state.mutateDocument(() => { state.doc.hideColumnHeader = v; });
-        })));
-      }
-      if (doc.kind === 'tile') {
-        kids.push(
-          labeled('tile width (px)', inputNumber(doc.tileWidth ?? 254, (v) => {
-            state.mutateDocument(() => { state.doc.tileWidth = v; });
-          })),
-          labeled('tile height (px)', inputNumber(doc.tileHeight ?? 220, (v) => {
-            state.mutateDocument(() => { state.doc.tileHeight = v; });
-          })),
-          labeled('fillHorizontally', checkbox(doc.fillHorizontally ?? false, (v) => {
-            state.mutateDocument(() => { state.doc.fillHorizontally = v; });
-          })),
-        );
-      }
-      host.appendChild(section(`Document — ${doc.kind} formatter`, kids, true));
-    }
+    // Document-level wrapper settings (hideSelection/hideColumnHeader, the
+    // tile box) moved to the View kebab on the THIS VIEW card — viewKebab.ts
+    // (spec §A, 2026-07-09). The inspector is elements-only now.
 
     // ✨ conditional formatting — click-only; the builder generates the
     // formulas itself, so a misclick can't corrupt the formatter. A FormatFX
@@ -921,17 +897,6 @@ function input(value: string, onChange: (v: string) => void, placeholder?: strin
   if (placeholder) el.placeholder = placeholder;
   if (listId) el.setAttribute('list', listId);
   el.addEventListener('change', () => onChange(el.value));
-  return el;
-}
-
-function inputNumber(value: number, onChange: (v: number) => void): HTMLInputElement {
-  const el = document.createElement('input');
-  el.type = 'number';
-  el.value = String(value);
-  el.addEventListener('change', () => {
-    const n = Number(el.value);
-    if (!Number.isNaN(n)) onChange(n);
-  });
   return el;
 }
 
