@@ -33,7 +33,7 @@ jobs:
             echo "docs-only diff — skipping tests/build for this run" >> "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         if: steps.docsonly.outputs.skip != 'true'
         with:
           node-version: 22
@@ -102,7 +102,7 @@ jobs:
             echo "docs-only diff — skipping the browser suite for this run" >> "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         if: steps.docsonly.outputs.skip != 'true'
         with: { node-version: 22, cache: npm }
       - run: npm ci
