@@ -7,6 +7,10 @@
     "default_popup": "popup.html",
     "default_title": "FormatFX companion"
   },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "permissions": [
     "scripting",
     "activeTab",
