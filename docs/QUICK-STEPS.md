@@ -60,15 +60,15 @@ capture target on the List Snapshot format (CONNECTIVITY §3.1). **The identifie
 is therefore NOT dev-tools-only** — the "scrape it from the DOM" limitation is
 an authoring-UX gap in the native product, not a data gap for us.
 
-> **Implementation note — `GetAllRules()` is a read-POST, and that's fine now.**
+> **Implementation note — `GetAllRules()` is a read-POST, and that's fine.**
 > Unlike the field/view/item captures, `GetAllRules()` is a **POST** (a POST
 > that *reads*). Per the **2026-07-07 owner decision** (CONNECTIVITY §8), the
 > old "extraction stays GET-only" constraint is retired in favor of "extraction
 > stays **read-only** (no mutation)" — so a read-POST like this is explicitly
-> allowed in the capture path. The snippet's no-write-verbs test *will become* a
-> no-*mutation*-verbs test **in the read-side implementation PR** — today the
-> snippet and its tests still enforce literal GET-only, so this note describes
-> the policy the implementation will realize, not current behavior.
+> allowed in the capture path. **LANDED (#214):** `spClient.captureSnapshot`
+> and the extract snippet both read rules (best-effort — a failure records
+> `rulesError`/warns and never kills the capture), and the snippet/spClient
+> tests now enforce no-*mutating*-request instead of literal GET-only.
 
 ### 3.1 Response shape (verified — read side)
 
@@ -525,8 +525,11 @@ class). Everything else from the old §6 is now closed in §3–§5.
   form digest (§3.3).
 - **Zero runtime deps; `src/bridge` stays dependency-free, commented, auditable.**
   The new capture is a few more lines of raw REST, node-tested like the rest.
-- **Versioned protocol.** Quick Steps/Rules capture rides a List Snapshot
-  `version` bump; older builds ignore the new key.
+- **Versioned protocol.** Quick Steps/Rules capture rides the List Snapshot
+  as **additive keys at v1** (`rules`, `rulesError`, `quickstepsProperties`);
+  older builds ignore unknown keys, which is exactly what "additive" buys —
+  a `version` bump would make older builds *refuse* the snapshot, so bumps
+  stay reserved for breaking shape changes (decision recorded in #214).
 - **Refuse-don't-guess.** Ship the reproduce path (documented primitives); gate
   `executeQuickStep` trigger-by-id behind a clear "undocumented identifier"
   warning (§4.3).

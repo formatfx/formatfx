@@ -20,6 +20,8 @@ import { inlineColumnFormatter } from './lookDialect';
 import { importJson } from '../core/serializer';
 import { parseThemeJson } from '../core/theme';
 import { buildExtractSnippet } from '../bridge/extractSnippet';
+import { onSpTabs, getSpTabs, getDetectedVersion, requestSnapshotFromExtension } from './extensionBridge';
+import type { SpTabInfo } from '../bridge/extChannel';
 import type { CellValue, FieldType, MockField, PersonValue, LookupValue } from '../core/types';
 import type { FormatterDocument } from '../core/types';
 import exportScript from '../../tools/Export-ListSchema.ps1?raw';
@@ -52,6 +54,9 @@ export function applyImportedSchema(
       }
     }
     state.importedViews = schema.views ?? [];
+    // Rules/Quick Steps ride along INERT (#214): stored so the captured list
+    // is whole; no UI interprets them yet.
+    state.importedRules = schema.rules ?? [];
     if (!state.fields.some((f) => f.name === state.currentFieldName)) {
       state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
     }
@@ -186,6 +191,10 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
 
     host.appendChild(bar);
 
+    // channel v2 presence: connected SharePoint list tabs the extension sees
+    const live = liveTabsSection();
+    if (live) host.appendChild(live);
+
     if (showAddField) host.appendChild(addFieldForm(() => { showAddField = false; render(); }));
     // done re-renders so the form closes immediately (matching addFieldForm),
     // rather than relying on a later state.emit('data') to drop it.
@@ -194,6 +203,70 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
     host.appendChild(dataGrid());
     if (state.importedViews.length) host.appendChild(viewsSection());
     host.appendChild(tenantThemeSection());
+  };
+
+  // ── live context via the companion extension (channel v2 presence) ──
+  // The extension pushes which CONNECTED list tabs are open (metadata only);
+  // from here the user can pull a fresh read-only capture without touching
+  // the SharePoint tab. Nothing renders for a v1 extension or none at all.
+  const liveTabsSection = (): HTMLElement | null => {
+    const tabs = getSpTabs();
+    if (getDetectedVersion() < 2 || !tabs.length) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'wb-schema-form';
+    const heading = document.createElement('div');
+    heading.className = 'wb-data-fieldname';
+    heading.textContent = `⚡ Live from your open SharePoint tab${tabs.length === 1 ? '' : 's'}`;
+    heading.title = 'The companion extension sees these connected list tabs. Pulling is read-only — nothing is ever written from here.';
+    wrap.appendChild(heading);
+
+    const pull = async (tab: SpTabInfo, rowsOnly: boolean): Promise<void> => {
+      try {
+        onToast(`Reading "${tab.label}" from SharePoint…`);
+        const text = await requestSnapshotFromExtension(tab.url);
+        if (rowsOnly) {
+          const schema = importSchema(text);
+          if (!schema.rows?.length) { onToast('No rows came back — the list may be empty.'); return; }
+          // swap data onto the CURRENT fields; captured cells win, gaps keep samples
+          state.rows = schema.rows.map((r, i) => {
+            const row: Record<string, CellValue> = {};
+            for (const f of state.fields) row[f.name] = f.name in r ? r[f.name] : sampleValue(f, i);
+            return row;
+          });
+          state.emit('data');
+          onToast(`Refreshed ${state.rows.length} sample rows from "${tab.label}".`);
+        } else {
+          if (!window.confirm(`Replace the current fields, rows and imported views with a fresh capture of "${tab.label}"?`)) return;
+          applyImportedSchema(text, onToast);
+        }
+      } catch (e) {
+        onToast(`Refresh failed: ${(e as Error).message}`);
+      }
+    };
+
+    for (const tab of tabs) {
+      const row = document.createElement('div');
+      row.className = 'wb-data-toolbar';
+      const label = document.createElement('span');
+      // defensive parse: presence arrives over postMessage — a malformed url
+      // must cost the hostname suffix, never the whole Data panel render
+      let host = '';
+      try { host = new URL(tab.url).hostname; } catch { /* label alone */ }
+      label.textContent = host ? `"${tab.label}" — ${host}` : `"${tab.label}"`;
+      label.title = tab.url;
+      row.appendChild(label);
+      const mk = (text: string, title: string, rowsOnly: boolean): void => {
+        const b = document.createElement('button');
+        b.textContent = text;
+        b.title = title;
+        b.addEventListener('click', () => void pull(tab, rowsOnly));
+        row.appendChild(b);
+      };
+      mk('⟳ Pull list', 'Fresh read-only capture: fields, formatters, views and rows replace the workspace (confirm first)', false);
+      mk('↻ Rows only', 'Refresh just the sample data from the live list — fields and formatters stay as they are', true);
+      wrap.appendChild(row);
+    }
+    return wrap;
   };
 
   // ── views captured by a List Snapshot ──
@@ -638,5 +711,8 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
   hostAny._unsub = state.subscribe((reason) => {
     if (reason === 'data' || reason === 'load') render();
   });
+  // presence changes (extension channel v2) re-render the live section; the
+  // isConnected guard keeps a stale mount from painting a detached host
+  onSpTabs(() => { if (host.isConnected) render(); });
   render();
 }

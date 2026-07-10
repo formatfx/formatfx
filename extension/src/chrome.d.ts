@@ -6,10 +6,21 @@
  */
 declare namespace chrome {
   namespace tabs {
-    interface Tab { id?: number; url?: string }
-    function query(info: { active: boolean; currentWindow: boolean }): Promise<Tab[]>;
+    interface Tab { id?: number; url?: string; active?: boolean; windowId?: number }
+    interface TabChangeInfo { url?: string; status?: string }
+    function query(info: { active?: boolean; currentWindow?: boolean; url?: string | string[] }): Promise<Tab[]>;
     function create(props: { url: string; active?: boolean }): Promise<Tab>;
+    function get(tabId: number): Promise<Tab>;
     function sendMessage<R = unknown>(tabId: number, message: unknown): Promise<R>;
+    const onUpdated: {
+      addListener(cb: (tabId: number, changeInfo: TabChangeInfo, tab: Tab) => void): void;
+    };
+    const onActivated: {
+      addListener(cb: (info: { tabId: number; windowId: number }) => void): void;
+    };
+    const onRemoved: {
+      addListener(cb: (tabId: number, info: { windowId: number; isWindowClosing: boolean }) => void): void;
+    };
   }
   namespace runtime {
     interface MessageSender { tab?: tabs.Tab; id?: string }
@@ -18,6 +29,16 @@ declare namespace chrome {
         cb: (message: unknown, sender: MessageSender, sendResponse: (response?: unknown) => void) => boolean | undefined | void,
       ): void;
     };
+    const onInstalled: {
+      addListener(cb: (details: { reason: string }) => void): void;
+    };
+    function sendMessage<R = unknown>(message: unknown): Promise<R>;
+    const lastError: { message?: string } | undefined;
+  }
+  namespace action {
+    function setBadgeText(details: { text: string; tabId?: number }): Promise<void>;
+    function setBadgeBackgroundColor(details: { color: string; tabId?: number }): Promise<void>;
+    function setTitle(details: { title: string; tabId?: number }): Promise<void>;
   }
   namespace scripting {
     interface InjectionTarget { tabId: number }
@@ -34,14 +55,24 @@ declare namespace chrome {
     ): Promise<InjectionResult<R>[]>;
   }
   namespace permissions {
-    function request(p: { origins?: string[] }): Promise<boolean>;
+    interface Permissions { origins?: string[]; permissions?: string[] }
+    function request(p: Permissions): Promise<boolean>;
+    function contains(p: Permissions): Promise<boolean>;
+    function remove(p: Permissions): Promise<boolean>;
+    function getAll(): Promise<Permissions>;
+    const onAdded: { addListener(cb: (p: Permissions) => void): void };
+    const onRemoved: { addListener(cb: (p: Permissions) => void): void };
   }
   namespace storage {
+    interface StorageChange { oldValue?: unknown; newValue?: unknown }
     interface StorageArea {
       get(keys?: string | string[] | null): Promise<Record<string, unknown>>;
       set(items: Record<string, unknown>): Promise<void>;
       remove(keys: string | string[]): Promise<void>;
     }
     const local: StorageArea;
+    const onChanged: {
+      addListener(cb: (changes: Record<string, StorageChange>, areaName: string) => void): void;
+    };
   }
 }

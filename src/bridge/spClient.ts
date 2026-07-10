@@ -84,6 +84,30 @@ export interface SnapshotView {
   customFormatter?: string;
 }
 
+/**
+ * One Rule / Quick Step, as GetAllRules() returns it (docs/QUICK-STEPS.md
+ * §3.1 — verified on a live tenant 2026-07-07). Captured verbatim and carried
+ * inert: `actionParams` stays the raw escaped-JSON string, exactly like
+ * customFormatter stays a raw string (faithful capture; interpretation is a
+ * later, separate concern).
+ */
+export interface SnapshotRule {
+  id: string;
+  /** Equal to id in every observed case; what a direct-trigger references. */
+  ruleTemplateId?: string;
+  title?: string;
+  /** Rule condition expression, e.g. "[$Status] == 'Not started'". */
+  condition?: string;
+  /** docs/QUICK-STEPS.md §3.2 — 5 = QuickStepCommand (a Quick Step button). */
+  triggerType: number;
+  actionType: number;
+  /** Raw flat escaped-JSON STRING (read-side shape) — never parsed here. */
+  actionParams?: string;
+  /** Rules only; null/absent for Quick Steps. */
+  outcome?: string;
+  isActive?: boolean;
+}
+
 export interface ListSnapshot {
   formatfx: 'list-snapshot';
   version: number;
@@ -103,6 +127,21 @@ export interface ListSnapshot {
    * when data was opted out.
    */
   rowsError?: string;
+  /**
+   * Rules & Quick Steps (GetAllRules — a read-POST, allowed since the
+   * 2026-07-07 read-only-not-GET-only decision, CONNECTIVITY §8). ADDITIVE at
+   * snapshot v1: older consumers ignore unknown keys; omitted when the list
+   * has none. Carried inert — no app UI interprets these yet (#214).
+   */
+  rules?: SnapshotRule[];
+  /** Why `rules` is absent when the read-POST failed (never fails a capture). */
+  rulesError?: string;
+  /**
+   * The RootFolder property-bag `QuickstepsProperties` JSON string (button
+   * colors/order — QUICK-STEPS §3.5), raw and inert. Best-effort: silently
+   * omitted on any failure; only fetched when rules were found.
+   */
+  quickstepsProperties?: string;
 }
 
 /** Read SharePoint's page context, or null when not on an SP page. */
@@ -215,10 +254,44 @@ async function fetchSampleRows(listPath: string, fields: SnapshotField[]): Promi
 }
 
 /**
- * GET-only capture of the list the tab shows (or a named list on the same
- * web) into a List Snapshot. Mirrors the extract snippet, expands capped.
+ * Read Rules & Quick Steps via the GetAllRules read-POST (QUICK-STEPS §3):
+ * a POST that mutates nothing, riding the same page digest as our writes.
+ * Throws with a teaching error; captureSnapshot converts that to rulesError.
  */
-export async function captureSnapshot(opts: { listTitle?: string; includeData?: boolean } = {}): Promise<ListSnapshot> {
+async function fetchRules(web: string, listPath: string): Promise<SnapshotRule[]> {
+  const digest = await fetchDigest(web); // 403 "security validation" without it
+  const res = await fetch(listPath + '/GetAllRules()', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json;odata=nometadata',
+      'Content-Type': 'application/json',
+      'X-RequestDigest': digest,
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify({ includeQuicksteps: true, includeAutomaticRules: true }),
+  });
+  if (!res.ok) throw new Error('FormatFX: could not read Rules/Quick Steps (' + explainStatus(res.status) + ')');
+  const value = ((await res.json()).value as Record<string, unknown>[]) || [];
+  return value.map((r) => ({
+    id: String(r.ID ?? ''),
+    ruleTemplateId: r.RuleTemplateId ? String(r.RuleTemplateId) : undefined,
+    title: (r.Title as string) || undefined,
+    condition: (r.Condition as string) || undefined,
+    triggerType: Number(r.TriggerType ?? 0),
+    actionType: Number(r.ActionType ?? 0),
+    actionParams: (r.ActionParams as string) || undefined,
+    outcome: r.Outcome == null ? undefined : String(r.Outcome),
+    isActive: r.IsActive == null ? undefined : !!r.IsActive,
+  }));
+}
+
+/**
+ * Read-only capture of the list the tab shows (or a named list on the same
+ * web) into a List Snapshot. Mirrors the extract snippet, expands capped.
+ * "Read-only", not "GET-only": the Rules/Quick Steps read is a POST
+ * SharePoint requires as POST — it changes nothing (CONNECTIVITY §8, #214).
+ */
+export async function captureSnapshot(opts: { listTitle?: string; includeData?: boolean; includeRules?: boolean } = {}): Promise<ListSnapshot> {
   const ctx = readPageContext();
   if (!ctx) throw new Error('FormatFX: this does not look like a SharePoint page. Open your list page first.');
   const listPath = listPathFor(ctx, opts.listTitle);
@@ -260,6 +333,29 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
     }
   }
 
+  // Rules & Quick Steps: best-effort like rows — a 403/disabled-feature edge
+  // records rulesError, never fails the capture. Omitted when empty to keep
+  // snapshots lean (QUICK-STEPS §3.6: empty is clean, not an error).
+  let rules: SnapshotRule[] | undefined;
+  let rulesError: string | undefined;
+  let quickstepsProperties: string | undefined;
+  if (opts.includeRules !== false) {
+    try {
+      const got = await fetchRules(ctx.webAbsoluteUrl, listPath);
+      if (got.length) {
+        rules = got;
+        // visuals/order property bag: a nice-to-have, silently omitted on failure
+        try {
+          const bag = await getJson(listPath + '/RootFolder/Properties?$select=QuickstepsProperties');
+          const qp = bag.QuickstepsProperties;
+          if (typeof qp === 'string' && qp) quickstepsProperties = qp;
+        } catch { /* property bag unreadable — rules still captured */ }
+      }
+    } catch (e) {
+      rulesError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   return {
     formatfx: 'list-snapshot',
     version: LIST_SNAPSHOT_VERSION,
@@ -272,19 +368,23 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
     rows,
     currentViewId: detectCurrentViewId(views),
     ...(rowsError ? { rowsError } : {}),
+    ...(rules ? { rules } : {}),
+    ...(rulesError ? { rulesError } : {}),
+    ...(quickstepsProperties ? { quickstepsProperties } : {}),
   };
 }
 
 /**
  * Narrow a captured snapshot to a user's picker choice (extract-push): keep
  * only the chosen columns (and their row cells), and — when asked — keep just
- * the current view, flagged isDefault so it auto-loads as the main document
- * on arrival. With the view excluded, no views travel and the columns import
- * as a grid. Pure; node-tested.
+ * one view, flagged isDefault so it auto-loads as the main document on
+ * arrival. Which view: `viewId` when given (the popup dashboard's per-view
+ * grab), else the current view. With the view excluded, no views travel and
+ * the columns import as a grid. Pure; node-tested.
  */
 export function selectFromSnapshot(
   snap: ListSnapshot,
-  opts: { fieldNames: string[]; includeCurrentView: boolean; dropFormatterFor?: string[] },
+  opts: { fieldNames: string[]; includeCurrentView: boolean; dropFormatterFor?: string[]; viewId?: string },
 ): ListSnapshot {
   const keep = new Set(opts.fieldNames);
   const dropFmt = new Set(opts.dropFormatterFor ?? []);
@@ -299,11 +399,41 @@ export function selectFromSnapshot(
   });
   let views: SnapshotView[] = [];
   if (opts.includeCurrentView) {
-    const current = snap.views.find((v) => v.id && v.id === snap.currentViewId)
-      ?? snap.views.find((v) => v.isDefault);
-    if (current) views = [{ ...current, isDefault: true }];
+    const wanted = opts.viewId
+      ? snap.views.find((v) => v.id && v.id === opts.viewId)
+      : snap.views.find((v) => v.id && v.id === snap.currentViewId) ?? snap.views.find((v) => v.isDefault);
+    if (wanted) views = [{ ...wanted, isDefault: true }];
   }
   return { ...snap, fields, rows, views };
+}
+
+/** One target's live formatter, as read before an apply. null = none set. */
+export interface TargetFormatter {
+  target: 'field' | 'view';
+  name: string;
+  formatter: string | null;
+}
+
+/**
+ * Read-only: the current CustomFormatter of every target in a payload (the
+ * same per-target GET applyFormatters does in its look-before-write step).
+ * The extension's pre-apply backup is built from this. Never writes.
+ */
+export async function readTargetFormatters(payload: ApplyPayload): Promise<TargetFormatter[]> {
+  const ctx = readPageContext();
+  if (!ctx) throw new Error('FormatFX: this does not look like a SharePoint page. Open your list page first.');
+  const listPath = listPathFor(ctx, payload.listTitle);
+  const out: TargetFormatter[] = [];
+  for (const t of payload.targets) {
+    const r = await fetch(targetPath(listPath, t.target, t.name) + '?$select=CustomFormatter', {
+      headers: { Accept: 'application/json;odata=nometadata' },
+      credentials: 'same-origin',
+    });
+    if (!r.ok) throw new Error('FormatFX: could not read "' + t.name + '" (' + explainStatus(r.status) + ')');
+    const current = ((await r.json()).CustomFormatter as string) || '';
+    out.push({ target: t.target, name: t.name, formatter: current || null });
+  }
+  return out;
 }
 
 export interface ApplyOutcome {
@@ -311,6 +441,13 @@ export interface ApplyOutcome {
   name: string;
   applied: boolean;
   previousLength: number;
+  /**
+   * The target's formatter as it was BEFORE this apply (null = none) — from
+   * the look-before-write read, so the caller can file a pre-apply backup
+   * without a second per-target REST pass. Present on every outcome,
+   * including cancelled and failed ones.
+   */
+  previousFormatter: string | null;
   newLength: number;
   error?: string;
 }
@@ -349,28 +486,34 @@ export async function applyFormatters(payload: ApplyPayload, hooks: ApplyHooks):
   const listPath = listPathFor(ctx, payload.listTitle);
   const listLabel = payload.listTitle || ctx.listTitle || 'this list';
 
-  // 1) look before writing — current length of each target
-  const pre: number[] = [];
+  // 1) look before writing — each target's current formatter, kept in full:
+  // the confirm echoes its length, and the outcomes carry it verbatim so the
+  // extension's pre-apply backup needs no second read pass.
+  const preFmt: (string | null)[] = [];
   for (const t of payload.targets) {
     const r = await fetch(targetPath(listPath, t.target, t.name) + '?$select=CustomFormatter', {
       headers: { Accept: 'application/json;odata=nometadata' },
       credentials: 'same-origin',
     });
     if (!r.ok) throw new Error('FormatFX: could not read "' + t.name + '" (' + explainStatus(r.status) + ')');
-    pre.push(((await r.json()).CustomFormatter as string || '').length);
+    const current = ((await r.json()).CustomFormatter as string) || '';
+    preFmt.push(current || null);
   }
+  const pre: number[] = preFmt.map((f) => f?.length ?? 0);
 
   // 2) one confirm, full echo of every write
   const lines = payload.targets.map((t, i) => {
     const what = t.target === 'field' ? 'column [' + t.name + ']' : 'view "' + t.name + '"';
     const state = pre[i] ? 'has a formatter (' + pre[i] + ' chars) → REPLACED' : 'currently none';
-    return '  • ' + what + ': ' + state + ' → ' + t.formatterJson.length + ' chars';
+    // a v2 clear target removes the formatter instead of setting one
+    const to = t.clear ? 'REMOVED' : t.formatterJson.length + ' chars';
+    return '  • ' + what + ': ' + state + ' → ' + to;
   });
   const msg = 'FormatFX apply to ' + listLabel + '\n'
     + payload.targets.length + ' formatter(s) will be written:\n\n' + lines.join('\n') + '\n\nApply?';
   if (!(await hooks.confirm(msg))) {
     return payload.targets.map((t, i) => ({
-      target: t.target, name: t.name, applied: false, previousLength: pre[i], newLength: pre[i],
+      target: t.target, name: t.name, applied: false, previousLength: pre[i], previousFormatter: preFmt[i], newLength: pre[i],
     }));
   }
 
@@ -404,10 +547,10 @@ export async function applyFormatters(payload: ApplyPayload, hooks: ApplyHooks):
         credentials: 'same-origin',
       });
       const now = verify.ok ? ((await verify.json()).CustomFormatter as string || '') : t.formatterJson;
-      outcomes.push({ target: t.target, name: t.name, applied: true, previousLength: pre[i], newLength: now.length });
+      outcomes.push({ target: t.target, name: t.name, applied: true, previousLength: pre[i], previousFormatter: preFmt[i], newLength: now.length });
     } catch (e) {
       outcomes.push({
-        target: t.target, name: t.name, applied: false, previousLength: pre[i], newLength: pre[i],
+        target: t.target, name: t.name, applied: false, previousLength: pre[i], previousFormatter: preFmt[i], newLength: pre[i],
         error: e instanceof Error ? e.message : String(e),
       });
     }

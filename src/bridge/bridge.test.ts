@@ -3,9 +3,11 @@ import { buildExtractSnippet, EXPAND_CAP } from './extractSnippet';
 import { buildDeploySnippet } from './deploySnippet';
 import {
   buildApplyPayload, parseApplyPayload, serializeApplyPayload, APPLY_PAYLOAD_VERSION,
+  APPLY_PAYLOAD_MAX_VERSION,
 } from './applyPayload';
 import {
   captureSnapshot, applyFormatters, selectFromSnapshot, detectCurrentViewId,
+  readTargetFormatters,
   type ApplyHooks, type ListSnapshot,
 } from './spClient';
 import {
@@ -83,6 +85,48 @@ const ITEMS_RES = {
   ],
 };
 
+/** One Quick Step, shaped per docs/QUICK-STEPS.md §3.1 (redacted live capture). */
+const RULES_RES = {
+  value: [
+    {
+      ID: '00000000-1111-2222-3333-444444444444',
+      RuleTemplateId: '00000000-1111-2222-3333-444444444444',
+      Title: 'Show a command that will, for each selected item, if its Status is Not started, set the value in 2 fields: Status, Progress',
+      Condition: "[$Status] == 'Not started'",
+      TriggerType: 5,      // QuickStepCommand
+      ActionType: 10002,   // SetItemFieldValue
+      ActionParams: '{"QuickstepTitle":"Start Work","ItemData":"{\\"Status\\":{\\"values\\":[\\"In Progress\\"],\\"valueType\\":33}}"}',
+      Outcome: null,
+      IsActive: true,
+      Owner: 'Redacted, Owner',
+    },
+  ],
+};
+
+const QUICKSTEPS_BAG = { QuickstepsProperties: '{"Quicksteps":[],"QuickstepsOrdering":[],"ColumnMapping":"{}"}' };
+
+/**
+ * The read-only contract, post-#214 (owner decision 2026-07-07, CONNECTIVITY
+ * §8): "no MUTATING request" rather than "no POST". Every call must be a
+ * plain GET, or a POST to one of the two reads SharePoint requires as POST —
+ * /contextinfo (the digest token) and GetAllRules(). Never a write verb.
+ */
+function expectReadOnly(recorded: FetchCall[]): void {
+  for (const c of recorded) {
+    const headers = (c.init?.headers ?? {}) as Record<string, string>;
+    expect(headers['X-HTTP-Method']).toBeUndefined();
+    expect(['PUT', 'PATCH', 'DELETE', 'MERGE']).not.toContain(c.init?.method ?? '');
+    if (c.init?.method === 'POST') {
+      expect(
+        c.url.endsWith('/_api/contextinfo') || c.url.endsWith('/GetAllRules()'),
+        `unexpected POST (only read-POSTs are allowed): ${c.url}`,
+      ).toBe(true);
+    } else {
+      expect(c.init?.method).toBeUndefined(); // everything else is a plain GET
+    }
+  }
+}
+
 let calls: FetchCall[] = [];
 let clipboard: string | null = null;
 
@@ -129,28 +173,60 @@ const extractRoutes = (url: string): unknown => {
   if (url.includes('/fields?')) return FIELDS_RES;
   if (url.includes('/views?')) return VIEWS_RES;
   if (url.includes('/items?')) return ITEMS_RES;
+  if (url.endsWith('/_api/contextinfo')) return { FormDigestValue: 'digest-extract' };
+  if (url.endsWith('/GetAllRules()')) return RULES_RES;
+  if (url.includes('/RootFolder/Properties')) return QUICKSTEPS_BAG;
   throw new Error(`unexpected fetch: ${url}`);
 };
 
 describe('extract snippet', () => {
-  it('is GET-only by construction (string contract)', () => {
+  it('is read-only by construction (string contract, post-#214)', () => {
     const s = buildExtractSnippet();
     expect(s).toContain('READ-ONLY');
+    // no mutating verb anywhere in the generated code…
     expect(s).not.toContain('X-HTTP-Method');
-    expect(s).not.toMatch(/method:\s*'POST'/);
+    expect(s).not.toContain("'MERGE'");
+    expect(s).not.toMatch(/method:\s*'(PUT|PATCH|DELETE)'/);
+    // …and the ONLY POSTs are the two reads SharePoint requires as POST
+    // (owner decision 2026-07-07, CONNECTIVITY §8 — landed via #214)
+    expect(s).toContain('/_api/contextinfo');
+    expect(s).toContain('GetAllRules()');
+    expect(s.match(/method:\s*'POST'/g)).toHaveLength(2);
     expect(s).toContain('/fields?');
     expect(s).toContain('$top=10');
   });
 
-  it('executes: captures the list, copies the payload, never sends a write', async () => {
+  it('executes: captures the list (rules included), copies the payload, never sends a write', async () => {
     stubEnvironment({ routes: extractRoutes });
     const payload = await run(buildExtractSnippet()) as Record<string, unknown>;
     expect(payload.formatfx).toBe('list-snapshot');
     expect(payload.version).toBe(1);
     expect(clipboard).not.toBeNull();
-    // every actual request was a plain GET against the page's own list
-    for (const c of calls) expect(c.init?.method).toBeUndefined();
+    // read-only: plain GETs plus the two allowed read-POSTs, nothing mutating
+    expectReadOnly(calls);
     expect(calls[0].url).toContain("lists(guid'11111111-2222-3333-4444-555555555555')");
+    // the Quick Step rides along verbatim, inert
+    const rules = payload.rules as Array<Record<string, unknown>>;
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ id: '00000000-1111-2222-3333-444444444444', triggerType: 5, actionType: 10002 });
+    expect(payload.quickstepsProperties).toBe(QUICKSTEPS_BAG.QuickstepsProperties);
+  });
+
+  it('a rules read failure is skipped with a warning — never fatal, never fake-empty', async () => {
+    stubEnvironment({
+      routes: (url) => {
+        if (url.includes('/fields?')) return FIELDS_RES;
+        if (url.includes('/views?')) return VIEWS_RES;
+        if (url.includes('/items?')) return ITEMS_RES;
+        if (url.endsWith('/_api/contextinfo')) return { FormDigestValue: 'd' };
+        if (url.endsWith('/GetAllRules()')) return 403; // e.g. feature edge
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    });
+    const payload = await run(buildExtractSnippet()) as Record<string, unknown>;
+    expect(payload.formatfx).toBe('list-snapshot');
+    expect(payload.rules).toBeUndefined();  // skipped, not []
+    expect(payload.rows).toHaveLength(2);   // everything else still captured
   });
 
   it('round-trips: the captured payload imports through importSchema()', async () => {
@@ -366,8 +442,39 @@ describe('apply payload (extension wire format)', () => {
   });
 
   it('refuses a newer version (friendly, never a silent misread)', () => {
-    const future = JSON.stringify({ formatfx: 'apply', version: APPLY_PAYLOAD_VERSION + 1, targets: [] });
+    const future = JSON.stringify({ formatfx: 'apply', version: APPLY_PAYLOAD_MAX_VERSION + 1, targets: [] });
     expect(() => parseApplyPayload(future)).toThrow(/newer than this extension understands/);
+  });
+
+  it('emits the minimal version: v1 without clear targets, v2 with (restore-only)', () => {
+    const plain = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    expect(plain.version).toBe(APPLY_PAYLOAD_VERSION); // old consumers keep working
+    const withClear = buildApplyPayload([
+      { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatterJson: '', clear: true },
+    ]);
+    expect(withClear.version).toBe(APPLY_PAYLOAD_MAX_VERSION);
+  });
+
+  it('parses clear targets (v2) and round-trips them', () => {
+    const p = buildApplyPayload([{ target: 'view', name: 'All Items', formatterJson: '', clear: true }]);
+    const back = parseApplyPayload(serializeApplyPayload(p));
+    expect(back.targets[0]).toEqual({ target: 'view', name: 'All Items', formatterJson: '', clear: true });
+  });
+
+  it('still refuses an empty formatter without clear, and clear WITH a formatter', () => {
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 2, targets: [{ target: 'field', name: 'Status', formatterJson: '' }],
+    }))).toThrow(/carries no formatter/);
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 2, targets: [{ target: 'field', name: 'Status', formatterJson: '{}', clear: true }],
+    }))).toThrow(/says clear but also carries a formatter/);
+  });
+
+  it('refuses a clear target in a payload claiming v1 (the version field means something)', () => {
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 1, targets: [{ target: 'field', name: 'Status', formatterJson: '', clear: true }],
+    }))).toThrow(/uses "clear", a v2 feature/);
   });
 
   it('every malformed input is a teaching error', () => {
@@ -387,12 +494,12 @@ describe('apply payload (extension wire format)', () => {
 });
 
 describe('spClient.captureSnapshot (extension runtime)', () => {
-  it('captures GET-only and round-trips through importSchema()', async () => {
+  it('captures read-only (post-#214) and round-trips through importSchema()', async () => {
     stubEnvironment({ routes: extractRoutes });
     const snap = await captureSnapshot();
     expect(snap.formatfx).toBe('list-snapshot');
     expect(snap.version).toBe(1);
-    for (const c of calls) expect(c.init?.method).toBeUndefined(); // every request a plain GET
+    expectReadOnly(calls); // GETs + the two allowed read-POSTs, nothing mutating
     expect(calls[0].url).toContain("lists(guid'11111111-2222-3333-4444-555555555555')");
 
     const schema = importSchema(JSON.stringify(snap));
@@ -401,6 +508,73 @@ describe('spClient.captureSnapshot (extension runtime)', () => {
       .toEqual(['Title', 'Status', 'DueDate', 'AssignedTo', 'Project', 'Done']);
     expect(schema.columnFormatters?.Status?.elmType).toBe('div');
     expect(schema.views![0].customFormatter).toBe(VIEW_FORMATTER);
+    // the Quick Step arrives inert on the imported schema too
+    expect(schema.rules).toHaveLength(1);
+    expect(schema.rules![0]).toMatchObject({
+      id: '00000000-1111-2222-3333-444444444444',
+      condition: "[$Status] == 'Not started'",
+      triggerType: 5,
+      actionType: 10002,
+    });
+    expect(schema.quickstepsProperties).toBe(QUICKSTEPS_BAG.QuickstepsProperties);
+  });
+
+  it('captures Rules/Quick Steps verbatim; the digest precedes the read-POST', async () => {
+    stubEnvironment({ routes: extractRoutes });
+    const snap = await captureSnapshot();
+    expect(snap.rules).toHaveLength(1);
+    expect(snap.rules![0]).toEqual({
+      id: '00000000-1111-2222-3333-444444444444',
+      ruleTemplateId: '00000000-1111-2222-3333-444444444444',
+      title: RULES_RES.value[0].Title,
+      condition: "[$Status] == 'Not started'",
+      triggerType: 5,
+      actionType: 10002,
+      actionParams: RULES_RES.value[0].ActionParams,
+      outcome: undefined,  // null on the wire → absent (Quick Steps have none)
+      isActive: true,
+    });
+    expect(snap.quickstepsProperties).toBe(QUICKSTEPS_BAG.QuickstepsProperties);
+    const rulesCall = calls.find((c) => c.url.endsWith('/GetAllRules()'))!;
+    const digestCall = calls.find((c) => c.url.endsWith('/_api/contextinfo'))!;
+    expect(calls.indexOf(digestCall)).toBeLessThan(calls.indexOf(rulesCall));
+    expect((rulesCall.init?.headers as Record<string, string>)['X-RequestDigest']).toBe('digest-extract');
+    expect(JSON.parse(rulesCall.init!.body as string)).toEqual({ includeQuicksteps: true, includeAutomaticRules: true });
+  });
+
+  it('a list with no rules carries no rules key at all (lean snapshot)', async () => {
+    stubEnvironment({
+      routes: (url) => {
+        if (url.endsWith('/GetAllRules()')) return { value: [] };
+        return extractRoutes(url);
+      },
+    });
+    const snap = await captureSnapshot();
+    expect('rules' in snap).toBe(false);
+    expect(snap.rulesError).toBeUndefined();
+    // no rules → the visuals property bag isn't even asked for
+    expect(calls.some((c) => c.url.includes('/RootFolder/Properties'))).toBe(false);
+  });
+
+  it('a rules read failure records rulesError and never fails the capture', async () => {
+    stubEnvironment({
+      routes: (url) => {
+        if (url.endsWith('/GetAllRules()')) return 403;
+        return extractRoutes(url);
+      },
+    });
+    const snap = await captureSnapshot();
+    expect(snap.rules).toBeUndefined();
+    expect(snap.rulesError).toMatch(/Rules\/Quick Steps/);
+    expect(snap.fields.length).toBeGreaterThan(0); // capture still whole
+  });
+
+  it('includeRules:false skips the read-POST entirely (the dashboard read)', async () => {
+    stubEnvironment({ routes: extractRoutes });
+    const snap = await captureSnapshot({ includeRules: false, includeData: false });
+    expect(snap.rules).toBeUndefined();
+    expect(snap.rulesError).toBeUndefined();
+    for (const c of calls) expect(c.init?.method).toBeUndefined(); // pure GETs
   });
 
   it('teaches when run off a SharePoint page', async () => {
@@ -541,6 +715,8 @@ describe('spClient.applyFormatters (extension runtime)', () => {
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain('column [Status]');
     expect(prompts[0]).toContain('view "All Items"');
+    // the look-before-write values ride the outcomes (backup needs no re-read)
+    expect(outcomes.every((o) => o.previousFormatter === null)).toBe(true); // targets had none
 
     const merges = calls.filter((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE');
     expect(merges).toHaveLength(2);
@@ -601,6 +777,58 @@ describe('spClient.applyFormatters (extension runtime)', () => {
     });
     await applyFormatters(p, okConfirm());
     expect(calls[0].url).toContain("lists/getByTitle('Bob''s%20Tasks')");
+  });
+
+  it('a clear target (v2 restore) writes CustomFormatter:"" and confirms as REMOVED', async () => {
+    stubEnvironment({
+      routes: (url, init) => {
+        if (url.includes('contextinfo')) return { FormDigestValue: 'd' };
+        if ((init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE') return 204;
+        // the target currently HAS a formatter — the restore removes it
+        return { CustomFormatter: STATUS_FORMATTER };
+      },
+    });
+    const prompts: string[] = [];
+    const p = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: '', clear: true }]);
+    const outcomes = await applyFormatters(p, okConfirm(prompts));
+    expect(outcomes[0].applied).toBe(true);
+    expect(prompts[0]).toContain('→ REMOVED');
+    // the overwritten formatter rides the outcome verbatim (restore-of-restore)
+    expect(outcomes[0].previousFormatter).toBe(STATUS_FORMATTER);
+    const merge = calls.find((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE')!;
+    expect(JSON.parse(merge.init!.body as string)).toEqual({ CustomFormatter: '' });
+  });
+});
+
+describe('spClient.readTargetFormatters (pre-apply backup read)', () => {
+  it('returns each target\'s live formatter (null when none) and never writes', async () => {
+    stubEnvironment({
+      routes: (url) => {
+        if (url.includes("getByInternalNameOrTitle('Status')")) return { CustomFormatter: STATUS_FORMATTER };
+        if (url.includes("getByTitle('All%20Items')")) return { CustomFormatter: '' };
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    });
+    const p = buildApplyPayload([
+      { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER },
+    ]);
+    const read = await readTargetFormatters(p);
+    expect(read).toEqual([
+      { target: 'field', name: 'Status', formatter: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatter: null },
+    ]);
+    // read-only: every request is a plain GET (no method, no write headers)
+    for (const c of calls) {
+      expect(c.init?.method).toBeUndefined();
+      expect((c.init?.headers as Record<string, string>)?.['X-HTTP-Method']).toBeUndefined();
+    }
+  });
+
+  it('a failed read is a teaching error, not a silent empty backup', async () => {
+    stubEnvironment({ routes: () => 403 });
+    const p = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    await expect(readTargetFormatters(p)).rejects.toThrow(/Manage Lists/);
   });
 });
 

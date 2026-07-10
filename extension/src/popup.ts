@@ -9,18 +9,15 @@
  * the user authorizes exactly the tab they're looking at, nothing else.
  */
 
-import type { ListSnapshot, ApplyOutcome } from '../../src/bridge/spClient';
+import type { ListSnapshot, ApplyOutcome, TargetFormatter } from '../../src/bridge/spClient';
 import { selectFromSnapshot } from '../../src/bridge/spClient';
+import { runInTab, type WorkerRequest, type WorkerResponse } from './pageCall';
 import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../../src/bridge/applyPayload';
-import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
+import { STAGE_KEY, PUSH_KEY, BACKUPS_KEY, type StagedApply, type PushedSnapshot, type BackupsFile, type BackupEntry } from './staging';
+import { makeBackupEntry, pushBounded, restorePayloadFrom, describeEntry } from './backups';
 import { classifyUrl } from './pageKind';
-
-interface WorkerResponse {
-  ok: boolean;
-  error?: string;
-  snapshot?: ListSnapshot;
-  outcomes?: ApplyOutcome[];
-}
+import { originPatternFor, hostFromPattern } from './connections';
+import { dashboardFrom, viewGrabFields, type Dashboard } from './context';
 
 const statusEl = (): HTMLElement => document.getElementById('status')!;
 function setStatus(text: string, kind: 'idle' | 'busy' | 'ok' | 'err' = 'idle'): void {
@@ -35,35 +32,100 @@ async function activeTabId(): Promise<number> {
   return tab.id;
 }
 
-/**
- * Runs in the page MAIN world (injected as a self-contained function): posts
- * one request to inject.js and resolves with the matching response. Must not
- * reference anything outside its own body.
- */
-function callWorker(request: { action: string; opts?: unknown; text?: string }): Promise<WorkerResponse> {
-  return new Promise((resolve) => {
-    const id = Math.random().toString(36).slice(2);
-    const onMsg = (ev: MessageEvent): void => {
-      if (ev.source !== window) return;
-      const m = ev.data as { __formatfx?: string; id?: string };
-      if (m && m.__formatfx === 'response' && m.id === id) {
-        window.removeEventListener('message', onMsg);
-        resolve(ev.data as WorkerResponse);
-      }
-    };
-    window.addEventListener('message', onMsg);
-    window.postMessage({ __formatfx: 'request', id, ...request }, '*');
-  });
+/** Run a bridge request in the active tab (inject + call — pageCall.ts). */
+async function runInPage(request: WorkerRequest): Promise<WorkerResponse> {
+  return runInTab(await activeTabId(), request);
 }
 
-async function runInPage(request: { action: string; text?: string }): Promise<WorkerResponse> {
-  const tabId = await activeTabId();
-  // 1) ensure the MAIN-world worker is present (idempotent), then 2) call it.
-  await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['inject.js'] });
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId }, world: 'MAIN', func: callWorker, args: [request],
-  });
-  return result;
+// ── the context dashboard: a cheap schema-only read on popup open ──────────
+
+/** The schema-only snapshot behind the dashboard (rows deliberately empty). */
+let dashSnap: ListSnapshot | null = null;
+
+/** Push a narrowed snapshot to a fresh formatfx.dev tab (extract-push). */
+async function pushSnapshot(sel: ListSnapshot, doneMsg: string): Promise<void> {
+  const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
+  await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
+  await chrome.tabs.create({ url: 'https://formatfx.dev' });
+  setStatus(doneMsg, 'ok');
+}
+
+function dashRow(name: string, chars: number, grabTitle: string, onGrab: () => void): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'dash-row';
+  const label = document.createElement('span');
+  label.className = 'dash-name';
+  label.textContent = name;
+  label.title = name;
+  const size = document.createElement('span');
+  size.className = 'dash-size';
+  size.textContent = `${chars} ch`;
+  const btn = document.createElement('button');
+  btn.className = 'secondary';
+  btn.textContent = '⬇ Grab';
+  btn.title = grabTitle;
+  btn.addEventListener('click', onGrab);
+  row.append(label, size, btn);
+  return row;
+}
+
+function renderDashboard(dash: Dashboard): void {
+  (document.getElementById('dash') as HTMLElement).hidden = false;
+  const title = document.getElementById('dash-title') as HTMLElement;
+  title.textContent = `${dash.listLabel} — ${dash.totalColumns} columns, ${dash.totalViews} views`
+    + (dash.currentViewTitle ? ` (viewing "${dash.currentViewTitle}")` : '');
+  (document.getElementById('main-lede') as HTMLElement).hidden = true;
+
+  const sections = document.getElementById('dash-sections') as HTMLElement;
+  sections.replaceChildren();
+
+  const addSection = (heading: string, rows: HTMLElement[], emptyText: string): void => {
+    const h = document.createElement('h2');
+    h.textContent = heading;
+    sections.appendChild(h);
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'dash-empty';
+      p.textContent = emptyText;
+      sections.appendChild(p);
+      return;
+    }
+    for (const r of rows) sections.appendChild(r);
+  };
+
+  addSection('Formatted columns', dash.formattedColumns.map((c) =>
+    dashRow(c.displayName, c.formatterChars, `Open [${c.internalName}] and its formatter in FormatFX`, () => {
+      if (!dashSnap) return;
+      const sel = selectFromSnapshot(dashSnap, { fieldNames: [c.internalName], includeCurrentView: false });
+      void pushSnapshot(sel, `Sent [${c.internalName}] + its formatter — FormatFX is opening with it loaded.`);
+    })), 'No column formatters on this list yet.');
+
+  addSection('Formatted views', dash.formattedViews.map((v) =>
+    dashRow(v.isCurrent ? `${v.title} (current)` : v.title, v.formatterChars, `Open the "${v.title}" view formatter in FormatFX`, () => {
+      if (!dashSnap) return;
+      const sel = selectFromSnapshot(dashSnap, {
+        fieldNames: viewGrabFields(dashSnap, v.id), includeCurrentView: true, viewId: v.id,
+      });
+      void pushSnapshot(sel, `Sent the "${v.title}" view + its formatter — FormatFX is opening with it loaded.`);
+    })), 'No view formatters on this list yet.');
+}
+
+/**
+ * Populate the dashboard with a schema-only capture (2 GETs: fields + views —
+ * no rows, so it's fast and cheap). Best-effort: any failure leaves the plain
+ * two-button popup exactly as v0.1 — the dashboard must never block
+ * Extract/Apply.
+ */
+async function loadDashboard(): Promise<void> {
+  try {
+    // schema-only AND rules-free: the dashboard read stays 2 cheap GETs
+    const res = await runInPage({ action: 'extract', opts: { includeData: false, includeRules: false } });
+    if (!res.ok || !res.snapshot) return;
+    dashSnap = res.snapshot;
+    renderDashboard(dashboardFrom(res.snapshot));
+  } catch {
+    // e.g. the page isn't fully loaded yet — the buttons still work
+  }
 }
 
 // ── extract: capture, then a column/view picker, then push or copy ──
@@ -175,10 +237,7 @@ async function onPickerOpen(): Promise<void> {
   const sel = selectedSnapshot();
   if (!sel.fields.length) { setStatus('Pick at least one column.', 'err'); return; }
   setStatus('Opening FormatFX…', 'busy');
-  const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
-  await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
-  await chrome.tabs.create({ url: 'https://formatfx.dev' });
-  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'} — FormatFX is opening with it loaded.`, 'ok');
+  await pushSnapshot(sel, `Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'} — FormatFX is opening with it loaded.`);
 }
 
 async function onPickerCopy(): Promise<void> {
@@ -193,10 +252,78 @@ function onPickerCancel(): void {
   setStatus('', 'idle');
 }
 
+// ── pre-apply backup & restore ──────────────────────────────────────────────
+
+/**
+ * File a backup entry from the apply's OWN look-before-write read — each
+ * outcome carries `previousFormatter` verbatim, so the safety net costs no
+ * extra REST pass (one read per target total, review feedback on #274). The
+ * values were captured before any write, even for targets whose write then
+ * failed. A cancelled confirm writes nothing → nothing to file.
+ */
+async function fileBackupFromOutcomes(payload: ApplyPayload, outcomes: ApplyOutcome[]): Promise<void> {
+  const attempted = outcomes.some((o) => o.applied || o.error);
+  if (!attempted) return; // cancelled — nothing was written
+  const read: TargetFormatter[] = outcomes.map((o) => ({
+    target: o.target, name: o.name, formatter: o.previousFormatter ?? null,
+  }));
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const siteUrl = tab?.url ? new URL(tab.url).origin : '';
+  const listLabel = payload.listTitle ?? dashSnap?.list ?? siteUrl;
+  const entry = makeBackupEntry(siteUrl, listLabel, read, new Date().toISOString());
+  const got = await chrome.storage.local.get(BACKUPS_KEY);
+  const file = pushBounded(got[BACKUPS_KEY] as BackupsFile | undefined, entry);
+  await chrome.storage.local.set({ [BACKUPS_KEY]: file });
+}
+
+/** The popup's History section: recent backups with one-click restore. */
+async function refreshHistory(): Promise<void> {
+  const wrap = document.getElementById('history') as HTMLElement;
+  const list = document.getElementById('history-list') as HTMLElement;
+  const got = await chrome.storage.local.get(BACKUPS_KEY);
+  const file = got[BACKUPS_KEY] as BackupsFile | undefined;
+  const entries = (file?.entries ?? []).slice(0, 5);
+  wrap.hidden = entries.length === 0;
+  list.replaceChildren();
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'dash-row';
+    const label = document.createElement('span');
+    label.className = 'dash-name';
+    label.textContent = describeEntry(entry);
+    label.title = `${describeEntry(entry)} — ${entry.takenAt}`;
+    const when = document.createElement('span');
+    when.className = 'dash-size';
+    when.textContent = entry.takenAt.slice(0, 16).replace('T', ' ');
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = '↩ Restore';
+    btn.title = 'Write these formatters back exactly as they were (confirm first)';
+    btn.addEventListener('click', () => void onRestore(entry));
+    row.append(label, when, btn);
+    list.appendChild(row);
+  }
+}
+
+async function onRestore(entry: BackupEntry): Promise<void> {
+  setStatus('Restoring…', 'busy');
+  try {
+    // the same backup-then-confirm-then-apply pipeline: a restore backs up
+    // what IT overwrites, so restore-of-a-restore works
+    await applyText(serializeApplyPayload(restorePayloadFrom(entry)));
+    void refreshHistory();
+  } catch (e) {
+    setStatus(e instanceof Error ? e.message : String(e), 'err');
+  }
+}
+
 /** Run the apply against the list tab from a payload string, then report. */
 async function applyText(text: string): Promise<boolean> {
+  const payload = parseApplyPayload(text); // teaching errors before any I/O
   const res = await runInPage({ action: 'apply', text });
   if (!res.ok || !res.outcomes) throw new Error(res.error || 'Apply failed or was cancelled.');
+  // safety net first: the outcomes carry each target's pre-apply formatter
+  await fileBackupFromOutcomes(payload, res.outcomes);
   const applied = res.outcomes.filter((o) => o.applied);
   const failed = res.outcomes.filter((o) => !o.applied && o.error);
   if (!applied.length && !failed.length) {
@@ -206,6 +333,7 @@ async function applyText(text: string): Promise<boolean> {
   const parts = [`Applied ${applied.length} of ${res.outcomes.length}. Refresh the list to see it.`];
   for (const f of failed) parts.push(`✗ ${f.name}: ${f.error}`);
   setStatus(parts.join('\n'), failed.length ? 'err' : 'ok');
+  void refreshHistory(); // the apply just filed a backup — show it
   return applied.length > 0 && failed.length === 0;
 }
 
@@ -277,17 +405,69 @@ document.getElementById('picker-cancel')!.addEventListener('click', onPickerCanc
 document.getElementById('picker-all')!.addEventListener('click', () => setAllFields(true));
 document.getElementById('picker-none')!.addEventListener('click', () => setAllFields(false));
 
+// ── per-site opt-in (Connect / Disconnect) ──────────────────────────────────
+
+/**
+ * The connect footer, shown on any SharePoint page. Connected state is
+ * DERIVED from chrome.permissions (never stored), so a revoke from
+ * chrome://extensions is immediately reflected here.
+ */
+async function refreshConnectFooter(url: string | undefined): Promise<void> {
+  const footer = document.getElementById('connect') as HTMLElement;
+  const pattern = originPatternFor(url);
+  if (!pattern) { footer.hidden = true; return; }
+  const host = hostFromPattern(pattern);
+  const connected = await chrome.permissions.contains({ origins: [pattern] });
+  footer.hidden = false;
+  (document.getElementById('connect-off') as HTMLElement).hidden = connected;
+  (document.getElementById('connect-on') as HTMLElement).hidden = !connected;
+  if (connected) {
+    (document.getElementById('connected-host') as HTMLElement).textContent = host;
+  } else {
+    (document.getElementById('connect-host') as HTMLElement).textContent = host;
+  }
+}
+
+async function onConnectToggle(grant: boolean): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const pattern = originPatternFor(tab?.url);
+  if (!pattern) return;
+  try {
+    if (grant) {
+      const ok = await chrome.permissions.request({ origins: [pattern] });
+      if (!ok) { setStatus('', 'idle'); return; } // declined — no nagging
+      setStatus(`Connected. The badge now tracks ${hostFromPattern(pattern)}.`, 'ok');
+    } else {
+      await chrome.permissions.remove({ origins: [pattern] });
+      setStatus('Disconnected — this site is back to click-only access.', 'ok');
+    }
+  } catch (e) {
+    setStatus(e instanceof Error ? e.message : String(e), 'err');
+  }
+  void refreshConnectFooter(tab?.url);
+}
+
+document.getElementById('connect-btn')!.addEventListener('click', () => void onConnectToggle(true));
+document.getElementById('disconnect-btn')!.addEventListener('click', () => void onConnectToggle(false));
+
 /** Show the right panel based on the active tab's URL. */
 async function initPageState(): Promise<void> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const kind = classifyUrl(tab?.url);
   const main = document.getElementById('main') as HTMLElement;
   const fxState = document.getElementById('state-formatfx') as HTMLElement;
+  const spSiteState = document.getElementById('state-sp-site') as HTMLElement;
   const otherState = document.getElementById('state-other') as HTMLElement;
   main.hidden = kind !== 'sharepoint';
   fxState.hidden = kind !== 'formatfx';
+  spSiteState.hidden = kind !== 'sharepoint-site';
   otherState.hidden = kind !== 'other';
-  if (kind === 'sharepoint') void refreshStagedButton();
+  if (kind === 'sharepoint') {
+    void refreshStagedButton();
+    void loadDashboard(); // best-effort; never blocks the buttons
+    void refreshHistory();
+  }
+  if (kind === 'sharepoint' || kind === 'sharepoint-site') void refreshConnectFooter(tab?.url);
 }
 
 void initPageState();

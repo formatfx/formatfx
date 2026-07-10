@@ -35,7 +35,12 @@ jobs:
           fi
       - uses: actions/setup-node@v5
         if: steps.docsonly.outputs.skip != 'true'
-        with: { node-version: 22, cache: npm }
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            extension/package-lock.json
       - run: npm ci
         if: steps.docsonly.outputs.skip != 'true'
       - run: npm test
@@ -49,6 +54,17 @@ jobs:
           echo '{"elmType":"div","txtContent":"@currentField"}' > /tmp/fixture.json
           node dist-lib/cli.js lint /tmp/fixture.json
         if: steps.docsonly.outputs.skip != 'true'
+      # the companion extension: its own package, typechecked and bundled here
+      # so a bridge/type change can't silently break the load-unpacked build
+      - run: npm ci
+        if: steps.docsonly.outputs.skip != 'true'
+        working-directory: extension
+      - run: npm run typecheck
+        if: steps.docsonly.outputs.skip != 'true'
+        working-directory: extension
+      - run: npm run build
+        if: steps.docsonly.outputs.skip != 'true'
+        working-directory: extension
       - uses: actions/upload-pages-artifact@v5
         if: steps.docsonly.outputs.skip != 'true'
         with: { path: dist }

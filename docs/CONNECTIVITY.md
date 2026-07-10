@@ -72,11 +72,14 @@ line; there is no bundled library blob. **Read-only means no mutation, not
 "GET verb only"** (owner decision, §8, 2026-07-07): read calls that SharePoint
 requires as POST — e.g. `GetAllRules()` for Rules/Quick Steps — are allowed.
 The line the snippet must never cross is *changing the user's data*; that stays
-the confirm-first deploy path (§3.3). **Status: this is the policy, not yet the
-code.** The current snippet and its unit tests (`extractSnippet.ts`,
-`bridge.test.ts`) still enforce literal GET-only (they assert no `method:'POST'`
-and that every request's `init.method` is undefined); the read-POST relaxation
-lands with the read-side capture (`GetAllRules()`, #214). Contract:
+the confirm-first deploy path (§3.3). **Status: LANDED (#214).** The snippet
+and `spClient.captureSnapshot` now read Rules/Quick Steps via the
+`GetAllRules()` read-POST (digest from `/_api/contextinfo`, best-effort —
+a failure warns and skips, never kills the capture), and the unit tests
+enforce "no **mutating** request" (GETs plus exactly those two read-POSTs).
+Captured rules ride the snapshot as **additive keys at v1** (`rules`,
+`rulesError`, `quickstepsProperties`) — older consumers ignore unknown keys;
+snapshot version bumps are reserved for breaking shape changes. Contract:
 
 1. Target = the list you're on (`_spPageContextInfo.pageListId`), or a
    baked-in list title; neither → teaching error ("open your list page").
@@ -85,7 +88,10 @@ lands with the read-side capture (`GetAllRules()`, #214). Contract:
    `GET …/items?$top=10` with `$select`/`$expand` derived from the field
    list — **expands capped at 12** (SPO's lookup-join threshold; fields
    beyond the cap are gap-filled with sample values at import, the same
-   path the CSV import uses). All requests
+   path the CSV import uses); then the Rules/Quick Steps read (#214):
+   `POST …/contextinfo` (digest) + `POST …/GetAllRules()` — both READS
+   (QUICK-STEPS §3), plus a best-effort
+   `GET …/RootFolder/Properties?$select=QuickstepsProperties`. All requests
    `Accept: application/json;odata=nometadata`.
 3. Payload → `navigator.clipboard`, with a console fallback; a human
    summary logs what was captured and where to paste it.
@@ -141,10 +147,10 @@ escaping is NOT applied (REST stores the raw string).
 ### 3.6 Test boundary
 
 - Unit (vitest): snapshot parsing; snippet string contracts (endpoints;
-  **today** the test still asserts literal GET-only — no `method:'POST'`, every
-  `init.method` undefined; it relaxes to "no **mutating** verbs" — a read-POST
-  like `GetAllRules()` allowed, data-changing MERGE/POST still banned — in the
-  read-side implementation PR, #214); **executed-snippet round-trips** —
+  the read-only assertion is "no **mutating** request" — every call a GET or
+  a POST to `/contextinfo` / `GetAllRules()` only, no write verbs — flipped
+  from literal GET-only in #214 per the 2026-07-07 decision, §8);
+  **executed-snippet round-trips** —
   the generated code is `eval`'d with stubbed `fetch`/`_spPageContextInfo`
   /`clipboard`/`confirm` against canned OData fixtures, and the captured
   payload is fed straight back through `importSchema()`. Deploy: digest-
@@ -157,7 +163,7 @@ escaping is NOT applied (REST stores the raw string).
   column: confirm echo, MERGE accepted, formatter live after refresh
   ☐ same for a view ☐ a >12-lookup list extracts without a 500.
 
-## 4. Tier 1 — companion browser extension (design only)
+## 4. Tier 1 — companion browser extension
 
 MV3, lives in **`extension/` in this repo** (owner decision): own
 package.json, exempt from the app's zero-dep rule, CI in one place,
@@ -209,8 +215,35 @@ formatfx.dev tab** that auto-loads it: `web.ts` delivers the pushed snapshot to
 the page (`snapshot` channel message), and the app routes it through the same
 guarded `applyImportedSchema` as a paste — a fresh tab has no work to clobber,
 so it auto-loads (the included current view rides in flagged `isDefault`).
-Clipboard stays as a fallback in the picker. Still to come: the continuous
-live-preview channel (sp-formatter's pattern).
+Clipboard stays as a fallback in the picker.
+
+**Status (context-aware companion, 2026-07-10):** the extension is now the
+go-between, per-site opt-in. A background service worker + **"Connect this
+site"** (`chrome.permissions.request` against the declared
+`optional_host_permissions`, one tenant origin at a time, revocable; the
+connected list is DERIVED from `permissions.getAll`, never stored) light up:
+a **per-tab badge** (connected list ● / staged-apply count / FX — silent
+everywhere else; tab URLs are only visible to the worker on connected
+origins, so the permission boundary is the feature boundary); a **popup
+dashboard** (list, view, which columns/views carry formatters, per-item
+Grab, powered by a 2-GET schema-only read that degrades to the plain
+buttons); **pre-apply backup & restore** (every apply files what it
+overwrote in bounded local history; restore rides the same confirm-first
+apply pipeline; previously-empty targets restore as apply-v2 `clear`
+targets — emitted payloads stay v1 otherwise); and **channel v2**
+(announcement-only): `spTabs` presence (the app shows which connected list
+tabs are open) + `requestSnapshot`/`snapshotResult` (the Data tab pulls a
+fresh read-only capture — full replace behind a confirm, or rows-only).
+
+**Live preview — decided (2026-07-10):** sp-formatter's true in-page live
+preview works by monkey-patching SharePoint's internal, undocumented
+client-side rendering machinery. That is fragile across Microsoft's
+internal changes, un-node-testable, and fails "definitely-works-on-real-SP"
+and auditability — **rejected** for FormatFX. The shipped alternative is the
+**live-linked refresh** above: the preview always renders in FormatFX's own
+engine against fresh real rows/formatters pulled read-only from the
+connected tab. Revisit native in-page preview only if a documented preview
+API appears.
 
 ## 5. Tier 2 — lists-as-code (design only)
 
@@ -269,7 +302,8 @@ pnp/List-Formatting outreach.
   Quick Steps needs `POST …/GetAllRules()`). Read-POSTs are now explicitly
   allowed in the capture path; **writes stay the confirm-first, lint-gated
   deploy motion** (that property is about not surprising the user with a
-  mutation, and still holds). The no-write-verbs snippet test **will become** a
-  no-*mutation*-verbs test **in the read-side implementation PR** (#214) — it
-  still enforces literal GET-only today, so this decision is policy ahead of
-  code. See docs/QUICK-STEPS.md.
+  mutation, and still holds). **LANDED (#214):** the snippet/spClient tests
+  now enforce no-*mutating*-request (GETs plus the `/contextinfo` and
+  `GetAllRules()` read-POSTs only), and the capture ships Rules/Quick Steps
+  as additive v1 snapshot keys — version bumps stay reserved for breaking
+  shape changes. See docs/QUICK-STEPS.md.

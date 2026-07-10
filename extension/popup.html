@@ -27,16 +27,35 @@
     .picker-tools button { margin: 0; padding: 4px 8px; font-size: 11px; }
     #picker-view-row, #picker-data-row { margin: 0 0 8px; padding: 6px 8px; border: 1px dashed #8884; border-radius: 6px; font-size: 12px; }
     #picker-data-warn { margin: 0 0 8px; padding: 6px 8px; border: 1px solid #b4231855; border-radius: 6px; font-size: 11px; color: #b42318; background: #b4231810; }
+    #connect { margin-top: 10px; padding-top: 8px; border-top: 1px solid #8883; }
+    p.fine { font-size: 11px; opacity: 0.7; margin: 4px 0 8px; }
+    #dash { margin: 0 0 10px; }
+    #dash h2, #history h2 { font-size: 11px; margin: 8px 0 4px; opacity: 0.7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    #history { margin-top: 10px; padding-top: 2px; border-top: 1px solid #8883; }
+    .dash-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; }
+    .dash-row .dash-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-row .dash-size { opacity: 0.5; font-size: 11px; }
+    .dash-row button { width: auto; margin: 0; padding: 2px 8px; font-size: 11px; }
+    .dash-empty { font-size: 11px; opacity: 0.6; margin: 2px 0 0; }
   </style>
 </head>
 <body>
   <h1>FormatFX companion</h1>
 
   <div id="main" hidden>
-    <p class="lede">On a SharePoint list page:</p>
+    <div id="dash" hidden>
+      <p id="dash-title" class="lede"></p>
+      <div id="dash-sections"></div>
+    </div>
+    <p id="main-lede" class="lede">On a SharePoint list page:</p>
     <button id="apply-staged" hidden>✓ Apply staged</button>
     <button id="extract">⚡ Extract this list…</button>
     <button id="apply" class="secondary">⬆ Apply formatters from clipboard</button>
+    <div id="history" hidden>
+      <h2>Backups on this browser</h2>
+      <div id="history-list"></div>
+      <p class="fine">Every apply saves what it overwrote. Restore is the same confirm-first write.</p>
+    </div>
   </div>
 
   <div id="state-formatfx" hidden>
@@ -44,8 +63,24 @@
     <button id="grab-formatter">⬇ Grab this formatter</button>
   </div>
 
+  <div id="state-sp-site" hidden>
+    <p>This is a SharePoint site — open a list or library view to extract or apply formatters.</p>
+  </div>
+
   <div id="state-other" hidden>
     <p>Navigate to a SharePoint list page to extract or apply formatters.</p>
+  </div>
+
+  <!-- per-site opt-in: shown on any SharePoint page (list or site) -->
+  <div id="connect" hidden>
+    <div id="connect-off" hidden>
+      <button id="connect-btn" class="secondary">🔗 Connect <span id="connect-host"></span></button>
+      <p class="fine">Lets the extension see this site's pages whenever you're on them — badge, page context, refresh. Writes always stay behind your click and a confirm.</p>
+    </div>
+    <div id="connect-on" hidden>
+      <p class="fine">✓ Connected to <b id="connected-host"></b></p>
+      <button id="disconnect-btn" class="secondary">Disconnect this site</button>
+    </div>
   </div>
 
   <div id="picker" hidden>
