@@ -20,6 +20,26 @@ function isListOrLibraryView(u: URL): boolean {
   return path.includes('/lists/') || path.includes('/forms/');
 }
 
+/**
+ * Best-effort human label for a list/library view URL — the segment before
+ * `/Lists/<Name>/…` (lists) or the library folder before `/Forms/…` — for
+ * presence display only ("your *Projects* tab is open"). Falls back to the
+ * hostname. Pure string work; no REST, no page access.
+ */
+export function listLabelFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    const listsIdx = parts.findIndex((p) => p.toLowerCase() === 'lists');
+    if (listsIdx >= 0 && parts[listsIdx + 1]) return parts[listsIdx + 1];
+    const formsIdx = parts.findIndex((p) => p.toLowerCase() === 'forms');
+    if (formsIdx > 0) return parts[formsIdx - 1];
+    return u.hostname;
+  } catch {
+    return url;
+  }
+}
+
 /** Classify a URL string (from `chrome.tabs.query`) into a page kind. */
 export function classifyUrl(url: string | undefined): PageKind {
   if (!url) return 'other';

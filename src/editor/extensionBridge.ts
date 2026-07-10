@@ -15,11 +15,16 @@
 import type { ApplyPayload } from '../bridge/applyPayload';
 import {
   EXT_CHANNEL_VERSION, isExtToPage, pingMessage, stageApplyMessage, formatterMessage,
+  requestSnapshotMessage, type SpTabInfo,
 } from '../bridge/extChannel';
 
 let detected = false;
 let detectedVersion = EXT_CHANNEL_VERSION;
 const readyListeners = new Set<(version: number) => void>();
+
+/** Presence (channel v2): connected SharePoint list tabs open right now. */
+let spTabs: SpTabInfo[] = [];
+const spTabsListeners = new Set<(tabs: SpTabInfo[]) => void>();
 
 let pushedHandler: ((snapshotJson: string) => void) | null = null;
 let pendingSnapshot: string | null = null; // arrived before a handler registered
@@ -40,6 +45,11 @@ window.addEventListener('message', (ev: MessageEvent) => {
   } else if (data.kind === 'snapshot') {
     if (pushedHandler) pushedHandler(data.text);
     else pendingSnapshot = data.text; // buffer until the app registers a handler
+  } else if (data.kind === 'spTabs') {
+    // presence push (v2): which connected list tabs are open — context only,
+    // nothing here reads or writes a tenant
+    spTabs = data.tabs;
+    for (const cb of spTabsListeners) cb(spTabs);
   } else if (data.kind === 'requestFormatter') {
     // the extension's "Grab this formatter" — reply with the current payload
     const result = formatterProvider
@@ -80,6 +90,53 @@ export function onExtensionReady(cb: (version: number) => void): void {
 
 export function isExtensionDetected(): boolean {
   return detected;
+}
+
+/** The channel version the extension announced (feature-detect v2 with this). */
+export function getDetectedVersion(): number {
+  return detected ? detectedVersion : 0;
+}
+
+/**
+ * Subscribe to presence: connected SharePoint list tabs currently open
+ * (channel v2 — never fires against a v1 extension). Fires immediately with
+ * the latest known set.
+ */
+export function onSpTabs(cb: (tabs: SpTabInfo[]) => void): void {
+  spTabsListeners.add(cb);
+  cb(spTabs);
+}
+
+/** The latest presence set (empty when unknown / v1 / no extension). */
+export function getSpTabs(): SpTabInfo[] {
+  return spTabs;
+}
+
+/**
+ * Ask the extension for a FRESH read-only capture of the list open in a
+ * connected tab on `siteUrl` (channel v2). Resolves with the raw List
+ * Snapshot JSON; rejects with the extension's teaching error, or on timeout.
+ * Reading a list takes a few round-trips, hence the generous default.
+ */
+export function requestSnapshotFromExtension(siteUrl: string, timeoutMs = 15000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const id = newId();
+    const timer = window.setTimeout(() => {
+      window.removeEventListener('message', onMsg);
+      reject(new Error('The FormatFX extension did not respond — is it installed and enabled?'));
+    }, timeoutMs);
+    const onMsg = (ev: MessageEvent): void => {
+      if (ev.source !== window) return;
+      const data = ev.data as unknown;
+      if (!isExtToPage(data) || data.kind !== 'snapshotResult' || data.id !== id) return;
+      window.clearTimeout(timer);
+      window.removeEventListener('message', onMsg);
+      if (data.ok && data.text) resolve(data.text);
+      else reject(new Error(data.error || 'The extension could not capture the list.'));
+    };
+    window.addEventListener('message', onMsg);
+    window.postMessage(requestSnapshotMessage(id, siteUrl), window.location.origin);
+  });
 }
 
 /**

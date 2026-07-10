@@ -51,6 +51,15 @@ export interface SpTabsResponse {
   tabs: SpTabInfo[];
 }
 
+/**
+ * background → web.ts (chrome.tabs.sendMessage): the set of open connected
+ * list tabs changed — forward fresh presence to the page.
+ */
+export interface SpTabsChanged {
+  type: 'spTabsChanged';
+  tabs: SpTabInfo[];
+}
+
 export type BgMessage = FormatfxTabHello | RefreshSnapshotRequest | SpTabsQuery;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -67,4 +76,8 @@ export function isRefreshSnapshotRequest(v: unknown): v is RefreshSnapshotReques
 
 export function isSpTabsQuery(v: unknown): v is SpTabsQuery {
   return isRecord(v) && v.type === 'spTabsQuery';
+}
+
+export function isSpTabsChanged(v: unknown): v is SpTabsChanged {
+  return isRecord(v) && v.type === 'spTabsChanged' && Array.isArray(v.tabs);
 }

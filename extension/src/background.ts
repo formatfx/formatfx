@@ -17,11 +17,12 @@
  * needed for the FX badge either.
  */
 
-import { isFormatfxTabHello } from './bgProtocol';
+import { isFormatfxTabHello, isRefreshSnapshotRequest, isSpTabsQuery, type SpTabInfo, type RefreshSnapshotResponse } from './bgProtocol';
 import { STAGE_KEY, migrateStorage, type StagedApply } from './staging';
-import { classifyUrl } from './pageKind';
+import { classifyUrl, listLabelFromUrl } from './pageKind';
 import { badgeFor } from './badge';
 import { originPatternFor } from './connections';
+import { runInTab } from './pageCall';
 
 // ── storage migration ──────────────────────────────────────────────────────
 
@@ -76,21 +77,82 @@ async function refreshAllBadges(): Promise<void> {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // URL is only present for connected origins; SPA navigations fire here too.
-  if (changeInfo.url || changeInfo.status === 'complete') void refreshBadge(tabId, tab.url);
+  if (changeInfo.url || changeInfo.status === 'complete') {
+    void refreshBadge(tabId, tab.url);
+    void broadcastSpTabs();
+  }
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   void chrome.tabs.get(tabId).then((tab) => refreshBadge(tabId, tab.url)).catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => { formatfxTabs.delete(tabId); });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  formatfxTabs.delete(tabId);
+  void broadcastSpTabs();
+});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[STAGE_KEY]) void refreshAllBadges();
 });
 
-chrome.permissions.onAdded.addListener(() => { void refreshAllBadges(); });
-chrome.permissions.onRemoved.addListener(() => { void refreshAllBadges(); });
+chrome.permissions.onAdded.addListener(() => { void refreshAllBadges(); void broadcastSpTabs(); });
+chrome.permissions.onRemoved.addListener(() => { void refreshAllBadges(); void broadcastSpTabs(); });
+
+// ── presence: which connected list tabs are open (for the formatfx.dev app) ─
+
+/**
+ * Metadata only — URL + a label derived from it, no REST, no page access.
+ * The query itself is bounded by granted origins: tabs.query with URL
+ * patterns can only see tabs we hold host permission for.
+ */
+async function connectedListTabs(): Promise<SpTabInfo[]> {
+  const granted = await chrome.permissions.getAll();
+  const patterns = (granted.origins ?? []).filter((o) => o.includes('.sharepoint.com'));
+  if (!patterns.length) return [];
+  const tabs = await chrome.tabs.query({ url: patterns });
+  return tabs
+    .filter((t) => classifyUrl(t.url) === 'sharepoint')
+    .map((t) => ({ url: t.url!, label: listLabelFromUrl(t.url!) }));
+}
+
+/** Push fresh presence to every formatfx.dev tab (fire-and-forget). */
+async function broadcastSpTabs(): Promise<void> {
+  if (!formatfxTabs.size) return;
+  const tabs = await connectedListTabs();
+  for (const tabId of formatfxTabs) {
+    void chrome.tabs.sendMessage(tabId, { type: 'spTabsChanged', tabs }).catch(() => {
+      formatfxTabs.delete(tabId); // tab gone or content script unloaded
+    });
+  }
+}
+
+// ── the refresh channel: a fresh read-only capture from a connected tab ────
+
+/**
+ * The app asked (via web.ts) for a fresh snapshot of the list open on
+ * `siteUrl`. Read-only end to end; requires the site to be connected AND a
+ * list tab to be open there — each miss is a teaching error naming the fix.
+ */
+async function handleRefreshSnapshot(siteUrl: string): Promise<RefreshSnapshotResponse> {
+  const pattern = originPatternFor(siteUrl);
+  if (!pattern) return { ok: false, error: 'That is not a SharePoint site URL the extension can reach.' };
+  if (!(await chrome.permissions.contains({ origins: [pattern] }))) {
+    return { ok: false, error: `This site isn't connected — open the extension on the list page and click "Connect ${pattern.replace(/^https:\/\//, '').replace(/\/\*$/, '')}" first.` };
+  }
+  const tabs = await chrome.tabs.query({ url: pattern });
+  const listTabs = tabs.filter((t) => t.id && classifyUrl(t.url) === 'sharepoint');
+  const target = listTabs.find((t) => t.active) ?? listTabs[0];
+  if (!target?.id) return { ok: false, error: 'No list tab is open on that site — open your SharePoint list in a tab first.' };
+  try {
+    // rules stay out of the refresh read: this is a schema/rows context pull
+    const res = await runInTab(target.id, { action: 'extract', opts: { includeRules: false } });
+    if (!res.ok || !res.snapshot) return { ok: false, error: res.error || 'The capture failed.' };
+    return { ok: true, text: JSON.stringify(res.snapshot) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 // ── message routing ────────────────────────────────────────────────────────
 
@@ -103,6 +165,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     sendResponse({ ok: true });
     return undefined;
+  }
+  if (isSpTabsQuery(message)) {
+    void connectedListTabs().then((tabs) => sendResponse({ tabs }));
+    return true; // async sendResponse
+  }
+  if (isRefreshSnapshotRequest(message)) {
+    void handleRefreshSnapshot(message.siteUrl).then(sendResponse);
+    return true; // async sendResponse
   }
   return undefined;
 });

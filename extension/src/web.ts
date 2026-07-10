@@ -10,8 +10,9 @@
  * payload from the page into local storage.
  */
 
-import { isPageToExt, readyMessage, ackMessage, snapshotMessage, requestFormatterMessage, validateStagedPayload } from '../../src/bridge/extChannel';
+import { isPageToExt, readyMessage, ackMessage, snapshotMessage, requestFormatterMessage, snapshotResultMessage, spTabsMessage, validateStagedPayload } from '../../src/bridge/extChannel';
 import type { ApplyPayload } from '../../src/bridge/applyPayload';
+import { isSpTabsChanged, type RefreshSnapshotResponse, type SpTabsResponse } from './bgProtocol';
 import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 
 const origin = window.location.origin;
@@ -43,6 +44,15 @@ try {
   void chrome.runtime.sendMessage({ type: 'formatfxTabHello' }).catch(() => {});
 } catch { /* extension context gone (e.g. reloaded) — harmless */ }
 
+/** Ask the background which connected list tabs are open; tell the page. */
+async function deliverSpTabs(): Promise<void> {
+  try {
+    const res = await chrome.runtime.sendMessage<SpTabsResponse>({ type: 'spTabsQuery' });
+    if (res && Array.isArray(res.tabs)) window.postMessage(spTabsMessage(res.tabs), origin);
+  } catch { /* service worker unavailable — presence just stays absent */ }
+}
+void deliverSpTabs();
+
 window.addEventListener('message', async (ev: MessageEvent) => {
   if (ev.source !== window) return;
   const data = ev.data as unknown;
@@ -51,6 +61,23 @@ window.addEventListener('message', async (ev: MessageEvent) => {
   if (data.kind === 'ping') {
     window.postMessage(readyMessage(), origin);
     void deliverPushedSnapshot();
+    void deliverSpTabs();
+    return;
+  }
+
+  if (data.kind === 'requestSnapshot') {
+    // v2: relay the app's refresh ask to the background (which owns the
+    // connected-tab lookup + inject) and post its answer back. Read-only.
+    try {
+      const res = await chrome.runtime.sendMessage<RefreshSnapshotResponse>(
+        { type: 'refreshSnapshot', siteUrl: data.siteUrl },
+      );
+      window.postMessage(snapshotResultMessage(data.id, res ?? { ok: false, error: 'The extension did not answer.' }), origin);
+    } catch (e) {
+      window.postMessage(snapshotResultMessage(data.id, {
+        ok: false, error: e instanceof Error ? e.message : String(e),
+      }), origin);
+    }
     return;
   }
 
@@ -79,6 +106,11 @@ window.addEventListener('message', async (ev: MessageEvent) => {
  * Reuses the page's lint gate — an erroring formatter comes back as an error.
  */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  // background pushed fresh presence (a connected list tab opened/closed)
+  if (isSpTabsChanged(message)) {
+    window.postMessage(spTabsMessage(message.tabs), origin);
+    return undefined;
+  }
   const msg = message as { action?: string };
   if (msg?.action !== 'grabFormatter') return undefined;
   const id = Math.random().toString(36).slice(2);

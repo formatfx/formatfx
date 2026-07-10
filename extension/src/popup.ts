@@ -9,22 +9,15 @@
  * the user authorizes exactly the tab they're looking at, nothing else.
  */
 
-import type { ListSnapshot, ApplyOutcome, TargetFormatter } from '../../src/bridge/spClient';
+import type { ListSnapshot } from '../../src/bridge/spClient';
 import { selectFromSnapshot } from '../../src/bridge/spClient';
+import { runInTab, type WorkerRequest, type WorkerResponse } from './pageCall';
 import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../../src/bridge/applyPayload';
 import { STAGE_KEY, PUSH_KEY, BACKUPS_KEY, type StagedApply, type PushedSnapshot, type BackupsFile, type BackupEntry } from './staging';
 import { makeBackupEntry, pushBounded, restorePayloadFrom, describeEntry } from './backups';
 import { classifyUrl } from './pageKind';
 import { originPatternFor, hostFromPattern } from './connections';
 import { dashboardFrom, viewGrabFields, type Dashboard } from './context';
-
-interface WorkerResponse {
-  ok: boolean;
-  error?: string;
-  snapshot?: ListSnapshot;
-  outcomes?: ApplyOutcome[];
-  formatters?: TargetFormatter[];
-}
 
 const statusEl = (): HTMLElement => document.getElementById('status')!;
 function setStatus(text: string, kind: 'idle' | 'busy' | 'ok' | 'err' = 'idle'): void {
@@ -39,35 +32,9 @@ async function activeTabId(): Promise<number> {
   return tab.id;
 }
 
-/**
- * Runs in the page MAIN world (injected as a self-contained function): posts
- * one request to inject.js and resolves with the matching response. Must not
- * reference anything outside its own body.
- */
-function callWorker(request: { action: string; opts?: unknown; text?: string }): Promise<WorkerResponse> {
-  return new Promise((resolve) => {
-    const id = Math.random().toString(36).slice(2);
-    const onMsg = (ev: MessageEvent): void => {
-      if (ev.source !== window) return;
-      const m = ev.data as { __formatfx?: string; id?: string };
-      if (m && m.__formatfx === 'response' && m.id === id) {
-        window.removeEventListener('message', onMsg);
-        resolve(ev.data as WorkerResponse);
-      }
-    };
-    window.addEventListener('message', onMsg);
-    window.postMessage({ __formatfx: 'request', id, ...request }, '*');
-  });
-}
-
-async function runInPage(request: { action: string; opts?: unknown; text?: string }): Promise<WorkerResponse> {
-  const tabId = await activeTabId();
-  // 1) ensure the MAIN-world worker is present (idempotent), then 2) call it.
-  await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['inject.js'] });
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId }, world: 'MAIN', func: callWorker, args: [request],
-  });
-  return result;
+/** Run a bridge request in the active tab (inject + call — pageCall.ts). */
+async function runInPage(request: WorkerRequest): Promise<WorkerResponse> {
+  return runInTab(await activeTabId(), request);
 }
 
 // ── the context dashboard: a cheap schema-only read on popup open ──────────

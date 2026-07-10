@@ -163,7 +163,7 @@ escaping is NOT applied (REST stores the raw string).
   column: confirm echo, MERGE accepted, formatter live after refresh
   ☐ same for a view ☐ a >12-lookup list extracts without a 500.
 
-## 4. Tier 1 — companion browser extension (design only)
+## 4. Tier 1 — companion browser extension
 
 MV3, lives in **`extension/` in this repo** (owner decision): own
 package.json, exempt from the app's zero-dep rule, CI in one place,
@@ -215,8 +215,35 @@ formatfx.dev tab** that auto-loads it: `web.ts` delivers the pushed snapshot to
 the page (`snapshot` channel message), and the app routes it through the same
 guarded `applyImportedSchema` as a paste — a fresh tab has no work to clobber,
 so it auto-loads (the included current view rides in flagged `isDefault`).
-Clipboard stays as a fallback in the picker. Still to come: the continuous
-live-preview channel (sp-formatter's pattern).
+Clipboard stays as a fallback in the picker.
+
+**Status (context-aware companion, 2026-07-10):** the extension is now the
+go-between, per-site opt-in. A background service worker + **"Connect this
+site"** (`chrome.permissions.request` against the declared
+`optional_host_permissions`, one tenant origin at a time, revocable; the
+connected list is DERIVED from `permissions.getAll`, never stored) light up:
+a **per-tab badge** (connected list ● / staged-apply count / FX — silent
+everywhere else; tab URLs are only visible to the worker on connected
+origins, so the permission boundary is the feature boundary); a **popup
+dashboard** (list, view, which columns/views carry formatters, per-item
+Grab, powered by a 2-GET schema-only read that degrades to the plain
+buttons); **pre-apply backup & restore** (every apply files what it
+overwrote in bounded local history; restore rides the same confirm-first
+apply pipeline; previously-empty targets restore as apply-v2 `clear`
+targets — emitted payloads stay v1 otherwise); and **channel v2**
+(announcement-only): `spTabs` presence (the app shows which connected list
+tabs are open) + `requestSnapshot`/`snapshotResult` (the Data tab pulls a
+fresh read-only capture — full replace behind a confirm, or rows-only).
+
+**Live preview — decided (2026-07-10):** sp-formatter's true in-page live
+preview works by monkey-patching SharePoint's internal, undocumented
+client-side rendering machinery. That is fragile across Microsoft's
+internal changes, un-node-testable, and fails "definitely-works-on-real-SP"
+and auditability — **rejected** for FormatFX. The shipped alternative is the
+**live-linked refresh** above: the preview always renders in FormatFX's own
+engine against fresh real rows/formatters pulled read-only from the
+connected tab. Revisit native in-page preview only if a documented preview
+API appears.
 
 ## 5. Tier 2 — lists-as-code (design only)
 
