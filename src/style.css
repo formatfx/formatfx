@@ -1611,6 +1611,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   padding: 0 8px 3px; font-size: 11px; color: var(--wb-text-2);
   white-space: nowrap; overflow: hidden;
 }
+.wb-json-crumbs[hidden] { display: none; } /* display:flex above would defeat [hidden] */
 .wb-crumb {
   border: 0; background: transparent; padding: 0 2px; border-radius: 3px;
   font-size: 11px; color: var(--wb-text-2); cursor: pointer; white-space: nowrap;
