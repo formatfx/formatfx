@@ -100,6 +100,29 @@ describe('live squiggles while dirty', () => {
 });
 
 describe('the scope bar on a dirty buffer', () => {
+  it("a SECOND keystroke drops the previous parse's offsets too — nothing stale paints while the fresh parse is pending (PR #272 review)", async () => {
+    const { shell, textEl } = mountPanel();
+    const bar = shell.querySelector('.wb-json-scopebar') as HTMLElement;
+    state.select([0]);
+
+    // break the REAL buffer (drop one structural comma) so path [0] still
+    // resolves through the tolerant parse's member-boundary recovery
+    const bad = textEl.value.replace('",\n', '"\n');
+    type(textEl, bad, bad.length);
+    await until(() => shell.querySelector('.wb-json-sq .wb-sq-err') !== null);
+    await until(() => !bar.hidden); // first live parse landed — map is current
+
+    // the second edit: SYNCHRONOUSLY after the input event, the old map and
+    // its decorations are gone (they describe the previous buffer)…
+    type(textEl, ` ${bad}`, 1);
+    expect(bar.hidden).toBe(true);
+    expect(shell.querySelector('.wb-json-sq .wb-sq-err')).toBeNull();
+
+    // …and the debounced parse brings both straight back
+    await until(() => shell.querySelector('.wb-json-sq .wb-sq-err') !== null);
+    await until(() => !bar.hidden);
+  });
+
   it('returns within a frame of a hand edit, tracking the live map', async () => {
     const { shell, textEl } = mountPanel();
     const bar = shell.querySelector('.wb-json-scopebar') as HTMLElement;
