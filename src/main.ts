@@ -37,6 +37,11 @@ import { mountExplainPanel } from './editor/explainPanel';
 import { openShareDialog, openSharedWorkspaceFromHash, wireRestoreBackup } from './editor/shareUi';
 import { parseShareHash } from './core/share';
 import { themeToggleView } from './editor/themeToggle';
+import {
+  paneGridTemplate, dragSide, sideMaxW, leftColW, clampLeftW,
+  sanitizeSideMode, sanitizeLeftMode, sanitizeLeftW,
+  type SideMode, type LeftMode,
+} from './editor/paneLayout';
 import type { DocumentKind } from './core/types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -92,7 +97,9 @@ app.innerHTML = `
     </div>
   </header>
   <main class="wb-layout" id="wb-layout">
+    <button class="wb-lp-bar" id="wb-lp-bar" title="Expand the edit pane" aria-label="Expand the edit pane"><span aria-hidden="true">▸</span><span class="wb-lp-bar-label">Edit</span></button>
     <aside class="wb-leftpane" id="wb-leftpane"></aside>
+    <div class="wb-resizer wb-resizer-left" data-col="left" title="Drag to resize the edit pane — double-click to minimize it to a bar"></div>
     <section class="wb-pane-canvas">
       <div id="wb-canvastabs" title="Canvas tabs — the Grid plus every view or component you open; drag to rearrange"></div>
       <div id="wb-fxbar" title="The Function Bar — paint the selected element's properties with Excel-style formulas."></div>
@@ -118,6 +125,8 @@ app.innerHTML = `
           <button class="wb-side-tab active" id="wb-side-tab-json" role="tab" aria-selected="true" data-tab="wb-tab-json">JSON</button>
           <button class="wb-side-tab" id="wb-side-tab-explain" role="tab" aria-selected="false" data-tab="wb-tab-explain" title="Read this formatter back in plain English — what shows, what turns which color when, what clicking does">Explain</button>
         </div>
+        <div class="wb-side-actions">
+        <button id="wb-side-max" class="wb-side-maxbtn" aria-pressed="false" aria-label="Toggle JSON pane maximize" title="Maximize the JSON pane over the canvas and data bar — the edit pane stays">⛶</button>
         <div class="wb-menu wb-side-more">
           <button id="wb-json-kebab" aria-haspopup="menu" aria-label="JSON pane actions" title="Everything else — copy, download, deploy, output options and the surface type"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></button>
           <div class="wb-json-kebab-panel" id="wb-json-kebab-panel" hidden>
@@ -131,6 +140,7 @@ app.innerHTML = `
               </select>
             </label>
           </div>
+        </div>
         </div>
       </div>
       <div id="wb-tab-json" class="wb-tab active"></div>
@@ -153,6 +163,13 @@ interface UiPrefs {
   /** Whether the right-hand validated-JSON pane (the Advanced escape hatch) is
    *  shown. Collapsed by default so the maker landing is left pane + canvas. */
   jsonOpen: boolean;
+  /** Pane states (spec 2026-07-10) — ADDITIVE fields in this frozen blob.
+   *  Each pane's mode lives apart from its remembered size: maximizing the
+   *  JSON pane never overwrites cols.side, the edit pane's bar never
+   *  overwrites leftW, and reopening a pane restores both. */
+  sideMode: SideMode;
+  leftMode: LeftMode;
+  leftW: number;
   /** Canvas view controls (#216/#224): the preview zoom factor (1 = 100%)
    *  and the simulated viewport width in px (null = fit the canvas).
    *  ADDITIVE fields in this frozen blob — read-only view prefs, never part
@@ -167,58 +184,130 @@ const uiPrefs: UiPrefs = {
   titleCol: true,
   activeLens: 'pro',
   jsonOpen: false,
+  sideMode: 'normal',
+  leftMode: 'normal',
+  leftW: 360,
   canvasZoom: 1,
   canvasViewportW: null,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
+// a stored blob predating these fields — or a corrupt one — lands on defaults
+uiPrefs.sideMode = sanitizeSideMode(uiPrefs.sideMode);
+uiPrefs.leftMode = sanitizeLeftMode(uiPrefs.leftMode);
+uiPrefs.leftW = sanitizeLeftW(uiPrefs.leftW);
 const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
 const sidePane = document.getElementById('wb-pane-side')!;
 const sideResizer = layout.querySelector<HTMLElement>('.wb-resizer[data-col="side"]')!;
-// The pane's width ceiling tracks the window, not a fixed 720px (which read as
-// "a third of a widescreen" — owner): everything the left pane and a workable
-// canvas (~420px) don't need is the pane's to take.
+const leftResizerEl = layout.querySelector<HTMLElement>('.wb-resizer[data-col="left"]')!;
 const leftPaneEl = document.getElementById('wb-leftpane')!;
-const sideMax = (): number =>
-  Math.max(220, layout.clientWidth - leftPaneEl.offsetWidth - 5 - 420);
+const leftBarEl = document.getElementById('wb-lp-bar') as HTMLButtonElement;
+const sideMaxBtn = document.getElementById('wb-side-max') as HTMLButtonElement;
+// Pane states (spec 2026-07-10): paneLayout.ts makes every sizing decision;
+// this block only reads prefs, measures the layout and paints the answer.
+// The Left Edit Pane — or its 28px bar — is always visible: no state can
+// strand the user with no way back. The JSON pane's width ceiling tracks the
+// window (everything a workable ~420px canvas doesn't need is the pane's to
+// take), and maximizing hands it the canvas + data dock too.
 const applyLayout = () => {
-  // clamp for display only — the saved pref keeps its value for roomier windows
-  const side = Math.min(uiPrefs.cols.side, sideMax());
-  // Left Edit Pane is always visible (spec); the JSON pane (Advanced escape
-  // hatch) can fold away so the maker default is left pane + canvas.
-  layout.style.gridTemplateColumns = uiPrefs.jsonOpen
-    ? `var(--wb-leftpane-w) 1fr 5px ${side}px`
-    : 'var(--wb-leftpane-w) 1fr';
+  const grid = paneGridTemplate({
+    jsonOpen: uiPrefs.jsonOpen, sideMode: uiPrefs.sideMode, leftMode: uiPrefs.leftMode,
+    leftW: uiPrefs.leftW, sideW: uiPrefs.cols.side, layoutW: layout.clientWidth,
+  });
+  layout.style.gridTemplateColumns = grid.template;
+  // bar/max visibility rides CLASSES, not inline styles, so the <900px
+  // stacked media query can neutralize both modes with no JS breakpoint
+  layout.classList.toggle('wb-left-bar', uiPrefs.leftMode === 'bar');
+  layout.classList.toggle('wb-side-maxed', grid.centerHidden);
   sidePane.style.display = uiPrefs.jsonOpen ? '' : 'none';
-  sideResizer.style.display = uiPrefs.jsonOpen ? '' : 'none';
+  sideResizer.style.display = grid.sideResizer ? '' : 'none';
+  leftResizerEl.style.display = grid.leftResizer ? '' : 'none';
+  sideMaxBtn.classList.toggle('active', grid.centerHidden);
+  sideMaxBtn.setAttribute('aria-pressed', String(grid.centerHidden));
+  sideMaxBtn.title = grid.centerHidden
+    ? 'Restore the JSON pane to its remembered width — or double-click the drag handle'
+    : 'Maximize the JSON pane over the canvas and data bar — the edit pane stays';
   document.getElementById('wb-json-toggle')?.classList.toggle('active', uiPrefs.jsonOpen);
 };
 window.addEventListener('resize', applyLayout);
 
-for (const resizer of layout.querySelectorAll<HTMLElement>('.wb-resizer')) {
-  resizer.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    resizer.setPointerCapture(e.pointerId);
-    const startX = e.clientX;
-    const startW = uiPrefs.cols.side;
-    const move = (ev: PointerEvent) => {
-      // the JSON pane grows leftwards
-      uiPrefs.cols.side = Math.max(220, Math.min(sideMax(), startW - (ev.clientX - startX)));
-      applyLayout();
-    };
-    const up = () => {
-      resizer.removeEventListener('pointermove', move);
-      resizer.removeEventListener('pointerup', up);
-      saveUiPrefs();
-    };
-    resizer.addEventListener('pointermove', move);
-    resizer.addEventListener('pointerup', up);
-  });
-}
+// the JSON pane's drag handle — width in normal mode, snap-to-max past the
+// canvas floor (dragSide's hysteresis), drag-out restores pointer tracking
+sideResizer.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  sideResizer.setPointerCapture(e.pointerId);
+  const startX = e.clientX;
+  const startW = sidePane.getBoundingClientRect().width;
+  const preDragW = uiPrefs.cols.side;
+  const move = (ev: PointerEvent) => {
+    // the JSON pane grows leftwards
+    const proposed = startW - (ev.clientX - startX);
+    const left = leftColW(uiPrefs.leftMode, uiPrefs.leftW, layout.clientWidth);
+    const d = dragSide(proposed, sideMaxW(layout.clientWidth, left), uiPrefs.sideMode);
+    uiPrefs.sideMode = d.mode;
+    if (d.mode === 'normal') uiPrefs.cols.side = d.w;
+    applyLayout();
+  };
+  const up = () => {
+    sideResizer.removeEventListener('pointermove', move);
+    sideResizer.removeEventListener('pointerup', up);
+    sideResizer.removeEventListener('pointercancel', up);
+    // a drag that ends maximized keeps the pre-drag width as the remembered
+    // one — un-maximizing returns to where the pane sat before the gesture
+    if (uiPrefs.sideMode === 'max') uiPrefs.cols.side = preDragW;
+    saveUiPrefs();
+  };
+  sideResizer.addEventListener('pointermove', move);
+  sideResizer.addEventListener('pointerup', up);
+  sideResizer.addEventListener('pointercancel', up);
+});
+sideResizer.addEventListener('dblclick', () => {
+  uiPrefs.sideMode = uiPrefs.sideMode === 'max' ? 'normal' : 'max';
+  applyLayout();
+  saveUiPrefs();
+});
+
+// the edit pane's drag handle (it grows rightwards); double-click minimizes
+// to the bar — the handle hides with the pane, the bar itself restores
+leftResizerEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  leftResizerEl.setPointerCapture(e.pointerId);
+  const startX = e.clientX;
+  const startW = leftPaneEl.getBoundingClientRect().width;
+  const move = (ev: PointerEvent) => {
+    uiPrefs.leftW = clampLeftW(startW + (ev.clientX - startX), layout.clientWidth);
+    applyLayout();
+  };
+  const up = () => {
+    leftResizerEl.removeEventListener('pointermove', move);
+    leftResizerEl.removeEventListener('pointerup', up);
+    leftResizerEl.removeEventListener('pointercancel', up);
+    saveUiPrefs();
+  };
+  leftResizerEl.addEventListener('pointermove', move);
+  leftResizerEl.addEventListener('pointerup', up);
+  leftResizerEl.addEventListener('pointercancel', up);
+});
+leftResizerEl.addEventListener('dblclick', () => {
+  uiPrefs.leftMode = 'bar';
+  applyLayout();
+  saveUiPrefs();
+});
+leftBarEl.addEventListener('click', () => {
+  uiPrefs.leftMode = 'normal';
+  applyLayout();
+  saveUiPrefs();
+});
+sideMaxBtn.addEventListener('click', () => {
+  uiPrefs.sideMode = uiPrefs.sideMode === 'max' ? 'normal' : 'max';
+  applyLayout();
+  saveUiPrefs();
+});
 applyLayout();
 
-// JSON: show/hide the validated-JSON pane (the left pane + canvas stay put)
+// JSON: show/hide the validated-JSON pane — reopening restores the pane's
+// remembered width AND mode (they persist independently of jsonOpen)
 document.getElementById('wb-json-toggle')!.addEventListener('click', () => {
   uiPrefs.jsonOpen = !uiPrefs.jsonOpen;
   applyLayout();
@@ -268,10 +357,12 @@ dataSplit.addEventListener('pointerdown', (e) => {
   const up = () => {
     dataSplit.removeEventListener('pointermove', move);
     dataSplit.removeEventListener('pointerup', up);
+    dataSplit.removeEventListener('pointercancel', up);
     saveUiPrefs();
   };
   dataSplit.addEventListener('pointermove', move);
   dataSplit.addEventListener('pointerup', up);
+  dataSplit.addEventListener('pointercancel', up);
 });
 applyDataDock();
 
@@ -485,6 +576,32 @@ state.subscribe((reason) => {
 
 // ─── panels ─────────────────────────────────────────────────────────────────
 mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
+// the edit pane's minimize control rides the nav row the pane just rendered —
+// shell-owned (it drives shell layout state), so leftPane.ts stays untouched
+{
+  const lpCollapse = document.createElement('button');
+  lpCollapse.id = 'wb-lp-collapse';
+  lpCollapse.className = 'wb-lp-collapse';
+  lpCollapse.title = 'Minimize the edit pane to a bar — click the bar to bring it back';
+  lpCollapse.setAttribute('aria-label', 'Minimize the edit pane to a bar');
+  lpCollapse.textContent = '◂';
+  lpCollapse.addEventListener('click', () => {
+    uiPrefs.leftMode = 'bar';
+    applyLayout();
+    saveUiPrefs();
+  });
+  // cluster with the pane's kebab so the nav row keeps its 3 space-between
+  // children (back · lens tabs · actions) — the ⋮ node moves, listeners ride
+  const lpKebab = leftPaneEl.querySelector('#wb-kebab-btn');
+  if (lpKebab) {
+    const actions = document.createElement('span');
+    actions.className = 'wb-lp-nav-actions';
+    lpKebab.replaceWith(actions);
+    actions.append(lpKebab, lpCollapse);
+  } else {
+    leftPaneEl.querySelector('.wb-lp-nav')?.appendChild(lpCollapse);
+  }
+}
 // canvas view prefs (#216/#224): zoom + viewport ride inside wb-ui-prefs
 // (additive fields — the frozen-keys rule)
 const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast, {

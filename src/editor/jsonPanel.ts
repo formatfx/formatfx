@@ -709,7 +709,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     });
     const head = document.createElement('div');
     head.className = 'wb-syn-head';
-    head.textContent = `Expression colors — ${theme} theme`;
+    const title = document.createElement('span');
+    title.textContent = `Expression colors — ${theme} theme`;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'wb-syn-close';
+    close.textContent = '×';
+    close.title = 'Hide this panel (Esc) — the ⋮ menu reopens it';
+    close.setAttribute('aria-label', 'Hide the syntax colors panel');
+    close.addEventListener('click', () => closeSynPanel());
+    head.append(title, close);
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.id = 'wb-syn-reset';
@@ -724,12 +733,31 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     synPanel.replaceChildren(head, ...rows, reset);
   };
 
+  // quick-hide (owner ask 2026-07-10): × on the panel, or Esc while it shows.
+  // Capture phase keeps the app-level Esc (clear canvas selection) out of a
+  // close gesture; the listener only exists while the panel is up.
+  const synPanelEsc = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeSynPanel();
+  };
+  const openSynPanel = (): void => {
+    synPanel.hidden = false;
+    rebuildSynPanel();
+    document.addEventListener('keydown', synPanelEsc, true);
+  };
+  const closeSynPanel = (): void => {
+    synPanel.hidden = true;
+    document.removeEventListener('keydown', synPanelEsc, true);
+  };
+
   menuHost.querySelector('#wb-json-syncolors')!.addEventListener('click', () => {
     // the mapper lives in the JSON tab — surface it if Explain is up front
     const jsonTab = document.getElementById('wb-side-tab-json');
     if (jsonTab && !jsonTab.classList.contains('active')) jsonTab.click();
-    synPanel.hidden = !synPanel.hidden;
-    if (!synPanel.hidden) rebuildSynPanel();
+    if (synPanel.hidden) openSynPanel();
+    else closeSynPanel();
   });
 
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
@@ -993,6 +1021,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   hostAny._unsub = () => {
     stateUnsub();
     document.removeEventListener('pointerdown', closeKebabOnOutside);
+    document.removeEventListener('keydown', synPanelEsc, true);
     kebabBtn?.removeEventListener('click', toggleKebab);
     kebabPanel?.removeEventListener('click', closeKebabOnItem);
   };
