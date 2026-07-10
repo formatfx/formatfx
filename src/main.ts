@@ -252,6 +252,7 @@ sideResizer.addEventListener('pointerdown', (e) => {
   const up = () => {
     sideResizer.removeEventListener('pointermove', move);
     sideResizer.removeEventListener('pointerup', up);
+    sideResizer.removeEventListener('pointercancel', up);
     // a drag that ends maximized keeps the pre-drag width as the remembered
     // one — un-maximizing returns to where the pane sat before the gesture
     if (uiPrefs.sideMode === 'max') uiPrefs.cols.side = preDragW;
@@ -259,6 +260,7 @@ sideResizer.addEventListener('pointerdown', (e) => {
   };
   sideResizer.addEventListener('pointermove', move);
   sideResizer.addEventListener('pointerup', up);
+  sideResizer.addEventListener('pointercancel', up);
 });
 sideResizer.addEventListener('dblclick', () => {
   uiPrefs.sideMode = uiPrefs.sideMode === 'max' ? 'normal' : 'max';
@@ -280,10 +282,12 @@ leftResizerEl.addEventListener('pointerdown', (e) => {
   const up = () => {
     leftResizerEl.removeEventListener('pointermove', move);
     leftResizerEl.removeEventListener('pointerup', up);
+    leftResizerEl.removeEventListener('pointercancel', up);
     saveUiPrefs();
   };
   leftResizerEl.addEventListener('pointermove', move);
   leftResizerEl.addEventListener('pointerup', up);
+  leftResizerEl.addEventListener('pointercancel', up);
 });
 leftResizerEl.addEventListener('dblclick', () => {
   uiPrefs.leftMode = 'bar';
@@ -353,10 +357,12 @@ dataSplit.addEventListener('pointerdown', (e) => {
   const up = () => {
     dataSplit.removeEventListener('pointermove', move);
     dataSplit.removeEventListener('pointerup', up);
+    dataSplit.removeEventListener('pointercancel', up);
     saveUiPrefs();
   };
   dataSplit.addEventListener('pointermove', move);
   dataSplit.addEventListener('pointerup', up);
+  dataSplit.addEventListener('pointercancel', up);
 });
 applyDataDock();
 
@@ -584,7 +590,17 @@ mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
     applyLayout();
     saveUiPrefs();
   });
-  leftPaneEl.querySelector('.wb-lp-nav')?.appendChild(lpCollapse);
+  // cluster with the pane's kebab so the nav row keeps its 3 space-between
+  // children (back · lens tabs · actions) — the ⋮ node moves, listeners ride
+  const lpKebab = leftPaneEl.querySelector('#wb-kebab-btn');
+  if (lpKebab) {
+    const actions = document.createElement('span');
+    actions.className = 'wb-lp-nav-actions';
+    lpKebab.replaceWith(actions);
+    actions.append(lpKebab, lpCollapse);
+  } else {
+    leftPaneEl.querySelector('.wb-lp-nav')?.appendChild(lpCollapse);
+  }
 }
 // canvas view prefs (#216/#224): zoom + viewport ride inside wb-ui-prefs
 // (additive fields — the frozen-keys rule)

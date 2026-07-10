@@ -4167,6 +4167,9 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
    visibility side so the stacked media query below can neutralize the
    modes with CSS alone (the no-JS-breakpoint invariant). */
 .wb-side-actions { display: flex; align-items: center; gap: 4px; }
+/* the nav row's right cluster (⋮ + ◂) — one flex child, so the row's
+   space-between still sees back · lens tabs · actions */
+.wb-lp-nav-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
 .wb-side-maxbtn {
   display: inline-flex; align-items: center; padding: 3px 6px; cursor: pointer;
   border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
