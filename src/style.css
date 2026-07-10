@@ -132,12 +132,14 @@ body {
 #app { display: flex; flex-direction: column; height: 100vh; }
 
 /* ── top bar ─────────────────────────────────────────────── */
+/* brand and controls flex equally from either side so the undo/redo group
+   sits truly centered on the bar */
 .wb-topbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 8px 14px; background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border);
 }
-.wb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; min-width: 0; }
+.wb-brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; min-width: 0; flex: 1 1 0; }
 .wb-brand-logo { flex: none; }
 /* tagline truncates rather than wrapping — a hard wrap used to collide
    "SharePoint…" with the "Editing" control at narrow widths */
@@ -145,14 +147,22 @@ body {
   font-weight: 400; font-size: 11px; color: var(--wb-text-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
-.wb-topbar-controls { display: flex; align-items: center; gap: 10px; }
+.wb-topbar-controls { display: flex; align-items: center; gap: 10px; flex: 1 1 0; justify-content: flex-end; }
 .wb-topbar-controls label { font-size: 12px; color: var(--wb-text-2); display: flex; align-items: center; gap: 5px; }
-.wb-topbar-controls button {
+.wb-topbar-controls button,
+.wb-topbar-center button {
   border: 1px solid var(--wb-border); background: var(--wb-surface); color: var(--wb-text);
   border-radius: 3px; padding: 4px 8px; cursor: pointer;
 }
-.wb-topbar-controls button:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-topbar-controls button:disabled { opacity: .35; cursor: default; }
+.wb-topbar-controls button:hover:not(:disabled),
+.wb-topbar-center button:hover:not(:disabled) { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-topbar-controls button:disabled,
+.wb-topbar-center button:disabled { opacity: .35; cursor: default; }
+/* undo/redo: centered between brand and controls, with roomier hit targets */
+.wb-topbar-center { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.wb-topbar-center button { padding: 4px 18px; }
+/* the JSON button's { } glyph — braces read "JSON", </> never did */
+.wb-json-glyph { font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 12px; }
 
 /* Narrow widths: drop the redundant tagline and let the controls wrap below
    the brand instead of clipping "Advanced"/☰ off the right edge and out of
@@ -266,6 +276,8 @@ body {
 .wb-comp-slot {
   font-size: 9.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
   padding: 2px 7px; border-radius: 9px; white-space: nowrap;
+  /* a long label must never wrap or blow the pane open — ellipsize instead */
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;
   color: var(--wb-component); background: var(--wb-component-bg);
   border: 1px solid var(--wb-component-border);
 }
@@ -294,11 +306,27 @@ body {
 /* .wb-complib-h1 retired: the "In this project" / "Add components" headings are
    now foldable buttons — see .wb-complib-foldhead in the collapsible-sections
    block. */
+/* a plain clickable count (no badge chrome — matches the def card's count);
+   clicking pops out the where-it's-used jump rows */
 .wb-comp-count {
-  flex: 0 0 auto; font-size: 9.5px; font-weight: 600; white-space: nowrap;
-  padding: 2px 7px; border-radius: 9px;
-  color: var(--wb-component); background: var(--wb-component-bg);
-  border: 1px solid var(--wb-component-border);
+  flex: 0 0 auto; font-size: 10px; font-weight: 600; white-space: nowrap;
+  padding: 1px 4px; border: none; border-radius: 4px; background: transparent;
+  color: var(--wb-lp-text-2); cursor: pointer;
+  font-variant-numeric: tabular-nums; font-family: inherit;
+}
+.wb-comp-count:hover { color: var(--wb-component); background: var(--wb-component-bg); }
+/* the where-it's-used pop-out (componentLibrary.openUsagePopout) */
+.wb-usage-pop {
+  position: fixed; z-index: 70; min-width: 200px; max-width: 280px;
+  max-height: min(50vh, 380px); overflow-y: auto;
+  background: var(--wb-lp-surface); border: 1px solid var(--wb-lp-border);
+  border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .14);
+  padding: 8px; display: flex; flex-direction: column; gap: 4px;
+  color: var(--wb-lp-text);
+}
+.wb-usage-pop-head {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--wb-lp-text-2); padding: 0 2px;
 }
 .wb-comp-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .wb-comp-addmore {
@@ -390,13 +418,18 @@ body.wb-dark .wb-compmap-insert { color: #10393b; }
    structure tree's language — wb-tree-row hover/actions, teal ink, and a
    click-to-expand details drawer instead of always-on cards ─────────────── */
 .wb-comp-node { display: flex; flex-direction: column; }
-.wb-comp-row { gap: 4px; }
+/* min-height matches the structure tree rows — the (now identically sized)
+   hover buttons must not grow the row when they appear */
+.wb-comp-row { gap: 4px; min-height: 27px; }
 .wb-comp-row .wb-comp-mark { font-size: 12px; }
 .wb-comp-rowname { color: var(--wb-component); font-size: 11px; }
 .wb-comp-row.wb-comp-row-open,
 .wb-comp-row:hover { background: color-mix(in srgb, var(--wb-component) 7%, transparent); }
-.wb-comp-row .wb-comp-count { padding: 1px 6px; }
-.wb-comp-row .wb-tree-actions button { font-size: 11px; color: var(--wb-lp-text-2); }
+/* hover actions sized like the structure tree's (#220) — one idiom, one size */
+.wb-comp-row .wb-tree-actions { gap: 3px; }
+.wb-comp-row .wb-tree-actions button {
+  font-size: 14px; padding: 4px 6px; border-radius: 4px; color: var(--wb-lp-text-2);
+}
 .wb-comp-row .wb-tree-actions button:hover { color: var(--wb-component); }
 .wb-comp-row[draggable="true"] { cursor: grab; }
 .wb-comp-row[draggable="true"]:active { cursor: grabbing; }
@@ -1099,15 +1132,19 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   display: inline-flex; align-items: center; gap: 2px; padding: 2px;
   border: 1px solid var(--wb-border); border-radius: 6px; background: var(--wb-surface);
 }
-.wb-canvas-zoombtn, .wb-canvas-zoompct, .wb-canvas-vpbtn {
+.wb-canvas-zoombtn, .wb-canvas-zoompct {
   padding: 2px 8px; font-size: 11.5px; font-weight: 600; cursor: pointer;
   border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
 }
-.wb-canvas-zoombtn:hover:not(:disabled), .wb-canvas-zoompct:hover,
-.wb-canvas-vpbtn:hover { color: var(--wb-accent); }
+.wb-canvas-zoombtn:hover:not(:disabled), .wb-canvas-zoompct:hover { color: var(--wb-accent); }
 .wb-canvas-zoombtn:disabled { opacity: 0.4; cursor: default; }
 .wb-canvas-zoompct { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
-.wb-canvas-vpbtn.active { background: var(--wb-accent); color: var(--wb-accent-text); }
+/* the width DROPDOWN (was a four-button segment): reads "Width: Fit" */
+.wb-canvas-vpsel {
+  border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
+  font-size: 11.5px; font-weight: 600; cursor: pointer; padding: 2px 2px;
+}
+.wb-canvas-vpsel:hover { color: var(--wb-accent); }
 .wb-canvas-vplabel { font-size: 11px; color: var(--wb-text-2); padding: 0 4px 0 6px; cursor: default; }
 .wb-canvas-vppx { font-size: 11px; color: var(--wb-text-2); padding: 0 6px 0 2px; font-variant-numeric: tabular-nums; cursor: default; }
 .wb-canvas-vppx:empty { display: none; }
@@ -1150,7 +1187,9 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border: none; border-radius: 4px; background: transparent; color: var(--wb-text-2);
 }
 .wb-canvas-mode:hover { color: var(--wb-accent); }
-.wb-canvas-mode.active { background: var(--wb-accent); color: var(--wb-accent-text); }
+/* subtle active state — a soft track fill, not the full-accent slab (the
+   bright blue shouted over the canvas it sits above) */
+.wb-canvas-mode.active { background: var(--wb-lp-seg-track); color: var(--wb-accent); }
 /* simulate-hover pin (issue #203): sits beside the Select/Live segment */
 .wb-canvas-hoverpin {
   margin-left: 6px; padding: 2px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer;
@@ -1178,14 +1217,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   background: var(--wb-surface); border: 1px solid var(--wb-border); border-radius: 4px;
 }
 .wb-rowview-bar-label { font-weight: 600; color: var(--wb-text-2); }
-.wb-rowview-density { display: inline-flex; align-items: center; gap: 4px; color: var(--wb-text-2); }
-.wb-rowview-bar-btn {
-  padding: 2px 9px; font-size: 12px; cursor: pointer;
-  border: 1px solid var(--wb-border); border-radius: 3px;
-  background: transparent; color: var(--wb-text);
-}
-.wb-rowview-bar-btn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-rowview-bar-btn.active { background: var(--wb-accent); color: var(--wb-accent-text); border-color: var(--wb-accent); }
+/* (.wb-rowview-density / .wb-rowview-bar-btn retired 2026-07-10 — density and
+   Templates live in the structure-header kebab now.) */
 
 /* selection + emulation affordances inside the preview.
    Deliberately NOT a solid border: dashed, offset away from the element and
@@ -2840,7 +2873,6 @@ body.wb-dark {
 }
 
 /* ── row-view templates modal ─────────────────────────────────────── */
-.wb-rowview-templates { margin-left: 4px; }
 .wb-template-modal-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, .4);
   display: flex; align-items: center; justify-content: center; z-index: 1100;
@@ -3180,22 +3212,21 @@ body.wb-dark {
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 
-/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ← back + Simple/Pro/Code lens + 🕘 snapshots. ── */
+/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ◂ minimize + Simple/Pro/Code lens + ⋮ menu (Back lives inside the ⋮ now). ── */
 .wb-lp-nav {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-nav-back, .wb-snap-btn, .wb-kebab-btn, .wb-lp-collapse {
+.wb-snap-btn, .wb-kebab-btn, .wb-lp-collapse {
   flex: 0 0 auto; display: inline-flex; align-items: center;
   justify-content: center; width: 28px; height: 28px;
   border: none; border-radius: 6px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
   font-size: 16px; line-height: 1;
 }
-.wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover, .wb-kebab-btn:hover, .wb-lp-collapse:hover {
+.wb-snap-btn:hover, .wb-kebab-btn:hover, .wb-lp-collapse:hover {
   background: var(--wb-lp-seg-track); color: var(--wb-accent);
 }
-.wb-nav-back:disabled { opacity: .35; cursor: default; }
 
 /* ── the THIS VIEW card (§3.2) — the active view's name/kind + its
    view-scoped behaviors & properties; a compact ⬡ def card while a workshop
@@ -3242,20 +3273,30 @@ body.wb-dark {
 }
 .wb-viewcard-behavior:hover { background: var(--wb-lp-seg-track); color: var(--wb-accent); }
 .wb-viewcard-slots { display: flex; flex-wrap: wrap; gap: 4px; }
-.wb-viewcard-usage { font-size: 11px; color: var(--wb-lp-text-2); line-height: 1.45; }
+/* the def card's usage count: a plain clickable count — no badge chrome (the
+   bordered/filled pill reads as data, not as a control) */
+.wb-viewcard-usage {
+  align-self: flex-start; font-size: 11px; color: var(--wb-lp-text-2); line-height: 1.45;
+  border: none; background: transparent; padding: 0; cursor: pointer; font: inherit;
+  font-size: 11px; text-align: left;
+}
+.wb-viewcard-usage:hover:not(:disabled) { color: var(--wb-accent); text-decoration: underline; }
+.wb-viewcard-usage:disabled { cursor: default; }
 
-/* ── the View settings kebab (spec §A): the ⋮ door on the card heading and its
-   body-owned fixed panel (viewKebab.ts). Chrome matches the JSON-pane kebab
-   (radius 8, the 0 6px 18px shadow); the toggles inside wear the density
-   seg's exact classes. */
-.wb-viewcard-kebab {
-  flex: 0 0 auto; margin-left: auto; display: inline-flex; align-items: center;
-  justify-content: center; width: 24px; height: 24px; padding: 0;
+/* ── the settings kebab (spec §A; re-anchored 2026-07-10): the ⋮ door on the
+   Structure section header (leftPane.ts) and its body-owned fixed panel
+   (viewKebab.ts — view settings on a view, component options in a workshop).
+   Chrome matches the JSON-pane kebab (radius 8, the 0 6px 18px shadow); the
+   toggles inside wear the density seg's exact classes. */
+.wb-structure-kebab {
+  flex: 0 0 auto; display: inline-flex; align-items: center;
+  justify-content: center; width: 24px; height: 24px; padding: 0; margin-right: 6px;
   border: none; border-radius: 5px; background: transparent; cursor: pointer;
   color: var(--wb-lp-text-2);
 }
-.wb-viewcard-kebab:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
-.wb-viewcard-kebab:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
+.wb-structure-kebab:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-structure-kebab:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
+.wb-structure-kebab[hidden] { display: none; }
 .wb-viewkebab {
   position: fixed; z-index: 70; min-width: 248px; max-width: 300px;
   max-height: min(62vh, 520px); overflow-y: auto;
@@ -3273,13 +3314,16 @@ body.wb-dark {
   background: var(--wb-lp-surface); color: var(--wb-lp-text);
 }
 .wb-viewkebab-num:focus { outline: none; border-color: var(--wb-accent); }
-.wb-viewkebab-commands {
+/* Templates + the component panel's Add-to-view wear the drill-in row's
+   clothes but keep DISTINCT classes — e2e locators are strict, and two
+   .wb-viewkebab-commands in one panel would be ambiguous */
+.wb-viewkebab-commands, .wb-viewkebab-templates, .wb-viewkebab-addcomp {
   display: flex; align-items: center; gap: 8px; padding: 6px 7px; cursor: pointer;
   border: none; border-radius: 5px; background: transparent; color: var(--wb-lp-text);
   font: inherit; font-size: 11.5px; text-align: left;
 }
 .wb-viewkebab-commands::after { content: '›'; margin-left: auto; color: var(--wb-lp-text-2); }
-.wb-viewkebab-commands:hover { background: var(--wb-lp-seg-track); }
+.wb-viewkebab-commands:hover, .wb-viewkebab-templates:hover, .wb-viewkebab-addcomp:hover { background: var(--wb-lp-seg-track); }
 .wb-viewkebab-count {
   flex: 0 0 auto; font-size: 9.5px; font-weight: 600; white-space: nowrap;
   padding: 1px 7px; border-radius: 9px;
@@ -3337,6 +3381,13 @@ body.wb-dark {
    The caret / body-hide rules are generic on .wb-collapsed so the library's own
    fold-groups (below) reuse them. */
 .wb-lp-sec { display: flex; flex-direction: column; min-height: 0; }
+/* the Structure header's row: the fold button plus the ⋮ settings kebab —
+   the kebab is a sibling (a button can't nest a button) */
+.wb-lp-sec-headrow {
+  flex: 0 0 auto; display: flex; align-items: center;
+  background: var(--wb-lp-bg); border-bottom: 1px solid var(--wb-lp-border);
+}
+.wb-lp-sec-headrow > .wb-lp-sec-head { flex: 1 1 auto; min-width: 0; border-bottom: none; }
 .wb-lp-sec-head {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 7px 10px; margin: 0; cursor: pointer; text-align: left;
@@ -3350,17 +3401,18 @@ body.wb-dark {
    pane background, a hairline underline. Same height, nothing bigger. Scoped
    to DIRECT section heads so the library's own fold-groups (content, inside
    the scrolling body) never stack under them. */
-.wb-lp-tree > .wb-lp-sec-head,
+.wb-lp-tree > .wb-lp-sec-headrow > .wb-lp-sec-head,
 .wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head,
 .wb-lp-props > .wb-lp-sec > .wb-lp-sec-head {
   color: var(--wb-lp-text); background: var(--wb-lp-bg);
   border-radius: 0; border-bottom: 1px solid var(--wb-lp-border);
 }
+.wb-lp-tree > .wb-lp-sec-headrow > .wb-lp-sec-head { border-bottom: none; }
 .wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head,
 .wb-lp-props > .wb-lp-sec > .wb-lp-sec-head {
   position: sticky; top: 0; z-index: 3;
 }
-.wb-lp-tree > .wb-lp-sec-head:hover,
+.wb-lp-tree > .wb-lp-sec-headrow > .wb-lp-sec-head:hover,
 .wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head:hover,
 .wb-lp-props > .wb-lp-sec > .wb-lp-sec-head:hover { background: var(--wb-lp-seg-track); }
 .wb-lp-sec-head:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
@@ -3374,7 +3426,8 @@ body.wb-dark {
 }
 .wb-lp-sec-caret::before { content: '\25B8'; }
 .wb-lp-sec-head[aria-expanded="true"] .wb-lp-sec-caret { transform: rotate(90deg); }
-.wb-collapsed > .wb-lp-sec-head { color: var(--wb-lp-text-2); }
+.wb-collapsed > .wb-lp-sec-head,
+.wb-collapsed > .wb-lp-sec-headrow .wb-lp-sec-head { color: var(--wb-lp-text-2); }
 .wb-collapsed > .wb-lp-sec-body { display: none; }
 .wb-lp-sec.wb-collapsed { flex: 0 0 auto; }
 
@@ -3429,6 +3482,13 @@ body.wb-dark {
 }
 .wb-viewslist-row.selected .wb-viewslist-open,
 .wb-viewslist-row.selected .wb-viewslist-mark { color: var(--wb-accent); }
+/* The base .wb-tree-row.selected (studio tree) is accent-fill + accent text —
+   on THIS row the two rules collided into accent-on-accent (the current view's
+   name was unreadable, and the fill shouted). Swap in the pane's soft
+   --wb-lp-selected fill, the same rescue the lp structure tree ships. */
+.wb-viewslist-row.selected {
+  background: var(--wb-lp-selected); border-radius: 5px; color: var(--wb-lp-text);
+}
 .wb-viewslist-input {
   flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 2px 6px;
   border: 1px solid var(--wb-accent); border-radius: 3px;
@@ -3469,9 +3529,12 @@ body.wb-dark {
 /* Simple hides the tree itself, but keeps the formatter tabs + document
    dropdown — they're navigation, not structure editing. */
 .wb-leftpane.wb-lens-simple .wb-lp-tree { height: auto; flex: 0 0 auto; }
-.wb-leftpane.wb-lens-simple .wb-lp-tree > .wb-lp-sec-head,
+/* Simple hides the TREE splitter only — the shelves/props splitter
+   (#wb-lp-splitter2) stays draggable in every lens (the old bare
+   .wb-lp-splitter selector swallowed it by accident, 2026-07-10) */
+.wb-leftpane.wb-lens-simple .wb-lp-tree > .wb-lp-sec-headrow,
 .wb-leftpane.wb-lens-simple .wb-lp-tree .wb-tree-sec-body,
-.wb-leftpane.wb-lens-simple .wb-lp-splitter { display: none; }
+.wb-leftpane.wb-lens-simple .wb-lp-tree + .wb-lp-splitter { display: none; }
 .wb-lp-tree .wb-tree-sec-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 12px 6px; }
 
 /* ── splitter between tree and properties ──────────────────────────────────── */
@@ -3577,11 +3640,10 @@ body.wb-dark {
 
 /* ── #219: elemType far-right, swapped for hover actions in the same slot ──── */
 /* elemType and the hover actions share ONE grid cell (stacked + right-
-   anchored), so the slot's width is whichever is wider — no reflow when one
-   fades out and the other fades in. The actions stay display:inline-flex at
-   rest (only opacity/transform/pointer-events toggle), so the grid cell —
-   and therefore the row's height — already accounts for their (bigger, see
-   #220 below) footprint even before the row is hovered. */
+   anchored). The actions are display:none at rest (2026-07-10 — the old
+   always-in-flow invisible buttons reserved their full width and displaced
+   everything else on the row); the row's min-height below keeps the swap
+   from changing row height on hover. */
 .wb-lp-tree .wb-tree-meta {
   position: relative;
   flex: 0 0 auto;
@@ -3590,33 +3652,18 @@ body.wb-dark {
   justify-items: end;
 }
 .wb-lp-tree .wb-tree-meta > * { grid-area: 1 / 1; }
-.wb-lp-tree .wb-tree-meta .wb-tree-elmtype {
-  transition: opacity .12s ease, transform .12s ease, visibility .12s;
-}
 .wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-elmtype,
 .wb-lp-tree .wb-tree-row:focus-within .wb-tree-meta .wb-tree-elmtype {
-  opacity: 0;
-  transform: translateX(4px);
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
-.wb-lp-tree .wb-tree-meta .wb-tree-actions {
-  display: inline-flex;
-  opacity: 0;
-  transform: translateX(4px);
-  /* visibility (not just opacity) so the idle buttons leave the a11y tree
-     and tab order — they come back the moment the row is hovered/focused */
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity .12s ease, transform .12s ease, visibility .12s;
-}
+.wb-lp-tree .wb-tree-meta .wb-tree-actions { display: none; }
 .wb-lp-tree .wb-tree-row:hover .wb-tree-meta .wb-tree-actions,
 .wb-lp-tree .wb-tree-row:focus-within .wb-tree-meta .wb-tree-actions {
-  opacity: 1;
-  transform: translateX(0);
-  visibility: visible;
-  pointer-events: auto;
+  display: inline-flex;
 }
+/* the buttons (see #220) are taller than the resting row content — pin the
+   height so hovering never reflows the tree */
+.wb-lp-tree .wb-tree-row { min-height: 27px; }
 
 /* ── #220: bigger hover-action hit targets in the structure tree ──────────── */
 /* Was font-size 10px with ~1px of padding — a near-unclickable sliver. Scaled
@@ -4167,9 +4214,8 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
    visibility side so the stacked media query below can neutralize the
    modes with CSS alone (the no-JS-breakpoint invariant). */
 .wb-side-actions { display: flex; align-items: center; gap: 4px; }
-/* the nav row's right cluster (⋮ + ◂) — one flex child, so the row's
-   space-between still sees back · lens tabs · actions */
-.wb-lp-nav-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+/* (.wb-lp-nav-actions retired 2026-07-10 — the ◂ minimize leads the nav row
+   where ← back used to sit, and back lives inside the ⋮ menu.) */
 .wb-side-maxbtn {
   display: inline-flex; align-items: center; padding: 3px 6px; cursor: pointer;
   border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);

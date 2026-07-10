@@ -23,8 +23,6 @@ import { gridCellForField, fieldTextToken } from './gridScaffold';
 import { isTextCapable } from './fxSlots';
 import { bestGuessMapping, mappingComplete, bindComponentInstance } from './components';
 import type { NodePath, SPElement } from '../core/types';
-import { rowDensityOf, DENSITY_LABEL, type RowDensity } from './areas';
-import { openTemplateModal } from './templateModal';
 import { HOVER_CHILD_CLASS } from './hoverReveal';
 import {
   ZOOM_MIN, ZOOM_MAX, clampZoom, stepZoom, zoomLabel,
@@ -32,42 +30,19 @@ import {
   type CanvasViewPrefs,
 } from './viewport';
 
-/** The Stage-3 row-view toolbar: density (Roomy/Compact) + Templates.
- *  Area/zone sizing lives in the template builder's inspector (the old
- *  right-click Area width entries were retired — FLOOR-AND-SHEETS Stage 0);
- *  "◧ Back to grid" retired with Stage 2 — minimizing lives on the LEFT,
- *  in the view strip, with the other view actions. */
-function rowViewToolbar(onToast: (m: string) => void): HTMLElement {
+/** The Stage-3 row-view toolbar — just the surface label now. Density and
+ *  Templates moved into the structure-header kebab (viewKebab.ts,
+ *  2026-07-10): one home for the view-scoped knobs instead of a crowded
+ *  canvas bar. Area/zone sizing lives in the template builder's inspector
+ *  (the old right-click Area width entries were retired — FLOOR-AND-SHEETS
+ *  Stage 0); "◧ Back to grid" retired with Stage 2. */
+function rowViewToolbar(): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'wb-rowview-bar';
   const label = document.createElement('span');
   label.className = 'wb-rowview-bar-label';
   label.textContent = state.doc.kind === 'tile' ? 'Tile layout' : 'Row view';
   bar.appendChild(label);
-
-  const density = rowDensityOf(state.doc.root);
-  const group = document.createElement('span');
-  group.className = 'wb-rowview-density';
-  group.append('Density:');
-  for (const d of ['roomy', 'compact'] as RowDensity[]) {
-    const b = document.createElement('button');
-    b.className = 'wb-rowview-bar-btn' + (density === d ? ' active' : '');
-    b.textContent = DENSITY_LABEL[d];
-    b.title = `${DENSITY_LABEL[d]} spacing for the whole row (a separate knob from per-area sizing)`;
-    b.addEventListener('click', () => { state.setRowDensity(d); onToast(`Row density: ${DENSITY_LABEL[d]}`); });
-    group.appendChild(b);
-  }
-  bar.appendChild(group);
-
-  const templates = document.createElement('button');
-  templates.className = 'wb-rowview-bar-btn wb-rowview-templates';
-  templates.textContent = '▤ Templates…';
-  templates.title = state.doc.kind === 'tile'
-    ? 'Start from a pre-built tile layout (skeleton + stackable styles)'
-    : 'Start from a pre-built row layout (skeleton + stackable styles)';
-  templates.addEventListener('click', () => openTemplateModal(onToast));
-  bar.appendChild(templates);
-
   return bar;
 }
 
@@ -179,7 +154,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
   let stageEl: HTMLElement | null = null;
   let viewBar: {
     out: HTMLButtonElement; pct: HTMLButtonElement; zin: HTMLButtonElement; reset: HTMLButtonElement;
-    presets: HTMLButtonElement[]; px: HTMLElement;
+    vpSel: HTMLSelectElement; vpCustom: HTMLOptionElement; px: HTMLElement;
   } | null = null;
   const persistView = (): void => viewPrefs?.set({ ...view });
 
@@ -192,11 +167,13 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     viewBar.out.disabled = view.zoom <= ZOOM_MIN;
     viewBar.zin.disabled = view.zoom >= ZOOM_MAX;
     viewBar.reset.disabled = view.zoom === 1;
-    for (const b of viewBar.presets) {
-      const on = b.dataset.viewportWidth === String(view.viewportWidth);
-      b.classList.toggle('active', on);
-      b.setAttribute('aria-pressed', String(on));
-    }
+    // the dropdown mirrors the width: a preset by id, anything dragged shows
+    // as the (otherwise hidden) Custom entry
+    const preset = VIEWPORT_PRESETS.find((p) => p.width === view.viewportWidth);
+    viewBar.vpCustom.hidden = !!preset;
+    viewBar.vpSel.value = preset ? preset.id : 'custom';
+    viewBar.vpSel.title = preset?.hint
+      ?? 'A hand-dragged width — pick a preset or drag the stage edge';
     // the ≈ readout keeps the honesty on screen: simulated width, not gospel
     viewBar.px.textContent = view.viewportWidth === null ? '' : `≈${view.viewportWidth}px`;
   };
@@ -260,7 +237,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     reset.dataset.zoom = 'reset';
     bar.appendChild(zoomSeg);
 
-    // #224: the viewport WIDTH presets — a separate, labeled control so
+    // #224: the viewport WIDTH presets — a separate, labeled dropdown so
     // "small because zoomed out" never masquerades as "small because narrow"
     const vpSeg = document.createElement('div');
     vpSeg.className = 'wb-canvas-vpseg';
@@ -268,22 +245,39 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     vpSeg.setAttribute('aria-label', 'Preview width — reflows the layout like a real screen (approximate)');
     const vpLabel = document.createElement('span');
     vpLabel.className = 'wb-canvas-vplabel';
-    vpLabel.textContent = 'Width';
+    vpLabel.textContent = 'Width:';
     vpLabel.title = 'Constrain the preview\'s layout width so wrapping and truncation happen for real — approximate device room, not a pixel-perfect tenant';
     vpSeg.appendChild(vpLabel);
-    const presets = VIEWPORT_PRESETS.map((p) => {
-      const b = mk(vpSeg, 'wb-canvas-vpbtn', p.label, p.hint, () => setViewportWidth(p.width));
-      b.dataset.viewport = p.id;
-      b.dataset.viewportWidth = String(p.width);
-      return b;
+    const vpSel = document.createElement('select');
+    vpSel.className = 'wb-canvas-vpsel';
+    vpSel.setAttribute('aria-label', 'Preview width preset');
+    for (const p of VIEWPORT_PRESETS) {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.label;
+      o.title = p.hint;
+      o.dataset.viewport = p.id;
+      o.dataset.viewportWidth = String(p.width);
+      vpSel.appendChild(o);
+    }
+    // a dragged width matches no preset — it reads back as this hidden entry
+    const vpCustom = document.createElement('option');
+    vpCustom.value = 'custom';
+    vpCustom.textContent = 'Custom';
+    vpCustom.hidden = true;
+    vpSel.appendChild(vpCustom);
+    vpSel.addEventListener('change', () => {
+      const p = VIEWPORT_PRESETS.find((x) => x.id === vpSel.value);
+      if (p) setViewportWidth(p.width);
     });
+    vpSeg.appendChild(vpSel);
     const px = document.createElement('span');
     px.className = 'wb-canvas-vppx';
     px.title = 'Approximate — the sandbox squeezes layout width; real tenant chrome differs (see the preset tooltips)';
     vpSeg.appendChild(px);
     bar.appendChild(vpSeg);
 
-    viewBar = { out, pct, zin, reset, presets, px };
+    viewBar = { out, pct, zin, reset, vpSel, vpCustom, px };
     refreshViewBar();
     return bar;
   };
@@ -387,7 +381,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
       // the grid-first workspace: root children as Lists-style view columns
       renderGrid(stage, { opts, ctxForRow, onToast });
     } else if (kind === 'row') {
-      host.appendChild(rowViewToolbar(onToast));
+      host.appendChild(rowViewToolbar());
       state.rows.forEach((_row, i) => {
         const rowHost = document.createElement('div');
         rowHost.className = 'wb-mock-viewrow';
@@ -400,7 +394,7 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
         stage.appendChild(rowHost);
       });
     } else {
-      host.appendChild(rowViewToolbar(onToast));
+      host.appendChild(rowViewToolbar());
       const deck = document.createElement('div');
       deck.className = 'wb-mock-deck';
       state.rows.forEach((_row, i) => {

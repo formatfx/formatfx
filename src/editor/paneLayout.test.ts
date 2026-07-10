@@ -60,6 +60,9 @@ describe('sideMaxW', () => {
   it('reserves the left column, both handles and a workable canvas', () => {
     expect(sideMaxW(LAYOUT_W, 360)).toBe(LAYOUT_W - 360 - 2 * RESIZER_W - CANVAS_MIN_W);
   });
+  it('keeps the canvas floor narrow — makers build genuinely narrow stuff (owner call 2026-07-10 #2)', () => {
+    expect(CANVAS_MIN_W).toBe(200);
+  });
   it('never collapses below the pane minimum on tiny layouts', () => {
     expect(sideMaxW(600, 360)).toBe(SIDE_MIN_W);
   });

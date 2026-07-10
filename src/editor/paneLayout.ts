@@ -22,8 +22,11 @@ export const RESIZER_W = 5;
 /** The JSON pane never squeezes below this, dragged or clamped. */
 export const SIDE_MIN_W = 220;
 /** The canvas floor in normal mode — dragging past it snaps to maximized
- *  instead of leaving a squished, useless preview (owner call 2026-07-10). */
-export const CANVAS_MIN_W = 420;
+ *  instead of leaving a squished, useless preview. Deliberately narrow:
+ *  makers build genuinely narrow formatters, so the floor only guards
+ *  against a sliver, not a small canvas (owner call 2026-07-10, lowered
+ *  420 → 200 owner call 2026-07-10 #2). */
+export const CANVAS_MIN_W = 200;
 /** How far past the ceiling the pointer must overshoot before the snap. */
 export const SNAP_MARGIN = 40;
 export const LEFT_MIN_W = 280;

@@ -44,16 +44,21 @@ test('the retired right-click Area width entries stay gone (sizing is the builde
   await expect(area1).toHaveCSS('flex-grow', '1');
 });
 
-test('density is a separate row-level knob, and the Grid tab is the way back', async ({ page }) => {
+test('density is a separate row-level knob (in the structure-header kebab), and the Grid tab is the way back', async ({ page }) => {
   await header(page, 'Title').click({ modifiers: ['Control'] });
   await header(page, 'Status').click({ modifiers: ['Control'] });
   await page.locator('.wb-areas-bar button', { hasText: 'Make a row view' }).click();
 
+  // density moved off the canvas toolbar into the structure-header kebab
+  // (2026-07-10) — the settings panel stays open across gestures
   const root = page.locator('.wb-mock-viewrow').first().locator('> [data-sp-path=""]');
-  await page.locator('.wb-rowview-bar-btn', { hasText: 'Compact' }).click();
+  await page.locator('#wb-structure-kebab').click();
+  const densitySeg = page.locator('.wb-viewkebab [data-prop="density"]');
+  await densitySeg.locator('.wb-viewcard-segbtn', { hasText: 'Compact' }).click();
   await expect(root).toHaveCSS('gap', '8px');
-  await page.locator('.wb-rowview-bar-btn', { hasText: 'Roomy' }).click();
+  await densitySeg.locator('.wb-viewcard-segbtn', { hasText: 'Roomy' }).click();
   await expect(root).toHaveCSS('gap', '16px');
+  await page.keyboard.press('Escape'); // close the panel before navigating
 
   // the Grid tab is the way back (minimize is navigation; the view waits in
   // its own tab) — no toolbar "Back to grid" button anywhere

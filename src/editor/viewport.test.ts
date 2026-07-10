@@ -55,9 +55,9 @@ describe('zoom stops ladder', () => {
 });
 
 describe('viewport presets (#224 — representative, honestly approximate)', () => {
-  it('pins the preset table: Fit (null) → Monitor 1420 → Half 860 → Phone 360', () => {
+  it('pins the preset table: Fit (null) → Average 1420 → Half 860 → Phone 360', () => {
     expect(VIEWPORT_PRESETS.map((p) => [p.id, p.width])).toEqual([
-      ['fit', null], ['monitor', 1420], ['half', 860], ['phone', 360],
+      ['fit', null], ['average', 1420], ['half', 860], ['phone', 360],
     ]);
   });
 

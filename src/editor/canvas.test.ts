@@ -42,16 +42,15 @@ describe('grid column headers (the surviving field-name surface)', () => {
 });
 
 describe('row-view toolbar', () => {
-  it('has a Templates button that opens the modal', () => {
+  it('is label-only now — density and Templates moved to the structure-header kebab (2026-07-10)', () => {
     state.doc = { kind: 'row', root: { elmType: 'div', children: [] } };
     state.selection = null;
     const host = document.createElement('div');
     document.body.appendChild(host);
     mountCanvas(host, () => {});
-    const btn = [...host.querySelectorAll('button')].find((b) => /Templates/.test(b.textContent ?? ''));
-    expect(btn).toBeTruthy();
-    btn!.click();
-    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+    expect(host.querySelector('.wb-rowview-bar-label')?.textContent).toBe('Row view');
+    expect(host.querySelector('.wb-rowview-bar button')).toBeNull();
+    expect([...host.querySelectorAll('.wb-rowview-bar *')].some((n) => /Templates|Density/.test(n.textContent ?? ''))).toBe(false);
   });
 });
 
@@ -255,7 +254,7 @@ describe('viewport width presets + drag handle (#224) — width reflows, zoom ma
     return { host, sets };
   };
 
-  it('offers Fit/Monitor/Half/Phone and a resize handle in every canvas kind', () => {
+  it('offers a Fit/Average/Half/Phone dropdown and a resize handle in every canvas kind', () => {
     state.resetAll(); // the floor grid
     for (const make of [
       () => {},
@@ -264,8 +263,8 @@ describe('viewport width presets + drag handle (#224) — width reflows, zoom ma
     ]) {
       make();
       const { host } = mount();
-      expect([...host.querySelectorAll('[data-viewport]')].map((b) => b.getAttribute('data-viewport')))
-        .toEqual(['fit', 'monitor', 'half', 'phone']);
+      expect([...host.querySelectorAll('.wb-canvas-vpsel [data-viewport]')].map((o) => o.getAttribute('data-viewport')))
+        .toEqual(['fit', 'average', 'half', 'phone']);
       expect(host.querySelector('.wb-canvas-widthhandle')).toBeTruthy();
     }
     state.resetAll();
@@ -278,17 +277,20 @@ describe('viewport width presets + drag handle (#224) — width reflows, zoom ma
     const doc = JSON.stringify(state.doc.root);
     const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
 
-    (host.querySelector('[data-viewport="phone"]') as HTMLButtonElement).click();
+    const sel = host.querySelector('.wb-canvas-vpsel') as HTMLSelectElement;
+    sel.value = 'phone';
+    sel.dispatchEvent(new Event('change'));
     expect(stage.style.width).toBe('360px');
     expect(stage.classList.contains('wb-canvas-stage--framed')).toBe(true);
     expect(host.querySelector('.wb-canvas-vppx')?.textContent).toBe('≈360px'); // honesty on screen
-    expect(host.querySelector('[data-viewport="phone"]')?.classList.contains('active')).toBe(true);
+    expect(sel.value).toBe('phone');
     expect(sets.at(-1)).toEqual({ zoom: 1, viewportWidth: 360 });
     // read-only view control: no undo entry, no document change
     expect(JSON.stringify(state.doc.root)).toBe(doc);
     expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
 
-    (host.querySelector('[data-viewport="fit"]') as HTMLButtonElement).click();
+    sel.value = 'fit';
+    sel.dispatchEvent(new Event('change'));
     expect(stage.style.width).toBe('');
     expect(stage.classList.contains('wb-canvas-stage--framed')).toBe(false);
     expect(sets.at(-1)).toEqual({ zoom: 1, viewportWidth: null });
@@ -301,21 +303,22 @@ describe('viewport width presets + drag handle (#224) — width reflows, zoom ma
     expect((host.querySelector('.wb-canvas-zoombox') as HTMLElement).style.transform).toBe('scale(1.5)');
     const stage = host.querySelector('.wb-canvas-stage') as HTMLElement;
     expect(stage.style.width).toBe('860px'); // layout width unscathed by zoom
-    expect(host.querySelector('[data-viewport="half"]')?.classList.contains('active')).toBe(true);
+    expect((host.querySelector('.wb-canvas-vpsel') as HTMLSelectElement).value).toBe('half');
     state.resetAll();
   });
 
-  it('a custom (dragged) width shows the ≈px readout with no preset active', () => {
+  it('a custom (dragged) width shows the ≈px readout and reads back as Custom', () => {
     state.resetAll();
     const { host } = mount({ zoom: 1, viewportWidth: 500 });
+    const sel = host.querySelector('.wb-canvas-vpsel') as HTMLSelectElement;
     expect((host.querySelector('.wb-canvas-stage') as HTMLElement).style.width).toBe('500px');
     expect(host.querySelector('.wb-canvas-vppx')?.textContent).toBe('≈500px');
-    expect(host.querySelector('.wb-canvas-vpbtn.active')).toBeNull();
+    expect(sel.value).toBe('custom');
     // double-clicking the handle dissolves the constraint back to Fit
     (host.querySelector('.wb-canvas-widthhandle') as HTMLElement)
       .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect((host.querySelector('.wb-canvas-stage') as HTMLElement).style.width).toBe('');
-    expect(host.querySelector('[data-viewport="fit"]')?.classList.contains('active')).toBe(true);
+    expect(sel.value).toBe('fit');
     state.resetAll();
   });
 });

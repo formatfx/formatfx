@@ -3,24 +3,24 @@
 
 /**
  * editor/viewCard.ts — the "THIS VIEW" card (COLUMNS-COMPONENTS-VIEWS §3.2;
- * settings re-housed 2026-07-09, spec §A): name/kind of the active view tab,
- * the ⋮ VIEW SETTINGS kebab at the heading's far right (density, row class,
- * the hide toggles, the tile box and the Command buttons drill-in — all in
- * viewKebab.ts), and the scanned behavior rows: every customRowAction /
- * customCardProps in the document, labeled and clickable — a click jumps to
- * (selects) the carrying element, where the inspector edits it.
+ * settings re-housed 2026-07-09, spec §A): name/kind of the active view tab
+ * and the scanned behavior rows: every customRowAction / customCardProps in
+ * the document, labeled and clickable — a click jumps to (selects) the
+ * carrying element, where the inspector edits it. The ⋮ settings kebab
+ * moved OFF the heading onto the Structure section header (2026-07-10) —
+ * leftPane.ts holds the door, viewKebab.ts still holds the settings.
  *
  * Hidden while the Grid tab is up (the grid has no view-scoped behavior);
  * while a component WORKSHOP tab is active it shows a compact DEF card
- * instead — name, slot chips, and the def's usage count (scanComponentUsages
- * over the active surface + the column looks) — and no kebab.
+ * instead — name, no-wrap [$slot] chips, and the def's usage count (a plain
+ * clickable count over scanComponentUsages; clicking pops out the
+ * where-it's-used jump rows).
  */
 
 import { state, CARD_SEGMENT } from './state';
 import type { NodePath, SPElement } from '../core/types';
-import { componentById } from './componentLibrary';
+import { componentById, openUsagePopout } from './componentLibrary';
 import { scanComponentUsages } from './componentUsage';
-import { openViewKebab } from './viewKebab';
 
 /** One scanned behavior: where it lives + how the row reads. */
 interface BehaviorRow {
@@ -58,6 +58,7 @@ export function scanBehaviors(root: SPElement): BehaviorRow[] {
 }
 
 export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): void {
+  void onToast; // kept for call-site stability — the settings kebab (its consumer) moved to leftPane.ts
   host.classList.add('wb-viewcard');
 
   /** name + dim kind tag heading, shared by both card shapes. */
@@ -82,24 +83,8 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
     const view = state.activeView!;
     const head = heading(view.doc.kind === 'tile' ? '▤' : '☰', view.name,
       view.doc.kind === 'tile' ? 'tile view' : 'row view');
-
-    // ── the View settings kebab (spec §A): the card holds the door, the
-    //    body-owned viewKebab panel holds the settings — this card re-renders
-    //    on every 'document' emit, which would destroy an inline panel ───────
-    const kebab = document.createElement('button');
-    kebab.type = 'button';
-    kebab.className = 'wb-viewcard-kebab';
-    // a settings popover with live controls, not an action menu — announce
-    // as a dialog (Copilot review, PR #267)
-    kebab.setAttribute('aria-haspopup', 'dialog');
-    kebab.setAttribute('aria-label', 'View settings');
-    kebab.title = 'View settings — density, row class, and what SharePoint shows around this view';
-    kebab.innerHTML = KEBAB_ICON;
-    kebab.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openViewKebab(kebab, onToast);
-    });
-    head.appendChild(kebab);
+    // (the ⋮ settings kebab lives on the Structure section header now —
+    //  leftPane.ts owns the door, viewKebab.ts the panel)
     host.appendChild(head);
 
     // ── scanned behaviors: actions + cards, with jump-to-element ────────────
@@ -130,20 +115,30 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
       const slots = document.createElement('div');
       slots.className = 'wb-viewcard-slots';
       for (const slot of def.slots) {
+        // the pill speaks the workshop's slot idiom — the [$Key] field ref,
+        // with the label alongside when it says more than the key does
         const chip = document.createElement('span');
         chip.className = 'wb-comp-slot';
-        chip.textContent = slot.label;
+        chip.textContent = slot.label === slot.key ? `[$${slot.key}]` : `${slot.label} [$${slot.key}]`;
         chip.title = slot.description ?? slot.label;
         slots.appendChild(chip);
       }
       host.appendChild(slots);
     }
     const uses = scanComponentUsages([def], state.doc.root, state.columnLooks).get(def.id)?.length ?? 0;
-    const count = document.createElement('div');
+    const count = document.createElement('button');
+    count.type = 'button';
     count.className = 'wb-viewcard-usage';
-    count.textContent = uses
-      ? `Used in ${uses} place${uses === 1 ? '' : 's'} — saving re-bakes every instance.`
-      : 'Not used anywhere yet — add it from the Components section below.';
+    count.setAttribute('aria-haspopup', 'dialog');
+    count.textContent = `Used in ${uses} place${uses === 1 ? '' : 's'}`;
+    count.disabled = uses === 0;
+    count.title = uses
+      ? 'See every place this component is used — click one to jump there'
+      : 'Not used anywhere yet — add it from the Components section below';
+    count.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openUsagePopout(count, def.id);
+    });
     host.appendChild(count);
   };
 
@@ -172,6 +167,3 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
   });
   render();
 }
-
-// ⋮ — the pane toolbar's kebab glyph (leftPane ICONS), theme via currentColor.
-const KEBAB_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>';

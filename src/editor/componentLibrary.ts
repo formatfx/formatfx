@@ -247,6 +247,107 @@ function fieldLabel(name: string): string {
   return state.fields.find((f) => f.name === name)?.displayName ?? name;
 }
 
+/**
+ * The usage JUMP ROWS for a def, shared by the inventory drawer, the def
+ * card's count pop-out and the component kebab: a view instance selects it
+ * on the canvas, a column usage jumps to that column's cell on the grid.
+ * Navigation first uncovers the canvas (a workshop tab may be over it —
+ * the tab and its staged edits stay put), then selects. `onNavigate` lets
+ * a pop-out host close itself after the jump.
+ */
+export function usageJumpList(inUse: ComponentUsage[], onNavigate?: () => void): HTMLElement {
+  const list = document.createElement('div');
+  list.className = 'wb-comp-usages';
+  for (const u of inUse) {
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'wb-comp-usage';
+    if (u.kind === 'view') {
+      jump.textContent = mainUsageLabel(u);
+      jump.title = 'Jump to this instance in the view formatter';
+      jump.addEventListener('click', () => {
+        state.deactivateComponentTab();
+        state.select(u.path);
+        onNavigate?.();
+      });
+    } else {
+      jump.textContent = `${fieldLabel(u.field)} — column look`;
+      jump.title = `Jump to the ${fieldLabel(u.field)} column on the grid`;
+      jump.addEventListener('click', () => {
+        // the look renders embedded in the floor's grid cell — select it
+        state.deactivateComponentTab();
+        if (!state.onFloor) state.minimizeView();
+        const i = (state.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === u.field);
+        if (i >= 0) state.select([i]);
+        onNavigate?.();
+      });
+    }
+    list.appendChild(jump);
+  }
+  return list;
+}
+
+let usagePop: { panel: HTMLElement; cleanup: () => void } | null = null;
+
+export function closeUsagePopout(): void {
+  if (!usagePop) return;
+  usagePop.cleanup();
+  usagePop.panel.remove();
+  usagePop = null;
+}
+
+/**
+ * The where-it's-used POP-OUT, opened by clicking a usage count (the def
+ * card's, or an inventory row's chip). Body-owned and position:fixed — the
+ * counts live in chrome that re-renders wholesale, so an inline panel would
+ * be destroyed by its own navigation. Escape/outside close; a jump closes.
+ */
+export function openUsagePopout(anchor: HTMLElement, defId: string): void {
+  closeUsagePopout();
+  const def = componentById(defId);
+  if (!def) return;
+  const inUse = scanComponentUsages([def], state.doc.root, state.columnLooks).get(def.id) ?? [];
+
+  const panel = document.createElement('div');
+  panel.className = 'wb-usage-pop wb-esc-owner';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', `Where ${def.name} is used`);
+  const head = document.createElement('div');
+  head.className = 'wb-usage-pop-head';
+  head.textContent = 'Where it’s used';
+  panel.appendChild(head);
+  let done = false;
+  const close = (): void => { if (!done) { done = true; closeUsagePopout(); } };
+  if (inUse.length) {
+    panel.appendChild(usageJumpList(inUse, close));
+  } else {
+    const none = document.createElement('div');
+    none.className = 'wb-complib-empty';
+    none.textContent = 'Not used anywhere yet.';
+    panel.appendChild(none);
+  }
+  document.body.appendChild(panel);
+
+  const r = anchor.getBoundingClientRect();
+  const w = panel.offsetWidth || 240;
+  const h = panel.offsetHeight || 120;
+  panel.style.top = `${Math.max(8, Math.min(r.bottom + 4, window.innerHeight - h - 8))}px`;
+  panel.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`;
+
+  const onOutside = (e: PointerEvent): void => {
+    if (!panel.contains(e.target as Node) && !anchor.contains(e.target as Node)) close();
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close(); };
+  const armTimer = window.setTimeout(() => document.addEventListener('pointerdown', onOutside), 0);
+  document.addEventListener('keydown', onKey);
+  const cleanup = (): void => {
+    window.clearTimeout(armTimer);
+    document.removeEventListener('pointerdown', onOutside);
+    document.removeEventListener('keydown', onKey);
+  };
+  usagePop = { panel, cleanup };
+}
+
 /** Human tag for a slot's acceptable types, e.g. "person / multi-person". */
 function slotTypesLabel(types: string[]): string {
   const NAMES: Record<string, string> = {
@@ -398,11 +499,16 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
     row.appendChild(label);
 
     if (inUse !== undefined) {
-      const chip = document.createElement('span');
+      const chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'wb-comp-count';
       chip.textContent = String(inUse.length);
-      chip.title = `Used in ${inUse.length} place${inUse.length === 1 ? '' : 's'} — expand to jump to each`;
+      chip.title = `Used in ${inUse.length} place${inUse.length === 1 ? '' : 's'} — click to jump to each`;
       chip.setAttribute('aria-label', chip.title);
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation(); // never toggle the drawer
+        openUsagePopout(chip, def.id);
+      });
       row.appendChild(chip);
     }
 
@@ -423,11 +529,11 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       actions.appendChild(b);
       return b;
     };
-    act('wb-comp-rowadd', '＋', addTitle(def), () => openMappingDialog(def, onToast, rerender));
     act('wb-comp-rowedit', '✎', def.builtin
       ? `Open ${def.name} in the component editor — built-ins can't be overwritten, saving creates your own copy`
       : `Edit ${def.name} — name, slot labels and elements; nothing changes until you save`,
     () => openComponentEditor(def, onToast, rerender));
+    act('wb-comp-rowadd', '＋', addTitle(def), () => openMappingDialog(def, onToast, rerender));
     if (!def.builtin) {
       act('wb-comp-rowdel', '✕', `Delete the ${def.name} component`, () => {
         // blast-radius guard (#225): a def other components EMBED can't be
@@ -552,29 +658,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       usesHead.className = 'wb-complib-group';
       usesHead.textContent = 'Where it\'s used';
       box.appendChild(usesHead);
-      const list = document.createElement('div');
-      list.className = 'wb-comp-usages';
-      for (const u of inUse) {
-        const jump = document.createElement('button');
-        jump.type = 'button';
-        jump.className = 'wb-comp-usage';
-        if (u.kind === 'view') {
-          jump.textContent = mainUsageLabel(u);
-          jump.title = 'Jump to this instance in the view formatter';
-          jump.addEventListener('click', () => state.select(u.path));
-        } else {
-          jump.textContent = `${fieldLabel(u.field)} — column look`;
-          jump.title = `Jump to the ${fieldLabel(u.field)} column on the grid`;
-          jump.addEventListener('click', () => {
-            // the look renders embedded in the floor's grid cell — select it
-            if (!state.onFloor) state.minimizeView();
-            const i = (state.floorDoc.root.children ?? []).findIndex((c) => gridColumnField(c) === u.field);
-            if (i >= 0) state.select([i]);
-          });
-        }
-        list.appendChild(jump);
-      }
-      box.appendChild(list);
+      box.appendChild(usageJumpList(inUse));
     }
 
     const actions = document.createElement('div');

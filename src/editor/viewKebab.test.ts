@@ -11,10 +11,11 @@
  * switches.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { openViewKebab, closeViewKebab } from './viewKebab';
+import { openViewKebab, openComponentKebab, closeViewKebab } from './viewKebab';
 import { state } from './state';
 import { rowDensityOf } from './areas';
 import { readCommandState, COMMAND_BUTTONS, COMMAND_PRESETS } from '../core/commandBar';
+import type { SPElement } from '../core/types';
 
 const undoDepth = (): number => (state as unknown as { undoStack: string[] }).undoStack.length;
 
@@ -246,5 +247,61 @@ describe('the Command buttons drill-in', () => {
     (panel.querySelector('.wb-viewkebab-commands') as HTMLButtonElement).click();
     const cmd = document.body.querySelector('.wb-viewkebab-cmd[data-cmd="share"]')!;
     expect(cmd.querySelector('.wb-viewkebab-fx')).toBeTruthy();
+  });
+});
+
+describe('the Templates door (moved off the canvas toolbar, 2026-07-10)', () => {
+  it('opens the row/tile builder and closes the panel — an action, not a setting', () => {
+    const panel = openOnRowView();
+    const tpl = panel.querySelector('.wb-viewkebab-templates') as HTMLButtonElement;
+    expect(tpl).toBeTruthy();
+    tpl.click();
+    expect(document.body.querySelector('.wb-viewkebab')).toBeNull();
+    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+    document.querySelector('.wb-template-modal')?.closest('.wb-modal-overlay, .wb-overlay, [class*="overlay"]')?.remove();
+    document.querySelectorAll('.wb-template-modal').forEach((n) => n.remove());
+  });
+});
+
+describe('the component kebab (a workshop tab is up — view settings do not apply)', () => {
+  function openOnComponentTab(): HTMLElement {
+    state.createView({
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [{
+          elmType: 'div', txtContent: 'x',
+          _component: { id: 'builtin-deadline-chip', map: { Due: 'DueDate' } },
+        } as SPElement],
+      },
+    });
+    state.openComponentTab('builtin-deadline-chip');
+    const anchor = document.createElement('button');
+    document.body.appendChild(anchor);
+    openComponentKebab(anchor, 'builtin-deadline-chip', () => {});
+    return document.body.querySelector('.wb-viewkebab-component') as HTMLElement;
+  }
+
+  it('offers Add to view and the where-it\'s-used jump rows — no view-scoped settings', () => {
+    const panel = openOnComponentTab();
+    expect(panel).toBeTruthy();
+    expect(panel.querySelector('.wb-viewkebab-addcomp')).toBeTruthy();
+    expect(panel.querySelector('[data-prop="density"]')).toBeNull();
+    expect(panel.querySelector('.wb-viewcard-rowclass')).toBeNull();
+    expect(panel.querySelectorAll('.wb-comp-usage').length).toBe(1);
+  });
+
+  it('a usage jump uncovers the canvas (leaves the workshop tab), selects, and closes the panel', () => {
+    const panel = openOnComponentTab();
+    (panel.querySelector('.wb-comp-usage') as HTMLButtonElement).click();
+    expect(state.activeComponentTab).toBeNull();
+    expect(state.selection).toEqual([0]);
+    expect(document.body.querySelector('.wb-viewkebab-component')).toBeNull();
+  });
+
+  it('switching tabs closes the panel', () => {
+    openOnComponentTab();
+    state.deactivateComponentTab();
+    expect(document.body.querySelector('.wb-viewkebab-component')).toBeNull();
   });
 });
