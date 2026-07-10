@@ -157,4 +157,36 @@ describe('the syntax color mapper', () => {
     expect(document.body.style.getPropertyValue('--wb-syn-xfield')).toBe('');
     expect(localStorage.getItem(SYN_STORE_KEY)).toBeNull();
   });
+
+  // quick-hide (2026-07-10): the panel dismisses in place — no kebab trip
+  it('the × hides the panel', () => {
+    const { host } = mountPanel();
+    (document.querySelector('#wb-json-syncolors') as HTMLButtonElement).click();
+    const panel = host.querySelector('#wb-syn-panel') as HTMLElement;
+    expect(panel.hidden).toBe(false);
+
+    (panel.querySelector('.wb-syn-close') as HTMLButtonElement).click();
+    expect(panel.hidden).toBe(true);
+  });
+
+  it('Esc hides the panel while it shows, and only then', () => {
+    const { host } = mountPanel();
+    const panel = host.querySelector('#wb-syn-panel') as HTMLElement;
+    const esc = () => document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+    (document.querySelector('#wb-json-syncolors') as HTMLButtonElement).click();
+    expect(panel.hidden).toBe(false);
+    esc();
+    expect(panel.hidden).toBe(true);
+
+    // closed panel: its capture listener is gone — Esc reaches the app again
+    const seen: KeyboardEvent[] = [];
+    const probe = (e: KeyboardEvent) => seen.push(e);
+    document.addEventListener('keydown', probe);
+    esc();
+    document.removeEventListener('keydown', probe);
+    expect(seen.length).toBe(1);
+    expect(seen[0].defaultPrevented).toBe(false);
+  });
 });

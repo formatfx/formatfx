@@ -585,7 +585,8 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 /* ── layout ──────────────────────────────────────────────── */
 .wb-layout {
   display: grid;
-  grid-template-columns: 220px 5px 250px 5px 1fr 5px 360px;
+  /* pre-JS default only — applyLayout (paneLayout.ts) owns the real value */
+  grid-template-columns: 360px 5px 1fr;
   flex: 1; min-height: 0;
 }
 
@@ -1236,27 +1237,9 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-radius: 3px 3px 0 0; cursor: pointer; font-size: 12px;
 }
 .wb-tabs button.active { background: var(--wb-accent); color: var(--wb-accent-text); }
-.wb-tabs #wb-side-peek, .wb-tabs #wb-side-max {
-  flex: 0 0 auto; padding: 4px 6px; border-radius: 3px; font-size: 11px;
-}
-.wb-tabs #wb-side-peek.active, .wb-tabs #wb-side-max.active { background: var(--wb-accent); color: var(--wb-accent-text); }
-
-/* auto-hide (peek) mode: rail when closed, fixed overlay when open */
-.wb-side-rail {
-  display: none; flex-direction: column; align-items: center; gap: 6px;
-  color: var(--wb-text-2); font-size: 12px; cursor: pointer; padding-top: 8px;
-}
-.wb-side-rail span { writing-mode: vertical-rl; letter-spacing: .12em; text-transform: uppercase; font-size: 10px; }
-.wb-pane-side.wb-peek:not(.wb-peek-open) > :not(.wb-side-rail) { display: none; }
-.wb-pane-side.wb-peek:not(.wb-peek-open) { padding: 4px 2px; }
-.wb-pane-side.wb-peek:not(.wb-peek-open) .wb-side-rail { display: flex; }
-.wb-pane-side.wb-peek.wb-peek-open {
-  position: fixed; right: 0; top: 49px; bottom: 0;
-  width: var(--wb-side-w, 380px); z-index: 600;
-  background: var(--wb-surface);
-  box-shadow: -10px 0 28px rgba(0,0,0,.28);
-  border-left: 1px solid var(--wb-border);
-}
+/* (the studio-era #wb-side-peek/#wb-side-max rail CSS retired 2026-07-10 —
+   nothing rendered it; pane states live in paneLayout.ts + the section at
+   the end of this sheet, and #wb-side-max is now the maximize button) */
 .wb-tab { display: none; flex: 1; min-height: 0; overflow: auto; }
 .wb-tab.active { display: flex; flex-direction: column; }
 
@@ -1646,18 +1629,25 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   /* expression sub-tokens (spec 2026-07-09 §1) — owner-tunable slots.
      Field refs are the loudest voice: distinct teal + a tint pill (no bold —
      bold glyph metrics could shear the overlay off the transparent textarea).
-     Steers clear of the reserved --wb-shared violet channel. */
-  --wb-syn-xfield: #267f99; --wb-syn-xtoken: var(--wb-syn-kw);
-  --wb-syn-xfn: var(--wb-syn-expr); --wb-syn-xstr: var(--wb-syn-str);
-  --wb-syn-xnum: var(--wb-syn-num); --wb-syn-xop: var(--wb-text);
-  --wb-syn-xkw: var(--wb-syn-kw);
+     Steers clear of the reserved --wb-shared violet channel.
+     EXPLICIT hex on purpose — no var() aliases: a custom property substitutes
+     its var()s where it is DECLARED (here, <html>), so an alias bakes in the
+     light value before body.wb-dark can retheme what it points at. Dark mode
+     rendered light-theme operators/strings/functions until 2026-07-10. */
+  --wb-syn-xfield: #267f99; --wb-syn-xtoken: #0c46bd;
+  --wb-syn-xfn: #795e26; --wb-syn-xstr: #a31515;
+  --wb-syn-xnum: #098658; --wb-syn-xop: #323130;
+  --wb-syn-xkw: #0c46bd;
   /* #PR-D squiggle severities — mirror the lint badge hues */
   --wb-sq-warn: #b07a00; --wb-sq-info: #0c46bd;
 }
 body.wb-dark {
   --wb-syn-key: #9cdcfe; --wb-syn-str: #ce9178; --wb-syn-expr: #dcdcaa;
   --wb-syn-num: #b5cea8; --wb-syn-kw: #569cd6; --wb-syn-err: #f1707b;
-  --wb-syn-xfield: #4ec9b0;
+  --wb-syn-xfield: #4ec9b0; --wb-syn-xtoken: #569cd6;
+  --wb-syn-xfn: #dcdcaa; --wb-syn-xstr: #ce9178;
+  --wb-syn-xnum: #b5cea8; --wb-syn-xop: #d4d4d4;
+  --wb-syn-xkw: #569cd6;
   --wb-sq-warn: #ffb900; --wb-sq-info: #569cd6;
 }
 .wb-tok-key { color: var(--wb-syn-key); }
@@ -1811,7 +1801,15 @@ body.wb-dark {
   padding: 8px; margin-bottom: 6px; font-size: 11px;
 }
 .wb-syn-panel[hidden] { display: none; }
-.wb-syn-head { grid-column: 1 / -1; font-weight: 600; }
+.wb-syn-head {
+  grid-column: 1 / -1; font-weight: 600;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+}
+.wb-syn-close {
+  border: none; background: transparent; color: var(--wb-text-2); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 3px;
+}
+.wb-syn-close:hover { color: var(--wb-accent); }
 .wb-syn-row {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
   color: var(--wb-text-2);
@@ -3187,14 +3185,14 @@ body.wb-dark {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; border-bottom: 1px solid var(--wb-lp-border);
 }
-.wb-nav-back, .wb-snap-btn, .wb-kebab-btn {
+.wb-nav-back, .wb-snap-btn, .wb-kebab-btn, .wb-lp-collapse {
   flex: 0 0 auto; display: inline-flex; align-items: center;
   justify-content: center; width: 28px; height: 28px;
   border: none; border-radius: 6px;
   background: transparent; color: var(--wb-lp-text-2); cursor: pointer;
   font-size: 16px; line-height: 1;
 }
-.wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover, .wb-kebab-btn:hover {
+.wb-nav-back:hover:not(:disabled), .wb-snap-btn:hover, .wb-kebab-btn:hover, .wb-lp-collapse:hover {
   background: var(--wb-lp-seg-track); color: var(--wb-accent);
 }
 .wb-nav-back:disabled { opacity: .35; cursor: default; }
@@ -4163,3 +4161,40 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
 }
 .wb-pane-canvas > #wb-workshop[hidden] { display: none; }
 #wb-workshop .wb-ce-workshop { overflow-y: visible; box-shadow: none; }
+
+/* ── pane states (spec 2026-07-10): JSON maximize + edit-pane bar ──────────
+   paneLayout.ts decides the grid template; these classes carry the
+   visibility side so the stacked media query below can neutralize the
+   modes with CSS alone (the no-JS-breakpoint invariant). */
+.wb-side-actions { display: flex; align-items: center; gap: 4px; }
+.wb-side-maxbtn {
+  display: inline-flex; align-items: center; padding: 3px 6px; cursor: pointer;
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
+  border-radius: 3px; font-size: 12px; line-height: 1.2;
+}
+.wb-side-maxbtn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-side-maxbtn.active { background: var(--wb-accent); color: var(--wb-accent-text); border-color: var(--wb-accent); }
+/* maximized: the JSON pane covers the canvas + data bar (the center section) */
+.wb-layout.wb-side-maxed > .wb-pane-canvas { display: none; }
+/* bar mode: the edit pane swaps for its 28px strip — click anywhere restores */
+.wb-layout.wb-left-bar > .wb-leftpane { display: none; }
+.wb-lp-bar { display: none; }
+.wb-layout.wb-left-bar > .wb-lp-bar {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 10px 0; border: none; border-right: 1px solid var(--wb-lp-border);
+  background: var(--wb-lp-bg); color: var(--wb-lp-text-2);
+  cursor: pointer; font-size: 12px;
+}
+.wb-layout.wb-left-bar > .wb-lp-bar:hover { color: var(--wb-accent); }
+.wb-lp-bar-label {
+  writing-mode: vertical-rl; text-transform: uppercase;
+  letter-spacing: .12em; font-size: 10px;
+}
+/* stacked (<900px): the modes are meaningless, so they neutralize here and
+   their controls hide — same contract as the grid neutralization at the top */
+@media (max-width: 900px) {
+  .wb-layout.wb-left-bar > .wb-leftpane { display: flex; }
+  .wb-layout > .wb-lp-bar { display: none !important; }
+  .wb-layout.wb-side-maxed > .wb-pane-canvas { display: flex; }
+  #wb-side-max, #wb-lp-collapse { display: none; }
+}
