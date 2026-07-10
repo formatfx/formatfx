@@ -7,13 +7,13 @@
  * node-tested src/bridge runtime — this file only wires it to the page.
  */
 
-import { captureSnapshot, applyFormatters } from '../../src/bridge/spClient';
+import { captureSnapshot, applyFormatters, readTargetFormatters } from '../../src/bridge/spClient';
 import { parseApplyPayload } from '../../src/bridge/applyPayload';
 
 interface RequestMessage {
   __formatfx: 'request';
   id: string;
-  action: 'extract' | 'apply';
+  action: 'extract' | 'apply' | 'readFormatters';
   opts?: { listTitle?: string; includeData?: boolean };
   text?: string;
 }
@@ -42,6 +42,11 @@ if (!w.__formatfxInjected) {
         // The single batched confirm uses the page's native dialog.
         const outcomes = await applyFormatters(payload, { confirm: (m) => window.confirm(m) });
         reply({ ok: true, outcomes });
+      } else if (msg.action === 'readFormatters') {
+        // read-only: the pre-apply backup's look at each target's formatter
+        const payload = parseApplyPayload(msg.text ?? '');
+        const formatters = await readTargetFormatters(payload);
+        reply({ ok: true, formatters });
       }
     } catch (e) {
       reply({ ok: false, error: e instanceof Error ? e.message : String(e) });

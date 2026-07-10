@@ -308,6 +308,35 @@ export function selectFromSnapshot(
   return { ...snap, fields, rows, views };
 }
 
+/** One target's live formatter, as read before an apply. null = none set. */
+export interface TargetFormatter {
+  target: 'field' | 'view';
+  name: string;
+  formatter: string | null;
+}
+
+/**
+ * Read-only: the current CustomFormatter of every target in a payload (the
+ * same per-target GET applyFormatters does in its look-before-write step).
+ * The extension's pre-apply backup is built from this. Never writes.
+ */
+export async function readTargetFormatters(payload: ApplyPayload): Promise<TargetFormatter[]> {
+  const ctx = readPageContext();
+  if (!ctx) throw new Error('FormatFX: this does not look like a SharePoint page. Open your list page first.');
+  const listPath = listPathFor(ctx, payload.listTitle);
+  const out: TargetFormatter[] = [];
+  for (const t of payload.targets) {
+    const r = await fetch(targetPath(listPath, t.target, t.name) + '?$select=CustomFormatter', {
+      headers: { Accept: 'application/json;odata=nometadata' },
+      credentials: 'same-origin',
+    });
+    if (!r.ok) throw new Error('FormatFX: could not read "' + t.name + '" (' + explainStatus(r.status) + ')');
+    const current = ((await r.json()).CustomFormatter as string) || '';
+    out.push({ target: t.target, name: t.name, formatter: current || null });
+  }
+  return out;
+}
+
 export interface ApplyOutcome {
   target: 'field' | 'view';
   name: string;
@@ -366,7 +395,9 @@ export async function applyFormatters(payload: ApplyPayload, hooks: ApplyHooks):
   const lines = payload.targets.map((t, i) => {
     const what = t.target === 'field' ? 'column [' + t.name + ']' : 'view "' + t.name + '"';
     const state = pre[i] ? 'has a formatter (' + pre[i] + ' chars) → REPLACED' : 'currently none';
-    return '  • ' + what + ': ' + state + ' → ' + t.formatterJson.length + ' chars';
+    // a v2 clear target removes the formatter instead of setting one
+    const to = t.clear ? 'REMOVED' : t.formatterJson.length + ' chars';
+    return '  • ' + what + ': ' + state + ' → ' + to;
   });
   const msg = 'FormatFX apply to ' + listLabel + '\n'
     + payload.targets.length + ' formatter(s) will be written:\n\n' + lines.join('\n') + '\n\nApply?';

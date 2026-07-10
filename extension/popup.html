@@ -30,7 +30,8 @@
     #connect { margin-top: 10px; padding-top: 8px; border-top: 1px solid #8883; }
     p.fine { font-size: 11px; opacity: 0.7; margin: 4px 0 8px; }
     #dash { margin: 0 0 10px; }
-    #dash h2 { font-size: 11px; margin: 8px 0 4px; opacity: 0.7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    #dash h2, #history h2 { font-size: 11px; margin: 8px 0 4px; opacity: 0.7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    #history { margin-top: 10px; padding-top: 2px; border-top: 1px solid #8883; }
     .dash-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; }
     .dash-row .dash-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dash-row .dash-size { opacity: 0.5; font-size: 11px; }
@@ -50,6 +51,11 @@
     <button id="apply-staged" hidden>✓ Apply staged</button>
     <button id="extract">⚡ Extract this list…</button>
     <button id="apply" class="secondary">⬆ Apply formatters from clipboard</button>
+    <div id="history" hidden>
+      <h2>Backups on this browser</h2>
+      <div id="history-list"></div>
+      <p class="fine">Every apply saves what it overwrote. Restore is the same confirm-first write.</p>
+    </div>
   </div>
 
   <div id="state-formatfx" hidden>

@@ -9,10 +9,11 @@
  * the user authorizes exactly the tab they're looking at, nothing else.
  */
 
-import type { ListSnapshot, ApplyOutcome } from '../../src/bridge/spClient';
+import type { ListSnapshot, ApplyOutcome, TargetFormatter } from '../../src/bridge/spClient';
 import { selectFromSnapshot } from '../../src/bridge/spClient';
 import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../../src/bridge/applyPayload';
-import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
+import { STAGE_KEY, PUSH_KEY, BACKUPS_KEY, type StagedApply, type PushedSnapshot, type BackupsFile, type BackupEntry } from './staging';
+import { makeBackupEntry, pushBounded, restorePayloadFrom, describeEntry } from './backups';
 import { classifyUrl } from './pageKind';
 import { originPatternFor, hostFromPattern } from './connections';
 import { dashboardFrom, viewGrabFields, type Dashboard } from './context';
@@ -22,6 +23,7 @@ interface WorkerResponse {
   error?: string;
   snapshot?: ListSnapshot;
   outcomes?: ApplyOutcome[];
+  formatters?: TargetFormatter[];
 }
 
 const statusEl = (): HTMLElement => document.getElementById('status')!;
@@ -282,8 +284,72 @@ function onPickerCancel(): void {
   setStatus('', 'idle');
 }
 
+// ── pre-apply backup & restore ──────────────────────────────────────────────
+
+/**
+ * Read every target's live formatter and file a backup entry BEFORE the
+ * confirm/write. A failed read aborts the apply with its teaching error —
+ * the same read applyFormatters would fail on anyway, and an apply that
+ * couldn't take its backup shouldn't pretend it has a safety net. (A backup
+ * taken for an apply the user then cancels is a harmless extra entry.)
+ */
+async function saveBackupFor(text: string): Promise<void> {
+  const payload = parseApplyPayload(text);
+  const read = await runInPage({ action: 'readFormatters', text });
+  if (!read.ok || !read.formatters) throw new Error(read.error || 'Could not read the current formatters for the backup.');
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const siteUrl = tab?.url ? new URL(tab.url).origin : '';
+  const listLabel = payload.listTitle ?? dashSnap?.list ?? siteUrl;
+  const entry = makeBackupEntry(siteUrl, listLabel, read.formatters, new Date().toISOString());
+  const got = await chrome.storage.local.get(BACKUPS_KEY);
+  const file = pushBounded(got[BACKUPS_KEY] as BackupsFile | undefined, entry);
+  await chrome.storage.local.set({ [BACKUPS_KEY]: file });
+}
+
+/** The popup's History section: recent backups with one-click restore. */
+async function refreshHistory(): Promise<void> {
+  const wrap = document.getElementById('history') as HTMLElement;
+  const list = document.getElementById('history-list') as HTMLElement;
+  const got = await chrome.storage.local.get(BACKUPS_KEY);
+  const file = got[BACKUPS_KEY] as BackupsFile | undefined;
+  const entries = (file?.entries ?? []).slice(0, 5);
+  wrap.hidden = entries.length === 0;
+  list.replaceChildren();
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'dash-row';
+    const label = document.createElement('span');
+    label.className = 'dash-name';
+    label.textContent = describeEntry(entry);
+    label.title = `${describeEntry(entry)} — ${entry.takenAt}`;
+    const when = document.createElement('span');
+    when.className = 'dash-size';
+    when.textContent = entry.takenAt.slice(0, 16).replace('T', ' ');
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = '↩ Restore';
+    btn.title = 'Write these formatters back exactly as they were (confirm first)';
+    btn.addEventListener('click', () => void onRestore(entry));
+    row.append(label, when, btn);
+    list.appendChild(row);
+  }
+}
+
+async function onRestore(entry: BackupEntry): Promise<void> {
+  setStatus('Restoring…', 'busy');
+  try {
+    // the same backup-then-confirm-then-apply pipeline: a restore backs up
+    // what IT overwrites, so restore-of-a-restore works
+    await applyText(serializeApplyPayload(restorePayloadFrom(entry)));
+    void refreshHistory();
+  } catch (e) {
+    setStatus(e instanceof Error ? e.message : String(e), 'err');
+  }
+}
+
 /** Run the apply against the list tab from a payload string, then report. */
 async function applyText(text: string): Promise<boolean> {
+  await saveBackupFor(text); // look + file the safety net before any write
   const res = await runInPage({ action: 'apply', text });
   if (!res.ok || !res.outcomes) throw new Error(res.error || 'Apply failed or was cancelled.');
   const applied = res.outcomes.filter((o) => o.applied);
@@ -295,6 +361,7 @@ async function applyText(text: string): Promise<boolean> {
   const parts = [`Applied ${applied.length} of ${res.outcomes.length}. Refresh the list to see it.`];
   for (const f of failed) parts.push(`✗ ${f.name}: ${f.error}`);
   setStatus(parts.join('\n'), failed.length ? 'err' : 'ok');
+  void refreshHistory(); // the apply just filed a backup — show it
   return applied.length > 0 && failed.length === 0;
 }
 
@@ -426,6 +493,7 @@ async function initPageState(): Promise<void> {
   if (kind === 'sharepoint') {
     void refreshStagedButton();
     void loadDashboard(); // best-effort; never blocks the buttons
+    void refreshHistory();
   }
   if (kind === 'sharepoint' || kind === 'sharepoint-site') void refreshConnectFooter(tab?.url);
 }

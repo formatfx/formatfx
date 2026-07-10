@@ -3,9 +3,11 @@ import { buildExtractSnippet, EXPAND_CAP } from './extractSnippet';
 import { buildDeploySnippet } from './deploySnippet';
 import {
   buildApplyPayload, parseApplyPayload, serializeApplyPayload, APPLY_PAYLOAD_VERSION,
+  APPLY_PAYLOAD_MAX_VERSION,
 } from './applyPayload';
 import {
   captureSnapshot, applyFormatters, selectFromSnapshot, detectCurrentViewId,
+  readTargetFormatters,
   type ApplyHooks, type ListSnapshot,
 } from './spClient';
 import {
@@ -366,8 +368,33 @@ describe('apply payload (extension wire format)', () => {
   });
 
   it('refuses a newer version (friendly, never a silent misread)', () => {
-    const future = JSON.stringify({ formatfx: 'apply', version: APPLY_PAYLOAD_VERSION + 1, targets: [] });
+    const future = JSON.stringify({ formatfx: 'apply', version: APPLY_PAYLOAD_MAX_VERSION + 1, targets: [] });
     expect(() => parseApplyPayload(future)).toThrow(/newer than this extension understands/);
+  });
+
+  it('emits the minimal version: v1 without clear targets, v2 with (restore-only)', () => {
+    const plain = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    expect(plain.version).toBe(APPLY_PAYLOAD_VERSION); // old consumers keep working
+    const withClear = buildApplyPayload([
+      { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatterJson: '', clear: true },
+    ]);
+    expect(withClear.version).toBe(APPLY_PAYLOAD_MAX_VERSION);
+  });
+
+  it('parses clear targets (v2) and round-trips them', () => {
+    const p = buildApplyPayload([{ target: 'view', name: 'All Items', formatterJson: '', clear: true }]);
+    const back = parseApplyPayload(serializeApplyPayload(p));
+    expect(back.targets[0]).toEqual({ target: 'view', name: 'All Items', formatterJson: '', clear: true });
+  });
+
+  it('still refuses an empty formatter without clear, and clear WITH a formatter', () => {
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 2, targets: [{ target: 'field', name: 'Status', formatterJson: '' }],
+    }))).toThrow(/carries no formatter/);
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 2, targets: [{ target: 'field', name: 'Status', formatterJson: '{}', clear: true }],
+    }))).toThrow(/says clear but also carries a formatter/);
   });
 
   it('every malformed input is a teaching error', () => {
@@ -601,6 +628,56 @@ describe('spClient.applyFormatters (extension runtime)', () => {
     });
     await applyFormatters(p, okConfirm());
     expect(calls[0].url).toContain("lists/getByTitle('Bob''s%20Tasks')");
+  });
+
+  it('a clear target (v2 restore) writes CustomFormatter:"" and confirms as REMOVED', async () => {
+    stubEnvironment({
+      routes: (url, init) => {
+        if (url.includes('contextinfo')) return { FormDigestValue: 'd' };
+        if ((init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE') return 204;
+        // the target currently HAS a formatter — the restore removes it
+        return { CustomFormatter: STATUS_FORMATTER };
+      },
+    });
+    const prompts: string[] = [];
+    const p = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: '', clear: true }]);
+    const outcomes = await applyFormatters(p, okConfirm(prompts));
+    expect(outcomes[0].applied).toBe(true);
+    expect(prompts[0]).toContain('→ REMOVED');
+    const merge = calls.find((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE')!;
+    expect(JSON.parse(merge.init!.body as string)).toEqual({ CustomFormatter: '' });
+  });
+});
+
+describe('spClient.readTargetFormatters (pre-apply backup read)', () => {
+  it('returns each target\'s live formatter (null when none) and never writes', async () => {
+    stubEnvironment({
+      routes: (url) => {
+        if (url.includes("getByInternalNameOrTitle('Status')")) return { CustomFormatter: STATUS_FORMATTER };
+        if (url.includes("getByTitle('All%20Items')")) return { CustomFormatter: '' };
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    });
+    const p = buildApplyPayload([
+      { target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatterJson: VIEW_FORMATTER },
+    ]);
+    const read = await readTargetFormatters(p);
+    expect(read).toEqual([
+      { target: 'field', name: 'Status', formatter: STATUS_FORMATTER },
+      { target: 'view', name: 'All Items', formatter: null },
+    ]);
+    // read-only: every request is a plain GET (no method, no write headers)
+    for (const c of calls) {
+      expect(c.init?.method).toBeUndefined();
+      expect((c.init?.headers as Record<string, string>)?.['X-HTTP-Method']).toBeUndefined();
+    }
+  });
+
+  it('a failed read is a teaching error, not a silent empty backup', async () => {
+    stubEnvironment({ routes: () => 403 });
+    const p = buildApplyPayload([{ target: 'field', name: 'Status', formatterJson: STATUS_FORMATTER }]);
+    await expect(readTargetFormatters(p)).rejects.toThrow(/Manage Lists/);
   });
 });
 
