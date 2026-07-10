@@ -45,6 +45,8 @@ import { preserveCaret, lineSpanOf, lineOfOffset, SyncEcho } from './codeSync';
 import { mountJsonIde } from './jsonIde';
 import { decorationsFrom, type Decoration } from './jsonDecorations';
 import { hoverAt as hoverInfoAt } from './jsonHover';
+import { evalChipAt } from './exprPreview';
+import { SYN_SLOTS, loadSynPrefs, saveSynPrefs, applySynPrefs } from './synPalette';
 import { formatDocument } from './jsonFormat';
 import type { NodePath } from '../core/types';
 import {
@@ -83,7 +85,11 @@ It reads the target, shows you exactly what changes, and asks before the ONE wri
 Needs Edit on the list (formatters ride "Manage Lists", part of the default Edit level).
 Or, with the FormatFX companion extension installed, use "Copy for extension" and click Apply on the list tab.</div>
     </div>
-    <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
+    <div id="wb-syn-panel" class="wb-syn-panel" hidden></div>
+    <div class="wb-json-crumbrow">
+      <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
+      <span id="wb-json-size" class="wb-json-size" title="Size of the JSON that Copy produces, with the current sanitize/names toggles"></span>
+    </div>
     <div id="wb-json-shell" class="wb-json-shell wb-codesync">
       <textarea id="wb-json-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
     </div>
@@ -110,6 +116,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         <button id="wb-json-format" title="Pretty-print the buffer: canonical when it parses (Alt+Shift+F). Does not Apply.">Format document</button>
         <button id="wb-json-fold-others" title="Collapse every element outside the selected element's chain (Ctrl+Shift+[ folds the element at the caret)">Fold others</button>
         <button id="wb-json-expand-all" title="Unfold everything (Ctrl+Shift+] unfolds at the caret)">Expand all</button>
+        <button id="wb-json-syncolors" title="Tune the expression syntax-highlight colors for the current theme (stored locally, per theme)">Syntax colors…</button>
         <hr>
         <label class="wb-check"><input type="checkbox" id="wb-json-sanitize" checked> sanitize whitespace</label>
         <label class="wb-check" title="Keep the Structure pane's _elmName labels in copied/downloaded JSON (SharePoint ignores them). Uncheck for schema-pristine output. The editor view below always shows them so Apply round-trips losslessly."><input type="checkbox" id="wb-json-names" checked> names</label>`;
@@ -246,6 +253,20 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     rebuildFoldView(); // folds are path-keyed: survivors re-apply, the rest drop
     syncFoldDisplay(selStart, selEnd);
     clearImportError(); // stale error no longer matches what's in the textarea
+    refreshSizeMeter(); // the doc changed — so did what Copy would produce
+  };
+
+  // ── #PR-E size meter: the byte count of what COPY produces with the
+  // current toggles (names/sanitize) — the doc's truth, so a dirty buffer
+  // doesn't move it until Apply. No threshold judgment: the SP formatting
+  // docs document no JSON size cap (checked 2026-07-10, per spec §6). ──
+  const sizeEl = host.querySelector('#wb-json-size') as HTMLSpanElement;
+  const refreshSizeMeter = (): void => {
+    const out = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked });
+    const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(out).length : out.length;
+    sizeEl.textContent = bytes < 10240
+      ? `${bytes.toLocaleString()} B`
+      : `${(bytes / 1024).toFixed(1)} KB`;
   };
 
   // ── #218 code → canvas: a caret landing inside an element selects it ──
@@ -411,6 +432,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); scheduleLiveParse(); });
   sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
+  namesEl.addEventListener('change', refreshSizeMeter); // names only change COPY output — and so the meter
 
   // ── #244 the IDE dressing: highlight overlay, gutter, completions ──
   // Mounted AFTER the input listener above so on every keystroke the buffer
@@ -435,6 +457,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     decorations: () => decorations,
     hoverAt: (off) => hoverInfoAt(textEl.value, off, decorations, state.fields,
       { ctx: state.rows.length ? ctxForRow(0) : undefined }),
+    // #PR-E the eval chip: the caret's live string through the REAL engine
+    // against the sample row (same ctx source as completions — row 0; swap in
+    // the canvas's active row here when that notion exists)
+    evalChip: (off) => evalChipAt(textEl.value, off, state.rows.length ? ctxForRow(0) : undefined),
     // #PR-C: the fold bridge — chevrons, gapped numbers, edit guards
     folds: {
       usable: () => !dirty,
@@ -638,6 +664,72 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   menuHost.querySelector('#wb-json-expand-all')!.addEventListener('click', () => {
     foldedPaths.clear();
     expandAllFolds();
+  });
+
+  // ── #PR-E (owner ask): the syntax color mapper. One color input per
+  // --wb-syn-x* slot for the CURRENT theme; overrides live in localStorage
+  // (a NEW key — frozen-keys rule intact) and apply as inline custom
+  // properties on <body>, outranking both theme blocks. synPalette.ts owns
+  // the decisions; this is DOM only. ──
+  const synPanel = host.querySelector('#wb-syn-panel') as HTMLDivElement;
+  const isDark = (): boolean => document.body.classList.contains('wb-dark');
+  let synPrefs = loadSynPrefs();
+  applySynPrefs(synPrefs, isDark(), document.body); // saved hues greet the session
+
+  /** Effective #rrggbb for a slot, for seeding the input (inline override
+   *  first, else the stylesheet's computed value; '#888888' in bare DOMs). */
+  const effectiveHex = (cssVar: string): string => {
+    const v = (document.body.style.getPropertyValue(cssVar)
+      || getComputedStyle(document.body).getPropertyValue(cssVar)).trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) return v;
+    if (/^#[0-9a-fA-F]{3}$/.test(v)) return `#${[...v.slice(1)].map((c) => c + c).join('')}`;
+    const rgb = v.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+    if (rgb) return `#${rgb.slice(1, 4).map((n) => (+n).toString(16).padStart(2, '0')).join('')}`;
+    return '#888888';
+  };
+
+  const rebuildSynPanel = (): void => {
+    const theme = isDark() ? 'dark' : 'light';
+    const rows: Node[] = SYN_SLOTS.map(({ cssVar, label }) => {
+      const row = document.createElement('label');
+      row.className = 'wb-syn-row';
+      const name = document.createElement('span');
+      name.textContent = label;
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = effectiveHex(cssVar);
+      input.setAttribute('aria-label', `${label} color (${theme} theme)`);
+      input.addEventListener('input', () => {
+        synPrefs[theme === 'dark' ? 'dark' : 'light'][cssVar] = input.value;
+        saveSynPrefs(synPrefs);
+        applySynPrefs(synPrefs, isDark(), document.body);
+      });
+      row.append(name, input);
+      return row;
+    });
+    const head = document.createElement('div');
+    head.className = 'wb-syn-head';
+    head.textContent = `Expression colors — ${theme} theme`;
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.id = 'wb-syn-reset';
+    reset.textContent = 'Reset to defaults';
+    reset.title = 'Drop every override for this theme';
+    reset.addEventListener('click', () => {
+      synPrefs[isDark() ? 'dark' : 'light'] = {};
+      saveSynPrefs(synPrefs);
+      applySynPrefs(synPrefs, isDark(), document.body);
+      rebuildSynPanel(); // inputs re-seed from the stylesheet defaults
+    });
+    synPanel.replaceChildren(head, ...rows, reset);
+  };
+
+  menuHost.querySelector('#wb-json-syncolors')!.addEventListener('click', () => {
+    // the mapper lives in the JSON tab — surface it if Explain is up front
+    const jsonTab = document.getElementById('wb-side-tab-json');
+    if (jsonTab && !jsonTab.classList.contains('active')) jsonTab.click();
+    synPanel.hidden = !synPanel.hidden;
+    if (!synPanel.hidden) rebuildSynPanel();
   });
 
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', async () => {
@@ -890,7 +982,13 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ide.refreshScope();
       return;
     }
-    if (reason !== 'theme') { clearDirty(); regenerate(); refreshDeployPanel(); }
+    if (reason === 'theme') {
+      // #PR-E: the other theme's palette overrides take over; open panel re-seeds
+      applySynPrefs(synPrefs, isDark(), document.body);
+      if (!synPanel.hidden) rebuildSynPanel();
+      return;
+    }
+    clearDirty(); regenerate(); refreshDeployPanel();
   });
   hostAny._unsub = () => {
     stateUnsub();

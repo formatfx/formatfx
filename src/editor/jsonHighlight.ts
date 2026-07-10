@@ -187,8 +187,52 @@ function innerOf(text: string, t: JsonToken): [number, number] | null {
   return e > s ? [s, e] : null;
 }
 
-/** Emit one live string: the outer expr span with sub-token spans nested. */
-function renderLiveString(text: string, t: JsonToken, subs: ExprToken[], cls: string): string {
+// ── #PR-E color chips: string values that ARE colors get a swatch class +
+// the color as a --wb-chip custom property (the swatch itself is CSS, an
+// absolutely-positioned ::before — layer alignment stays arithmetic). ──
+
+/** Curated named colors (the ones that show up in real formatters). A plain
+ *  word is only a color under a color-ish KEY — see colorChipValue. */
+const NAMED_COLORS = new Set([
+  'white', 'black', 'red', 'green', 'blue', 'orange', 'yellow', 'purple',
+  'teal', 'gray', 'grey', 'silver', 'gold', 'pink', 'brown', 'cyan',
+  'magenta', 'navy', 'maroon', 'olive', 'lime', 'aqua', 'coral', 'crimson',
+  'indigo', 'ivory', 'khaki', 'lavender', 'salmon', 'tan', 'tomato',
+  'turquoise', 'violet', 'wheat', 'transparent',
+]);
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const FN_COLOR = /^(?:rgb|rgba|hsl|hsla)\(\s*[\d.,%\s/]+\)$/i;
+const COLORISH_KEY = /color|fill|stroke|background|border|outline/i;
+
+/** The CSS color to chip `content` with, or null. Unambiguous formats chip
+ *  anywhere; bare named colors only under a color-ish key (a plain "red"
+ *  under txtContent is data, not a color). The returned string matched a
+ *  strict pattern, so it is inline-style-attribute-safe by construction. */
+export function colorChipValue(content: string, key: string | null): string | null {
+  const v = content.trim();
+  if (HEX_COLOR.test(v) || FN_COLOR.test(v)) return v;
+  if (key !== null && COLORISH_KEY.test(key) && NAMED_COLORS.has(v.toLowerCase())) return v.toLowerCase();
+  return null;
+}
+
+/** `content` between an xstr sub-token's quotes: 'red' raw, \"red\" escaped. */
+function xstrContent(text: string, s: ExprToken): string {
+  const raw = text.slice(s.start, s.end);
+  if (raw.startsWith("'")) return raw.replace(/^'|'$/g, '');
+  return raw.replace(/^\\"|\\"$/g, '');
+}
+
+/** Emit one live string: the outer expr span with sub-token spans nested.
+ *  `occurrence` (#PR-E) softly lights same-text xfield/xtoken sub-tokens;
+ *  `key` gates named-color chips on xstr literals. */
+function renderLiveString(
+  text: string,
+  t: JsonToken,
+  subs: ExprToken[],
+  cls: string,
+  occurrence?: string | null,
+  key?: string | null,
+): string {
   const out: string[] = [`<span class="${cls}">`];
   const inner = innerOf(text, t);
   if (!inner) {
@@ -200,8 +244,18 @@ function renderLiveString(text: string, t: JsonToken, subs: ExprToken[], cls: st
   let p = cs;
   for (const s of subs) {
     if (s.start > p) out.push(escapeHtml(text.slice(p, s.start)));
-    const subCls = s.kind === 'xfn-unknown' ? 'wb-tok-err' : `wb-tok-${s.kind}`;
-    out.push(`<span class="${subCls}">`, escapeHtml(text.slice(s.start, s.end)), '</span>');
+    let subCls = s.kind === 'xfn-unknown' ? 'wb-tok-err' : `wb-tok-${s.kind}`;
+    let style = '';
+    if (occurrence && (s.kind === 'xfield' || s.kind === 'xtoken')
+      && text.slice(s.start, s.end) === occurrence) subCls += ' wb-tok-occ';
+    if (s.kind === 'xstr') {
+      const chip = colorChipValue(xstrContent(text, s), key ?? null);
+      if (chip) {
+        subCls += ' wb-tok-color';
+        style = ` style="--wb-chip:${chip}"`;
+      }
+    }
+    out.push(`<span class="${subCls}"${style}>`, escapeHtml(text.slice(s.start, s.end)), '</span>');
     p = s.end;
   }
   if (p < ce) out.push(escapeHtml(text.slice(p, ce)));
@@ -209,7 +263,35 @@ function renderLiveString(text: string, t: JsonToken, subs: ExprToken[], cls: st
   return out.join('');
 }
 
-export function renderJsonHtml(text: string, tokens: JsonToken[], match?: readonly [number, number] | null): string {
+/** #PR-E occurrence highlighting: the exact text of the xfield/xtoken
+ *  sub-token at `caret` (touching counts — the IDE convention), or null.
+ *  The repaint hands this to renderJsonHtml, which stamps `wb-tok-occ` on
+ *  every same-text occurrence. Overlay class only — no behavior. */
+export function occurrenceTargetAt(text: string, tokens: JsonToken[], caret: number): string | null {
+  let pendingKey: string | null = null;
+  for (const t of tokens) {
+    if (t.start > caret) break;
+    const forEachValue = t.kind === 'str' && pendingKey === 'forEach';
+    if ((t.kind === 'expr' || forEachValue) && caret >= t.start && caret <= t.end) {
+      const inner = innerOf(text, t);
+      if (!inner) return null;
+      const subs = (forEachValue ? tokenizeForEach : tokenizeExpr)(text, inner[0], inner[1]);
+      const hit = subs.find((s) => (s.kind === 'xfield' || s.kind === 'xtoken')
+        && caret >= s.start && caret <= s.end);
+      return hit ? text.slice(hit.start, hit.end) : null;
+    }
+    if (t.kind === 'key') pendingKey = text.slice(t.start + 1, t.end - 1);
+    else if (!(t.kind === 'punct' && text[t.start] === ':')) pendingKey = null;
+  }
+  return null;
+}
+
+export function renderJsonHtml(
+  text: string,
+  tokens: JsonToken[],
+  match?: readonly [number, number] | null,
+  occurrence?: string | null,
+): string {
   const out: string[] = [];
   let pos = 0;
   // the key a value token hangs under — set by a key token, kept through its
@@ -225,10 +307,21 @@ export function renderJsonHtml(text: string, tokens: JsonToken[], match?: readon
       const subs = inner
         ? (forEachValue ? tokenizeForEach : tokenizeExpr)(text, inner[0], inner[1])
         : [];
-      out.push(renderLiveString(text, t, subs, `wb-tok-expr${matchCls}`));
+      out.push(renderLiveString(text, t, subs, `wb-tok-expr${matchCls}`, occurrence, pendingKey));
     } else {
+      // #PR-E: a plain string value that IS a color gets the swatch class
+      let colorCls = '';
+      let style = '';
+      if (t.kind === 'str') {
+        const inner = innerOf(text, t);
+        const chip = inner ? colorChipValue(text.slice(inner[0], inner[1]), pendingKey) : null;
+        if (chip) {
+          colorCls = ' wb-tok-color';
+          style = ` style="--wb-chip:${chip}"`;
+        }
+      }
       out.push(
-        `<span class="wb-tok-${t.kind}${matchCls}">`,
+        `<span class="wb-tok-${t.kind}${matchCls}${colorCls}"${style}>`,
         escapeHtml(text.slice(t.start, t.end)),
         '</span>',
       );

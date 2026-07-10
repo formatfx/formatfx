@@ -1591,6 +1591,15 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none;
 }
 .wb-json-sighint b { color: var(--wb-accent); }
+/* #PR-E the live eval chip — rides the signature strip */
+.wb-evalchip { margin-left: 6px; color: var(--wb-text); }
+.wb-json-sighint .wb-evalchip:first-child { margin-left: 0; }
+.wb-evalchip-error { color: var(--wb-syn-err); }
+.wb-evalchip-type {
+  margin-left: 5px; padding: 0 4px; border-radius: 3px; font-size: 9px;
+  background: color-mix(in srgb, var(--wb-accent) 14%, transparent);
+  color: var(--wb-text-2); vertical-align: 1px;
+}
 /* #PR-D hover card — floats above the pointer's line, never interactive */
 .wb-json-hover {
   position: absolute; z-index: 7; transform: translateY(-100%);
@@ -1600,18 +1609,28 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, .2); pointer-events: none;
 }
 .wb-json-hover .wb-hover-title { font-weight: 600; }
+.wb-hover-icon { font-size: 13px; vertical-align: -1px; }
 .wb-json-hover .wb-hover-body {
   color: var(--wb-text-2); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .wb-json-hover.wb-hover-mono .wb-hover-body { font-family: Consolas, 'Cascadia Code', monospace; }
 /* #PR-D breadcrumb strip — the caret's element chain over the editor;
-   its right edge is reserved for the size meter (PR E) */
+   #PR-E: the strip is a flex ROW now, size meter pinned at its right edge
+   (the crumbs' own hidden-contract is untouched — the row stays) */
+.wb-json-crumbrow {
+  display: flex; align-items: center; gap: 8px; min-height: 18px;
+  padding: 0 8px 3px;
+}
 .wb-json-crumbs {
-  display: flex; align-items: center; gap: 2px; min-height: 18px;
-  padding: 0 8px 3px; font-size: 11px; color: var(--wb-text-2);
+  display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
+  font-size: 11px; color: var(--wb-text-2);
   white-space: nowrap; overflow: hidden;
 }
 .wb-json-crumbs[hidden] { display: none; } /* display:flex above would defeat [hidden] */
+.wb-json-size {
+  margin-left: auto; font-size: 10.5px; color: var(--wb-text-2);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 .wb-crumb {
   border: 0; background: transparent; padding: 0 2px; border-radius: 3px;
   font-size: 11px; color: var(--wb-text-2); cursor: pointer; white-space: nowrap;
@@ -1664,6 +1683,20 @@ body.wb-dark {
   color: var(--wb-syn-err);
   text-decoration: underline wavy color-mix(in srgb, var(--wb-syn-err) 60%, transparent);
   text-underline-offset: 2px;
+}
+/* #PR-E occurrence highlighting — the caret's ref/token, everywhere it appears */
+.wb-tok-occ {
+  background: color-mix(in srgb, var(--wb-accent) 22%, transparent);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wb-accent) 30%, transparent);
+}
+/* #PR-E color chips — the swatch is an ABSOLUTE ::before drawn over the
+   opening quote's cell: zero metric impact, the four layers stay aligned */
+.wb-tok-color { position: relative; }
+.wb-tok-color::before {
+  content: ''; position: absolute; left: 0; top: 3px; width: 7px; height: 7px;
+  border-radius: 2px; background: var(--wb-chip);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wb-text) 40%, transparent);
 }
 .wb-tok-match {
   background: color-mix(in srgb, var(--wb-accent) 18%, transparent);
@@ -1771,6 +1804,27 @@ body.wb-dark {
   padding: 8px; margin-bottom: 6px; background: rgba(0, 120, 212, .05);
 }
 .wb-deploy[hidden] { display: none; }
+/* ── #PR-E the syntax color mapper (kebab → Syntax colors…) ───── */
+.wb-syn-panel {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+  border: 1px dashed var(--wb-border); border-radius: 4px;
+  padding: 8px; margin-bottom: 6px; font-size: 11px;
+}
+.wb-syn-panel[hidden] { display: none; }
+.wb-syn-head { grid-column: 1 / -1; font-weight: 600; }
+.wb-syn-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  color: var(--wb-text-2);
+}
+.wb-syn-row input[type='color'] {
+  width: 26px; height: 18px; padding: 0; border: 1px solid var(--wb-border);
+  border-radius: 3px; background: none; cursor: pointer;
+}
+#wb-syn-reset {
+  grid-column: 1 / -1; justify-self: start; margin-top: 2px;
+  border: 1px solid var(--wb-border); border-radius: 3px; padding: 2px 8px;
+  background: var(--wb-surface); color: var(--wb-text); cursor: pointer; font-size: 11px;
+}
 .wb-deploy-target { font-size: 11px; font-weight: 600; }
 .wb-deploy input {
   font-family: inherit; font-size: 12px; padding: 4px 6px;
