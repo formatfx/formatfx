@@ -505,6 +505,7 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
       chip.textContent = String(inUse.length);
       chip.title = `Used in ${inUse.length} place${inUse.length === 1 ? '' : 's'} — click to jump to each`;
       chip.setAttribute('aria-label', chip.title);
+      chip.setAttribute('aria-haspopup', 'dialog');
       chip.addEventListener('click', (e) => {
         e.stopPropagation(); // never toggle the drawer
         openUsagePopout(chip, def.id);

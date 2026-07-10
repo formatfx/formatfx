@@ -96,7 +96,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     <div class="wb-lp-tree wb-lp-sec" data-sec="tree" id="wb-lp-tree">
       <div class="wb-lp-sec-headrow">
         ${sectionHead('tree', 'Structure', 'wb-tree-body')}
-        <button class="wb-structure-kebab" id="wb-structure-kebab" aria-haspopup="dialog" aria-label="Settings for what the tree shows" hidden>${ICONS.kebab}</button>
+        <button class="wb-structure-kebab" id="wb-structure-kebab" aria-haspopup="dialog" hidden>${ICONS.kebab}</button>
       </div>
       <div class="wb-tree-sec-body wb-lp-sec-body" id="wb-tree-body"></div>
     </div>
@@ -182,6 +182,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     structKebab.title = componentMode
       ? 'Component options — add it to a view, see where it’s used'
       : 'View settings — density, row class, templates, and what SharePoint shows around this view';
+    // aria-label overrides title for screen readers — keep the accessible
+    // name in step with whichever panel the click actually opens
+    structKebab.setAttribute('aria-label', componentMode ? 'Component options' : 'View settings');
   };
 
   // ── lens tabs ──────────────────────────────────────────────────────────────
