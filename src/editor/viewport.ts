@@ -91,7 +91,7 @@ export function commitDragWidth(w: number, full: number): number | null {
 }
 
 export interface ViewportPreset {
-  id: 'fit' | 'monitor' | 'half' | 'phone';
+  id: 'fit' | 'average' | 'half' | 'phone';
   /** Button glyph + word — the "how much room does a real person have" read. */
   label: string;
   /** Layout width in px; null = no constraint (use all the canvas room). */
@@ -107,10 +107,12 @@ export interface ViewportPreset {
  * way — every value is an ESTIMATE of "how much width does the rendered
  * list actually get", not a device spec, and the UI labels them ≈:
  *
- *   · monitor 1420 — the most common desktop is 1920px wide (StatCounter
+ *   · average 1420 — the most common desktop is 1920px wide (StatCounter
  *     has 1920×1080 at ~22–24% of desktops for years). A maximized modern
  *     SP list page spends ~450–500px on the app bar + site nav rail +
  *     page padding, leaving ≈1400–1450px of list room. We use 1420.
+ *     (Renamed from "monitor" 2026-07-10 — the id is view-pref-internal,
+ *     never persisted, so the rename costs nothing.)
  *   · half    860 — split-screen reality: half of 1920 is 960; window
  *     chrome + page padding eat ~100px, and below ~1024px SharePoint
  *     collapses the left nav, so the list keeps ≈860.
@@ -128,8 +130,8 @@ export const VIEWPORT_PRESETS: readonly ViewportPreset[] = [
     hint: 'No simulated viewport — the preview uses all the room the canvas has',
   },
   {
-    id: 'monitor', label: 'Monitor', width: 1420,
-    hint: 'Approximate (~1420px): the room a maximized list gets on a common 1920px-wide desktop, after SharePoint\'s nav rail and page padding',
+    id: 'average', label: 'Average', width: 1420,
+    hint: 'Approximate (~1420px): the room a maximized list gets on an average 1920px-wide desktop, after SharePoint\'s nav rail and page padding',
   },
   {
     id: 'half', label: 'Half', width: 860,

@@ -21,8 +21,10 @@ description: Build/launch/drive recipe for verifying FormatFX changes at the run
   topbar **JSON** button first; `#wb-json-kebab` / `#wb-kind` live in the
   side pane's head kebab.
 - Fastest row view: JSON pane kebab → `#wb-kind` select → `row`.
-- The View settings kebab is `.wb-viewcard-kebab` on the THIS VIEW card
-  heading; its panel is `.wb-viewkebab` (body-owned, `position:fixed`).
+- The settings kebab is `#wb-structure-kebab` on the Structure section
+  header (view settings on a view tab, component options on a workshop
+  tab; hidden on the grid floor); its panel is `.wb-viewkebab`
+  (body-owned, `position:fixed`).
 - Mock rows carry `data-sp-path`; the JSON pane textarea `#wb-json-text`
   mirrors the document live — assert emitted JSON there.
 

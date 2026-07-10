@@ -57,12 +57,14 @@ app.innerHTML = `
       <span>${PRODUCT_NAME}</span>
       <span class="wb-brand-sub">${PRODUCT_TAGLINE}</span>
     </div>
-    <div class="wb-topbar-controls">
-      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything">Search</button>
-      <button id="wb-json-toggle" title="Show or hide the validated-JSON pane (the escape hatch, with Deploy and Copy). The editing pane and canvas stay put."><i class="ms-Icon ms-Icon--Code"></i> JSON<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
-      <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere"><i class="ms-Icon ms-Icon--Share"></i> Share</button>
+    <div class="wb-topbar-center">
       <button id="wb-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><i class="ms-Icon ms-Icon--Undo" aria-hidden="true"></i></button>
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
+    </div>
+    <div class="wb-topbar-controls">
+      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything">Search</button>
+      <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere"><i class="ms-Icon ms-Icon--Share"></i> Share</button>
+      <button id="wb-json-toggle" title="Show or hide the validated-JSON pane (the escape hatch, with Deploy and Copy). The editing pane and canvas stay put."><span class="wb-json-glyph" aria-hidden="true">{&hairsp;}</span> JSON<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
       <button id="wb-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
       <div class="wb-menu" id="wb-menu">
         <button id="wb-menu-btn" title="Project & view options" aria-label="Project and view options menu">☰</button>
@@ -208,7 +210,7 @@ const sideMaxBtn = document.getElementById('wb-side-max') as HTMLButtonElement;
 // this block only reads prefs, measures the layout and paints the answer.
 // The Left Edit Pane — or its 28px bar — is always visible: no state can
 // strand the user with no way back. The JSON pane's width ceiling tracks the
-// window (everything a workable ~420px canvas doesn't need is the pane's to
+// window (everything a workable ~200px canvas doesn't need is the pane's to
 // take), and maximizing hands it the canvas + data dock too.
 const applyLayout = () => {
   const grid = paneGridTemplate({
@@ -590,17 +592,12 @@ mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
     applyLayout();
     saveUiPrefs();
   });
-  // cluster with the pane's kebab so the nav row keeps its 3 space-between
-  // children (back · lens tabs · actions) — the ⋮ node moves, listeners ride
-  const lpKebab = leftPaneEl.querySelector('#wb-kebab-btn');
-  if (lpKebab) {
-    const actions = document.createElement('span');
-    actions.className = 'wb-lp-nav-actions';
-    lpKebab.replaceWith(actions);
-    actions.append(lpKebab, lpCollapse);
-  } else {
-    leftPaneEl.querySelector('.wb-lp-nav')?.appendChild(lpCollapse);
-  }
+  // lead the nav row with it (the old ← back spot — back lives under the ⋮
+  // kebab now), keeping the row's 3 space-between children:
+  // minimize · lens tabs · kebab
+  const lpNav = leftPaneEl.querySelector('.wb-lp-nav');
+  if (lpNav) lpNav.prepend(lpCollapse);
+  else leftPaneEl.appendChild(lpCollapse);
 }
 // canvas view prefs (#216/#224): zoom + viewport ride inside wb-ui-prefs
 // (additive fields — the frozen-keys rule)

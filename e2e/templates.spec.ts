@@ -1,8 +1,8 @@
 /**
- * E2E: the row view (and tile) builder. The Templates button on the row-view
- * toolbar (and "＋ New rowview…" / "＋ New tileview…" in the left pane's views
- * list) opens the builder on a WIREFRAME GALLERY (grouped Row/Tile); picking a
- * layout enters the zone editor with a live preview. A style exclusion is
+ * E2E: the row view (and tile) builder. The Templates entry in the
+ * structure-header kebab (and "＋ New rowview…" / "＋ New tileview…" in the
+ * left pane's views list) opens the builder on a WIREFRAME GALLERY (grouped
+ * Row/Tile); picking a layout enters the zone editor with a live preview. A style exclusion is
  * felt (a greyed control with a reason); Apply replaces the layout as ONE
  * undoable step; fields AND components drag from the chips bar into zones;
  * the width presets squeeze the row preview so wrap behavior is watchable,
@@ -21,8 +21,15 @@ async function enterRowView(page: Page) {
   await expect(page.locator('.wb-rowview-bar')).toBeVisible();
 }
 
+/** Open the builder from the structure-header kebab (Templates moved off the
+ *  canvas toolbar, 2026-07-10). */
+async function clickTemplates(page: Page) {
+  await page.locator('#wb-structure-kebab').click();
+  await page.locator('.wb-viewkebab-templates').click();
+}
+
 async function openBuilder(page: Page, wireframe = 'lead-detail') {
-  await page.locator('.wb-rowview-templates').click();
+  await clickTemplates(page);
   await expect(page.locator('.wb-template-modal')).toBeVisible();
   await expect(page.locator('.wb-wf-card').first()).toBeVisible(); // the gallery greets first
   await page.locator(`[data-wireframe="${wireframe}"]`).click();
@@ -119,7 +126,7 @@ test('alignment edits: the root row is selectable and both levels write real fle
   // Save, reopen: the alignment round-trips into the builder's controls
   await page.locator('.wb-template-apply').click();
   await expect(page.locator('.wb-template-modal')).toHaveCount(0);
-  await page.locator('.wb-rowview-templates').click();
+  await clickTemplates(page);
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
   await expect(page.locator('[data-rootvalign="top"]')).toHaveClass(/wb-seg-on/);
   await page.locator('[data-tree-zone="0"]').click();
@@ -133,7 +140,7 @@ test('reopening the builder edits the applied layout in place (no gallery restar
   await expect(page.locator('.wb-template-modal')).toHaveCount(0);
 
   // reopen: straight into the zone editor with the applied zones — no gallery
-  await page.locator('.wb-rowview-templates').click();
+  await clickTemplates(page);
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
   await expect(page.locator('.wb-wf-card')).toHaveCount(0);
   await expect(page.locator('.wb-edit-zone-tag').first()).toContainText('Lead');
@@ -186,7 +193,7 @@ test('zones nest: drop a zone onto a zone, and the nest survives Apply → reope
   // apply, reopen — the recursive round trip brings the nest back
   await page.locator('.wb-template-apply').click();
   await expect(page.locator('.wb-template-modal')).toHaveCount(0);
-  await page.locator('.wb-rowview-templates').click();
+  await clickTemplates(page);
   await expect(page.locator('[data-tree-zone="0:1"]')).toBeVisible();
   await expect(page.locator('[data-edit-item="0:1:0"]')).toBeVisible(); // its item came along
 });
@@ -218,7 +225,7 @@ test('the builder makes a TILE view: tile gallery → tile editor → Save → t
   await expect(page.locator('.wb-mock-deck')).toBeVisible();
   await expect(page.locator('.wb-rowview-bar-label')).toHaveText('Tile layout');
   // reopen: straight into the TILE editor with the zones intact — no gallery
-  await page.locator('.wb-rowview-templates').click();
+  await clickTemplates(page);
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
   await expect(page.locator('.wb-wf-card')).toHaveCount(0);
   await expect(page.locator('.wb-template-insp-title')).toHaveText('Tile');

@@ -53,6 +53,7 @@ const MENU_ICONS = {
   more: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="currentColor" d="M4 7h2v2H4zm3.5 0h2v2h-2zM11 7h2v2h-2z"/></svg>',
   undo: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M6 5H10a3 3 0 0 1 0 6H6m0-6L3.5 5 6 7"/></svg>',
   redo: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M10 5H6a3 3 0 0 0 0 6h4m0-6l2.5 0L10 7"/></svg>',
+  back: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M13 8H3.5m0 0L7 4.5M3.5 8L7 11.5"/></svg>',
 };
 
 let openPanel: { panel: HTMLElement; cleanup: () => void } | null = null;
@@ -124,6 +125,28 @@ export function openKebabMenu(anchor: HTMLElement, onToast: (m: string) => void)
   const render = (): void => {
     panel.replaceChildren();
     const store = readStore();
+
+    // ── Back (retrace the last surface switch — navigation, not undo; the
+    //    nav-row button moved under this ⋮, 2026-07-10) ───────────────────
+    const backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.className = 'wb-kebab-item wb-tool-back';
+    backBtn.disabled = state.backTarget === null;
+    backBtn.title = state.backTarget === null
+      ? 'Back — retrace where you were (nothing to go back to yet)'
+      : 'Back — retrace your last surface switch';
+    backBtn.innerHTML = `${MENU_ICONS.back}<span>Back — previous surface</span>`;
+    backBtn.addEventListener('click', () => {
+      closeSnapMenu();
+      if (state.goBack() !== null) {
+        onToast(`Back to ${state.onFloor ? 'the grid' : `the ${state.activeViewName} view`}`);
+      }
+    });
+    panel.appendChild(backBtn);
+
+    const sep0 = document.createElement('div');
+    sep0.className = 'wb-kebab-sep';
+    panel.appendChild(sep0);
 
     // ── Undo ───────────────────────────────────────────────────────────
     const undoBtn = document.createElement('button');

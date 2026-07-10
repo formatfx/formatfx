@@ -133,9 +133,11 @@ test('legacy scoped snapshots stay restorable under the collapsed group', async 
   await expect(page.locator('.wb-grid-row').first()).not.toContainText('L-In Progress');
 });
 
-test('the ← button retraces surface switches — not undo', async ({ page }) => {
-  const back = page.locator('#wb-nav-back');
+test('Back (inside the ⋮ menu since 2026-07-10) retraces surface switches — not undo', async ({ page }) => {
+  const back = page.locator('.wb-snapmenu .wb-tool-back');
+  await page.click('#wb-kebab-btn');
   await expect(back).toBeDisabled(); // nowhere to go yet
+  await page.keyboard.press('Escape');
 
   // wander: grid → a new view → back to the grid via its tab
   await makeRowView(page, ['Title', 'Status']);
@@ -143,14 +145,19 @@ test('the ← button retraces surface switches — not undo', async ({ page }) =
   await openGridTab(page);
   await expect(canvasTab(page, 'Grid')).toHaveClass(/active/);
 
-  // back retraces the trail: grid → view → grid, then disables
+  // back retraces the trail: grid → view → grid, then disables (the menu
+  // closes on each click — an action, like insert)
+  await page.click('#wb-kebab-btn');
   await expect(back).toBeEnabled();
   await back.click();
   await expect(canvasTab(page, 'View 1')).toHaveClass(/active/);
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
+  await page.click('#wb-kebab-btn');
   await back.click();
   await expect(canvasTab(page, 'Grid')).toHaveClass(/active/);
+  await page.click('#wb-kebab-btn');
   await expect(back).toBeDisabled();
+  await page.keyboard.press('Escape');
   // retracing was NAVIGATION: the undo stack still holds only the view
   // creation — one Ctrl+Z removes the view, not the wandering
   await page.keyboard.press('Control+z');

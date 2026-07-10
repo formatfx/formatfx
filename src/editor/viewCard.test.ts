@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mountViewCard, scanBehaviors } from './viewCard';
+import { openViewKebab, closeViewKebab } from './viewKebab';
 import { state, CARD_SEGMENT } from './state';
 import { rowDensityOf } from './areas';
 import type { SPElement } from '../core/types';
@@ -48,7 +49,7 @@ describe('what shows when (per-tab shapes)', () => {
     expect(host.querySelector('.wb-viewcard-kind')?.textContent).toBe('tile view');
   });
 
-  it('a component tab shows the compact DEF card: ⬡ name, slot chips, usage count', () => {
+  it('a component tab shows the compact DEF card: ⬡ name, [$slot] chips, usage count', () => {
     state.createView({
       kind: 'row',
       root: {
@@ -64,43 +65,19 @@ describe('what shows when (per-tab shapes)', () => {
     expect(host.hidden).toBe(false);
     expect(host.querySelector('.wb-viewcard-mark')?.textContent).toBe('⬡');
     expect(host.querySelector('.wb-viewcard-name')?.textContent).toBe('Deadline chip');
-    expect(host.querySelectorAll('.wb-comp-slot').length).toBe(1); // one Due slot
+    // one Due slot, speaking the workshop's [$Key] idiom, label alongside
+    expect(host.querySelectorAll('.wb-comp-slot').length).toBe(1);
+    expect(host.querySelector('.wb-comp-slot')?.textContent).toContain('[$Due]');
     expect(host.querySelector('.wb-viewcard-usage')?.textContent).toContain('1 place');
+    // the count is plain prose, not the "save rebakes every instance" chatter
+    expect(host.querySelector('.wb-viewcard-usage')?.textContent).not.toContain('bake');
     // no view-scoped controls on a def card
     expect(host.querySelector('.wb-viewcard-rowclass')).toBeNull();
     state.deactivateComponentTab();
     expect(host.querySelector('.wb-viewcard-name')?.textContent).toBe('View 1');
   });
-});
 
-describe('the view kebab (spec §A — the card holds the door, viewKebab the settings)', () => {
-  it('the card carries NO inline settings anymore — density and row class live in the kebab', () => {
-    state.makeRowView();
-    const host = mount();
-    expect(host.querySelector('.wb-viewcard-seg')).toBeNull();
-    expect(host.querySelector('.wb-viewcard-rowclass')).toBeNull();
-    const kebab = host.querySelector('.wb-viewcard-kebab') as HTMLButtonElement;
-    expect(kebab).toBeTruthy();
-    expect(kebab.getAttribute('aria-haspopup')).toBe('dialog');
-    kebab.click();
-    const panel = document.body.querySelector('.wb-viewkebab')!;
-    expect(panel.querySelector('[data-prop="density"]')).toBeTruthy();
-    expect(panel.querySelector('.wb-viewcard-rowclass')).toBeTruthy();
-    expect(panel.querySelector('.wb-viewkebab-commands')).toBeTruthy();
-  });
-
-  it('a settings gesture re-renders the card but the panel survives (body-owned)', () => {
-    state.makeRowView();
-    const host = mount();
-    (host.querySelector('.wb-viewcard-kebab') as HTMLButtonElement).click();
-    const compact = [...document.body.querySelectorAll<HTMLButtonElement>('.wb-viewkebab [data-prop="density"] .wb-viewcard-segbtn')]
-      .find((b) => b.textContent === 'Compact')!;
-    compact.click();
-    expect(rowDensityOf(state.doc.root)).toBe('compact');
-    expect(document.body.querySelector('.wb-viewkebab')).toBeTruthy();
-  });
-
-  it('the def card shows no kebab — a component has no view-scoped settings', () => {
+  it('clicking the usage count pops out the where-it\'s-used jump rows; a jump navigates', () => {
     state.createView({
       kind: 'row',
       root: {
@@ -113,7 +90,41 @@ describe('the view kebab (spec §A — the card holds the door, viewKebab the se
     });
     state.openComponentTab('builtin-deadline-chip');
     const host = mount();
+    (host.querySelector('.wb-viewcard-usage') as HTMLButtonElement).click();
+    const pop = document.body.querySelector('.wb-usage-pop')!;
+    expect(pop).toBeTruthy();
+    const jumps = pop.querySelectorAll<HTMLButtonElement>('.wb-comp-usage');
+    expect(jumps.length).toBe(1);
+    jumps[0].click();
+    // the jump uncovers the canvas (the workshop tab stays open) and selects
+    expect(state.activeComponentTab).toBeNull();
+    expect(state.selection).toEqual([0]);
+    expect(document.body.querySelector('.wb-usage-pop')).toBeNull();
+  });
+});
+
+describe('the settings kebab moved off the card (2026-07-10 — the Structure header holds the door)', () => {
+  it('the card carries NO inline settings and NO kebab — everything lives in the structure-header kebab', () => {
+    state.makeRowView();
+    const host = mount();
+    expect(host.querySelector('.wb-viewcard-seg')).toBeNull();
+    expect(host.querySelector('.wb-viewcard-rowclass')).toBeNull();
     expect(host.querySelector('.wb-viewcard-kebab')).toBeNull();
+    expect(host.querySelector('.wb-structure-kebab')).toBeNull(); // leftPane's, not the card's
+  });
+
+  it('a settings gesture re-renders the card but the body-owned panel survives', () => {
+    state.makeRowView();
+    mount();
+    const anchor = document.createElement('button');
+    document.body.appendChild(anchor);
+    openViewKebab(anchor, () => {});
+    const compact = [...document.body.querySelectorAll<HTMLButtonElement>('.wb-viewkebab [data-prop="density"] .wb-viewcard-segbtn')]
+      .find((b) => b.textContent === 'Compact')!;
+    compact.click();
+    expect(rowDensityOf(state.doc.root)).toBe('compact');
+    expect(document.body.querySelector('.wb-viewkebab')).toBeTruthy();
+    closeViewKebab();
   });
 });
 

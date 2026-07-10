@@ -5,9 +5,11 @@
  * editor/leftPane.ts — the Claude-style Left Edit Pane container, rebuilt to
  * COLUMNS-COMPONENTS-VIEWS §3 (Mockup B, approved). Top to bottom:
  *
- *   1. the NAV ROW — ← back (retrace) + 🕘 snapshots. Navigation between
- *      surfaces lives in the CANVAS TAB STRIP now; the old formatter tablist
- *      and the document pill died with the drill-in model.
+ *   1. the NAV ROW — minimize (the shell prepends it), the Simple/Pro/Code
+ *      lens tabs, and the ⋮ menu (tools, snapshots, and ← Back — the retrace
+ *      button moved under the kebab 2026-07-10). Navigation between surfaces
+ *      lives in the CANVAS TAB STRIP; the old formatter tablist and the
+ *      document pill died with the drill-in model.
  *   2. the THIS VIEW card (viewCard.ts) — the active view's name/kind and its
  *      view-scoped behaviors & properties; a def card while a component
  *      workshop tab is up; hidden on the grid.
@@ -15,7 +17,9 @@
  *      (state.doc) — or, while a component workshop tab is up, the STAGED
  *      component tree via state.workshopCtx (spec §C, 2026-07-09: the owner
  *      superseded the v1 never-re-targets constraint) — under its own frozen
- *      "Structure" section header (2026-07-09). Drag splitter below (kept).
+ *      "Structure" section header (2026-07-09), which also carries the ⋮
+ *      settings kebab (view settings / component options — moved off the
+ *      view card 2026-07-10). Drag splitter below (kept).
  *   4. the COLUMNS SHELF (columnShelf.ts) — "Columns — your data": typed
  *      chips, drag (FIELD_MIME) or click-to-insert. Data only.
  *   5. the COMPONENTS library — always visible (the old tab-swap mode died),
@@ -33,6 +37,7 @@ import { mountInspector } from './inspector';
 import { mountCodeEditor } from './codeEditor';
 import { mountViewsList } from './viewMenu';
 import { openKebabMenu } from './snapMenu';
+import { openViewKebab, openComponentKebab } from './viewKebab';
 import { mountComponentLibrary } from './componentLibrary';
 import { mountColumnShelf } from './columnShelf';
 import { mountViewCard } from './viewCard';
@@ -82,15 +87,17 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   host.classList.add('wb-leftpane');
   host.innerHTML = `
     <div class="wb-lp-nav">
-      <button class="wb-nav-back" id="wb-nav-back" aria-label="Back">←</button>
       <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
         ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
       </div>
-      <button class="wb-kebab-btn" id="wb-kebab-btn" aria-haspopup="menu" aria-label="Menu" title="Menu — tools and snapshots">${ICONS.kebab}</button>
+      <button class="wb-kebab-btn" id="wb-kebab-btn" aria-haspopup="menu" aria-label="Menu" title="Menu — tools, snapshots and Back">${ICONS.kebab}</button>
     </div>
     <div id="wb-lp-viewcard"></div>
     <div class="wb-lp-tree wb-lp-sec" data-sec="tree" id="wb-lp-tree">
-      ${sectionHead('tree', 'Structure', 'wb-tree-body')}
+      <div class="wb-lp-sec-headrow">
+        ${sectionHead('tree', 'Structure', 'wb-tree-body')}
+        <button class="wb-structure-kebab" id="wb-structure-kebab" aria-haspopup="dialog" hidden>${ICONS.kebab}</button>
+      </div>
       <div class="wb-tree-sec-body wb-lp-sec-body" id="wb-tree-body"></div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
@@ -153,26 +160,32 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     });
   }
 
-  // ── navigation back (retrace doc switches — not undo) ──────────────────────
-  const backBtn = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
-  const landedLabel = (): string =>
-    state.onFloor ? 'the grid' : `the ${state.activeViewName} view`;
-  const refreshBack = (): void => {
-    backBtn.disabled = state.backTarget === null;
-    backBtn.title = state.backTarget === null
-      ? 'Back — retrace where you were (nothing to go back to yet)'
-      : 'Back — retrace your last surface switch';
-  };
-  backBtn.addEventListener('click', () => {
-    if (state.goBack() !== null) toast(`Back to ${landedLabel()}`);
-  });
-
-  // ── kebab menu: unified tools and snapshots ──────────────────────────────
+  // ── kebab menu: unified tools, snapshots and Back (the retrace nav moved
+  //    under this ⋮, 2026-07-10 — snapMenu renders the item) ─────────────────
   const kebabBtn = host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!;
   kebabBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     openKebabMenu(kebabBtn, toast);
   });
+
+  // ── the structure-header kebab: view settings on a view tab, component
+  //    options on a workshop tab, hidden on the grid floor (no settings) ─────
+  const structKebab = host.querySelector<HTMLButtonElement>('#wb-structure-kebab')!;
+  structKebab.addEventListener('click', (e) => {
+    e.stopPropagation(); // never fold the section
+    if (state.activeComponentTab !== null) openComponentKebab(structKebab, state.activeComponentTab, toast);
+    else openViewKebab(structKebab, toast);
+  });
+  const refreshStructKebab = (): void => {
+    const componentMode = state.activeComponentTab !== null;
+    structKebab.hidden = !componentMode && state.onFloor;
+    structKebab.title = componentMode
+      ? 'Component options — add it to a view, see where it’s used'
+      : 'View settings — density, row class, templates, and what SharePoint shows around this view';
+    // aria-label overrides title for screen readers — keep the accessible
+    // name in step with whichever panel the click actually opens
+    structKebab.setAttribute('aria-label', componentMode ? 'Component options' : 'View settings');
+  };
 
   // ── lens tabs ──────────────────────────────────────────────────────────────
   for (const btn of host.querySelectorAll<HTMLButtonElement>('.wb-lens-tab')) {
@@ -244,7 +257,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   // ── subscriptions ──────────────────────────────────────────────────────────
   const unsub = state.subscribe((reason) => {
     if (reason === 'lens') applyLens();
-    if (reason === 'load' || reason === 'data' || reason === 'kind') refreshBack();
+    if (reason === 'load' || reason === 'data' || reason === 'kind') refreshStructKebab();
   });
   hostAny._unsub = () => {
     unsub();
@@ -255,7 +268,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     });
   };
   applyLens();
-  refreshBack();
+  refreshStructKebab();
 }
 
 // Inline SVG glyphs for the toolbar — crisp at any size, theme via currentColor.

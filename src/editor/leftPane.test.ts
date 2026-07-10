@@ -33,10 +33,11 @@ afterEach(() => {
 });
 
 describe('structure (§3, top to bottom)', () => {
-  it('keeps the nav row (back + kebab menu) and buries the old chrome', () => {
+  it('keeps the nav row (kebab menu; back moved INSIDE it 2026-07-10) and buries the old chrome', () => {
     const host = mount();
-    expect(host.querySelector('#wb-nav-back')).not.toBeNull();
     expect(host.querySelector('#wb-kebab-btn')).not.toBeNull();
+    // the standalone back button is gone — Back is a ⋮ menu item now
+    expect(host.querySelector('#wb-nav-back')).toBeNull();
     // the dead chrome: no formatter tablist, no document pill, no view strip
     expect(host.querySelector('.wb-fmt-tablist')).toBeNull();
     expect(host.querySelector('.wb-fmt-tab')).toBeNull();
@@ -52,10 +53,14 @@ describe('structure (§3, top to bottom)', () => {
       'wb-lp-nav', 'wb-lp-viewcard', 'wb-lp-tree', 'wb-lp-splitter',
       'wb-lp-shelves', 'wb-lp-splitter2', 'wb-lp-props',
     ]);
-    // the tree region leads with its own frozen section header (outside the
-    // scrolling body) — 2026-07-09 owner brief
+    // the tree region leads with its own frozen section header row (outside
+    // the scrolling body) — 2026-07-09 owner brief; the row also carries the
+    // ⋮ settings kebab (2026-07-10)
     const tree = host.querySelector('#wb-lp-tree')!;
-    expect((tree.firstElementChild as HTMLElement).dataset.secHead).toBe('tree');
+    const headrow = tree.firstElementChild as HTMLElement;
+    expect(headrow.classList.contains('wb-lp-sec-headrow')).toBe(true);
+    expect(headrow.querySelector<HTMLElement>('.wb-lp-sec-head')?.dataset.secHead).toBe('tree');
+    expect(headrow.querySelector('#wb-structure-kebab')).not.toBeNull();
     expect(tree.querySelector('#wb-tree-body')).not.toBeNull();
     const shelves = host.querySelector('#wb-lp-shelves')!;
     // columns + components + views are ALL collapsible sections now
@@ -193,14 +198,54 @@ describe('the kept workspace (lens tabs · kebab menu · back)', () => {
     expect(undoBtn2.disabled).toBe(false);
   });
 
-  it('back retraces surface switches (navigation, not undo)', () => {
+  it('back retraces surface switches from inside the ⋮ menu (navigation, not undo)', () => {
     const host = mount();
-    const back = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
+    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
+    let back = document.body.querySelector<HTMLButtonElement>('.wb-snapmenu .wb-tool-back')!;
     expect(back.disabled).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
+    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
+    back = document.body.querySelector<HTMLButtonElement>('.wb-snapmenu .wb-tool-back')!;
     expect(back.disabled).toBe(false);
     back.click();
     expect(state.onFloor).toBe(true);
+    // the menu closed itself (an action, like insert)
+    expect(document.body.querySelector('.wb-snapmenu')).toBeNull();
+  });
+
+  it('the structure-header kebab hides on the grid, shows on a view, and opens the settings panel', () => {
+    const host = mount();
+    const kebab = host.querySelector<HTMLButtonElement>('#wb-structure-kebab')!;
+    expect(kebab.hidden).toBe(true); // the grid floor has no view settings
+    state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
+    expect(kebab.hidden).toBe(false);
+    kebab.click();
+    const panel = document.body.querySelector('.wb-viewkebab')!;
+    expect(panel).toBeTruthy();
+    expect(panel.querySelector('[data-prop="density"]')).toBeTruthy();
+    expect(panel.querySelector('.wb-viewkebab-templates')).toBeTruthy();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  });
+
+  it('on a component workshop tab the same kebab opens the component options instead', () => {
+    const host = mount();
+    state.createView({
+      kind: 'row',
+      root: {
+        elmType: 'div',
+        children: [{ elmType: 'div', txtContent: 'x', _component: { id: 'builtin-deadline-chip', map: { Due: 'DueDate' } } }],
+      },
+    });
+    state.openComponentTab('builtin-deadline-chip');
+    const kebab = host.querySelector<HTMLButtonElement>('#wb-structure-kebab')!;
+    expect(kebab.hidden).toBe(false);
+    kebab.click();
+    const panel = document.body.querySelector('.wb-viewkebab-component')!;
+    expect(panel).toBeTruthy();
+    expect(panel.querySelector('.wb-viewkebab-addcomp')).toBeTruthy();
+    expect(panel.querySelector('[data-prop="density"]')).toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
   });
 
   it('both splitters survive the rebuild: tree/shelves and shelves/props', () => {

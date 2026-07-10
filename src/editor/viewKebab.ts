@@ -2,21 +2,32 @@
 // Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
 
 /**
- * editor/viewKebab.ts — the View settings kebab (spec
- * docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md §A).
+ * editor/viewKebab.ts — the structure-header kebab (spec
+ * docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md §A;
+ * re-anchored 2026-07-10 from the THIS VIEW card's heading onto the
+ * Structure section header — leftPane.ts holds the ⋮ door now).
  *
- * Everything view-scoped in one panel, opened from the ⋮ on the THIS VIEW
- * card's heading: density, row class, the hide toggles (selection boxes /
- * column headers / list header), the tile box, and the Command buttons
- * drill-in (per-button hides + presets over core/commandBar).
+ * On a VIEW tab it's everything view-scoped in one panel: density, row
+ * class, the hide toggles (selection boxes / column headers / list header),
+ * the tile box, Templates (the row/tile builder — moved here from the
+ * canvas toolbar 2026-07-10), and the Command buttons drill-in (per-button
+ * hides + presets over core/commandBar).
  *
- * The panel is BODY-OWNED and position:fixed (snapMenu's pattern) because the
- * view card re-renders wholesale on every 'document' emit — an inline panel
- * would be destroyed by its own gestures. Instead the panel subscribes and
- * REDRAWS IN PLACE on 'document' (its own commits and Ctrl+Z alike), keeping
- * mode + scroll; 'load'/'kind'/'data' (surface switches, tab changes, undo's
- * cross-surface hops) close it. Escape + outside-pointerdown close; clicks
- * inside never auto-close — this is a settings surface, not an action menu.
+ * On a COMPONENT workshop tab the option list changes — view-scoped
+ * settings don't apply to a def, so openComponentKebab shows the
+ * component-scoped door instead: Add to a view, and the where-it's-used
+ * jump rows.
+ *
+ * The panel is BODY-OWNED and position:fixed (snapMenu's pattern) because
+ * pane chrome re-renders wholesale on every 'document' emit — an inline
+ * panel would be destroyed by its own gestures. Instead the panel
+ * subscribes and REDRAWS IN PLACE on 'document' (its own commits and
+ * Ctrl+Z alike), keeping mode + scroll; 'load'/'kind'/'data' (surface
+ * switches, tab changes, undo's cross-surface hops) close it. Escape +
+ * outside-pointerdown close; clicks inside never auto-close — this is a
+ * settings surface, not an action menu (the Templates door and the
+ * component jumps are the exceptions: they open another surface, so they
+ * close the panel like the ☰ menu's example loader).
  *
  * Every gesture is ONE state.mutateDocument call. "Show" removes props
  * rather than writing `false`, so exports stay clean (the additionalRowClass
@@ -29,6 +40,9 @@ import {
   COMMAND_GROUPS, COMMAND_PRESETS, readCommandState, setCommandHidden,
   applyCommandPreset, hiddenCommandCount, type CommandPreset,
 } from '../core/commandBar';
+import { openTemplateModal } from './templateModal';
+import { componentById, openComponentMapper, usageJumpList } from './componentLibrary';
+import { scanComponentUsages } from './componentUsage';
 
 type Mode = 'main' | 'commands';
 
@@ -267,6 +281,23 @@ export function openViewKebab(anchor: HTMLElement, onToast: (m: string) => void)
     }
     cmdBtn.addEventListener('click', () => { mode = 'commands'; redraw(); });
     out.push(cmdBtn);
+
+    // Templates — the row/tile builder door (moved off the canvas toolbar,
+    // 2026-07-10). Opening a modal is an ACTION, so it closes the panel.
+    const tplBtn = document.createElement('button');
+    tplBtn.type = 'button';
+    tplBtn.className = 'wb-viewkebab-templates';
+    tplBtn.title = doc.kind === 'tile'
+      ? 'Start from a pre-built tile layout (skeleton + stackable styles)'
+      : 'Start from a pre-built row layout (skeleton + stackable styles)';
+    const tplLabel = document.createElement('span');
+    tplLabel.textContent = '▤ Templates…';
+    tplBtn.appendChild(tplLabel);
+    tplBtn.addEventListener('click', () => {
+      closeViewKebab();
+      openTemplateModal(onToast);
+    });
+    out.push(tplBtn);
     return out;
   };
 
@@ -393,6 +424,98 @@ export function openViewKebab(anchor: HTMLElement, onToast: (m: string) => void)
   const unsub = state.subscribe((reason) => {
     if (reason !== 'document' && reason !== 'load' && reason !== 'kind' && reason !== 'data') return;
     if (state.activeTabKey !== openedTabKey || state.onFloor) close();
+    else redraw();
+  });
+  const cleanup = (): void => {
+    window.clearTimeout(armTimer);
+    document.removeEventListener('pointerdown', onOutside);
+    document.removeEventListener('keydown', onKey);
+    unsub();
+  };
+  open = { panel, anchor, cleanup };
+}
+
+/**
+ * The structure-header kebab while a COMPONENT workshop tab is up: a def has
+ * no view-scoped settings, so the panel offers the component-scoped doors
+ * instead — Add to a view (the typed mapping dialog) and the where-it's-used
+ * jump rows (each navigates to the instance, leaving the workshop showing-
+ * wise; its tab and staged edits stay put). Same body-owned plumbing as the
+ * view panel; a tab switch closes it, a document change redraws the counts.
+ */
+export function openComponentKebab(anchor: HTMLElement, defId: string, onToast: (m: string) => void): void {
+  if (open && open.anchor === anchor) { closeViewKebab(); return; }
+  closeViewKebab();
+
+  const panel = document.createElement('div');
+  panel.className = 'wb-viewkebab wb-viewkebab-component wb-esc-owner';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Component options');
+
+  let done = false;
+  const close = (): void => { if (!done) { done = true; closeViewKebab(); } };
+
+  const redraw = (): void => {
+    const def = componentById(defId);
+    if (!def) { close(); return; } // the def vanished under the panel
+    const scroll = panel.scrollTop;
+    const out: HTMLElement[] = [];
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'wb-viewkebab-addcomp';
+    addBtn.title = 'Map your columns into this component and add it to the canvas';
+    const addLabel = document.createElement('span');
+    addLabel.textContent = 'Add to view…';
+    addBtn.appendChild(addLabel);
+    addBtn.addEventListener('click', () => {
+      close();
+      openComponentMapper(def, onToast);
+    });
+    out.push(addBtn);
+
+    const sep = document.createElement('div');
+    sep.className = 'wb-viewkebab-sep';
+    sep.setAttribute('role', 'separator');
+    out.push(sep);
+
+    const usesHead = document.createElement('div');
+    usesHead.className = 'wb-viewkebab-group';
+    usesHead.textContent = 'Where it’s used';
+    out.push(usesHead);
+    const inUse = scanComponentUsages([def], state.doc.root, state.columnLooks).get(def.id) ?? [];
+    if (inUse.length) {
+      out.push(usageJumpList(inUse, close));
+    } else {
+      const none = document.createElement('div');
+      none.className = 'wb-viewkebab-note';
+      none.textContent = 'Not used anywhere yet.';
+      out.push(none);
+    }
+
+    panel.replaceChildren(...out);
+    panel.scrollTop = scroll;
+  };
+
+  redraw();
+  document.body.appendChild(panel);
+
+  const r = anchor.getBoundingClientRect();
+  const w = panel.offsetWidth || 280;
+  const h = panel.offsetHeight || 240;
+  panel.style.top = `${Math.max(8, Math.min(r.bottom + 4, window.innerHeight - h - 8))}px`;
+  panel.style.left = `${Math.max(8, r.right - w)}px`;
+
+  const onOutside = (e: PointerEvent): void => {
+    if (!panel.contains(e.target as Node) && !anchor.contains(e.target as Node)) close();
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close(); };
+  const armTimer = window.setTimeout(() => document.addEventListener('pointerdown', onOutside), 0);
+  document.addEventListener('keydown', onKey);
+  const openedTabKey = state.activeTabKey;
+  const unsub = state.subscribe((reason) => {
+    if (reason !== 'document' && reason !== 'load' && reason !== 'kind' && reason !== 'data') return;
+    if (state.activeTabKey !== openedTabKey) close();
     else redraw();
   });
   const cleanup = (): void => {

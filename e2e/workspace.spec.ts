@@ -409,7 +409,7 @@ test('the pane sections fold away and back (Columns · Components · Inspector),
   await expect(shelf).toBeHidden(); // Columns still folded
 });
 
-test('the This-view card: the ⋮ kebab holds density, row class, hide toggles and command buttons', async ({ page }) => {
+test('the structure-header ⋮ kebab holds density, row class, hide toggles and command buttons', async ({ page }) => {
   // a view via the kind select in the pane's head kebab (carries the grid's columns)
   await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
@@ -418,10 +418,12 @@ test('the This-view card: the ⋮ kebab holds density, row class, hide toggles a
   await expect(cardHost).toBeVisible();
   await expect(cardHost.locator('.wb-viewcard-name')).toHaveText('View 1');
   await expect(cardHost.locator('.wb-viewcard-kind')).toHaveText('row view');
-  // the card carries no inline settings anymore — the ⋮ kebab does (spec §A)
+  // the card carries no inline settings and no kebab anymore — the ⋮ moved
+  // onto the Structure section header (2026-07-10)
   await expect(cardHost.locator('.wb-viewcard-seg')).toHaveCount(0);
   await expect(cardHost.locator('.wb-viewcard-rowclass')).toHaveCount(0);
-  await cardHost.locator('.wb-viewcard-kebab').click();
+  await expect(cardHost.locator('.wb-viewcard-kebab')).toHaveCount(0);
+  await page.locator('#wb-structure-kebab').click();
   const kebab = page.locator('.wb-viewkebab');
   await expect(kebab).toBeVisible();
 

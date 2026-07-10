@@ -117,10 +117,13 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                ▦ Grid + view tabs + ⬡ workshop tabs; workshop keep-alive +
                dirty dots), leftPane.ts + viewCard/columnShelf/
                componentLibrary/viewMenu (the Mockup-B left pane sections —
-               COLUMNS-COMPONENTS-VIEWS §3), viewKebab.ts (the ⋮ View
-               settings panel off the view card's heading — density, row
-               class, hide toggles, tile box, the Command buttons drill-in
-               over core/commandBar; body-owned + fixed because the card
+               COLUMNS-COMPONENTS-VIEWS §3), viewKebab.ts (the ⋮ settings
+               panel off the STRUCTURE section header since 2026-07-10 —
+               on a view: density, row class, hide toggles, tile box,
+               Templates, the Command buttons drill-in over
+               core/commandBar; on a component workshop tab
+               openComponentKebab shows Add-to-view + the where-it's-used
+               jump rows instead; body-owned + fixed because pane chrome
                re-renders on every 'document' emit)
 src/bridge/    the Tier-0 connectivity bridge (docs/CONNECTIVITY.md):
                extractSnippet.ts / deploySnippet.ts generate the auditable
@@ -156,13 +159,17 @@ shape (completions + signature help + expression highlighting inside JSON),
 not the code.
 
 View chrome kebab + left-pane polish (2026-07-09 owner brief; spec:
-docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md). The THIS
-VIEW card's heading gained the ⋮ VIEW SETTINGS kebab (`viewKebab.ts`) and
-lost its inline controls; the inspector's Pro "Document — {kind} formatter"
-section is GONE — density, row class, the hide toggles (Selection boxes /
-Column headers / List header — Show DELETES the prop, Hide writes true, so
-exports stay clean), the tile box, and the **Command buttons** drill-in all
-live in the kebab. Command hides ride `viewExtras.commandBarProps` through
+docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md; the kebab
+RE-ANCHORED 2026-07-10 from the THIS VIEW card's heading onto the Structure
+section header — leftPane.ts holds the `#wb-structure-kebab` door now, and
+in component mode it opens `openComponentKebab` instead: Add-to-view + the
+where-it's-used jump rows, because view settings don't apply to a def). The
+card lost its inline controls AND its kebab; the inspector's Pro "Document —
+{kind} formatter" section is GONE — density, row class, the hide toggles
+(Selection boxes / Column headers / List header — Show DELETES the prop,
+Hide writes true, so exports stay clean), the tile box, **Templates** (moved
+off the canvas row-view toolbar 2026-07-10 — that bar is label-only now),
+and the **Command buttons** drill-in all live in the kebab. Command hides ride `viewExtras.commandBarProps` through
 `core/commandBar.ts` (see the src map — logical buttons emit every key
 alias; presets: Hide all / Show all / Collect entries / Read only /
 Declutter; one preset or toggle = ONE undoable mutation; foreign entries
@@ -177,7 +184,12 @@ scroll regions; the Views list's own title row died (the section header
 carries it); `.wb-lp-props` defaults heavier (flex 1.4) and **splitter 2**
 (`#wb-lp-splitter2`) makes the shelves/props boundary draggable
 (double-click resets; folding the inspector or tree clears stale drag
-sizes). playwright.config gained PW_PORT for this multi-session machine —
+sizes) — available in ALL THREE lenses since 2026-07-10: only the TREE
+splitter hides in Simple (an over-broad selector used to swallow splitter 2
+with it). Same pass: the structure tree's row hover-actions are
+display:none at rest now (the always-in-flow invisible buttons reserved
+width and displaced row content; a row min-height keeps hover from
+reflowing). playwright.config gained PW_PORT for this multi-session machine —
 without it, reuseExistingServer attaches tests to whichever session's dev
 server owns 5173 and silently tests THEIR code.
 
@@ -348,8 +360,10 @@ Key structural invariants:
 - **Left Edit Pane (2026-07-02 owner mockup; its FORMATTER TABLIST,
   document pill and § tree language were RETIRED 2026-07-07 — the pane is
   Mockup B now, see the migration bullet above)**: the
-  ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE; the ←
-  back + 🕘 snapshot buttons live on the pane's nav row. The tree renders
+  ribbon breadcrumb strip (`#wb-ribbon`, `breadcrumb.ts`) is GONE; the nav
+  row is ◂ minimize · lens tabs · ⋮ menu since 2026-07-10 — ← back is an
+  item INSIDE the ⋮ menu (with undo/redo/insert/snapshots), and the ◂
+  minimize took back's old far-left spot. The tree renders
   the ACTIVE surface only (no doc headers, no
   per-row checkboxes — the row highlight is the selection UI; Ctrl/Cmd-click
   multi-selects); a bound component instance is ONE normal row reading
@@ -375,7 +389,8 @@ Key structural invariants:
   looks together), so even restore-everything is a single Ctrl+Z; the
   view name restores off the undo stack (same rule as `setViewName`).
   Storage: `wb-snapshots.v1` (ADDITIVE key — frozen keys stay frozen),
-  capped at 25 per scope, oldest evicted per scope. The ← button beside it
+  capped at 25 per scope, oldest evicted per scope. The **← Back** item at
+  the top of the same ⋮ menu (a standalone nav-row button until 2026-07-10)
   is **navigation back** — a nav-history stack in state
   (`backTarget`/`goBack`, pushed by surface switches) that
   retraces grid⇄view wandering; it is NOT undo, skips entries whose sheet
@@ -447,7 +462,10 @@ Key structural invariants:
   stamp — so on the grid a dressed column reads as TWO usages, the look
   store entry and its embedded floor cell; deleted ids leave no ghosts. The
   pane renders
-  "In this project" first — usage-count chips, jump rows
+  "In this project" first — plain clickable usage counts (the teal badge
+  chrome died 2026-07-10; clicking pops out the where-it's-used jump rows,
+  `openUsagePopout`/`usageJumpList`, shared with the def card's count and
+  the component kebab), jump rows in the drawer
   (select on the canvas / select the dressed grid column) —
   then the add-a-component browser. (c) **Insertion target**
   (`componentInsertTarget`, pure): on the grid element components arrive as
@@ -477,7 +495,9 @@ Key structural invariants:
   we have such a different looking card list"; issues #203/#204 executed)**:
   the components pane now speaks the SAME inventory language as Columns and
   Views — one `wb-tree-row`-idiom ROW per component (⬡ teal ink, dim
-  slot-type hint, usage-count chip, hover actions ＋/✎/✕, drag source for
+  slot-type hint, plain clickable usage count, hover actions ✎/＋/✕ sized
+  like the structure tree's #220 buttons — order flipped + plain count
+  2026-07-10, drag source for
   element kinds) with a click-to-expand details drawer (description, slot
   chips, live preview, usage jump rows, Add). Both card shapes
   (`.wb-comp-card`/`.wb-comp-used`) are gone from the DOM; their CSS blocks
@@ -502,8 +522,9 @@ Key structural invariants:
   stay parked (#205).
 
 - **The row view builder (2026-07-03, owner brief — supersedes the 06-24
-  template modal's interaction layer)**: "+ New rowview" / the row-view
-  toolbar's Templates button open a WIREFRAME-first builder. The pure brain
+  template modal's interaction layer)**: "+ New rowview" / the
+  structure-header kebab's Templates entry (on the canvas toolbar until
+  2026-07-10) open a WIREFRAME-first builder. The pure brain
   (`rowTemplates.ts`) now models ZONES, not one-field areas: a wireframe
   (Lead + details / Avatar card / Title + chips / Dashboard / Equal / Blank,
   `WIREFRAMES`) seeds zones by field TYPE; each zone holds ITEMS — field
@@ -940,7 +961,9 @@ match. Do not resurrect the old wording without fresh tenant evidence:
    conflict-free CSS-fr-like flex; areas.ts), with row **density**
    (Roomy/Compact) a separate knob and **tile** an explicit pick that can never
    emerge (a graduated tile STACKS its areas — buildRowView's `as: 'tile'`);
-   density + back-to-grid in a row-view toolbar, and the grid offers
+   density + back-to-grid rode a row-view toolbar (density moved into the
+   structure-header kebab 2026-07-10 — that toolbar is label-only now), and
+   the grid offers
    "⟳ Reopen" after a back-to-grid (state.lastLayoutKind, session-local —
    FLOOR-AND-SHEETS Stage 0; both the back-to-grid button and the Reopen
    bar were later RETIRED by FLOOR-AND-SHEETS Stage 2, 2026-07-05, and
@@ -1066,11 +1089,14 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   `lookLegibility.spec.ts` ("teal ⬡ = a component at work": header marks,
   the tree's binding rows, accept-gated drops, the instance card — and no
   violet § channel anywhere in the DOM), `areas.spec.ts` (Ctrl-click
-  multi-select → "make a row view" as a NEW canvas tab, the density knob,
-  explicit tile), `maker.spec.ts` (the maker-first shell: grid landing,
+  multi-select → "make a row view" as a NEW canvas tab, the density knob
+  via the structure-header kebab, explicit tile), `maker.spec.ts` (the
+  maker-first shell: grid landing,
   the single Advanced door, the tab strip as the where-am-I),
-  `snapshots.spec.ts` (snapshots + navigation back), `templates.spec.ts`
-  (the row/tile builder: wireframe gallery, zone editor, field/component
+  `snapshots.spec.ts` (snapshots + navigation Back inside the ⋮ menu),
+  `templates.spec.ts`
+  (the row/tile builder opened from the structure-header kebab: wireframe
+  gallery, zone editor, field/component
   drags into zones, width presets, in-place reopen), `share.spec.ts`
   (the collaborative hub: real-browser
   share round trips with fresh-context recipients, the never-clobber/backup/
