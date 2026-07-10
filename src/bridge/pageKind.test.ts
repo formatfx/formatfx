@@ -13,14 +13,14 @@ describe('classifyUrl', () => {
     expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/Docs/Forms/AllItems.aspx?id=%2Fsites%2FTeam%2FDocs%2FSub&viewid=8c1a...')).toBe('sharepoint');
   });
 
-  it('returns "other" for SharePoint pages that are not a list or library', () => {
-    expect(classifyUrl('https://tenant.sharepoint.com/')).toBe('other'); // site root
-    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team')).toBe('other'); // site home
-    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx')).toBe('other'); // modern page
-    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/_layouts/15/viewlsts.aspx')).toBe('other'); // site contents
+  it('returns "sharepoint-site" for SharePoint pages that are not a list or library', () => {
+    expect(classifyUrl('https://tenant.sharepoint.com/')).toBe('sharepoint-site'); // site root
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team')).toBe('sharepoint-site'); // site home
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx')).toBe('sharepoint-site'); // modern page
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/_layouts/15/viewlsts.aspx')).toBe('sharepoint-site'); // site contents
     // only /Lists/ and /Forms/ count: a bare viewid or AllItems without the folder is not enough
-    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx?viewid=8c1a...')).toBe('other');
-    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/AllItems.aspx')).toBe('other');
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/SitePages/Home.aspx?viewid=8c1a...')).toBe('sharepoint-site');
+    expect(classifyUrl('https://contoso.sharepoint.com/sites/Team/AllItems.aspx')).toBe('sharepoint-site');
   });
 
   it('returns "formatfx" for formatfx.dev URLs', () => {

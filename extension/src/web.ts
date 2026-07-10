@@ -37,6 +37,12 @@ async function deliverPushedSnapshot(): Promise<void> {
 window.postMessage(readyMessage(), origin);
 void deliverPushedSnapshot();
 
+// Tell the background this tab is FormatFX (for the FX badge) — fire and
+// forget, and never let a missing/sleeping service worker throw into the page.
+try {
+  void chrome.runtime.sendMessage({ type: 'formatfxTabHello' }).catch(() => {});
+} catch { /* extension context gone (e.g. reloaded) — harmless */ }
+
 window.addEventListener('message', async (ev: MessageEvent) => {
   if (ev.source !== window) return;
   const data = ev.data as unknown;

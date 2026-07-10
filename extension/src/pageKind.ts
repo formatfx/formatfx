@@ -3,7 +3,7 @@
  * Pure function, no chrome APIs, easy to unit-test.
  */
 
-export type PageKind = 'sharepoint' | 'formatfx' | 'other';
+export type PageKind = 'sharepoint' | 'sharepoint-site' | 'formatfx' | 'other';
 
 /**
  * Does this SharePoint URL point at a list or document-library *view* — the
@@ -26,7 +26,10 @@ export function classifyUrl(url: string | undefined): PageKind {
   try {
     const u = new URL(url);
     if (u.hostname.endsWith('.sharepoint.com')) {
-      return isListOrLibraryView(u) ? 'sharepoint' : 'other';
+      // 'sharepoint' keeps its exact meaning (Extract/Apply work here);
+      // 'sharepoint-site' is any other page on a tenant — the popup offers
+      // Connect there, but not the list actions.
+      return isListOrLibraryView(u) ? 'sharepoint' : 'sharepoint-site';
     }
     if (u.hostname === 'formatfx.dev' || u.hostname.endsWith('.formatfx.dev')) return 'formatfx';
   } catch {

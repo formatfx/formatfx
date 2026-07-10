@@ -14,6 +14,7 @@ import { selectFromSnapshot } from '../../src/bridge/spClient';
 import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../../src/bridge/applyPayload';
 import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 import { classifyUrl } from './pageKind';
+import { originPatternFor, hostFromPattern } from './connections';
 
 interface WorkerResponse {
   ok: boolean;
@@ -277,17 +278,65 @@ document.getElementById('picker-cancel')!.addEventListener('click', onPickerCanc
 document.getElementById('picker-all')!.addEventListener('click', () => setAllFields(true));
 document.getElementById('picker-none')!.addEventListener('click', () => setAllFields(false));
 
+// ── per-site opt-in (Connect / Disconnect) ──────────────────────────────────
+
+/**
+ * The connect footer, shown on any SharePoint page. Connected state is
+ * DERIVED from chrome.permissions (never stored), so a revoke from
+ * chrome://extensions is immediately reflected here.
+ */
+async function refreshConnectFooter(url: string | undefined): Promise<void> {
+  const footer = document.getElementById('connect') as HTMLElement;
+  const pattern = originPatternFor(url);
+  if (!pattern) { footer.hidden = true; return; }
+  const host = hostFromPattern(pattern);
+  const connected = await chrome.permissions.contains({ origins: [pattern] });
+  footer.hidden = false;
+  (document.getElementById('connect-off') as HTMLElement).hidden = connected;
+  (document.getElementById('connect-on') as HTMLElement).hidden = !connected;
+  if (connected) {
+    (document.getElementById('connected-host') as HTMLElement).textContent = host;
+  } else {
+    (document.getElementById('connect-host') as HTMLElement).textContent = host;
+  }
+}
+
+async function onConnectToggle(grant: boolean): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const pattern = originPatternFor(tab?.url);
+  if (!pattern) return;
+  try {
+    if (grant) {
+      const ok = await chrome.permissions.request({ origins: [pattern] });
+      if (!ok) { setStatus('', 'idle'); return; } // declined — no nagging
+      setStatus(`Connected. The badge now tracks ${hostFromPattern(pattern)}.`, 'ok');
+    } else {
+      await chrome.permissions.remove({ origins: [pattern] });
+      setStatus('Disconnected — this site is back to click-only access.', 'ok');
+    }
+  } catch (e) {
+    setStatus(e instanceof Error ? e.message : String(e), 'err');
+  }
+  void refreshConnectFooter(tab?.url);
+}
+
+document.getElementById('connect-btn')!.addEventListener('click', () => void onConnectToggle(true));
+document.getElementById('disconnect-btn')!.addEventListener('click', () => void onConnectToggle(false));
+
 /** Show the right panel based on the active tab's URL. */
 async function initPageState(): Promise<void> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const kind = classifyUrl(tab?.url);
   const main = document.getElementById('main') as HTMLElement;
   const fxState = document.getElementById('state-formatfx') as HTMLElement;
+  const spSiteState = document.getElementById('state-sp-site') as HTMLElement;
   const otherState = document.getElementById('state-other') as HTMLElement;
   main.hidden = kind !== 'sharepoint';
   fxState.hidden = kind !== 'formatfx';
+  spSiteState.hidden = kind !== 'sharepoint-site';
   otherState.hidden = kind !== 'other';
   if (kind === 'sharepoint') void refreshStagedButton();
+  if (kind === 'sharepoint' || kind === 'sharepoint-site') void refreshConnectFooter(tab?.url);
 }
 
 void initPageState();
