@@ -58,6 +58,9 @@ and every pure module is unit-tested from the root suite:
 | `src/badge.ts` | Pure badge mapping table (state → text/color/title). |
 | `src/staging.ts` | The versioned `chrome.storage.local` schema (staged applies, pushed snapshots, backups). |
 | `src/bgProtocol.ts` | Pure popup/web ⇄ background message vocabulary. |
+| `src/context.ts` | Pure popup-dashboard view-model (formatted columns/views, grab field sets). |
+| `src/backups.ts` | Pure pre-apply backup & restore logic (bounded history, clear-target restores). |
+| `src/pageCall.ts` | The shared inject-into-MAIN-world + postMessage call dance (popup + background). |
 | `src/chrome.d.ts` | Minimal hand-written API types (no `@types/chrome`). |
 
 ## Build & load
@@ -87,6 +90,15 @@ real tenant. One-time checklist on a list you can edit:
 - [ ] On a non-list page, both buttons teach instead of failing silently.
 - [ ] Connect a site → badge dot on its list pages, tracks SPA navigation;
       other tenants unaffected. Disconnect → badge gone, no site access listed.
+- [ ] Dashboard lists the formatted columns/views; a per-column Grab opens
+      FormatFX with that column + formatter loaded.
+- [ ] Apply → a Backups entry appears; Restore echoes REPLACED/REMOVED in the
+      confirm; restoring a previously-empty target clears it on-tenant.
+- [ ] Extract on a list with a Quick Step → the snapshot carries `rules`
+      (+ `quickstepsProperties`); a plain list → no `rules` key (#214).
+- [ ] With the site connected and the list open in a tab: the app's Data tab
+      shows the live section; "Pull list"/"Rows only" refresh from the tab;
+      disconnected → a teaching error names the Connect button.
 
 ## The page channel (clipboard-free apply)
 
@@ -115,7 +127,24 @@ list's default view, and rides along flagged so it loads as the main document.
 
 ## Status
 
-v0.2 (in progress) — per-site opt-in Connect + badge on top of v0.1's Extract
-(picker → push or clipboard) and Apply (page channel or clipboard, one batched
-confirm). This stage plan: context dashboard, pre-apply backups with restore,
-Rules/Quick Steps capture, and the app-side refresh channel (CONNECTIVITY §4).
+**v0.2 — the context-aware companion** (CONNECTIVITY §4). On top of v0.1's
+Extract (picker → push or clipboard) and Apply (page channel or clipboard,
+one batched confirm):
+
+- **Per-site opt-in Connect** + per-tab badge (connected list ● /
+  staged-apply count / FX; silent everywhere else).
+- **Popup dashboard**: list, view, which columns/views carry formatters,
+  one-click per-item Grab into FormatFX.
+- **Pre-apply backup & restore**: every apply files what it overwrote
+  (bounded local history); Restore is the same confirm-first apply, and a
+  previously-empty target restores as a `clear` (apply payload v2).
+- **Rules/Quick Steps capture** (#214): `GetAllRules()` read-POST rides the
+  snapshot as additive keys, inert.
+- **Channel v2**: live presence (the app sees which connected list tabs are
+  open) + read-only refresh (the app pulls a fresh capture — full replace
+  behind a confirm, or rows-only).
+
+Deliberately NOT here: sp-formatter-style in-page live preview (it
+monkey-patches SharePoint's undocumented internal renderer — fragile and
+unauditable; the live-linked refresh above is the chosen alternative), and
+`*.sharepoint.us`/sovereign-cloud connect (waits for a verified need).
