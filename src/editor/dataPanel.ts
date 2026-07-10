@@ -248,7 +248,11 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
       const row = document.createElement('div');
       row.className = 'wb-data-toolbar';
       const label = document.createElement('span');
-      label.textContent = `"${tab.label}" — ${new URL(tab.url).hostname}`;
+      // defensive parse: presence arrives over postMessage — a malformed url
+      // must cost the hostname suffix, never the whole Data panel render
+      let host = '';
+      try { host = new URL(tab.url).hostname; } catch { /* label alone */ }
+      label.textContent = host ? `"${tab.label}" — ${host}` : `"${tab.label}"`;
       label.title = tab.url;
       row.appendChild(label);
       const mk = (text: string, title: string, rowsOnly: boolean): void => {

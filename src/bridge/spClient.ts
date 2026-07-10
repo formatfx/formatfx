@@ -441,6 +441,13 @@ export interface ApplyOutcome {
   name: string;
   applied: boolean;
   previousLength: number;
+  /**
+   * The target's formatter as it was BEFORE this apply (null = none) — from
+   * the look-before-write read, so the caller can file a pre-apply backup
+   * without a second per-target REST pass. Present on every outcome,
+   * including cancelled and failed ones.
+   */
+  previousFormatter: string | null;
   newLength: number;
   error?: string;
 }
@@ -479,16 +486,20 @@ export async function applyFormatters(payload: ApplyPayload, hooks: ApplyHooks):
   const listPath = listPathFor(ctx, payload.listTitle);
   const listLabel = payload.listTitle || ctx.listTitle || 'this list';
 
-  // 1) look before writing — current length of each target
-  const pre: number[] = [];
+  // 1) look before writing — each target's current formatter, kept in full:
+  // the confirm echoes its length, and the outcomes carry it verbatim so the
+  // extension's pre-apply backup needs no second read pass.
+  const preFmt: (string | null)[] = [];
   for (const t of payload.targets) {
     const r = await fetch(targetPath(listPath, t.target, t.name) + '?$select=CustomFormatter', {
       headers: { Accept: 'application/json;odata=nometadata' },
       credentials: 'same-origin',
     });
     if (!r.ok) throw new Error('FormatFX: could not read "' + t.name + '" (' + explainStatus(r.status) + ')');
-    pre.push(((await r.json()).CustomFormatter as string || '').length);
+    const current = ((await r.json()).CustomFormatter as string) || '';
+    preFmt.push(current || null);
   }
+  const pre: number[] = preFmt.map((f) => f?.length ?? 0);
 
   // 2) one confirm, full echo of every write
   const lines = payload.targets.map((t, i) => {
@@ -502,7 +513,7 @@ export async function applyFormatters(payload: ApplyPayload, hooks: ApplyHooks):
     + payload.targets.length + ' formatter(s) will be written:\n\n' + lines.join('\n') + '\n\nApply?';
   if (!(await hooks.confirm(msg))) {
     return payload.targets.map((t, i) => ({
-      target: t.target, name: t.name, applied: false, previousLength: pre[i], newLength: pre[i],
+      target: t.target, name: t.name, applied: false, previousLength: pre[i], previousFormatter: preFmt[i], newLength: pre[i],
     }));
   }
 
@@ -536,10 +547,10 @@ export async function applyFormatters(payload: ApplyPayload, hooks: ApplyHooks):
         credentials: 'same-origin',
       });
       const now = verify.ok ? ((await verify.json()).CustomFormatter as string || '') : t.formatterJson;
-      outcomes.push({ target: t.target, name: t.name, applied: true, previousLength: pre[i], newLength: now.length });
+      outcomes.push({ target: t.target, name: t.name, applied: true, previousLength: pre[i], previousFormatter: preFmt[i], newLength: now.length });
     } catch (e) {
       outcomes.push({
-        target: t.target, name: t.name, applied: false, previousLength: pre[i], newLength: pre[i],
+        target: t.target, name: t.name, applied: false, previousLength: pre[i], previousFormatter: preFmt[i], newLength: pre[i],
         error: e instanceof Error ? e.message : String(e),
       });
     }

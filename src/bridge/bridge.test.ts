@@ -471,6 +471,12 @@ describe('apply payload (extension wire format)', () => {
     }))).toThrow(/says clear but also carries a formatter/);
   });
 
+  it('refuses a clear target in a payload claiming v1 (the version field means something)', () => {
+    expect(() => parseApplyPayload(JSON.stringify({
+      formatfx: 'apply', version: 1, targets: [{ target: 'field', name: 'Status', formatterJson: '', clear: true }],
+    }))).toThrow(/uses "clear", a v2 feature/);
+  });
+
   it('every malformed input is a teaching error', () => {
     expect(() => parseApplyPayload('not json')).toThrow(/not FormatFX apply data/);
     expect(() => parseApplyPayload(JSON.stringify({ formatfx: 'list-snapshot', version: 1 }))).toThrow(/no "apply" marker/);
@@ -709,6 +715,8 @@ describe('spClient.applyFormatters (extension runtime)', () => {
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain('column [Status]');
     expect(prompts[0]).toContain('view "All Items"');
+    // the look-before-write values ride the outcomes (backup needs no re-read)
+    expect(outcomes.every((o) => o.previousFormatter === null)).toBe(true); // targets had none
 
     const merges = calls.filter((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE');
     expect(merges).toHaveLength(2);
@@ -785,6 +793,8 @@ describe('spClient.applyFormatters (extension runtime)', () => {
     const outcomes = await applyFormatters(p, okConfirm(prompts));
     expect(outcomes[0].applied).toBe(true);
     expect(prompts[0]).toContain('→ REMOVED');
+    // the overwritten formatter rides the outcome verbatim (restore-of-restore)
+    expect(outcomes[0].previousFormatter).toBe(STATUS_FORMATTER);
     const merge = calls.find((c) => (c.init?.headers as Record<string, string>)?.['X-HTTP-Method'] === 'MERGE')!;
     expect(JSON.parse(merge.init!.body as string)).toEqual({ CustomFormatter: '' });
   });

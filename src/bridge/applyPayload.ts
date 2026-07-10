@@ -115,6 +115,11 @@ export function parseApplyPayload(text: string): ApplyPayload {
       throw new Error(`Apply target #${i + 1} is missing a column/view name — re-copy it from FormatFX.`);
     }
     const clear = t.clear === true;
+    if (clear && version < 2) {
+      // clear is a v2 feature; a v1 payload claiming it is hand-edited or
+      // from a broken producer — refuse rather than let v1 mean two things
+      throw new Error(`Apply target "${String(t.name)}" uses "clear", a v2 feature, but the payload says version ${version} — re-copy it from FormatFX.`);
+    }
     if (typeof t.formatterJson !== 'string' || (!t.formatterJson && !clear)) {
       throw new Error(`Apply target "${String(t.name)}" carries no formatter — re-copy it from FormatFX.`);
     }

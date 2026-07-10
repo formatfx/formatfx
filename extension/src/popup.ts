@@ -9,7 +9,7 @@
  * the user authorizes exactly the tab they're looking at, nothing else.
  */
 
-import type { ListSnapshot } from '../../src/bridge/spClient';
+import type { ListSnapshot, ApplyOutcome, TargetFormatter } from '../../src/bridge/spClient';
 import { selectFromSnapshot } from '../../src/bridge/spClient';
 import { runInTab, type WorkerRequest, type WorkerResponse } from './pageCall';
 import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../../src/bridge/applyPayload';
@@ -255,20 +255,22 @@ function onPickerCancel(): void {
 // ── pre-apply backup & restore ──────────────────────────────────────────────
 
 /**
- * Read every target's live formatter and file a backup entry BEFORE the
- * confirm/write. A failed read aborts the apply with its teaching error —
- * the same read applyFormatters would fail on anyway, and an apply that
- * couldn't take its backup shouldn't pretend it has a safety net. (A backup
- * taken for an apply the user then cancels is a harmless extra entry.)
+ * File a backup entry from the apply's OWN look-before-write read — each
+ * outcome carries `previousFormatter` verbatim, so the safety net costs no
+ * extra REST pass (one read per target total, review feedback on #274). The
+ * values were captured before any write, even for targets whose write then
+ * failed. A cancelled confirm writes nothing → nothing to file.
  */
-async function saveBackupFor(text: string): Promise<void> {
-  const payload = parseApplyPayload(text);
-  const read = await runInPage({ action: 'readFormatters', text });
-  if (!read.ok || !read.formatters) throw new Error(read.error || 'Could not read the current formatters for the backup.');
+async function fileBackupFromOutcomes(payload: ApplyPayload, outcomes: ApplyOutcome[]): Promise<void> {
+  const attempted = outcomes.some((o) => o.applied || o.error);
+  if (!attempted) return; // cancelled — nothing was written
+  const read: TargetFormatter[] = outcomes.map((o) => ({
+    target: o.target, name: o.name, formatter: o.previousFormatter ?? null,
+  }));
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const siteUrl = tab?.url ? new URL(tab.url).origin : '';
   const listLabel = payload.listTitle ?? dashSnap?.list ?? siteUrl;
-  const entry = makeBackupEntry(siteUrl, listLabel, read.formatters, new Date().toISOString());
+  const entry = makeBackupEntry(siteUrl, listLabel, read, new Date().toISOString());
   const got = await chrome.storage.local.get(BACKUPS_KEY);
   const file = pushBounded(got[BACKUPS_KEY] as BackupsFile | undefined, entry);
   await chrome.storage.local.set({ [BACKUPS_KEY]: file });
@@ -317,9 +319,11 @@ async function onRestore(entry: BackupEntry): Promise<void> {
 
 /** Run the apply against the list tab from a payload string, then report. */
 async function applyText(text: string): Promise<boolean> {
-  await saveBackupFor(text); // look + file the safety net before any write
+  const payload = parseApplyPayload(text); // teaching errors before any I/O
   const res = await runInPage({ action: 'apply', text });
   if (!res.ok || !res.outcomes) throw new Error(res.error || 'Apply failed or was cancelled.');
+  // safety net first: the outcomes carry each target's pre-apply formatter
+  await fileBackupFromOutcomes(payload, res.outcomes);
   const applied = res.outcomes.filter((o) => o.applied);
   const failed = res.outcomes.filter((o) => !o.applied && o.error);
   if (!applied.length && !failed.length) {

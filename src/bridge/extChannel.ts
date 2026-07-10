@@ -75,11 +75,26 @@ export function isPageToExt(data: unknown): data is PageToExt {
   return data.kind === 'ping' || data.kind === 'stageApply' || data.kind === 'formatter';
 }
 
+function isSpTabInfo(v: unknown): v is SpTabInfo {
+  return !!v && typeof v === 'object'
+    && typeof (v as Record<string, unknown>).url === 'string'
+    && typeof (v as Record<string, unknown>).label === 'string';
+}
+
+// Validates required fields PER KIND: window.postMessage is a shared bus, so
+// any same-page script can put `formatfx-channel` shapes on it — a malformed
+// message must fail here, not crash a consumer later.
 export function isExtToPage(data: unknown): data is ExtToPage {
   if (!isChannelMessage(data) || data.dir !== 'ext->page') return false;
-  if (data.kind === 'spTabs') return Array.isArray(data.tabs);
-  return data.kind === 'ready' || data.kind === 'ack' || data.kind === 'snapshot'
-    || data.kind === 'requestFormatter' || data.kind === 'snapshotResult';
+  switch (data.kind) {
+    case 'ready': return typeof data.version === 'number';
+    case 'ack': return typeof data.id === 'string' && typeof data.ok === 'boolean';
+    case 'snapshot': return typeof data.text === 'string';
+    case 'requestFormatter': return typeof data.id === 'string';
+    case 'snapshotResult': return typeof data.id === 'string' && typeof data.ok === 'boolean';
+    case 'spTabs': return Array.isArray(data.tabs) && (data.tabs as unknown[]).every(isSpTabInfo);
+    default: return false;
+  }
 }
 
 export function readyMessage(): Extract<ExtToPage, { kind: 'ready' }> {

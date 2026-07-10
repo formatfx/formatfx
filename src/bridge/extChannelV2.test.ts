@@ -41,6 +41,21 @@ describe('extChannel v2', () => {
     expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'spTabs' })).toBe(false);
     expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'spTabs', tabs: 'nope' })).toBe(false);
   });
+
+  it('validates required fields per kind — a shared postMessage bus is spoofable', () => {
+    // spTabs entries must be {url: string, label: string}; a malformed entry
+    // must fail the guard, not crash the Data panel later
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'spTabs', tabs: [{ url: 42 }] })).toBe(false);
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'spTabs', tabs: [null] })).toBe(false);
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'spTabs', tabs: [{ url: 'x', label: 'y' }, 'junk'] })).toBe(false);
+    // snapshotResult needs its correlation id and verdict
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'snapshotResult', ok: true })).toBe(false);
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'snapshotResult', id: 'x' })).toBe(false);
+    // v1 kinds are field-checked too (a ready without a version is garbage)
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'ready' })).toBe(false);
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'snapshot' })).toBe(false);
+    expect(isExtToPage({ channel: 'formatfx-channel', dir: 'ext->page', kind: 'ack', id: 'x' })).toBe(false);
+  });
 });
 
 describe('bgProtocol spTabsChanged (background → web.ts push)', () => {
