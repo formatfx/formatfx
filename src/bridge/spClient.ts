@@ -278,13 +278,14 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
 /**
  * Narrow a captured snapshot to a user's picker choice (extract-push): keep
  * only the chosen columns (and their row cells), and — when asked — keep just
- * the current view, flagged isDefault so it auto-loads as the main document
- * on arrival. With the view excluded, no views travel and the columns import
- * as a grid. Pure; node-tested.
+ * one view, flagged isDefault so it auto-loads as the main document on
+ * arrival. Which view: `viewId` when given (the popup dashboard's per-view
+ * grab), else the current view. With the view excluded, no views travel and
+ * the columns import as a grid. Pure; node-tested.
  */
 export function selectFromSnapshot(
   snap: ListSnapshot,
-  opts: { fieldNames: string[]; includeCurrentView: boolean; dropFormatterFor?: string[] },
+  opts: { fieldNames: string[]; includeCurrentView: boolean; dropFormatterFor?: string[]; viewId?: string },
 ): ListSnapshot {
   const keep = new Set(opts.fieldNames);
   const dropFmt = new Set(opts.dropFormatterFor ?? []);
@@ -299,9 +300,10 @@ export function selectFromSnapshot(
   });
   let views: SnapshotView[] = [];
   if (opts.includeCurrentView) {
-    const current = snap.views.find((v) => v.id && v.id === snap.currentViewId)
-      ?? snap.views.find((v) => v.isDefault);
-    if (current) views = [{ ...current, isDefault: true }];
+    const wanted = opts.viewId
+      ? snap.views.find((v) => v.id && v.id === opts.viewId)
+      : snap.views.find((v) => v.id && v.id === snap.currentViewId) ?? snap.views.find((v) => v.isDefault);
+    if (wanted) views = [{ ...wanted, isDefault: true }];
   }
   return { ...snap, fields, rows, views };
 }

@@ -29,13 +29,24 @@
     #picker-data-warn { margin: 0 0 8px; padding: 6px 8px; border: 1px solid #b4231855; border-radius: 6px; font-size: 11px; color: #b42318; background: #b4231810; }
     #connect { margin-top: 10px; padding-top: 8px; border-top: 1px solid #8883; }
     p.fine { font-size: 11px; opacity: 0.7; margin: 4px 0 8px; }
+    #dash { margin: 0 0 10px; }
+    #dash h2 { font-size: 11px; margin: 8px 0 4px; opacity: 0.7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    .dash-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; }
+    .dash-row .dash-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dash-row .dash-size { opacity: 0.5; font-size: 11px; }
+    .dash-row button { width: auto; margin: 0; padding: 2px 8px; font-size: 11px; }
+    .dash-empty { font-size: 11px; opacity: 0.6; margin: 2px 0 0; }
   </style>
 </head>
 <body>
   <h1>FormatFX companion</h1>
 
   <div id="main" hidden>
-    <p class="lede">On a SharePoint list page:</p>
+    <div id="dash" hidden>
+      <p id="dash-title" class="lede"></p>
+      <div id="dash-sections"></div>
+    </div>
+    <p id="main-lede" class="lede">On a SharePoint list page:</p>
     <button id="apply-staged" hidden>✓ Apply staged</button>
     <button id="extract">⚡ Extract this list…</button>
     <button id="apply" class="secondary">⬆ Apply formatters from clipboard</button>

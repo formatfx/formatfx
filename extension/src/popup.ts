@@ -15,6 +15,7 @@ import { serializeApplyPayload, parseApplyPayload, type ApplyPayload } from '../
 import { STAGE_KEY, PUSH_KEY, type StagedApply, type PushedSnapshot } from './staging';
 import { classifyUrl } from './pageKind';
 import { originPatternFor, hostFromPattern } from './connections';
+import { dashboardFrom, viewGrabFields, type Dashboard } from './context';
 
 interface WorkerResponse {
   ok: boolean;
@@ -57,7 +58,7 @@ function callWorker(request: { action: string; opts?: unknown; text?: string }):
   });
 }
 
-async function runInPage(request: { action: string; text?: string }): Promise<WorkerResponse> {
+async function runInPage(request: { action: string; opts?: unknown; text?: string }): Promise<WorkerResponse> {
   const tabId = await activeTabId();
   // 1) ensure the MAIN-world worker is present (idempotent), then 2) call it.
   await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['inject.js'] });
@@ -65,6 +66,96 @@ async function runInPage(request: { action: string; text?: string }): Promise<Wo
     target: { tabId }, world: 'MAIN', func: callWorker, args: [request],
   });
   return result;
+}
+
+// ── the context dashboard: a cheap schema-only read on popup open ──────────
+
+/** The schema-only snapshot behind the dashboard (rows deliberately empty). */
+let dashSnap: ListSnapshot | null = null;
+
+/** Push a narrowed snapshot to a fresh formatfx.dev tab (extract-push). */
+async function pushSnapshot(sel: ListSnapshot, doneMsg: string): Promise<void> {
+  const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
+  await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
+  await chrome.tabs.create({ url: 'https://formatfx.dev' });
+  setStatus(doneMsg, 'ok');
+}
+
+function dashRow(name: string, chars: number, grabTitle: string, onGrab: () => void): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'dash-row';
+  const label = document.createElement('span');
+  label.className = 'dash-name';
+  label.textContent = name;
+  label.title = name;
+  const size = document.createElement('span');
+  size.className = 'dash-size';
+  size.textContent = `${chars} ch`;
+  const btn = document.createElement('button');
+  btn.className = 'secondary';
+  btn.textContent = '⬇ Grab';
+  btn.title = grabTitle;
+  btn.addEventListener('click', onGrab);
+  row.append(label, size, btn);
+  return row;
+}
+
+function renderDashboard(dash: Dashboard): void {
+  (document.getElementById('dash') as HTMLElement).hidden = false;
+  const title = document.getElementById('dash-title') as HTMLElement;
+  title.textContent = `${dash.listLabel} — ${dash.totalColumns} columns, ${dash.totalViews} views`
+    + (dash.currentViewTitle ? ` (viewing "${dash.currentViewTitle}")` : '');
+  (document.getElementById('main-lede') as HTMLElement).hidden = true;
+
+  const sections = document.getElementById('dash-sections') as HTMLElement;
+  sections.replaceChildren();
+
+  const addSection = (heading: string, rows: HTMLElement[], emptyText: string): void => {
+    const h = document.createElement('h2');
+    h.textContent = heading;
+    sections.appendChild(h);
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'dash-empty';
+      p.textContent = emptyText;
+      sections.appendChild(p);
+      return;
+    }
+    for (const r of rows) sections.appendChild(r);
+  };
+
+  addSection('Formatted columns', dash.formattedColumns.map((c) =>
+    dashRow(c.displayName, c.formatterChars, `Open [${c.internalName}] and its formatter in FormatFX`, () => {
+      if (!dashSnap) return;
+      const sel = selectFromSnapshot(dashSnap, { fieldNames: [c.internalName], includeCurrentView: false });
+      void pushSnapshot(sel, `Sent [${c.internalName}] + its formatter — FormatFX is opening with it loaded.`);
+    })), 'No column formatters on this list yet.');
+
+  addSection('Formatted views', dash.formattedViews.map((v) =>
+    dashRow(v.isCurrent ? `${v.title} (current)` : v.title, v.formatterChars, `Open the "${v.title}" view formatter in FormatFX`, () => {
+      if (!dashSnap) return;
+      const sel = selectFromSnapshot(dashSnap, {
+        fieldNames: viewGrabFields(dashSnap, v.id), includeCurrentView: true, viewId: v.id,
+      });
+      void pushSnapshot(sel, `Sent the "${v.title}" view + its formatter — FormatFX is opening with it loaded.`);
+    })), 'No view formatters on this list yet.');
+}
+
+/**
+ * Populate the dashboard with a schema-only capture (2 GETs: fields + views —
+ * no rows, so it's fast and cheap). Best-effort: any failure leaves the plain
+ * two-button popup exactly as v0.1 — the dashboard must never block
+ * Extract/Apply.
+ */
+async function loadDashboard(): Promise<void> {
+  try {
+    const res = await runInPage({ action: 'extract', opts: { includeData: false } });
+    if (!res.ok || !res.snapshot) return;
+    dashSnap = res.snapshot;
+    renderDashboard(dashboardFrom(res.snapshot));
+  } catch {
+    // e.g. the page isn't fully loaded yet — the buttons still work
+  }
 }
 
 // ── extract: capture, then a column/view picker, then push or copy ──
@@ -176,10 +267,7 @@ async function onPickerOpen(): Promise<void> {
   const sel = selectedSnapshot();
   if (!sel.fields.length) { setStatus('Pick at least one column.', 'err'); return; }
   setStatus('Opening FormatFX…', 'busy');
-  const pushed: PushedSnapshot = { snapshotJson: JSON.stringify(sel), pushedAt: new Date().toISOString() };
-  await chrome.storage.local.set({ [PUSH_KEY]: pushed }); // written before the tab opens
-  await chrome.tabs.create({ url: 'https://formatfx.dev' });
-  setStatus(`Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'} — FormatFX is opening with it loaded.`, 'ok');
+  await pushSnapshot(sel, `Sent ${sel.fields.length} columns${sel.views.length ? ' + the current view' : ''}${sel.rows.length ? '' : ' (no data)'} — FormatFX is opening with it loaded.`);
 }
 
 async function onPickerCopy(): Promise<void> {
@@ -335,7 +423,10 @@ async function initPageState(): Promise<void> {
   fxState.hidden = kind !== 'formatfx';
   spSiteState.hidden = kind !== 'sharepoint-site';
   otherState.hidden = kind !== 'other';
-  if (kind === 'sharepoint') void refreshStagedButton();
+  if (kind === 'sharepoint') {
+    void refreshStagedButton();
+    void loadDashboard(); // best-effort; never blocks the buttons
+  }
   if (kind === 'sharepoint' || kind === 'sharepoint-site') void refreshConnectFooter(tab?.url);
 }
 

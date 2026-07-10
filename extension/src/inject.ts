@@ -14,7 +14,7 @@ interface RequestMessage {
   __formatfx: 'request';
   id: string;
   action: 'extract' | 'apply';
-  opts?: { listTitle?: string };
+  opts?: { listTitle?: string; includeData?: boolean };
   text?: string;
 }
 
