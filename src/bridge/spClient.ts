@@ -84,6 +84,30 @@ export interface SnapshotView {
   customFormatter?: string;
 }
 
+/**
+ * One Rule / Quick Step, as GetAllRules() returns it (docs/QUICK-STEPS.md
+ * §3.1 — verified on a live tenant 2026-07-07). Captured verbatim and carried
+ * inert: `actionParams` stays the raw escaped-JSON string, exactly like
+ * customFormatter stays a raw string (faithful capture; interpretation is a
+ * later, separate concern).
+ */
+export interface SnapshotRule {
+  id: string;
+  /** Equal to id in every observed case; what a direct-trigger references. */
+  ruleTemplateId?: string;
+  title?: string;
+  /** Rule condition expression, e.g. "[$Status] == 'Not started'". */
+  condition?: string;
+  /** docs/QUICK-STEPS.md §3.2 — 5 = QuickStepCommand (a Quick Step button). */
+  triggerType: number;
+  actionType: number;
+  /** Raw flat escaped-JSON STRING (read-side shape) — never parsed here. */
+  actionParams?: string;
+  /** Rules only; null/absent for Quick Steps. */
+  outcome?: string;
+  isActive?: boolean;
+}
+
 export interface ListSnapshot {
   formatfx: 'list-snapshot';
   version: number;
@@ -103,6 +127,21 @@ export interface ListSnapshot {
    * when data was opted out.
    */
   rowsError?: string;
+  /**
+   * Rules & Quick Steps (GetAllRules — a read-POST, allowed since the
+   * 2026-07-07 read-only-not-GET-only decision, CONNECTIVITY §8). ADDITIVE at
+   * snapshot v1: older consumers ignore unknown keys; omitted when the list
+   * has none. Carried inert — no app UI interprets these yet (#214).
+   */
+  rules?: SnapshotRule[];
+  /** Why `rules` is absent when the read-POST failed (never fails a capture). */
+  rulesError?: string;
+  /**
+   * The RootFolder property-bag `QuickstepsProperties` JSON string (button
+   * colors/order — QUICK-STEPS §3.5), raw and inert. Best-effort: silently
+   * omitted on any failure; only fetched when rules were found.
+   */
+  quickstepsProperties?: string;
 }
 
 /** Read SharePoint's page context, or null when not on an SP page. */
@@ -215,10 +254,44 @@ async function fetchSampleRows(listPath: string, fields: SnapshotField[]): Promi
 }
 
 /**
- * GET-only capture of the list the tab shows (or a named list on the same
- * web) into a List Snapshot. Mirrors the extract snippet, expands capped.
+ * Read Rules & Quick Steps via the GetAllRules read-POST (QUICK-STEPS §3):
+ * a POST that mutates nothing, riding the same page digest as our writes.
+ * Throws with a teaching error; captureSnapshot converts that to rulesError.
  */
-export async function captureSnapshot(opts: { listTitle?: string; includeData?: boolean } = {}): Promise<ListSnapshot> {
+async function fetchRules(web: string, listPath: string): Promise<SnapshotRule[]> {
+  const digest = await fetchDigest(web); // 403 "security validation" without it
+  const res = await fetch(listPath + '/GetAllRules()', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json;odata=nometadata',
+      'Content-Type': 'application/json',
+      'X-RequestDigest': digest,
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify({ includeQuicksteps: true, includeAutomaticRules: true }),
+  });
+  if (!res.ok) throw new Error('FormatFX: could not read Rules/Quick Steps (' + explainStatus(res.status) + ')');
+  const value = ((await res.json()).value as Record<string, unknown>[]) || [];
+  return value.map((r) => ({
+    id: String(r.ID ?? ''),
+    ruleTemplateId: r.RuleTemplateId ? String(r.RuleTemplateId) : undefined,
+    title: (r.Title as string) || undefined,
+    condition: (r.Condition as string) || undefined,
+    triggerType: Number(r.TriggerType ?? 0),
+    actionType: Number(r.ActionType ?? 0),
+    actionParams: (r.ActionParams as string) || undefined,
+    outcome: r.Outcome == null ? undefined : String(r.Outcome),
+    isActive: r.IsActive == null ? undefined : !!r.IsActive,
+  }));
+}
+
+/**
+ * Read-only capture of the list the tab shows (or a named list on the same
+ * web) into a List Snapshot. Mirrors the extract snippet, expands capped.
+ * "Read-only", not "GET-only": the Rules/Quick Steps read is a POST
+ * SharePoint requires as POST — it changes nothing (CONNECTIVITY §8, #214).
+ */
+export async function captureSnapshot(opts: { listTitle?: string; includeData?: boolean; includeRules?: boolean } = {}): Promise<ListSnapshot> {
   const ctx = readPageContext();
   if (!ctx) throw new Error('FormatFX: this does not look like a SharePoint page. Open your list page first.');
   const listPath = listPathFor(ctx, opts.listTitle);
@@ -260,6 +333,29 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
     }
   }
 
+  // Rules & Quick Steps: best-effort like rows — a 403/disabled-feature edge
+  // records rulesError, never fails the capture. Omitted when empty to keep
+  // snapshots lean (QUICK-STEPS §3.6: empty is clean, not an error).
+  let rules: SnapshotRule[] | undefined;
+  let rulesError: string | undefined;
+  let quickstepsProperties: string | undefined;
+  if (opts.includeRules !== false) {
+    try {
+      const got = await fetchRules(ctx.webAbsoluteUrl, listPath);
+      if (got.length) {
+        rules = got;
+        // visuals/order property bag: a nice-to-have, silently omitted on failure
+        try {
+          const bag = await getJson(listPath + '/RootFolder/Properties?$select=QuickstepsProperties');
+          const qp = bag.QuickstepsProperties;
+          if (typeof qp === 'string' && qp) quickstepsProperties = qp;
+        } catch { /* property bag unreadable — rules still captured */ }
+      }
+    } catch (e) {
+      rulesError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   return {
     formatfx: 'list-snapshot',
     version: LIST_SNAPSHOT_VERSION,
@@ -272,6 +368,9 @@ export async function captureSnapshot(opts: { listTitle?: string; includeData?: 
     rows,
     currentViewId: detectCurrentViewId(views),
     ...(rowsError ? { rowsError } : {}),
+    ...(rules ? { rules } : {}),
+    ...(rulesError ? { rulesError } : {}),
+    ...(quickstepsProperties ? { quickstepsProperties } : {}),
   };
 }
 

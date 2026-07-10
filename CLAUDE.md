@@ -82,9 +82,8 @@ At the start of every session:
   stays dependency-free; extraction stays **read-only** (no mutation —
   read-POSTs like `GetAllRules()` are fine; the retired "GET-only" phrasing
   was only a proxy for "never silently changes the user's data" — owner
-  decision 2026-07-07, docs/CONNECTIVITY.md §8; **policy today — the Tier-0
-  snippet + its tests still enforce literal GET-only until the read-side
-  capture lands, #214**); deploys confirm first and are
+  decision 2026-07-07, docs/CONNECTIVITY.md §8, landed via #214: the snippet
+  + spClient tests enforce "no mutating request"); deploys confirm first and are
   lint-gated. The auth constraint behind all of this is closed:
   docs/CONNECTIVITY.md §1.
 

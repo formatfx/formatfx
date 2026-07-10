@@ -41,6 +41,23 @@ export interface ImportedView {
   customFormatter?: string;
 }
 
+/**
+ * A Rule / Quick Step captured by a List Snapshot (docs/QUICK-STEPS.md §3.1).
+ * Carried INERT — imported and stored, no app UI interprets these yet (#214).
+ * `actionParams` stays the raw escaped-JSON string, like customFormatter.
+ */
+export interface ImportedRule {
+  id: string;
+  ruleTemplateId?: string;
+  title?: string;
+  condition?: string;
+  triggerType: number;
+  actionType: number;
+  actionParams?: string;
+  outcome?: string;
+  isActive?: boolean;
+}
+
 export interface ImportedSchema {
   listName?: string;
   fields: MockField[];
@@ -49,6 +66,10 @@ export interface ImportedSchema {
   columnFormatters?: Record<string, SPElement>;
   /** Views captured by a List Snapshot (view formatters arrive here). */
   views?: ImportedView[];
+  /** Rules & Quick Steps captured by a List Snapshot — inert metadata. */
+  rules?: ImportedRule[];
+  /** The list's raw QuickstepsProperties bag (button colors/order) — inert. */
+  quickstepsProperties?: string;
   siteUrl?: string;
   listId?: string;
 }
@@ -493,6 +514,24 @@ function importListSnapshot(parsed: Record<string, unknown>): ImportedSchema {
     });
   }
 
+  // Rules/Quick Steps ride along inert (lenient: malformed entries are
+  // skipped, never a failed import — the formatting capture is the product).
+  const rules: ImportedRule[] = Array.isArray(parsed.rules)
+    ? (parsed.rules as Array<Record<string, unknown>>)
+      .filter((r) => r && typeof r === 'object' && typeof r.id === 'string' && r.id)
+      .map((r) => ({
+        id: String(r.id),
+        ...(typeof r.ruleTemplateId === 'string' ? { ruleTemplateId: r.ruleTemplateId } : {}),
+        ...(typeof r.title === 'string' ? { title: r.title } : {}),
+        ...(typeof r.condition === 'string' ? { condition: r.condition } : {}),
+        triggerType: Number(r.triggerType ?? 0),
+        actionType: Number(r.actionType ?? 0),
+        ...(typeof r.actionParams === 'string' ? { actionParams: r.actionParams } : {}),
+        ...(typeof r.outcome === 'string' ? { outcome: r.outcome } : {}),
+        ...(typeof r.isActive === 'boolean' ? { isActive: r.isActive } : {}),
+      }))
+    : [];
+
   return {
     listName: typeof parsed.list === 'string' ? parsed.list : undefined,
     siteUrl: typeof parsed.siteUrl === 'string' ? parsed.siteUrl : undefined,
@@ -501,6 +540,9 @@ function importListSnapshot(parsed: Record<string, unknown>): ImportedSchema {
     rows,
     ...(Object.keys(columnFormatters).length ? { columnFormatters } : {}),
     ...(views.length ? { views } : {}),
+    ...(rules.length ? { rules } : {}),
+    ...(typeof parsed.quickstepsProperties === 'string' && parsed.quickstepsProperties
+      ? { quickstepsProperties: parsed.quickstepsProperties } : {}),
   };
 }
 

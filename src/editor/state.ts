@@ -40,7 +40,7 @@
 import type {
   FormatterDocument, SPElement, NodePath, MockField, MockRow, PersonValue, DocumentKind,
 } from '../core/types';
-import type { ImportedView } from '../core/schemaImport';
+import type { ImportedView, ImportedRule } from '../core/schemaImport';
 import { buildGridRoot, gridCellForField, gridColumnField, isPureGrid } from './gridScaffold';
 import { addGroup, sanitizeGroups, type ColumnGroup } from './colGroups';
 import { inlineColumnFormatter } from './lookDialect';
@@ -240,6 +240,9 @@ export class EditorState {
   columnLooks: Record<string, SPElement> = defaultColumnLooks();
   /** Views captured by a List Snapshot import (formatters kept as raw text). */
   importedViews: ImportedView[] = [];
+  /** Rules/Quick Steps captured by a List Snapshot import — INERT metadata
+   *  (no UI interprets them yet, #214); carried so a captured list is whole. */
+  importedRules: ImportedRule[] = [];
   /** Column TAB GROUPS on the grid floor (owner brief 2026-07-05): named,
    *  colored, collapsible groupings of columns. Presentational project
    *  metadata like sheet names — never a document mutation, never an undo
@@ -799,6 +802,8 @@ export class EditorState {
       currentFieldName: this.currentFieldName,
       columnLooks: this.columnLooks,
       ...(this.importedViews.length ? { importedViews: this.importedViews } : {}),
+      // ADDITIVE key (like importedViews): inert Rules/Quick Steps metadata
+      ...(this.importedRules.length ? { importedRules: this.importedRules } : {}),
       ...(this.floorGroups.length ? { floorGroups: this.floorGroups } : {}),
       // ADDITIVE key (like floorGroups): only written once there's more than
       // the standing Grid tab; absent → the loader reseeds the default
@@ -844,6 +849,7 @@ export class EditorState {
     this.currentFieldName = typeof p.currentFieldName === 'string' ? p.currentFieldName : this.fields[0]?.name ?? 'Title';
     this.columnLooks = p.columnLooks;
     this.importedViews = Array.isArray(p.importedViews) ? p.importedViews : [];
+    this.importedRules = Array.isArray(p.importedRules) ? p.importedRules : []; // additive key
     this.floorGroups = sanitizeGroups(p.floorGroups); // additive key: absent → none
     // openTabs is ADDITIVE and outside the strict guard: malformed entries
     // and tabs whose view/def no longer exists just drop (custom defs live in
@@ -899,6 +905,7 @@ export class EditorState {
     this.currentFieldName = 'Status';
     this.columnLooks = defaultColumnLooks();
     this.importedViews = [];
+    this.importedRules = [];
     this.floorGroups = [];
     this.openTabs = [{ kind: 'grid' }];
     this.activeComponentTab = null;

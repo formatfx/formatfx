@@ -151,7 +151,8 @@ function renderDashboard(dash: Dashboard): void {
  */
 async function loadDashboard(): Promise<void> {
   try {
-    const res = await runInPage({ action: 'extract', opts: { includeData: false } });
+    // schema-only AND rules-free: the dashboard read stays 2 cheap GETs
+    const res = await runInPage({ action: 'extract', opts: { includeData: false, includeRules: false } });
     if (!res.ok || !res.snapshot) return;
     dashSnap = res.snapshot;
     renderDashboard(dashboardFrom(res.snapshot));

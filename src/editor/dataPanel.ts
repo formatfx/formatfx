@@ -52,6 +52,9 @@ export function applyImportedSchema(
       }
     }
     state.importedViews = schema.views ?? [];
+    // Rules/Quick Steps ride along INERT (#214): stored so the captured list
+    // is whole; no UI interprets them yet.
+    state.importedRules = schema.rules ?? [];
     if (!state.fields.some((f) => f.name === state.currentFieldName)) {
       state.currentFieldName = state.fields.find((f) => !f.protected)?.name ?? state.fields[0].name;
     }
