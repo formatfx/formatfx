@@ -89,3 +89,25 @@ describe('hoverAt', () => {
     expect(hoverAt(text, 0, NO_DECOS, FIELDS)).toBeNull();
   });
 });
+
+describe('hoverAt — #PR-E iconName values', () => {
+  it('a verified icon name shows its glyph and the verification note', () => {
+    const text = '{"iconName": "Warning"}';
+    const info = hoverAt(text, text.indexOf('Warning') + 2, NO_DECOS, FIELDS)!;
+    expect(info.title).toBe('Warning');
+    expect(info.icon).toBe('Warning');
+    expect(info.body).toContain('verified');
+  });
+
+  it('a typo teaches instead of drawing a broken glyph', () => {
+    const text = '{"iconName": "Warnign"}';
+    const info = hoverAt(text, text.indexOf('Warnign') + 2, NO_DECOS, FIELDS)!;
+    expect(info.icon).toBeUndefined();
+    expect(info.body).toContain('check the spelling');
+  });
+
+  it('the same value under a different key stays quiet', () => {
+    const text = '{"txtContent": "Warning"}';
+    expect(hoverAt(text, text.indexOf('Warning') + 2, NO_DECOS, FIELDS)).toBeNull();
+  });
+});

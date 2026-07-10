@@ -22,12 +22,21 @@ import { unescapeJson } from './jsonComplete';
 import { evaluate, toStr, type EvalContext } from '../core/expressions';
 import type { MockField } from '../core/types';
 import { decorationAt, type Decoration } from './jsonDecorations';
+import { ICON_GROUPS } from './iconData';
+
+/** Lazy set of every icon name verified to render on real SP (iconData). */
+let ICON_SET: Set<string> | null = null;
+const spIconSet = (): Set<string> => (ICON_SET ??= new Set(ICON_GROUPS.flatMap((g) => g.icons)));
 
 export interface HoverInfo {
   title: string;
   body: string;
   /** Render the body monospace (the expression x-ray). */
   mono?: boolean;
+  /** #PR-E: a Fluent icon name to draw beside the title (an ms-Icon--<name>
+   *  class — dynamic over iconData's set, so CDN-font-backed like the canvas
+   *  previews, per chromeIcons' doctrine). */
+  icon?: string;
 }
 
 export interface HoverOpts {
@@ -56,13 +65,32 @@ export function hoverAt(
   const d = decorationAt(decorations, offset);
   if (d) return { title: KIND_LABEL[d.kind] ?? 'Note', body: d.message };
 
-  const tok = tokenizeJson(text).find((t) => t.start <= offset && offset < t.end);
+  // walk with the renderer's pendingKey convention — a str VALUE's meaning
+  // can depend on its key (iconName)
+  let pendingKey: string | null = null;
+  let tok: ReturnType<typeof tokenizeJson>[number] | undefined;
+  let tokKey: string | null = null;
+  for (const t of tokenizeJson(text)) {
+    if (t.start > offset) break;
+    if (t.start <= offset && offset < t.end) { tok = t; tokKey = pendingKey; }
+    if (t.kind === 'key') pendingKey = text.slice(t.start + 1, t.end - 1);
+    else if (!(t.kind === 'punct' && text[t.start] === ':')) pendingKey = null;
+  }
   if (!tok) return null;
 
   if (tok.kind === 'key') {
     const key = text.slice(tok.start + 1, tok.end - 1);
     const doc = STYLE_PROP_DOCS[key] ?? ATTRIBUTE_DOCS[key];
     return doc ? { title: key, body: doc } : null;
+  }
+  // #PR-E: an iconName VALUE shows its glyph and verifies the name against
+  // the renders-on-real-SP set (iconData) — the live typo catch
+  if (tok.kind === 'str' && tokKey === 'iconName') {
+    const name = text.slice(tok.start + 1, scanString(text, tok.start).closed ? tok.end - 1 : tok.end);
+    if (!name) return null;
+    return spIconSet().has(name)
+      ? { title: name, body: 'Fluent (MDL2) icon — verified to render on SharePoint', icon: name }
+      : { title: name, body: 'not in the verified SP icon set — check the spelling (names are case-sensitive)' };
   }
   if (tok.kind !== 'expr') return null;
 

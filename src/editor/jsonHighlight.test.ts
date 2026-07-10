@@ -5,7 +5,7 @@
  * match structurally (never inside strings), and the overlay HTML is escaped.
  */
 import { describe, it, expect } from 'vitest';
-import { tokenizeJson, matchBracketAt, renderJsonHtml, scanString, type JsonToken } from './jsonHighlight';
+import { tokenizeJson, matchBracketAt, renderJsonHtml, scanString, occurrenceTargetAt, colorChipValue, type JsonToken } from './jsonHighlight';
 
 const kinds = (text: string): string[] => tokenizeJson(text).map((t) => t.kind);
 const slice = (text: string, t: JsonToken): string => text.slice(t.start, t.end);
@@ -208,5 +208,65 @@ describe('renderJsonHtml — expression sub-tokens', () => {
     const html = renderJsonHtml(text, toks, [expr.start, expr.start] as const);
     // match stamping is punct-only in practice; the expr path must not crash
     expect(flat(html)).toBe(text);
+  });
+});
+
+describe('renderJsonHtml — #PR-E occurrences and color chips', () => {
+  const flat = (html: string): string => html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+  it('occurrenceTargetAt finds the xfield/xtoken at (or touching) the caret, and nothing else', () => {
+    const text = '{"a": "=[$Due] + 1", "b": "=[$Due]"}';
+    const toks = tokenizeJson(text);
+    expect(occurrenceTargetAt(text, toks, text.indexOf('[$Due]') + 2)).toBe('[$Due]');
+    expect(occurrenceTargetAt(text, toks, text.indexOf('+ 1'))).toBeNull(); // operator space
+    expect(occurrenceTargetAt(text, toks, 2)).toBeNull(); // a key — no live string here
+  });
+
+  it('the occurrence lights EVERY same-text ref across the buffer, and only those', () => {
+    const text = '{"a": "=[$Due] + [$Other]", "b": "=[$Due]"}';
+    const toks = tokenizeJson(text);
+    const html = renderJsonHtml(text, toks, null, '[$Due]');
+    expect(html.match(/wb-tok-occ/g)!.length).toBe(2);
+    expect(html).toContain('<span class="wb-tok-xfield wb-tok-occ">[$Due]</span>');
+    expect(html).toContain('<span class="wb-tok-xfield">[$Other]</span>');
+    expect(flat(html)).toBe(text); // lossless, always
+  });
+
+  it('@token occurrences light too; without an occurrence nothing is stamped', () => {
+    const text = '{"a": "=@now", "b": "@now"}';
+    const toks = tokenizeJson(text);
+    expect(renderJsonHtml(text, toks, null, '@now').match(/wb-tok-occ/g)!.length).toBe(2);
+    expect(renderJsonHtml(text, toks, null, null)).not.toContain('wb-tok-occ');
+  });
+
+  it('hex/rgb/hsl string values chip anywhere; the chip rides --wb-chip', () => {
+    const text = '{"color": "#e81123", "x": "rgb(0, 120, 212)"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('class="wb-tok-str wb-tok-color" style="--wb-chip:#e81123"');
+    expect(html).toContain('style="--wb-chip:rgb(0, 120, 212)"');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('named colors chip only under color-ish keys — a plain "red" as data stays data', () => {
+    const text = '{"background-color": "red", "txtContent": "red"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html.match(/wb-tok-color/g)!.length).toBe(1);
+  });
+
+  it("xstr literals inside expressions chip too — both quote styles", () => {
+    const text = '{"color": "=if([$x], \'#0078d4\', \\"#737a7f\\")"}';
+    const html = renderJsonHtml(text, tokenizeJson(text), null);
+    expect(html).toContain('--wb-chip:#0078d4');
+    expect(html).toContain('--wb-chip:#737a7f');
+    expect(flat(html)).toBe(text);
+  });
+
+  it('colorChipValue: strict formats only — nothing attribute-unsafe passes', () => {
+    expect(colorChipValue('#12x', null)).toBeNull();
+    expect(colorChipValue('rgb(1,2,3); background:url(x)', 'color')).toBeNull();
+    expect(colorChipValue('Red', 'background-color')).toBe('red');
+    expect(colorChipValue('red', null)).toBeNull(); // bare word, no key context
   });
 });

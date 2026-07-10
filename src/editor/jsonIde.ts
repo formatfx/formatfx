@@ -24,7 +24,8 @@
  * stays comfortably under a frame; revisit only if profiling ever says so.
  */
 
-import { tokenizeJson, matchBracketAt, renderJsonHtml } from './jsonHighlight';
+import { tokenizeJson, matchBracketAt, renderJsonHtml, occurrenceTargetAt } from './jsonHighlight';
+import type { EvalChip } from './exprPreview';
 import { typingAssist, pasteReindent } from './jsonFormat';
 import { jsonCompletionAt, signatureHintAt, type JsonCompletion } from './jsonComplete';
 import { renderSquigglesHtml, type Decoration } from './jsonDecorations';
@@ -50,6 +51,10 @@ export interface JsonIdeDeps {
   /** #PR-D hover: what to show at a displayed-buffer offset (the panel wires
    *  jsonHover.hoverAt with its decoration + field context). null = nothing. */
   hoverAt?: (offset: number) => HoverInfo | null;
+  /** #PR-E: the live eval chip for the caret's live string (the panel wires
+   *  exprPreview.evalChipAt with its sample-row ctx). Appends to the
+   *  signature strip; null = no chip. */
+  evalChip?: (offset: number) => EvalChip | null;
   /** #PR-C fold bridge — the panel owns fold state; the shell paints chevrons,
    *  gapped line numbers, and expands before any assist/paste edit lands. */
   folds?: {
@@ -225,27 +230,45 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
 
   const refreshSig = (): void => {
     const hint = signatureHintAt(textEl.value, caretPos());
-    if (!hint) { sig.hidden = true; return; }
-    const m = hint.doc.signature.match(/^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)$/);
+    // #PR-E: the eval chip rides the same strip — a hint, a chip, or both
+    const chip = deps.evalChip?.(caretPos()) ?? null;
+    if (!hint && !chip) { sig.hidden = true; return; }
     sig.replaceChildren();
-    if (m) {
-      sig.append(`${m[1]}(`);
-      const params = m[2].split(', ');
-      params.forEach((p, i) => {
-        if (i > 0) sig.append(', ');
-        if (i === Math.min(hint.argIndex, params.length - 1)) {
-          const b = document.createElement('b');
-          b.textContent = p;
-          sig.appendChild(b);
-        } else {
-          sig.append(p);
-        }
-      });
-      sig.append(')');
+    if (hint) {
+      const m = hint.doc.signature.match(/^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)$/);
+      if (m) {
+        sig.append(`${m[1]}(`);
+        const params = m[2].split(', ');
+        params.forEach((p, i) => {
+          if (i > 0) sig.append(', ');
+          if (i === Math.min(hint.argIndex, params.length - 1)) {
+            const b = document.createElement('b');
+            b.textContent = p;
+            sig.appendChild(b);
+          } else {
+            sig.append(p);
+          }
+        });
+        sig.append(')');
+      } else {
+        sig.append(hint.doc.signature);
+      }
+      sig.title = hint.doc.summary;
     } else {
-      sig.append(hint.doc.signature);
+      sig.title = '';
     }
-    sig.title = hint.doc.summary;
+    if (chip) {
+      const c = document.createElement('span');
+      c.className = `wb-evalchip wb-evalchip-${chip.kind}`;
+      c.textContent = `${chip.kind === 'error' ? '⚠' : '→'} ${chip.text}`;
+      if (chip.type) {
+        const b = document.createElement('span');
+        b.className = 'wb-evalchip-type';
+        b.textContent = chip.type;
+        c.appendChild(b);
+      }
+      sig.appendChild(c);
+    }
     const { line, col } = lineColOf(caretPos());
     sig.hidden = false;
     sig.style.top = `${padTop() + line * lineHeight() - textEl.scrollTop - 2}px`;
@@ -291,6 +314,13 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
     const info = pt ? deps.hoverAt!(pt.off) : null;
     if (!pt || !info) { hideHover(); return; }
     hoverTitle.textContent = info.title;
+    if (info.icon) {
+      // #PR-E: the glyph rides the already-loaded Fabric icon font
+      const i = document.createElement('i');
+      i.className = `ms-Icon ms-Icon--${info.icon} wb-hover-icon`;
+      i.setAttribute('aria-hidden', 'true');
+      hoverTitle.prepend(i, ' ');
+    }
     hoverBody.textContent = info.body;
     hovercard.classList.toggle('wb-hover-mono', !!info.mono);
     // above the pointer's LINE (translateY(-100%) in CSS), clamped into the box
@@ -327,7 +357,9 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   const repaint = (): void => {
     const text = textEl.value;
     const tokens = tokenizeJson(text);
-    code.innerHTML = renderJsonHtml(text, tokens, matchBracketAt(text, tokens, caretPos()));
+    // #PR-E: the caret's xfield/xtoken lights its every occurrence
+    const occ = occurrenceTargetAt(text, tokens, caretPos());
+    code.innerHTML = renderJsonHtml(text, tokens, matchBracketAt(text, tokens, caretPos()), occ);
     repaintSquiggles();
     refreshGutter();
     syncScroll();
