@@ -1517,11 +1517,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-color: var(--wb-accent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--wb-accent) 30%, transparent);
 }
-/* identical metrics on all three layers — layer alignment is arithmetic */
-#wb-json-text, .wb-json-hl, .wb-json-gutter {
+/* identical metrics on all four layers — layer alignment is arithmetic */
+#wb-json-text, .wb-json-hl, .wb-json-sq, .wb-json-gutter {
   font: 11px/16px Consolas, 'Cascadia Code', monospace; tab-size: 2;
 }
-#wb-json-text, .wb-json-hl { padding: 8px 8px 8px 60px; white-space: pre; }
+#wb-json-text, .wb-json-hl, .wb-json-sq { padding: 8px 8px 8px 60px; white-space: pre; }
 #wb-json-text {
   position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
   border: 0; border-radius: 0; resize: none; z-index: 3;
@@ -1535,6 +1535,23 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   position: absolute; inset: 0; margin: 0; overflow: hidden;
   pointer-events: none; z-index: 1; color: var(--wb-text);
 }
+/* #PR-D squiggle layer: the buffer text again with TRANSPARENT glyphs — only
+   the wavy decorations show. A separate layer so the highlight layer's
+   lossless text invariant never has to accommodate decoration spans. */
+.wb-json-sq {
+  position: absolute; inset: 0; margin: 0; overflow: hidden;
+  pointer-events: none; z-index: 1; color: transparent;
+}
+.wb-sq-err, .wb-sq-warning, .wb-sq-info {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: none;
+}
+.wb-sq-err { text-decoration-color: var(--wb-syn-err); }
+.wb-sq-warning { text-decoration-color: var(--wb-sq-warn); }
+.wb-sq-info { text-decoration-color: var(--wb-sq-info); }
 .wb-json-gutter {
   position: absolute; left: 0; top: 0; bottom: 0; width: 38px; overflow: hidden;
   padding: 8px 0; text-align: right; z-index: 2; pointer-events: none;
@@ -1574,6 +1591,35 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none;
 }
 .wb-json-sighint b { color: var(--wb-accent); }
+/* #PR-D hover card — floats above the pointer's line, never interactive */
+.wb-json-hover {
+  position: absolute; z-index: 7; transform: translateY(-100%);
+  max-width: 340px; padding: 5px 9px 6px; border: 1px solid var(--wb-border);
+  border-radius: 6px; background: var(--wb-surface); color: var(--wb-text);
+  font-size: 11px; line-height: 1.45;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .2); pointer-events: none;
+}
+.wb-json-hover .wb-hover-title { font-weight: 600; }
+.wb-json-hover .wb-hover-body {
+  color: var(--wb-text-2); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.wb-json-hover.wb-hover-mono .wb-hover-body { font-family: Consolas, 'Cascadia Code', monospace; }
+/* #PR-D breadcrumb strip — the caret's element chain over the editor;
+   its right edge is reserved for the size meter (PR E) */
+.wb-json-crumbs {
+  display: flex; align-items: center; gap: 2px; min-height: 18px;
+  padding: 0 8px 3px; font-size: 11px; color: var(--wb-text-2);
+  white-space: nowrap; overflow: hidden;
+}
+.wb-json-crumbs[hidden] { display: none; } /* display:flex above would defeat [hidden] */
+.wb-crumb {
+  border: 0; background: transparent; padding: 0 2px; border-radius: 3px;
+  font-size: 11px; color: var(--wb-text-2); cursor: pointer; white-space: nowrap;
+}
+.wb-crumb:hover:not(:disabled) { color: var(--wb-accent); text-decoration: underline; }
+.wb-crumb:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -1px; }
+.wb-crumb:disabled { cursor: default; opacity: .75; }
+.wb-crumb-sep { opacity: .55; }
 /* the token palette (Monaco-familiar hues, re-tuned per theme) */
 :root {
   --wb-syn-key: #0451a5; --wb-syn-str: #a31515; --wb-syn-expr: #795e26;
@@ -1586,11 +1632,14 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   --wb-syn-xfn: var(--wb-syn-expr); --wb-syn-xstr: var(--wb-syn-str);
   --wb-syn-xnum: var(--wb-syn-num); --wb-syn-xop: var(--wb-text);
   --wb-syn-xkw: var(--wb-syn-kw);
+  /* #PR-D squiggle severities — mirror the lint badge hues */
+  --wb-sq-warn: #b07a00; --wb-sq-info: #0c46bd;
 }
 body.wb-dark {
   --wb-syn-key: #9cdcfe; --wb-syn-str: #ce9178; --wb-syn-expr: #dcdcaa;
   --wb-syn-num: #b5cea8; --wb-syn-kw: #569cd6; --wb-syn-err: #f1707b;
   --wb-syn-xfield: #4ec9b0;
+  --wb-sq-warn: #ffb900; --wb-sq-info: #569cd6;
 }
 .wb-tok-key { color: var(--wb-syn-key); }
 .wb-tok-str { color: var(--wb-syn-str); }

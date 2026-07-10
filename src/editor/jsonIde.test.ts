@@ -7,7 +7,9 @@
  *     marks it dirty (the Apply flow stays the one document write);
  *   · Ctrl+Space opens bare-position menus that never auto-pop;
  *   · the signature chip reads the active =function( argument;
- *   · the selected element's scope bar hides during hand edits.
+ *   · the selected element's scope bar hides at a hand-edit keystroke, then
+ *     returns against the live working map (PR D — jsonLiveMap.dom.test.ts
+ *     owns the deeper live-map contracts).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
@@ -161,12 +163,14 @@ describe('the signature chip', () => {
 });
 
 describe('the scope bar', () => {
-  it('marks the selected element on a clean buffer and hides during hand edits', () => {
+  it('marks the selected element on a clean buffer and hides at a hand-edit keystroke', () => {
     const { shell, textEl } = mountPanel();
     const bar = shell.querySelector('.wb-json-scopebar') as HTMLElement;
     state.select([0]);
     expect(bar.hidden).toBe(false);
 
+    // stale offsets must never paint: hidden until the live parse lands
+    // (jsonLiveMap.dom.test.ts pins the return leg a frame later)
     textEl.dispatchEvent(new Event('input', { bubbles: true })); // hand edit begins
     expect(bar.hidden).toBe(true);
   });
