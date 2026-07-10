@@ -128,6 +128,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
   const setDirty = () => {
     dirty = true;
+    // EVERY keystroke stales the parsed offsets — not just the first one. The
+    // live map and its decorations drop immediately (scope bar hides, squiggle
+    // layer paints nothing) and the debounced parse rebuilds them a frame
+    // later: blank beats wrong (PR #272 review).
+    liveRanges = null;
+    liveErrors = [];
+    liveLabels = {};
+    decorations = [];
     textEl.classList.add('wb-json-dirty');
     shellEl.classList.add('wb-json-dirty'); // the border lives on the shell now
     applyBtn.classList.add('wb-json-apply-pending');
