@@ -60,6 +60,12 @@ import { serializeApplyPayload } from '../bridge/applyPayload';
 import { onExtensionReady, stageApplyToExtension } from './extensionBridge';
 import { buildCurrentApplyPayload } from './deployPayload';
 import { lintBadge, lintAriaLabel } from './lintBadge';
+import {
+  buildLintView, inferFieldType, loadLintPrefs, saveLintPrefs,
+  type MissingColumnRow,
+} from './lintView';
+import { FIELD_TYPE_OPTIONS } from '../core/schemaImport';
+import type { FieldType, MockField } from '../core/types';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -935,64 +941,233 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   });
 
+  // ── the lint footer. Missing-column warnings fold into ONE row per column
+  // (count badge = how many places reference it) with an inline "create the
+  // column" flow; a head bar carries the severity summary, the collapse
+  // toggle and the missing-column filter (lintView.ts owns the decisions;
+  // the filter pref persists under the additive wb-lint-prefs.v1 key). ──
+  let lintPrefs = loadLintPrefs();
+  let lintCollapsed = false;              // session-only: minimized to the summary bar
+  let lintCreateOpen: string | null = null;   // field with the create form expanded
+  let lintCreateType: FieldType | null = null; // its picked type (survives re-renders)
+  let lastRuntime: RenderIssue[] = [];
+
+  /** Severity badge span (glyph + word — WCAG 1.4.1, colour never alone). */
+  const sevBadge = (sev: string): HTMLSpanElement => {
+    const { glyph, label } = lintBadge(sev);
+    const badge = document.createElement('span');
+    badge.className = 'wb-lint-badge';
+    const glyphEl = document.createElement('span');
+    glyphEl.className = 'wb-lint-glyph';
+    glyphEl.setAttribute('aria-hidden', 'true');
+    glyphEl.textContent = glyph;
+    badge.append(glyphEl, document.createTextNode(` ${label}`));
+    return badge;
+  };
+
+  /** Row shell: severity stripe + badge + message, keyboard-operable jump. */
+  const lintRow = (sev: string, text: string, path: number[], aria?: string): HTMLDivElement => {
+    const row = document.createElement('div');
+    row.className = `wb-lint-item wb-lint-${sev}`;
+    const msg = document.createElement('span');
+    msg.className = 'wb-lint-msg';
+    msg.textContent = text;
+    row.append(sevBadge(sev), msg);
+    row.title = `Click to select node [${path.join(' › ')}]`;
+    row.setAttribute('aria-label', aria ?? lintAriaLabel(sev, text));
+    // The row acts as a button (jump to the node), so make it operable — and
+    // its severity announceable — by keyboard, not mouse only.
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    // #PR-D flash symmetry: on clean buffers the selection emit reveals and
+    // flashes; when it didn't (dirty — reveal bails), flash via the live map
+    const jump = (): void => {
+      state.select(path);
+      if (!flashBar && (!dirty || liveRanges)) {
+        const r = rangeForPath(rangesNow(), path);
+        if (r) { clearFlash(); flashRange(r); }
+      }
+    };
+    row.addEventListener('click', (e) => {
+      // clicks inside the create controls are theirs, not a jump
+      if ((e.target as HTMLElement).closest('.wb-lint-create, .wb-lint-createform')) return;
+      jump();
+    });
+    row.addEventListener('keydown', (e) => {
+      if (e.target !== row) return; // form controls keep their own keys
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
+    });
+    return row;
+  };
+
+  /** The grouped missing-column row: count badge + the create-column flow. */
+  const missingRow = (group: MissingColumnRow): HTMLDivElement => {
+    const label = `[$${group.field}] — column not in the Data tab`;
+    const places = `${group.count} place${group.count === 1 ? '' : 's'} reference${group.count === 1 ? 's' : ''} it`;
+    const row = lintRow('warning', label, group.paths[0], `Warning: missing column ${group.field} — ${places}`);
+    row.classList.add('wb-lint-missing');
+    const msg = row.querySelector('.wb-lint-msg')!;
+    if (group.count > 1) {
+      const count = document.createElement('span');
+      count.className = 'wb-lint-count';
+      count.textContent = `×${group.count}`;
+      count.title = places;
+      msg.after(count);
+    }
+    const create = document.createElement('button');
+    create.type = 'button';
+    create.className = 'wb-lint-create';
+    create.textContent = '＋ Create column';
+    create.title = `Add ${group.field} to the Data tab (pick a type, sample values are seeded)`;
+    create.setAttribute('aria-expanded', String(lintCreateOpen === group.field));
+    create.addEventListener('click', () => {
+      lintCreateOpen = lintCreateOpen === group.field ? null : group.field;
+      lintCreateType = null; // re-infer for the newly opened field
+      renderLint(lastRuntime);
+    });
+    row.appendChild(create);
+    if (lintCreateOpen === group.field) {
+      const form = document.createElement('span');
+      form.className = 'wb-lint-createform';
+      const sel = document.createElement('select');
+      sel.setAttribute('aria-label', `Type for the new ${group.field} column`);
+      for (const opt of FIELD_TYPE_OPTIONS) {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        sel.appendChild(o);
+      }
+      // preselect the type the formatter's own usage suggests
+      sel.value = lintCreateType ?? inferFieldType(state.doc.root, group.field);
+      sel.addEventListener('change', () => { lintCreateType = sel.value as FieldType; });
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'wb-lint-createok';
+      add.textContent = 'Add';
+      add.addEventListener('click', () => {
+        const type = sel.value as FieldType;
+        const field: MockField = {
+          name: group.field,
+          type,
+          ...(type === 'lookup' || type === 'lookupMulti'
+            ? { lookup: { list: '?', column: 'Title' } }
+            : {}),
+        };
+        lintCreateOpen = null;
+        lintCreateType = null;
+        if (state.addMockField(field)) {
+          onToast(`Added ${group.field} (${type}) to the Data tab — sample values seeded`);
+          // addMockField emits 'data': the re-lint drops this row on its own
+        } else {
+          renderLint(lastRuntime);
+        }
+      });
+      form.append(sel, add);
+      row.appendChild(form);
+    }
+    return row;
+  };
+
   const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number; runtime: number } => {
+    lastRuntime = runtime;
     const issues = lintDocument(
       state.doc,
       state.fields.map((f) => f.name),
       Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
     );
-    lintIssues = issues; // #PR-D: the squiggle layer mirrors the footer
+    // #PR-D: the squiggle layer mirrors the footer — the missing-column
+    // filter quiets the editor's underlines too (that's its whole point)
+    lintIssues = lintPrefs.hideMissingColumns
+      ? issues.filter((i) => !(i.rule === 'unknown-field' && i.field))
+      : issues;
     refreshDecorations();
+    const view = buildLintView(issues, runtime, { hideMissingColumns: lintPrefs.hideMissingColumns });
+    if (lintCreateOpen && !view.rows.some((r) => r.kind === 'missing' && r.field === lintCreateOpen)) {
+      lintCreateOpen = null; // the column got created (or filtered) — form gone
+      lintCreateType = null;
+    }
     lintEl.innerHTML = '';
-    const all: Array<{ sev: string; text: string; path: number[] }> = [
-      ...issues.map((i: LintIssue) => ({ sev: i.severity, text: `${i.rule}: ${i.message}`, path: i.path })),
-      ...runtime.map((r) => ({ sev: 'runtime', text: r.message, path: r.path })),
-    ];
-    const errors = issues.filter((i: LintIssue) => i.severity === 'error').length;
-    const warnings = issues.filter((i: LintIssue) => i.severity === 'warning').length;
-    if (all.length === 0) {
+    const { errors, warnings, infos } = view.summary;
+    if (issues.length === 0 && runtime.length === 0) {
       lintEl.innerHTML = '<div class="wb-lint-ok">✓ No issues — schema-clean and expression-safe.</div>';
       return { errors: 0, warnings: 0, runtime: 0 };
     }
-    for (const issue of all) {
-      const row = document.createElement('div');
-      row.className = `wb-lint-item wb-lint-${issue.sev}`;
-      // Lead with a severity badge: glyph (shape) + word, so the level reads
-      // without relying on the stripe colour alone (WCAG 1.4.1). The glyph is
-      // decorative — the word carries the meaning, echoed in the row aria-label.
-      const { glyph, label } = lintBadge(issue.sev);
-      const badge = document.createElement('span');
-      badge.className = 'wb-lint-badge';
-      const glyphEl = document.createElement('span');
-      glyphEl.className = 'wb-lint-glyph';
-      glyphEl.setAttribute('aria-hidden', 'true');
-      glyphEl.textContent = glyph;
-      badge.append(glyphEl, document.createTextNode(` ${label}`));
-      const msg = document.createElement('span');
-      msg.className = 'wb-lint-msg';
-      msg.textContent = issue.text;
-      row.append(badge, msg);
-      row.title = `Click to select node [${issue.path.join(' › ')}]`;
-      row.setAttribute('aria-label', lintAriaLabel(issue.sev, issue.text));
-      // The row acts as a button (jump to the node), so make it operable — and
-      // its severity announceable — by keyboard, not mouse only.
-      row.tabIndex = 0;
-      row.setAttribute('role', 'button');
-      // #PR-D flash symmetry: on clean buffers the selection emit reveals and
-      // flashes; when it didn't (dirty — reveal bails), flash via the live map
-      const jump = (): void => {
-        state.select(issue.path);
-        if (!flashBar && (!dirty || liveRanges)) {
-          const r = rangeForPath(rangesNow(), issue.path);
-          if (r) { clearFlash(); flashRange(r); }
-        }
-      };
-      row.addEventListener('click', jump);
-      row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
-      });
-      lintEl.appendChild(row);
+
+    // head bar: fold toggle + severity summary (+ hidden note + the filter)
+    const head = document.createElement('div');
+    head.className = 'wb-lint-head';
+    const fold = document.createElement('button');
+    fold.type = 'button';
+    fold.className = 'wb-lint-fold';
+    fold.setAttribute('aria-expanded', String(!lintCollapsed));
+    fold.setAttribute('aria-controls', 'wb-lint-body');
+    fold.title = lintCollapsed ? 'Show the issue list' : 'Minimize to this summary bar';
+    fold.textContent = `${lintCollapsed ? '▸' : '▾'} Problems`;
+    fold.addEventListener('click', () => {
+      lintCollapsed = !lintCollapsed;
+      renderLint(lastRuntime);
+    });
+    head.appendChild(fold);
+    const sum = document.createElement('span');
+    sum.className = 'wb-lint-sum';
+    const parts: string[] = [];
+    const chip = (sev: string, n: number, word: string): void => {
+      if (!n) return;
+      const s = document.createElement('span');
+      s.className = `wb-lint-chip wb-lint-chip-${sev}`;
+      s.textContent = `${lintBadge(sev).glyph} ${n}`;
+      s.title = `${n} ${word}${n === 1 ? '' : 's'}`;
+      sum.appendChild(s);
+      parts.push(`${n} ${word}${n === 1 ? '' : 's'}`);
+    };
+    chip('error', errors, 'error');
+    chip('warning', warnings, 'warning');
+    chip('info', infos, 'info');
+    chip('runtime', view.summary.runtime, 'runtime issue');
+    // no live-region role: the footer rebuilds on every emit and a status
+    // region would re-announce unchanged counts — the label alone serves
+    sum.setAttribute('aria-label', parts.join(', '));
+    head.appendChild(sum);
+    if (view.hiddenMissing > 0) {
+      const hid = document.createElement('span');
+      hid.className = 'wb-lint-hiddennote';
+      hid.textContent = `${view.hiddenMissing} hidden`;
+      hid.title = `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} hidden by the filter`;
+      head.appendChild(hid);
     }
+    const missingTotal = issues.filter((i) => i.rule === 'unknown-field' && i.field).length;
+    if (missingTotal > 0) {
+      const filterLbl = document.createElement('label');
+      filterLbl.className = 'wb-check wb-lint-filter';
+      filterLbl.title = 'Working on pasted JSON without wiring up the Data tab? Hide the missing-column warnings (rows and underlines) — the count above stays honest.';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'wb-lint-hide-missing';
+      cb.checked = lintPrefs.hideMissingColumns;
+      cb.addEventListener('change', () => {
+        lintPrefs = { ...lintPrefs, hideMissingColumns: cb.checked };
+        saveLintPrefs(lintPrefs);
+        renderLint(lastRuntime);
+      });
+      filterLbl.append(cb, document.createTextNode(' hide missing columns'));
+      head.appendChild(filterLbl);
+    }
+    lintEl.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'wb-lint-body';
+    body.id = 'wb-lint-body';
+    body.hidden = lintCollapsed;
+    for (const r of view.rows) {
+      body.appendChild(r.kind === 'missing' ? missingRow(r) : lintRow(r.sev, r.text, r.path));
+    }
+    if (view.rows.length === 0) {
+      const quiet = document.createElement('div');
+      quiet.className = 'wb-lint-ok';
+      quiet.textContent = '✓ Nothing to show — every issue is hidden by the filter.';
+      body.appendChild(quiet);
+    }
+    lintEl.appendChild(body);
     return { errors, warnings, runtime: runtime.length };
   };
 

@@ -577,6 +577,9 @@ describe('linter — unknown fields', () => {
     const issues = lintDocument(doc, ['Title', 'AssignedTo']).filter((i) => i.rule === 'unknown-field');
     expect(issues).toHaveLength(1);
     expect(issues[0].message).toContain('[$Statuss]');
+    // the missing column's name rides as structured data — the lint UI groups
+    // the per-reference flood into one row per column on it
+    expect(issues[0].field).toBe('Statuss');
   });
 
   it('skips the check when no schema is provided', () => {

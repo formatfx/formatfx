@@ -40,7 +40,7 @@
 import type {
   FormatterDocument, SPElement, NodePath, MockField, MockRow, PersonValue, DocumentKind,
 } from '../core/types';
-import type { ImportedView, ImportedRule } from '../core/schemaImport';
+import { sampleValue, type ImportedView, type ImportedRule } from '../core/schemaImport';
 import { buildGridRoot, gridCellForField, gridColumnField, isPureGrid } from './gridScaffold';
 import { addGroup, sanitizeGroups, type ColumnGroup } from './colGroups';
 import { inlineColumnFormatter } from './lookDialect';
@@ -712,6 +712,27 @@ export class EditorState {
     const [t] = this.openTabs.splice(fromIndex, 1);
     this.openTabs.splice(to, 0, t);
     this.emit('data');
+  }
+
+  /** Add a column to the mock schema: seeds a sample value into every row
+   *  and, while the floor is still a pure grid, grows its grid column (ONE
+   *  undoable mutation — the exact recipe the Data tab's add-field form has
+   *  always used; the lint footer's "create missing column" rides it too).
+   *  Returns false (no change, no emit) for an empty/spaced or taken name. */
+  addMockField(field: MockField): boolean {
+    const name = field.name.trim();
+    if (!name || /\s/.test(name)) return false;
+    if (this.fields.some((f) => f.name === name)) return false;
+    const f: MockField = { ...field, name };
+    this.fields.push(f);
+    this.rows.forEach((row, i) => { row[name] = sampleValue(f, i); });
+    if (isPureGrid(this.floorDoc.root)) {
+      this.mutateDocument(() => {
+        this.floorDoc.root = buildGridRoot(this.fields, this.columnLooks);
+      });
+    }
+    this.emit('data');
+    return true;
   }
 
   // ─── Column tab groups (grid floor chrome — the renameView metadata rule) ──

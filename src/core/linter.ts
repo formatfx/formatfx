@@ -45,6 +45,10 @@ export interface LintIssue {
   rule: string;
   message: string;
   path: NodePath;
+  /** For 'unknown-field' issues: the missing column's internal name, so the
+   *  lint UI can group the flood of per-reference warnings into one row per
+   *  column (and offer to create it) without parsing message text. */
+  field?: string;
 }
 
 interface WalkState {
@@ -215,8 +219,8 @@ function maxIfDepth(expr: string): number {
 }
 
 function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue[]): void {
-  const push = (severity: Severity, rule: string, message: string) =>
-    issues.push({ severity, rule, message, path: [...path] });
+  const push = (severity: Severity, rule: string, message: string, extra?: Pick<LintIssue, 'field'>) =>
+    issues.push({ severity, rule, message, path: [...path], ...extra });
 
   // bring this element's own iterator into scope for it and its subtree
   if (el.forEach) {
@@ -345,7 +349,7 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
         if (seen.has(name)) continue;
         seen.add(name);
         if (!state.knownFields.has(name) && !state.iterators.has(name)) {
-          push('warning', 'unknown-field', `${where}: [$${name}] is not in the mock schema — add the field in the Data tab or import your list schema.`);
+          push('warning', 'unknown-field', `${where}: [$${name}] is not in the mock schema — add the field in the Data tab or import your list schema.`, { field: name });
         }
       }
     }
@@ -363,7 +367,7 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
   if (el.forEach && state.knownFields) {
     for (const m of el.forEach.matchAll(/\[\$([A-Za-z0-9_]+)/g)) {
       if (!state.knownFields.has(m[1]) && !state.iterators.has(m[1])) {
-        push('warning', 'unknown-field', `forEach: [$${m[1]}] is not in the mock schema — add the field in the Data tab or import your list schema.`);
+        push('warning', 'unknown-field', `forEach: [$${m[1]}] is not in the mock schema — add the field in the Data tab or import your list schema.`, { field: m[1] });
       }
     }
   }
