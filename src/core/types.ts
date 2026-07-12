@@ -44,6 +44,14 @@ export type SPExpr =
 
 export interface SPElement {
   elmType: ElmType;
+  /** Embed another column's LIVE formatter by reference ("[$FieldName]"; the
+   *  bare "FieldName" form also appears in the wild). A real schema key that
+   *  stands in for elmType on the element carrying it. The EDITOR never
+   *  writes one (column looks are embedded clones since the model-B
+   *  migration) but pasted JSON carrying it round-trips verbatim; the linter
+   *  validates the referenced column instead of demanding elmType, and the
+   *  preview renders a placeholder (HANDOFF §4 emulation gap). */
+  columnFormatterReference?: string;
   txtContent?: SPExpr;
   style?: Record<string, SPExpr | undefined>;
   attributes?: Record<string, SPExpr | undefined>;

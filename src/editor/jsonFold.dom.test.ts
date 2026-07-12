@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
 import { state } from './state';
-import { exportJson } from '../core/serializer';
+import { exportJson, importJson } from '../core/serializer';
 import { exportJsonWithMap } from '../core/jsonMap';
 import { cutForRange, FOLD_SENTINEL } from './jsonFold';
 
@@ -152,5 +152,89 @@ describe('folding', () => {
       .replace(/<[^>]*>/g, '')
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     expect(flat === textEl.value || flat === `${textEl.value} `).toBe(true); // trailing pad allowed
+  });
+});
+
+describe('wrapper-section folding (groupProps / commandBarProps / footerFormatter)', () => {
+  /** A view formatter whose wrapper carries the big unmodeled blobs. */
+  const richViewJson = (): string => JSON.stringify({
+    $schema: 'https://developer.microsoft.com/json-schemas/sp/v2/view-formatting.schema.json',
+    groupProps: {
+      hideFooter: true,
+      headerFormatter: {
+        elmType: 'div',
+        children: [{ elmType: 'span', txtContent: '@group' }],
+      },
+    },
+    commandBarProps: {
+      commands: [
+        { key: 'new', hide: true },
+        { key: 'share', text: 'Send' },
+      ],
+    },
+    footerFormatter: { elmType: 'div', txtContent: 'total' },
+    rowFormatter: { elmType: 'div', children: [{ elmType: 'span', txtContent: '[$Title]' }] },
+  });
+
+  function mountWithRichView() {
+    const mounted = mountPanel();
+    state.loadDocument(importJson(richViewJson()));
+    return mounted;
+  }
+
+  it('wrapper sections get their own labelled chevrons', () => {
+    const { host, textEl } = mountWithRichView();
+    expect(textEl.value).toContain('"groupProps"'); // extras survive into the buffer
+    const labels = [...host.querySelectorAll('.wb-json-foldcol .wb-json-chev')]
+      .map((b) => b.getAttribute('aria-label') ?? '');
+    expect(labels.some((l) => l.includes('section groupProps'))).toBe(true);
+    expect(labels.some((l) => l.includes('section groupProps.headerFormatter'))).toBe(true);
+    expect(labels.some((l) => l.includes('section commandBarProps'))).toBe(true);
+    expect(labels.some((l) => l.includes('section footerFormatter'))).toBe(true);
+  });
+
+  it('Ctrl+Shift+[ inside a wrapper section folds it to the sentinel', () => {
+    const { textEl } = mountWithRichView();
+    const inGroupProps = textEl.value.indexOf('"hideFooter"');
+    expect(inGroupProps).toBeGreaterThan(0);
+    foldAtCaret(textEl, inGroupProps);
+    expect(textEl.value).toContain(FOLD_SENTINEL);
+    expect(textEl.value).not.toContain('"hideFooter"'); // interior elided
+    expect(textEl.value).toContain('"groupProps"');     // opener line stays
+    expect(textEl.value).toContain('"rowFormatter"');   // the rest untouched
+  });
+
+  it('the innermost section at the caret folds first (commands entry, not the whole bar)', () => {
+    const { textEl } = mountWithRichView();
+    const inFirstCommand = textEl.value.indexOf('"key": "new"');
+    foldAtCaret(textEl, inFirstCommand);
+    expect(textEl.value).not.toContain('"key": "new"');  // entry 0 folded away
+    expect(textEl.value).toContain('"key": "share"');    // sibling entry visible
+    expect(textEl.value).toContain('"commands"');        // the array itself open
+  });
+
+  it("a section chevron toggles its fold and the chevron flips state", () => {
+    const { host, textEl } = mountWithRichView();
+    const chev = [...host.querySelectorAll<HTMLButtonElement>('.wb-json-foldcol .wb-json-chev')]
+      .find((b) => (b.getAttribute('aria-label') ?? '') === 'Fold section commandBarProps')!;
+    expect(chev).toBeDefined();
+    chev.click();
+    expect(textEl.value).not.toContain('"commands"'); // the bar's interior elided
+    const folded = [...host.querySelectorAll<HTMLButtonElement>('.wb-json-foldcol .wb-json-chev')]
+      .find((b) => (b.getAttribute('aria-label') ?? '') === 'Unfold section commandBarProps');
+    expect(folded).toBeDefined();
+    folded!.click();
+    expect(textEl.value).toContain('"commands"');
+  });
+
+  it('"Fold others" folds wrapper sections alongside off-chain elements', () => {
+    const { host, textEl } = mountWithRichView();
+    state.select([0]); // keep the row's span chain open
+    (document.getElementById('wb-json-fold-others') as HTMLButtonElement).click();
+    expect(textEl.value).not.toContain('"hideFooter"');   // groupProps folded
+    expect(textEl.value).not.toContain('"key": "new"');   // commandBarProps folded
+    expect(textEl.value).toContain('"groupProps"');       // openers stay visible
+    expect(textEl.value).toContain('[$Title]');           // the selection chain stays open
+    void host;
   });
 });

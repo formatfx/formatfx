@@ -62,6 +62,12 @@ export interface SearchEntry {
   detail?: string;
   /** Ready-to-paste example (reference entries). */
   example?: string;
+  /** Within-group tiebreak, lower first (default 0). The UI pins the ACTIVE
+   *  surface's hits above other surfaces' — someone searching right after
+   *  pasting a view means THAT view, not the showcase floor content, and a
+   *  first hit from elsewhere navigates the canvas away (reads as a clobber
+   *  even though it's navigation). */
+  pin?: number;
 }
 
 export interface SearchHit {
@@ -349,7 +355,9 @@ export function runSearch(entries: SearchEntry[], query: string, perGroup = 8): 
   for (const group of GROUP_ORDER) {
     const hits = buckets.get(group);
     if (!hits?.length) continue;
-    hits.sort((a, b) => b.score - a.score || a.entry.label.localeCompare(b.entry.label));
+    hits.sort((a, b) => b.score - a.score
+      || (a.entry.pin ?? 0) - (b.entry.pin ?? 0)
+      || a.entry.label.localeCompare(b.entry.label));
     out.push({ group, label: GROUP_LABELS[group], hits: hits.slice(0, perGroup) });
   }
   return out;

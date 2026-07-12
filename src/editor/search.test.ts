@@ -182,6 +182,20 @@ describe('runSearch', () => {
   it('returns nothing for an empty query (the recents/starter view is the UI)', () => {
     expect(runSearch([mk('document', 'Pill')], '  ')).toEqual([]);
   });
+
+  it('pin breaks score ties before alphabetical order — the active surface outranks the rest', () => {
+    // same score (label substring); alphabetics alone would put the showcase
+    // floor's formula first — the pin keeps the maker's own view on top
+    const floorHit = { ...mk('document', "=if([$Status]=='Done','a','b')"), pin: 1 };
+    const viewHit = { ...mk('document', "=if([$X]=='Done','y','n')"), pin: 0 };
+    const [grouped] = runSearch([floorHit, viewHit], 'done');
+    expect(grouped.hits.map((h) => h.entry.pin)).toEqual([0, 1]);
+    // …but a better MATCH still wins over a better pin (score first)
+    const better = { ...mk('document', 'Done pill'), pin: 1 }; // label prefix, score 4
+    const worse = { ...mk('document', 'the done-ish thing'), pin: 0 }; // word-start, score 3
+    const [g2] = runSearch([better, worse], 'done');
+    expect(g2.hits[0].entry.label).toBe('Done pill');
+  });
 });
 
 // ─── teaching ────────────────────────────────────────────────────────────────

@@ -45,9 +45,23 @@ export interface JsonRange {
   end: number;
 }
 
+/** A WRAPPER-side object/array's text range — the sections the element-path
+ *  map can't address (groupProps and its header/footerFormatter trees,
+ *  commandBarProps and its commands, top-level footerFormatter …). Keyed by
+ *  their '/'-joined wrapper path so the IDE's fold layer can fold them the
+ *  way it folds elements (#279 owner ask). */
+export interface JsonSection {
+  key: string;
+  start: number;
+  end: number;
+}
+
 export interface MappedJson {
   text: string;
   ranges: JsonRange[];
+  /** Foldable wrapper sections (viewExtras subtrees) — empty for column/tile
+   *  payloads, which carry no unmodeled wrapper keys. */
+  sections: JsonSection[];
 }
 
 /** The options the map supports — the JSON pane's exact export shape. */
@@ -66,11 +80,27 @@ function registerPaths(el: SPElement, path: NodePath, map: Map<object, NodePath>
   }
 }
 
+/** Register every object/array under a wrapper extra (by identity) with its
+ *  '/'-joined key path — exportPayload spreads viewExtras by REFERENCE, so
+ *  identity survives into the written payload. Every registered node the
+ *  stringifier renders multi-line becomes foldable. */
+function registerSections(value: unknown, key: string, map: Map<object, string>): void {
+  if (value === null || typeof value !== 'object') return;
+  map.set(value as object, key);
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => registerSections(v, `${key}/${i}`, map));
+  } else {
+    for (const [k, v] of Object.entries(value)) registerSections(v, `${key}/${k}`, map);
+  }
+}
+
 interface WriteCtx {
   chunks: string[];
   len: number;
   ranges: JsonRange[];
   paths: Map<object, NodePath>;
+  sections: JsonSection[];
+  sectionKeys: Map<object, string>;
 }
 
 function push(ctx: WriteCtx, s: string): void {
@@ -94,6 +124,7 @@ function writeValue(ctx: WriteCtx, value: unknown, depth: number): void {
   }
   const pad = '  '.repeat(depth + 1);
   const close = '  '.repeat(depth);
+  const start = ctx.len;
   if (Array.isArray(value)) {
     if (value.length === 0) { push(ctx, '[]'); return; }
     push(ctx, '[\n');
@@ -103,10 +134,11 @@ function writeValue(ctx: WriteCtx, value: unknown, depth: number): void {
       push(ctx, i < value.length - 1 ? ',\n' : '\n');
     });
     push(ctx, `${close}]`);
+    const sk = ctx.sectionKeys.get(value);
+    if (sk) ctx.sections.push({ key: sk, start, end: ctx.len });
     return;
   }
   const path = ctx.paths.get(value);
-  const start = ctx.len;
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, v]) => !isSkipped(v));
   if (entries.length === 0) {
@@ -121,6 +153,8 @@ function writeValue(ctx: WriteCtx, value: unknown, depth: number): void {
     push(ctx, `${close}}`);
   }
   if (path) ctx.ranges.push({ path, start, end: ctx.len });
+  const sk = ctx.sectionKeys.get(value);
+  if (sk) ctx.sections.push({ key: sk, start, end: ctx.len });
 }
 
 /**
@@ -139,9 +173,15 @@ export function exportJsonWithMap(doc: FormatterDocument, opts: MapExportOptions
     : doc.kind === 'tile' ? payload.formatter
     : payload; // column: the spread copy IS the in-payload root
   paths.set(payloadRoot as object, []);
-  const ctx: WriteCtx = { chunks: [], len: 0, ranges: [], paths };
+  // wrapper extras (groupProps, commandBarProps, footerFormatter …) become
+  // foldable SECTIONS — every object/array under them, keyed by wrapper path
+  const sectionKeys = new Map<object, string>();
+  if (doc.kind === 'row' || doc.kind === 'grid') {
+    for (const [k, v] of Object.entries(doc.viewExtras ?? {})) registerSections(v, k, sectionKeys);
+  }
+  const ctx: WriteCtx = { chunks: [], len: 0, ranges: [], paths, sections: [], sectionKeys };
   writeValue(ctx, payload, 0);
-  return { text: ctx.chunks.join(''), ranges: ctx.ranges };
+  return { text: ctx.chunks.join(''), ranges: ctx.ranges, sections: ctx.sections };
 }
 
 /** The INNERMOST element whose text range contains `offset` (end-inclusive,

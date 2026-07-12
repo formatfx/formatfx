@@ -168,7 +168,7 @@ describe('the hide-missing-columns filter', () => {
     cb.dispatchEvent(new Event('change', { bubbles: true }));
 
     expect(lint.querySelector('.wb-lint-missing')).toBeNull();
-    expect(lint.querySelector('.wb-lint-hiddennote')!.textContent).toBe('3 hidden');
+    expect(lint.querySelector('.wb-lint-hiddennote')!.textContent).toBe('3 ignored');
     expect(shell.querySelector('.wb-json-sq .wb-sq-warning')).toBeNull();
     // the summary stays the full truth
     expect(lint.querySelector('.wb-lint-chip-warning')!.textContent).toContain('3');
@@ -182,6 +182,6 @@ describe('the hide-missing-columns filter', () => {
     api.refreshLint([]);
     expect((lint.querySelector('#wb-lint-hide-missing') as HTMLInputElement).checked).toBe(true);
     expect(lint.querySelector('.wb-lint-missing')).toBeNull();
-    expect(lint.querySelector('.wb-lint-hiddennote')!.textContent).toBe('3 hidden');
+    expect(lint.querySelector('.wb-lint-hiddennote')!.textContent).toBe('3 ignored');
   });
 });

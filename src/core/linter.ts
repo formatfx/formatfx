@@ -24,6 +24,9 @@
  *  - non-ASCII characters garble through CSOM deployment
  *  - nested if() depth > 10 may silently fail
  *  - className instead of attributes.class
+ *  - columnFormatterReference stands in for elmType (never demand elmType on
+ *    one); the referenced column is checked against the mock schema, and an
+ *    info row teaches that the preview can't resolve the reference
  *  - hover-reveal pairing: sp-card-showOnHoverChild with no
  *    sp-card-showOnHoverParent ancestor never appears (the reveal is a
  *    descendant :hover selector — HANDOFF §3); a parent with no child in its
@@ -37,6 +40,7 @@
 import type { SPElement, NodePath, FormatterDocument } from './types';
 import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES, SP_FUNCTIONS, SP_FUNCTION_DOCS } from './schema';
 import { parseExpression, parseForEach, type AstNode } from './expressions';
+import { cfrFieldName } from './refs';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -228,7 +232,20 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     if (b) state = { ...state, iterators: new Set([...state.iterators, b.iterator]) };
   }
 
-  if (!el.elmType) {
+  // columnFormatterReference stands in for elmType: the element renders the
+  // referenced column's LIVE formatter (verified semantics in HANDOFF §3 —
+  // @currentField inside it reads the referenced column). Never demand
+  // elmType on one, and check the reference against the mock schema so the
+  // missing-column tooling (grouping, create) covers CFRs too.
+  const cfrValue = typeof el.columnFormatterReference === 'string'
+    ? el.columnFormatterReference.trim() : '';
+  if (cfrValue) {
+    const refField = cfrFieldName(cfrValue);
+    if (state.knownFields && refField && !state.knownFields.has(refField)) {
+      push('warning', 'unknown-field', `columnFormatterReference: [$${refField}] is not in the mock schema — add the field in the Data tab or import your list schema.`, { field: refField });
+    }
+    push('info', 'cfr-not-emulated', 'columnFormatterReference embeds the referenced column\'s LIVE formatter on real SP. The preview here renders a placeholder — it has no tenant to resolve the reference against (inside the referenced formatter, @currentField reads the REFERENCED column).');
+  } else if (!el.elmType) {
     push('error', 'elmType-required', 'Element is missing elmType — SP will not render it.');
   } else if (!ELM_TYPES.includes(el.elmType)) {
     push('error', 'elmType-invalid', `"${el.elmType}" is not a valid elmType (${ELM_TYPES.join(', ')}).`);

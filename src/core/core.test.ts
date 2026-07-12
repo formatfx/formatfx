@@ -588,6 +588,45 @@ describe('linter — unknown fields', () => {
   });
 });
 
+describe('linter — columnFormatterReference', () => {
+  const cfrDoc = (cfr: string): FormatterDocument => ({
+    kind: 'row',
+    root: {
+      elmType: 'div',
+      children: [{ columnFormatterReference: cfr } as unknown as SPElement],
+    },
+  });
+
+  it('stands in for elmType — no elmType-required error on a CFR element', () => {
+    const issues = lintDocument(cfrDoc('[$Status]'), ['Status']);
+    expect(issues.filter((i) => i.rule === 'elmType-required')).toHaveLength(0);
+    expect(issues.filter((i) => i.severity === 'error')).toHaveLength(0); // deploys stay unblocked
+  });
+
+  it('teaches that the preview cannot resolve the reference (info, per element)', () => {
+    const issues = lintDocument(cfrDoc('[$Status]'), ['Status']);
+    const info = issues.filter((i) => i.rule === 'cfr-not-emulated');
+    expect(info).toHaveLength(1);
+    expect(info[0].severity).toBe('info');
+    expect(info[0].path).toEqual([0]);
+  });
+
+  it('checks the referenced column against the schema — grouped like any missing column', () => {
+    for (const form of ['[$Regionn]', 'Regionn', '$Regionn']) {
+      const issues = lintDocument(cfrDoc(form), ['Status']).filter((i) => i.rule === 'unknown-field');
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('Regionn');
+      expect(issues[0].message).toContain('columnFormatterReference');
+    }
+    expect(lintDocument(cfrDoc('[$Status]'), ['Status']).filter((i) => i.rule === 'unknown-field')).toHaveLength(0);
+  });
+
+  it('an empty or non-string reference still demands elmType', () => {
+    const issues = lintDocument(cfrDoc('  '), ['Status']);
+    expect(issues.filter((i) => i.rule === 'elmType-required')).toHaveLength(1);
+  });
+});
+
 describe('serializer', () => {
   it('round-trips a view formatter', () => {
     const doc = importJson(JSON.stringify({

@@ -177,3 +177,65 @@ describe('exportJsonWithMap — ranges', () => {
     expect(pathAtOffset(ranges, r.start + 1)).toEqual([1]);
   });
 });
+
+describe('wrapper sections (foldable viewExtras subtrees)', () => {
+  const richRowDoc = (): FormatterDocument => ({
+    kind: 'row',
+    viewExtras: {
+      additionalRowClass: 'zebra', // scalar — never a section
+      groupProps: {
+        hideFooter: true,
+        headerFormatter: {
+          elmType: 'div',
+          children: [{ elmType: 'span', txtContent: '@group' }],
+        },
+      },
+      commandBarProps: {
+        commands: [
+          { key: 'new', hide: true },
+          { key: 'share', text: 'Send' },
+        ],
+      },
+      footerFormatter: { elmType: 'div', txtContent: 'total' },
+    },
+    root: { elmType: 'div', children: [{ elmType: 'span', txtContent: '[$Title]' }] },
+  });
+
+  it('emits a section per wrapper object/array, keyed by wrapper path', () => {
+    const { text, sections } = exportJsonWithMap(richRowDoc());
+    const keys = sections.map((s) => s.key);
+    for (const k of [
+      'groupProps',
+      'groupProps/headerFormatter',
+      'groupProps/headerFormatter/children/0',
+      'commandBarProps',
+      'commandBarProps/commands',
+      'commandBarProps/commands/0',
+      'commandBarProps/commands/1',
+      'footerFormatter',
+    ]) {
+      expect(keys).toContain(k);
+    }
+    expect(keys).not.toContain('additionalRowClass'); // scalars never fold
+    // every section's range covers exactly one JSON value
+    for (const s of sections) {
+      const slice = text.slice(s.start, s.end);
+      expect(['{', '[']).toContain(slice[0]);
+      expect(['}', ']']).toContain(slice[slice.length - 1]);
+      expect(() => JSON.parse(slice)).not.toThrow();
+    }
+    // sections never overlap ELEMENT ranges' address space: the rowFormatter
+    // subtree stays element-mapped, not section-mapped
+    expect(keys.every((k) => !k.startsWith('rowFormatter'))).toBe(true);
+  });
+
+  it('column and tile payloads (no viewExtras channel) emit no sections', () => {
+    expect(exportJsonWithMap(columnDoc()).sections).toEqual([]);
+    expect(exportJsonWithMap(tileDoc()).sections).toEqual([]);
+  });
+
+  it('byte-identity with exportJson holds with rich wrapper extras', () => {
+    const doc = richRowDoc();
+    expect(exportJsonWithMap(doc).text).toBe(exportJson(doc, { indent: 2 }));
+  });
+});
