@@ -1053,12 +1053,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
             ? { lookup: { list: '?', column: 'Title' } }
             : {}),
         };
-        lintCreateOpen = null;
-        lintCreateType = null;
         if (state.addMockField(field)) {
+          lintCreateOpen = null;
+          lintCreateType = null;
           onToast(`Added ${group.field} (${type}) to the Data tab — sample values seeded`);
           // addMockField emits 'data': the re-lint drops this row on its own
         } else {
+          // the only reachable refusal: the column already exists (e.g. just
+          // added from the Data tab) — say so instead of silently closing;
+          // the next re-lint drops this row anyway once the schema knows it
+          onToast(`${group.field} is already in the Data tab — nothing to add`);
           renderLint(lastRuntime);
         }
       });
@@ -1195,6 +1199,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   });
   hostAny._unsub = () => {
     stateUnsub();
+    ide.dispose(); // the shell's ResizeObserver must not outlive the mount
     document.removeEventListener('pointerdown', closeKebabOnOutside);
     document.removeEventListener('keydown', synPanelEsc, true);
     kebabBtn?.removeEventListener('click', toggleKebab);

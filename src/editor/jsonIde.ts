@@ -78,6 +78,9 @@ export interface JsonIdeApi {
   /** #PR-D: rebuild only the squiggle layer — for decoration changes that
    *  arrive without a buffer change (the debounced live parse, lint refresh). */
   repaintSquiggles: () => void;
+  /** Disconnect the shell's ResizeObserver — for panel teardown (the host's
+   *  _unsub), so remounts never accumulate observers holding detached DOM. */
+  dispose: () => void;
 }
 
 /** Left rail width: 38px number gutter + 14px fold column — keep in step
@@ -365,8 +368,10 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   // the browser clamps them (shell grown back — e.g. the lint footer emptied
   // — while the buffer sat at max scroll). Re-sync on any shell resize so the
   // overlay and the scroll-anchored bars never go stale.
+  let resizeObs: ResizeObserver | null = null;
   if (typeof ResizeObserver === 'function') {
-    new ResizeObserver(() => syncScroll()).observe(shell);
+    resizeObs = new ResizeObserver(() => syncScroll());
+    resizeObs.observe(shell);
   }
 
   const repaint = (): void => {
@@ -524,5 +529,14 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   });
 
   repaint();
-  return { repaint, refreshScope, closeMenu, repaintSquiggles };
+  return {
+    repaint,
+    refreshScope,
+    closeMenu,
+    repaintSquiggles,
+    dispose: () => {
+      resizeObs?.disconnect();
+      resizeObs = null;
+    },
+  };
 }

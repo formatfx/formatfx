@@ -99,6 +99,18 @@ describe('create column from the lint row', () => {
     expect(lint.querySelector('.wb-lint-ok')).not.toBeNull();
   });
 
+  it('Add on a column that meanwhile exists explains itself instead of failing silently', () => {
+    const { lint, api } = mountPanel();
+    addGhostRefs();
+    api.refreshLint([]);
+    (lint.querySelector('.wb-lint-create') as HTMLButtonElement).click();
+    // the column lands from elsewhere (the Data tab) while the form is open
+    state.addMockField({ name: 'Ghost', type: 'text' });
+    (lint.querySelector('.wb-lint-createok') as HTMLButtonElement).click();
+    expect(toasts.some((t) => t.includes('already in the Data tab'))).toBe(true);
+    expect(state.fields.filter((f) => f.name === 'Ghost')).toHaveLength(1); // no dupe
+  });
+
   it('a picked type overrides the guess', () => {
     const { lint, api } = mountPanel();
     addGhostRefs();
