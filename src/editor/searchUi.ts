@@ -84,19 +84,22 @@ function flashGridColumn(colIndex: number): void {
   }, 60);
 }
 
-/** When a jump changed the active surface, say where we landed and that the
- *  previous surface is still there — a silent canvas+JSON swap reads as "it
- *  replaced my work" even though it's pure navigation (owner report). */
-function surfaceSwitchNote(fromViewId: string | null, toast: (m: string) => void): void {
+/** When a jump changed the active surface, the note saying where we landed
+ *  and that the previous surface is still there — a silent canvas+JSON swap
+ *  reads as "it replaced my work" even though it's pure navigation (owner
+ *  report). Null when the surface didn't change. Returned (not toasted) so
+ *  branches with their own message can compose ONE toast — every
+ *  cross-surface jump must carry it, whatever else the branch has to say. */
+function surfaceSwitchNote(fromViewId: string | null): string | null {
   const nowId = state.activeViewId;
-  if (nowId === fromViewId) return;
+  if (nowId === fromViewId) return null;
   const name = (id: string | null): string => (id === null
     ? 'the Grid'
     : `“${state.views.find((v) => v.id === id)?.name ?? 'your view'}”`);
   const back = fromViewId === null
     ? 'the ▦ Grid tab is still there'
     : `${name(fromViewId)} stays open in its tab`;
-  toast(`Jumped to ${name(nowId)} — ${back}.`);
+  return `Jumped to ${name(nowId)} — ${back}.`;
 }
 
 /** The navigate verbs — everything here is selection/navigation, no mutation. */
@@ -108,7 +111,8 @@ function navigate(action: SearchAction, toast: (m: string) => void): void {
       state.select(action.path);
       if (action.prop) window.setTimeout(() => focusFxSlot(action.prop!), 80);
       flashPath(action.path);
-      surfaceSwitchNote(fromViewId, toast);
+      const note = surfaceSwitchNote(fromViewId);
+      if (note) toast(note);
       return;
     }
     // a rule lives inside the column's look, so both hits land the same way:
@@ -118,13 +122,17 @@ function navigate(action: SearchAction, toast: (m: string) => void): void {
       const field = state.fields.find((f) => f.name === action.fieldName);
       if (!field) return;
       if (state.activeViewId !== null) state.minimizeView();
+      const note = surfaceSwitchNote(fromViewId);
       const col = gridColumnForField(field);
       if (col.path.length) {
         state.select(col.path);
         flashGridColumn(col.path[0]);
-        surfaceSwitchNote(fromViewId, toast);
+        if (note) toast(note);
       } else {
-        toast(`${field.displayName ?? field.name} isn't placed on the grid — add it with “+ column”.`);
+        // the surface may STILL have swapped to the grid — one toast carries
+        // both facts, or the silent-swap scare survives exactly here
+        toast([`${field.displayName ?? field.name} isn't placed on the grid — add it with “+ column”.`, note]
+          .filter(Boolean).join(' '));
       }
       return;
     }
