@@ -157,6 +157,32 @@ would fight plain typing). acMenu gained an optional caret anchor (additive).
 Prior art: thechriskent/jsonify's HorseScript IntelliSense — the feature
 shape (completions + signature help + expression highlighting inside JSON),
 not the code.
+**Overlay sync is TRANSFORM-based (2026-07-12)**: the layers follow the
+textarea via `translate()` on their `code` children, never by scrollTop —
+a scroll offset clamps to the overlay's own max, which sits a
+scrollbar-thickness short of the textarea's (classic-scrollbar platforms
+carve the textarea's client box; the overlays never grow scrollbars), and
+at max scroll the painted text sheared off the real glyph grid so a
+double-click selected the NEIGHBOURING word. A shell ResizeObserver
+re-syncs when a resize clamps the textarea's scroll without a scroll event
+(e.g. the lint footer emptying). jsonIde.test.ts pins the transform.
+
+The lint FOOTER (2026-07-12, owner brief): missing-column warnings fold to
+ONE row per column — `unknown-field` issues carry the column name as
+structured `LintIssue.field`, and the pure `lintView.ts` groups them
+(count badge = references, jump = first reference) and infers a create
+TYPE from usage (person/lookup accessors, forEach = multi with iterator
+accessors attributed back to the field, date fns/@now comparisons,
+arithmetic, boolean compares — `inferFieldType`). The row's "＋ Create
+column" opens a type picker preseeded with the guess; Add rides
+`state.addMockField` (the Data-tab recipe, shared now: sample values
+seeded, a pure floor grows its grid column as ONE undoable mutation). The
+head bar minimizes the list to a severity summary (session-only state) and
+hosts the "hide missing columns" filter for the paste-JSON-as-scratchpad
+workflow — it quiets rows AND squiggles, always says "N hidden" (never
+silent), and persists under `wb-lint-prefs.v1` (ADDITIVE key — the frozen
+originals stay frozen). The topbar badge keeps full-truth counts.
+Contracts: lintView.test.ts + lintPanel.dom.test.ts.
 
 View chrome kebab + left-pane polish (2026-07-09 owner brief; spec:
 docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md; the kebab

@@ -446,16 +446,9 @@ export function mountDataPanel(host: HTMLElement, onToast: (m: string) => void):
           : {}),
         ...(prot.checked ? { protected: true } : {}),
       };
-      state.fields.push(field);
-      state.rows.forEach((row, i) => { row[n] = sampleValue(field, i); });
-      // a pure floor grows the new column right away, even while a sheet is up
-      if (isPureGrid(state.floorDoc.root)) {
-        state.mutateDocument(() => {
-          state.floorDoc.root = buildGridRoot(state.fields, state.columnLooks);
-        });
-      }
+      // the shared recipe (sample values + pure-floor grid growth + emit)
+      state.addMockField(field);
       done();
-      state.emit('data');
     });
 
     form.append(name, type, lookupWrap, protLabel, add);

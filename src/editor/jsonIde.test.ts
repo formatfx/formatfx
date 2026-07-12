@@ -68,6 +68,20 @@ describe('the highlight overlay', () => {
     expect(code.querySelector('.wb-tok-expr')!.textContent).toBe('"=@now"');
   });
 
+  it('follows the textarea by transform — never by scroll offsets, which clamp short of the textarea\'s scrollbar-narrowed max and shear double-click selection', () => {
+    const { shell, textEl } = mountPanel();
+    textEl.scrollTop = 40;
+    textEl.scrollLeft = 12;
+    textEl.dispatchEvent(new Event('scroll'));
+    const code = shell.querySelector('.wb-json-hl code') as HTMLElement;
+    const sqCode = shell.querySelector('.wb-json-sq code') as HTMLElement;
+    expect(code.style.transform).toBe('translate(-12px, -40px)');
+    expect(sqCode.style.transform).toBe('translate(-12px, -40px)');
+    // the layers themselves never scroll (a scroll offset would clamp)
+    expect((shell.querySelector('.wb-json-hl') as HTMLElement).scrollTop).toBe(0);
+    expect((shell.querySelector('.wb-json-sq') as HTMLElement).scrollTop).toBe(0);
+  });
+
   it('the gutter counts the buffer lines and marks the caret line active', () => {
     const { shell, textEl } = mountPanel();
     const lines = textEl.value.split('\n').length;

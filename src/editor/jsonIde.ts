@@ -78,6 +78,9 @@ export interface JsonIdeApi {
   /** #PR-D: rebuild only the squiggle layer — for decoration changes that
    *  arrive without a buffer change (the debounced live parse, lint refresh). */
   repaintSquiggles: () => void;
+  /** Disconnect the shell's ResizeObserver — for panel teardown (the host's
+   *  _unsub), so remounts never accumulate observers holding detached DOM. */
+  dispose: () => void;
 }
 
 /** Left rail width: 38px number gutter + 14px fold column — keep in step
@@ -343,16 +346,33 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   };
 
   const syncScroll = (): void => {
-    hl.scrollTop = textEl.scrollTop;
-    hl.scrollLeft = textEl.scrollLeft;
-    sq.scrollTop = textEl.scrollTop;
-    sq.scrollLeft = textEl.scrollLeft;
-    gutterIn.style.transform = `translateY(${-textEl.scrollTop}px)`;
+    // TRANSFORM, never scrollTop/scrollLeft: a scroll offset clamps to the
+    // overlay's OWN max, and the textarea's box is smaller than the overlays'
+    // by its scrollbars (the pres never grow any). On classic-scrollbar
+    // platforms the textarea scrolls a scrollbar-thickness further than the
+    // overlays could — at max scroll the painted text sheared off the real
+    // glyph grid and a double-click selected the NEIGHBOURING word. A
+    // transform tracks any offset exactly (the gutter always worked this way).
+    const x = -textEl.scrollLeft;
+    const y = -textEl.scrollTop;
+    code.style.transform = `translate(${x}px, ${y}px)`;
+    sqCode.style.transform = `translate(${x}px, ${y}px)`;
+    gutterIn.style.transform = `translateY(${y}px)`;
     positionLineband();
     refreshScope();
     refreshSig();
     refreshFoldcol();
   };
+
+  // Resizes move the textarea's scroll offsets WITHOUT a scroll event when
+  // the browser clamps them (shell grown back — e.g. the lint footer emptied
+  // — while the buffer sat at max scroll). Re-sync on any shell resize so the
+  // overlay and the scroll-anchored bars never go stale.
+  let resizeObs: ResizeObserver | null = null;
+  if (typeof ResizeObserver === 'function') {
+    resizeObs = new ResizeObserver(() => syncScroll());
+    resizeObs.observe(shell);
+  }
 
   const repaint = (): void => {
     const text = textEl.value;
@@ -509,5 +529,14 @@ export function mountJsonIde(shell: HTMLElement, textEl: HTMLTextAreaElement, de
   });
 
   repaint();
-  return { repaint, refreshScope, closeMenu, repaintSquiggles };
+  return {
+    repaint,
+    refreshScope,
+    closeMenu,
+    repaintSquiggles,
+    dispose: () => {
+      resizeObs?.disconnect();
+      resizeObs = null;
+    },
+  };
 }

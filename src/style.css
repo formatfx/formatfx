@@ -1551,6 +1551,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   position: absolute; inset: 0; margin: 0; overflow: hidden;
   pointer-events: none; z-index: 1; color: var(--wb-text);
 }
+/* the layers follow the textarea by TRANSFORM (a scroll offset would clamp to
+   the overlay's own max, which is short of the textarea's by its scrollbars —
+   the max-scroll shear that broke double-click selection). Transforms need a
+   block box — code is inline by default. */
+.wb-json-hl > code, .wb-json-sq > code { display: block; width: max-content; min-width: 100%; }
 /* #PR-D squiggle layer: the buffer text again with TRANSPARENT glyphs — only
    the wavy decorations show. A separate layer so the highlight layer's
    lossless text invariant never has to accommodate decoration spans. */
@@ -1748,6 +1753,57 @@ body.wb-dark {
 /* ── lint ────────────────────────────────────────────────── */
 .wb-lint { margin-top: 8px; overflow: auto; max-height: 220px; }
 .wb-lint-ok { color: #107c10; font-size: 12px; padding: 6px; }
+/* the head bar: fold toggle + severity summary + the missing-column filter.
+   Sticky so the summary stays readable while the list scrolls under it. */
+.wb-lint-head {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 2px 4px 3px; background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+.wb-lint-fold {
+  border: 0; background: transparent; color: var(--wb-text);
+  font-size: 11px; font-weight: 600; cursor: pointer; padding: 2px 4px;
+  border-radius: 3px; white-space: nowrap;
+}
+.wb-lint-fold:hover { color: var(--wb-accent); background: var(--wb-bg); }
+.wb-lint-sum { display: inline-flex; gap: 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.wb-lint-chip { white-space: nowrap; font-weight: 600; }
+.wb-lint-chip-error { color: #d13438; }
+.wb-lint-chip-warning { color: #b07a00; }
+.wb-lint-chip-info { color: #0078d4; }
+.wb-lint-chip-runtime { color: #8a8886; }
+.wb-lint-hiddennote { font-size: 10.5px; color: var(--wb-text-2); white-space: nowrap; }
+.wb-lint-filter { margin-left: auto; font-size: 11px; white-space: nowrap; }
+/* one row per missing column: reference-count pill + the create flow */
+.wb-lint-count {
+  flex: 0 0 auto; font-size: 10px; font-weight: 600; padding: 0 5px;
+  border-radius: 8px; background: color-mix(in srgb, #b07a00 16%, transparent);
+  color: #b07a00; font-variant-numeric: tabular-nums;
+}
+.wb-lint-create {
+  flex: 0 0 auto; border: 1px solid var(--wb-border); background: var(--wb-bg);
+  color: var(--wb-text-2); border-radius: 3px; padding: 1px 6px;
+  font-size: 10.5px; cursor: pointer; white-space: nowrap;
+}
+.wb-lint-create:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+/* the open form takes its own full-width line inside the (wrapping) row, so
+   the message never gets crushed into a one-word column beside it */
+.wb-lint-missing { flex-wrap: wrap; }
+.wb-lint-createform {
+  display: flex; gap: 4px; align-items: center; flex: 1 0 100%;
+  justify-content: flex-end; margin-top: 3px;
+}
+.wb-lint-createform select {
+  font-size: 10.5px; padding: 1px 3px; max-width: 160px;
+  border: 1px solid var(--wb-border); border-radius: 3px;
+  background: var(--wb-bg); color: var(--wb-text);
+}
+.wb-lint-createok {
+  border: 1px solid var(--wb-accent); background: var(--wb-accent); color: #fff;
+  border-radius: 3px; padding: 1px 8px; font-size: 10.5px; cursor: pointer;
+}
+.wb-lint-createok:hover { filter: brightness(1.1); }
 .wb-lint-item {
   font-size: 11px; padding: 5px 8px; margin: 3px 0; border-radius: 3px;
   cursor: pointer; border-left: 3px solid transparent; background: var(--wb-bg);
