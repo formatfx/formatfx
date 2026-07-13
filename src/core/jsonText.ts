@@ -194,9 +194,9 @@ function parseArr(ctx: Ctx): ArrNode {
   const start = ctx.i;
   ctx.i++; // past [
   const items: PNode[] = [];
-  // Same progress sentinel as parseObj — parseValue always advances today, so
-  // this can't currently spin, but the guarantee keeps a future recovery path
-  // from reintroducing a hang.
+  // Same progress sentinel as parseObj — parseValue is expected to advance in
+  // normal cases, but the sentinel guarantees termination even if a future
+  // recovery path leaves ctx.i unchanged.
   let lastPos = -1;
   for (;;) {
     if (ctx.i === lastPos) {
