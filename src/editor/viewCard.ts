@@ -21,6 +21,12 @@ import { state, CARD_SEGMENT } from './state';
 import type { NodePath, SPElement } from '../core/types';
 import { componentById, openUsagePopout } from './componentLibrary';
 import { scanComponentUsages } from './componentUsage';
+import { isSectionCollapsed, setSectionCollapsed } from './paneSections';
+
+/** The Behaviors fold's persistence id — a nested foldable under the pane
+ *  sections' frozen store (paneSections.ts), same idiom as the Components
+ *  library's own groups. Never rename (would reset everyone's fold). */
+const BEHAVIORS_FOLD = 'viewcard-behaviors';
 
 /** One scanned behavior: where it lives + how the row reads. */
 interface BehaviorRow {
@@ -87,13 +93,40 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
     //  leftPane.ts owns the door, viewKebab.ts the panel)
     host.appendChild(head);
 
-    // ── scanned behaviors: actions + cards, with jump-to-element ────────────
+    // ── scanned behaviors: actions + cards, with jump-to-element — foldable
+    //    (issue #279), same caret/aria idiom as the pane sections. State reads
+    //    fresh each render (the card fully re-renders), so the fold survives.
     const behaviors = scanBehaviors(state.doc.root);
     if (behaviors.length) {
-      const bhead = document.createElement('div');
-      bhead.className = 'wb-viewcard-group';
-      bhead.textContent = 'Behaviors';
-      host.appendChild(bhead);
+      const collapsed = isSectionCollapsed(BEHAVIORS_FOLD);
+      const group = document.createElement('div');
+      group.className = 'wb-viewcard-fold';
+      group.classList.toggle('wb-collapsed', collapsed);
+      const bhead = document.createElement('button');
+      bhead.type = 'button';
+      bhead.className = 'wb-lp-sec-head wb-viewcard-group';
+      bhead.setAttribute('aria-expanded', String(!collapsed));
+      bhead.setAttribute('aria-controls', 'wb-viewcard-behaviors');
+      bhead.title = collapsed ? 'Show behaviors' : 'Hide behaviors';
+      const caret = document.createElement('span');
+      caret.className = 'wb-lp-sec-caret';
+      caret.setAttribute('aria-hidden', 'true');
+      const title = document.createElement('span');
+      title.className = 'wb-lp-sec-title';
+      // the count keeps the folded bar informative — you still see how many
+      // behaviors the view carries without opening it
+      title.textContent = `Behaviors (${behaviors.length})`;
+      bhead.append(caret, title);
+      const body = document.createElement('div');
+      body.id = 'wb-viewcard-behaviors';
+      body.className = 'wb-lp-sec-body wb-viewcard-behaviors';
+      bhead.addEventListener('click', () => {
+        const next = !group.classList.contains('wb-collapsed');
+        group.classList.toggle('wb-collapsed', next);
+        bhead.setAttribute('aria-expanded', String(!next));
+        bhead.title = next ? 'Show behaviors' : 'Hide behaviors';
+        setSectionCollapsed(BEHAVIORS_FOLD, next);
+      });
       for (const b of behaviors) {
         const row = document.createElement('button');
         row.type = 'button';
@@ -101,8 +134,10 @@ export function mountViewCard(host: HTMLElement, onToast: (m: string) => void): 
         row.textContent = b.label;
         row.title = b.title;
         row.addEventListener('click', () => state.select(b.path));
-        host.appendChild(row);
+        body.appendChild(row);
       }
+      group.append(bhead, body);
+      host.appendChild(group);
     }
   };
 
