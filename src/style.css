@@ -1734,6 +1734,29 @@ body.wb-dark {
 .wb-json-toolbar button#wb-json-apply.wb-json-apply-pending {
   border-color: var(--wb-accent); color: var(--wb-accent); font-weight: 600;
 }
+#wb-json-revert { color: var(--wb-text-2); }
+
+/* ── dirty-buffer safety: while the JSON pane holds unapplied hand-edits the
+   canvas sits behind a translucent veil + note — a VISIBILITY cue, never a
+   lock (both layers are pointer-events:none: clicking, selecting and
+   inspecting stay live; the buffer itself is protected by the panel's
+   no-clobber subscriber + the divergence confirm on Apply). ── */
+body.wb-json-editing #wb-canvas { position: relative; }
+body.wb-json-editing #wb-canvas::before {
+  content: ''; position: absolute; inset: 0; z-index: 7; pointer-events: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--wb-bg) 55%, transparent);
+}
+body.wb-json-editing #wb-canvas::after {
+  content: 'unapplied JSON edits — Apply or ↩ Discard in the JSON pane';
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 8; pointer-events: none; white-space: nowrap; max-width: 96%;
+  overflow: hidden; text-overflow: ellipsis;
+  padding: 3px 10px; border-radius: 10px; font-size: 11px;
+  background: var(--wb-surface); color: var(--wb-text-2);
+  border: 1px solid var(--wb-accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+}
 
 /* ── #218 split-view sync: flash the selected element's JSON lines ────── */
 /* the editor shell is the positioning context for the flash bar (#244) */

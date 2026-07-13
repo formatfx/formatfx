@@ -77,6 +77,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
     <div class="wb-json-toolbar">
       <div class="wb-json-actions">
         <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
+        <button id="wb-json-revert" hidden title="Throw away the hand-edits in this pane and re-sync it from the canvas — the canvas document is untouched">↩ Discard edits</button>
       </div>
     </div>
     <div id="wb-deploy-panel" class="wb-deploy" hidden>
@@ -136,7 +137,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const lintEl = host.querySelector('#wb-lint') as HTMLElement;
   const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
+  const revertBtn = host.querySelector('#wb-json-revert') as HTMLButtonElement;
   let dirty = false;
+  // The dirty-buffer safety trio (owner ask 2026-07-13): while the buffer is
+  // dirty the DOCUMENT keeps moving (canvas edits, undo, imports) but the
+  // buffer never gets clobbered — instead this flag remembers the fork, the
+  // canvas dims behind a body-level class (non-blocking: browsing/selecting
+  // stay free), and Apply confirms before overwriting the diverged canvas.
+  let divergedWhileDirty = false;
 
   const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
   const setDirty = () => {
@@ -152,13 +160,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     textEl.classList.add('wb-json-dirty');
     shellEl.classList.add('wb-json-dirty'); // the border lives on the shell now
     applyBtn.classList.add('wb-json-apply-pending');
+    revertBtn.hidden = false; // the way out that isn't Apply
+    document.body.classList.add('wb-json-editing'); // dims the canvas (CSS)
     ide.refreshScope(); // stale offsets: hidden until the live parse lands (#PR-D, a frame)
   };
   const clearDirty = () => {
     dirty = false;
+    divergedWhileDirty = false; // divergence only accumulates while dirty
     textEl.classList.remove('wb-json-dirty');
     shellEl.classList.remove('wb-json-dirty');
     applyBtn.classList.remove('wb-json-apply-pending');
+    revertBtn.hidden = true;
+    document.body.classList.remove('wb-json-editing');
   };
 
   // ── #218 split-view sync state ──
@@ -454,8 +467,28 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   };
 
   textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); scheduleLiveParse(); });
-  sanitizeEl.addEventListener('change', () => { clearDirty(); regenerate(); });
+  sanitizeEl.addEventListener('change', () => {
+    // regenerating re-renders the DOC — on a dirty buffer that discards the
+    // hand-edits, which this toggle used to do silently (a real footgun:
+    // owner report 2026-07-13). Confirm first; declining flips the box back.
+    if (dirty && !confirm('Re-rendering with the new whitespace setting discards your unapplied hand-edits in this pane. Continue?')) {
+      sanitizeEl.checked = !sanitizeEl.checked;
+      return;
+    }
+    clearDirty();
+    regenerate();
+  });
   namesEl.addEventListener('change', refreshSizeMeter); // names only change COPY output — and so the meter
+
+  // ↩ Discard edits — the dirty buffer's way out that isn't Apply: drop the
+  // hand-edits and re-sync from the canvas (the document is untouched).
+  revertBtn.addEventListener('click', () => {
+    if (!dirty) return;
+    clearDirty();
+    clearImportError();
+    regenerate();
+    onToast('Hand-edits discarded — the pane shows the canvas again.');
+  });
 
   // ── #244 the IDE dressing: highlight overlay, gutter, completions ──
   // Mounted AFTER the input listener above so on every keystroke the buffer
@@ -841,6 +874,13 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     try {
       // #PR-C: folds are a view — Apply always parses the FULL text
       const doc = importJson(foldView ? fullText : textEl.value);
+      // divergence guard: the canvas moved while this buffer was being
+      // hand-edited (the buffer forked from an OLDER document) — applying
+      // overwrites those canvas changes. Confirm at the exact moment of
+      // harm; a buffer that never diverged applies without ceremony.
+      if (divergedWhileDirty) {
+        if (!confirm('The canvas changed while you were editing this JSON — applying replaces the canvas version, overwriting those changes (one Ctrl+Z brings them back).\n\nApply anyway?')) return;
+      }
       // soft guard: name-less JSON replacing a named design silently drops
       // every _elmName — the Structure pane falls back to type/class hints
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
@@ -1242,11 +1282,23 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       if (!synPanel.hidden) rebuildSynPanel();
       return;
     }
+    // A dirty buffer is the maker's DRAFT — it must never be clobbered from
+    // underneath (this used to clearDirty-then-regenerate, silently eating
+    // unapplied hand-edits on any canvas change — owner report 2026-07-13).
+    // Document-moving emits mark the fork instead: Apply confirms before
+    // overwriting the moved canvas, ↩ Discard edits is the other way out.
+    if (dirty) {
+      if (reason === 'document' || reason === 'load' || reason === 'kind') divergedWhileDirty = true;
+      refreshSizeMeter(); // the meter reads the DOC (Copy output), not the buffer
+      refreshDeployPanel();
+      return;
+    }
     clearDirty(); regenerate(); refreshDeployPanel();
   });
   hostAny._unsub = () => {
     stateUnsub();
     ide.dispose(); // the shell's ResizeObserver must not outlive the mount
+    document.body.classList.remove('wb-json-editing'); // a dirty unmount must not leave the canvas dimmed
     document.removeEventListener('pointerdown', closeKebabOnOutside);
     document.removeEventListener('keydown', synPanelEsc, true);
     kebabBtn?.removeEventListener('click', toggleKebab);

@@ -222,6 +222,24 @@ Same-brief follow-ups (2026-07-13):
   AND the JSON pane) now toasts "Jumped to X — Y stays open in its tab":
   the swap is pure navigation, but silent it read as data loss.
 
+DIRTY-BUFFER SAFETY (2026-07-13, owner ask — "can I clobber my own shit if
+I edit the pane without applying?"): a dirty JSON buffer is the maker's
+DRAFT. The panel's subscriber used to `clearDirty()+regenerate()` on every
+non-selection emit — ANY canvas change silently ate unapplied hand-edits.
+Now, while dirty: document-moving emits ('document'/'load'/'kind') never
+touch the buffer — they set a `divergedWhileDirty` fork flag instead — and
+**Apply confirms only when the canvas actually moved underneath** (a
+never-diverged buffer applies without ceremony; the names-drop confirm
+still follows). The ways out: Apply, or the new **↩ Discard edits** button
+beside it (clearDirty+regenerate, doc untouched). The **sanitize
+whitespace** toggle — which regenerates — confirms on a dirty buffer
+before discarding (it used to discard silently) and flips itself back on
+decline. While dirty the canvas sits behind `body.wb-json-editing`
+(::before veil + "unapplied JSON edits" chip on `#wb-canvas`) — a
+VISIBILITY cue, never a lock: both layers are pointer-events:none, so
+browsing/selecting/inspecting stay live (deliberate owner-approved call
+over a full gray-out lock). Contracts: jsonDirtyGuard.dom.test.ts.
+
 View chrome kebab + left-pane polish (2026-07-09 owner brief; spec:
 docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md; the kebab
 RE-ANCHORED 2026-07-10 from the THIS VIEW card's heading onto the Structure
