@@ -90,6 +90,37 @@ describe('positioned errors + recovery', () => {
     expect(res.errors.length).toBeLessThanOrEqual(20);
   });
 
+  // Regression: a value (or a half-typed value-less member) followed by a
+  // FOREIGN closer ']' used to spin parseObj's for(;;) forever — ctx.i never
+  // advanced past the ']' (skipToBoundary returns on it, the recovery branch
+  // didn't consume it), pinning the tab at 100% CPU. Reported live: typing the
+  // ':' of a new style property in a nested view formatter froze the JSON pane
+  // (the live-map parser, PR #272). Every case below MUST terminate.
+  it('a value followed by a foreign "]" terminates (does not spin)', () => {
+    const res = parseJsonWithMap('{"a":1]');
+    expect(res.errors.some((e) => e.message.includes('unclosed'))).toBe(true);
+    expect(res.ranges.some((r) => r.path.length === 0)).toBe(true);
+  });
+
+  it('a half-typed value-less member in a nested view formatter terminates', () => {
+    // exactly the reported repro: "style":{"max-width":<caret>} with no value
+    const res = parseJsonWithMap(
+      '{"rowFormatter":{"children":[{"elmType":"div","style":{"max-width":}}]}}',
+    );
+    expect(res.errors.length).toBeGreaterThan(0);
+    expect(res.ranges.some((r) => r.path.length === 0)).toBe(true);
+  });
+
+  it('a value-less member before an array close terminates', () => {
+    const res = parseJsonWithMap('{"children":[{"style":{"color":"red","max-width":}}]}');
+    expect(res.errors.length).toBeGreaterThan(0);
+  });
+
+  it('an array item followed by a foreign "}" terminates', () => {
+    const res = parseJsonWithMap('[1}');
+    expect(res.errors.length).toBeGreaterThan(0);
+  });
+
   it('empty and garbage inputs return errors, not throws', () => {
     expect(parseJsonWithMap('').errors.length).toBeGreaterThan(0);
     expect(parseJsonWithMap('   ').errors.length).toBeGreaterThan(0);
