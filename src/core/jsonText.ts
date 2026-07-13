@@ -129,7 +129,22 @@ function parseObj(ctx: Ctx): ObjNode {
   const start = ctx.i;
   ctx.i++; // past {
   const members: ObjNode['members'] = [];
+  // Progress sentinel: every turn must advance ctx.i. A FOREIGN closer (']')
+  // or a stray char the member recovery below can't consume would otherwise
+  // re-loop on the same offset forever — skipToBoundary returns on ']' without
+  // moving, and the recovery branch never consumes it. A half-typed value-less
+  // member (typing the ':' of a new "style" property in a nested view
+  // formatter) reaches that state and pinned the tab at 100% CPU via the
+  // live-map parser (regression from PR #272). If a whole turn makes no
+  // progress the object is malformed/unclosed: stop here WITHOUT consuming the
+  // char — it belongs to an enclosing container, which will handle it.
+  let lastPos = -1;
   for (;;) {
+    if (ctx.i === lastPos) {
+      err(ctx, start, ctx.i, "unclosed '{' — expected '}'");
+      break;
+    }
+    lastPos = ctx.i;
     ws(ctx);
     if (ctx.i >= ctx.text.length) {
       err(ctx, start, ctx.text.length, "unclosed '{' at the end of the text");
@@ -179,7 +194,16 @@ function parseArr(ctx: Ctx): ArrNode {
   const start = ctx.i;
   ctx.i++; // past [
   const items: PNode[] = [];
+  // Same progress sentinel as parseObj — parseValue always advances today, so
+  // this can't currently spin, but the guarantee keeps a future recovery path
+  // from reintroducing a hang.
+  let lastPos = -1;
   for (;;) {
+    if (ctx.i === lastPos) {
+      err(ctx, start, ctx.i, "unclosed '[' — expected ']'");
+      break;
+    }
+    lastPos = ctx.i;
     ws(ctx);
     if (ctx.i >= ctx.text.length) {
       err(ctx, start, ctx.text.length, "unclosed '[' at the end of the text");
