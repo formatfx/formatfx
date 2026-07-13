@@ -170,4 +170,48 @@ describe('scanned behaviors (jump-to-element rows)', () => {
     expect(host.querySelector('.wb-viewcard-group')).toBeNull();
     expect(host.querySelector('.wb-viewcard-behavior')).toBeNull();
   });
+
+  describe('the group folds (issue #279)', () => {
+    beforeEach(() => localStorage.removeItem('wb-lp-sections.v1'));
+
+    it('the header is a fold button — expanded by default, counting its rows, aria-wired to the body', () => {
+      state.createView({ kind: 'row', root: behaviorDoc() });
+      const host = mount();
+      const head = host.querySelector<HTMLButtonElement>('.wb-viewcard-group')!;
+      expect(head.tagName).toBe('BUTTON');
+      expect(head.textContent).toContain('Behaviors (3)');
+      expect(head.getAttribute('aria-expanded')).toBe('true');
+      const body = host.querySelector(`#${head.getAttribute('aria-controls')}`)!;
+      expect(body.querySelectorAll('.wb-viewcard-behavior').length).toBe(3);
+      expect(head.closest('.wb-viewcard-fold')!.classList.contains('wb-collapsed')).toBe(false);
+    });
+
+    it('clicking the header folds (class + aria) without selecting or mutating', () => {
+      state.createView({ kind: 'row', root: behaviorDoc() });
+      const host = mount();
+      const undoDepth = (state as unknown as { undoStack: string[] }).undoStack.length;
+      const selBefore = state.selection;
+      const head = host.querySelector<HTMLButtonElement>('.wb-viewcard-group')!;
+      head.click();
+      expect(head.closest('.wb-viewcard-fold')!.classList.contains('wb-collapsed')).toBe(true);
+      expect(head.getAttribute('aria-expanded')).toBe('false');
+      expect(state.selection).toEqual(selBefore);
+      expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(undoDepth);
+      head.click();
+      expect(head.closest('.wb-viewcard-fold')!.classList.contains('wb-collapsed')).toBe(false);
+    });
+
+    it('the fold survives a full re-mount (persisted via paneSections, read each render)', () => {
+      state.createView({ kind: 'row', root: behaviorDoc() });
+      const host = mount();
+      host.querySelector<HTMLButtonElement>('.wb-viewcard-group')!.click(); // fold + persist
+      document.body.innerHTML = '';
+      const again = mount();
+      const head = again.querySelector<HTMLButtonElement>('.wb-viewcard-group')!;
+      expect(head.getAttribute('aria-expanded')).toBe('false');
+      expect(head.closest('.wb-viewcard-fold')!.classList.contains('wb-collapsed')).toBe(true);
+      // the rows are still IN the dom (CSS hides them) — folding loses nothing
+      expect(again.querySelectorAll('.wb-viewcard-behavior').length).toBe(3);
+    });
+  });
 });

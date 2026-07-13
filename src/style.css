@@ -47,6 +47,11 @@
   /* the tree region sits one subtle step lighter than the pane (a quiet
      elevation, not a new color) — owner request, 2026-07-03 */
   --wb-lp-tree-bg: color-mix(in srgb, #fff 55%, var(--wb-lp-bg));
+  /* section BODIES tint one whisper off the pane so bodies read apart from
+     their (pane-bg) headers — DARKER in light mode, so the tree (lighter than
+     the pane) always stays the lightest section: the structure, the backbone
+     (issue #280) */
+  --wb-lp-sec-bg: color-mix(in srgb, #000 3%, var(--wb-lp-bg));
   /* CTA + active draw-tool = the Microsoft-blue primary (flat, app-consistent). */
   --wb-cta: var(--wb-accent);
   --wb-cta-hover: #106ebe;
@@ -92,6 +97,9 @@ body.wb-dark {
   --wb-lp-seg-track: #322f2e;
   /* dark elevation = a whisper of white over the pane surface */
   --wb-lp-tree-bg: color-mix(in srgb, #fff 5%, var(--wb-lp-bg));
+  /* dark flips the section tint LIGHTER (issue #280) — and 3% stays under the
+     tree's 5%, so the tree keeps its "lightest section" rank in both themes */
+  --wb-lp-sec-bg: color-mix(in srgb, #fff 3%, var(--wb-lp-bg));
   --wb-cta-hover: #2b88d8;
 
   /* …and dark in dark mode (covers Firefox + native widgets) */
@@ -3340,10 +3348,18 @@ body.wb-json-editing #wb-canvas::after {
   background: var(--wb-lp-surface); color: var(--wb-lp-text);
 }
 .wb-viewcard-rowclass:focus { outline: none; border-color: var(--wb-accent); }
-.wb-viewcard-group {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
-  margin-top: 2px; color: var(--wb-lp-text-2);
+/* the Behaviors group is a FOLD (issue #279): the header wears the generic
+   .wb-lp-sec-head mechanics (caret twist, aria, .wb-collapsed body-hide) but
+   keeps its compact group-label look — the .wb-viewcard scope outranks the
+   later .wb-lp-sec-head block so the full section-bar chrome never lands. */
+.wb-viewcard-fold { display: flex; flex-direction: column; gap: 5px; }
+.wb-viewcard .wb-viewcard-group {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  margin-top: 2px; padding: 2px 4px; gap: 5px; border-radius: 4px;
+  color: var(--wb-lp-text-2); background: transparent;
 }
+.wb-viewcard .wb-viewcard-group:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
+.wb-viewcard-behaviors { display: flex; flex-direction: column; gap: 5px; }
 .wb-viewcard-behavior {
   display: flex; align-items: center; padding: 3px 7px; cursor: pointer; text-align: left;
   border: none; border-radius: 4px; background: transparent; color: var(--wb-lp-text);
@@ -3449,6 +3465,13 @@ body.wb-json-editing #wb-canvas::after {
 .wb-lp-shelves {
   flex: 1 1 0; min-height: 72px; overflow-y: auto;
   border-bottom: 1px solid var(--wb-lp-border);
+  /* the grouped trio (issue #280): the sections that ride the drag bar
+     together share a left rail — same width and color as the splitter bar
+     above them (7px, --wb-lp-border), so "these move as one" is visible. */
+  border-left: 7px solid var(--wb-lp-border);
+  /* …and the group's bodies tint off the pane; the sticky section headers
+     repaint themselves opaque --wb-lp-bg, so header/body read as two steps */
+  background: var(--wb-lp-sec-bg);
 }
 
 /* ── collapsible pane sections (issue #236): Columns · Components · the property
@@ -3652,6 +3675,9 @@ body.wb-json-editing #wb-canvas::after {
   /* heavier than the shelves' 1 — the properties editor is where the work
      happens (2026-07-09 owner brief); splitter2 makes the boundary draggable */
   flex: 1.4 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column;
+  /* the Properties section body wears the same off-pane tint as the shelves
+     (issue #280) — its sticky header stays opaque --wb-lp-bg above it */
+  background: var(--wb-lp-sec-bg);
 }
 /* the inspector's section takes the growing role in the props column; its body
    fills the section below the fold header */
