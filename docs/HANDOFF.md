@@ -178,11 +178,49 @@ column" opens a type picker preseeded with the guess; Add rides
 `state.addMockField` (the Data-tab recipe, shared now: sample values
 seeded, a pure floor grows its grid column as ONE undoable mutation). The
 head bar minimizes the list to a severity summary (session-only state) and
-hosts the "hide missing columns" filter for the paste-JSON-as-scratchpad
-workflow — it quiets rows AND squiggles, always says "N hidden" (never
-silent), and persists under `wb-lint-prefs.v1` (ADDITIVE key — the frozen
-originals stay frozen). The topbar badge keeps full-truth counts.
-Contracts: lintView.test.ts + lintPanel.dom.test.ts.
+hosts the missing-column filter for the paste-JSON-as-scratchpad workflow
+(label reads "ignore warnings about columns missing from Data" — owner
+call 2026-07-13: "hide … columns" sounded like list columns get hidden) —
+it quiets rows AND squiggles, always says "N ignored" (never silent), and
+persists under `wb-lint-prefs.v1` (ADDITIVE key — the frozen originals
+stay frozen; the stored property keeps its original `hideMissingColumns`
+name for compat). The topbar badge keeps full-truth counts. Contracts:
+lintView.test.ts + lintPanel.dom.test.ts.
+
+Same-brief follow-ups (2026-07-13):
+- **Wrapper sections FOLD**: `exportJsonWithMap` emits `sections` beside the
+  element ranges — every object/array under a viewExtras key (groupProps and
+  its headerFormatter/footerFormatter trees, commandBarProps/commands and
+  each command entry, top-level footerFormatter), keyed by '/'-joined
+  wrapper path. The panel folds them exactly like elements ('@'-prefixed
+  fold keys in the same foldedPaths set; chevrons labelled "section …";
+  Ctrl+Shift+[ in wrapper chrome folds the innermost section; Fold others
+  folds them all). Fixed alongside: candidates elided inside an ACTIVE fold
+  clamp onto the sentinel's opener line — foldableFoldedLines and
+  toggleAtFoldedLine now skip them in FULL-text coordinates, so interior
+  nodes can neither stack ghost chevrons nor swallow the visible chevron's
+  toggle (latent for elements since #PR-C, exposed by sections).
+- **columnFormatterReference awareness restored (IDE/linter side)**: the
+  model-B migration removed CFR from the EDITOR's document model, but pasted
+  JSON carrying it always round-tripped verbatim (cloneTree copies unknown
+  keys). `SPElement.columnFormatterReference?: string` types the passthrough;
+  the linter treats it as standing in for elmType (no more false
+  `elmType-required` ERRORS that also blocked the deploy gate), validates
+  the referenced column against the schema (`unknown-field` with structured
+  `field` — it joins the missing-column grouping and create flow), and
+  teaches the emulation gap with a per-element `cfr-not-emulated` info
+  (preview renders a placeholder; @currentField inside reads the REFERENCED
+  column — §3). jsonComplete offers the key + field-ref values, and the
+  view wrapper vocabulary gained groupProps/footerFormatter (carried
+  verbatim, canvas doesn't edit them).
+- **Search ranking + the "it replaced my canvas" scare (owner report)**: the
+  universal search overlay (searchUi.ts over pure search.ts) pins the
+  ACTIVE surface's document hits above other surfaces' (`SearchEntry.pin`
+  tiebreak after score, before alphabetics) — searching right after pasting
+  a view means THAT view, not the showcase floor's rule formulas. And any
+  hit that navigates across surfaces (openView/minimizeView swap the canvas
+  AND the JSON pane) now toasts "Jumped to X — Y stays open in its tab":
+  the swap is pure navigation, but silent it read as data loss.
 
 View chrome kebab + left-pane polish (2026-07-09 owner brief; spec:
 docs/superpowers/specs/2026-07-09-view-chrome-workshop-design.md; the kebab

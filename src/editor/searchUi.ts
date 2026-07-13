@@ -84,14 +84,35 @@ function flashGridColumn(colIndex: number): void {
   }, 60);
 }
 
+/** When a jump changed the active surface, the note saying where we landed
+ *  and that the previous surface is still there — a silent canvas+JSON swap
+ *  reads as "it replaced my work" even though it's pure navigation (owner
+ *  report). Null when the surface didn't change. Returned (not toasted) so
+ *  branches with their own message can compose ONE toast — every
+ *  cross-surface jump must carry it, whatever else the branch has to say. */
+function surfaceSwitchNote(fromViewId: string | null): string | null {
+  const nowId = state.activeViewId;
+  if (nowId === fromViewId) return null;
+  const name = (id: string | null): string => (id === null
+    ? 'the Grid'
+    : `“${state.views.find((v) => v.id === id)?.name ?? 'your view'}”`);
+  const back = fromViewId === null
+    ? 'the ▦ Grid tab is still there'
+    : `${name(fromViewId)} stays open in its tab`;
+  return `Jumped to ${name(nowId)} — ${back}.`;
+}
+
 /** The navigate verbs — everything here is selection/navigation, no mutation. */
 function navigate(action: SearchAction, toast: (m: string) => void): void {
+  const fromViewId = state.activeViewId;
   switch (action.type) {
     case 'node': {
       goToSurface(action.surface);
       state.select(action.path);
       if (action.prop) window.setTimeout(() => focusFxSlot(action.prop!), 80);
       flashPath(action.path);
+      const note = surfaceSwitchNote(fromViewId);
+      if (note) toast(note);
       return;
     }
     // a rule lives inside the column's look, so both hits land the same way:
@@ -101,12 +122,17 @@ function navigate(action: SearchAction, toast: (m: string) => void): void {
       const field = state.fields.find((f) => f.name === action.fieldName);
       if (!field) return;
       if (state.activeViewId !== null) state.minimizeView();
+      const note = surfaceSwitchNote(fromViewId);
       const col = gridColumnForField(field);
       if (col.path.length) {
         state.select(col.path);
         flashGridColumn(col.path[0]);
+        if (note) toast(note);
       } else {
-        toast(`${field.displayName ?? field.name} isn't placed on the grid — add it with “+ column”.`);
+        // the surface may STILL have swapped to the grid — one toast carries
+        // both facts, or the silent-swap scare survives exactly here
+        toast([`${field.displayName ?? field.name} isn't placed on the grid — add it with “+ column”.`, note]
+          .filter(Boolean).join(' '));
       }
       return;
     }
@@ -124,9 +150,15 @@ export function openSearch(onToast?: (m: string) => void): void {
 
   // Build the index fresh on every open — documents are small and this keeps
   // the results honest against the live workspace, no cache to go stale.
+  // The ACTIVE surface's hits pin above other surfaces' (search right after
+  // working in a view means THAT view, not the showcase floor content).
+  const pinFor = (surface: SearchSurface): number =>
+    ((surface.kind === 'view' ? surface.id : null) === state.activeViewId ? 0 : 1);
+  const pinned = (list: SearchEntry[], surface: SearchSurface): SearchEntry[] =>
+    list.map((e) => ({ ...e, pin: pinFor(surface) }));
   const entries: SearchEntry[] = [
-    ...indexElements(state.floorDoc.root, { kind: 'floor' }, 'Grid'),
-    ...state.views.flatMap((v) => indexElements(v.doc.root, { kind: 'view', id: v.id }, v.name)),
+    ...pinned(indexElements(state.floorDoc.root, { kind: 'floor' }, 'Grid'), { kind: 'floor' }),
+    ...state.views.flatMap((v) => pinned(indexElements(v.doc.root, { kind: 'view', id: v.id }, v.name), { kind: 'view', id: v.id })),
     // column looks aren't indexed as a document of their own: they render
     // EMBEDDED in the floor's cells, which the floor walk above already covers
     ...indexColumns(state.fields, state.columnLooks),

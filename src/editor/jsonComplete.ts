@@ -279,6 +279,7 @@ const ELEMENT_KEYS: KeyDef[] = [
   { key: 'customCardProps', shape: 'object', type: 'object', doc: 'A hover/click callout card with its own formatter inside' },
   { key: 'inlineEditField', shape: 'string', type: 'string', doc: 'Let the value be edited inline — "[$FieldName]"' },
   { key: 'defaultHoverField', shape: 'string', type: 'string', doc: 'Show the default hover card of this field — "[$Editor]"' },
+  { key: 'columnFormatterReference', shape: 'string', type: 'string', doc: 'Embed another column\'s live formatter by reference — "[$FieldName]". Stands in for elmType; the preview shows a placeholder (real SP resolves it)' },
   { key: 'debugMode', shape: 'boolean', type: 'boolean', doc: 'true = SP logs errors for this element to the console' },
   { key: '_elmName', shape: 'string', type: 'string', doc: 'Editor-only element name (the Structure pane label) — SharePoint ignores it' },
 ];
@@ -291,6 +292,8 @@ const ROW_WRAPPER_KEYS: KeyDef[] = [
   { key: 'hideColumnHeader', shape: 'boolean', type: 'boolean', doc: 'Hide the column header row (view wrapper)' },
   { key: 'hideListHeader', shape: 'boolean', type: 'boolean', doc: 'Hide the list header area (view wrapper)' },
   { key: 'commandBarProps', shape: 'object', type: 'object', doc: 'Customize the command bar — hide/rename/move buttons per key (view wrapper)' },
+  { key: 'groupProps', shape: 'object', type: 'object', doc: 'Group header/footer formatting (headerFormatter, footerFormatter, hideFooter) — carried verbatim; the canvas doesn\'t edit it (view wrapper)' },
+  { key: 'footerFormatter', shape: 'object', type: 'object', doc: 'The element tree painting the list footer — carried verbatim; the canvas doesn\'t edit it (view wrapper)' },
 ];
 
 const COMMAND_BAR_KEYS: KeyDef[] = [
@@ -429,7 +432,7 @@ function valueItemsFor(ctx: JsonCtx, key: string | null, fields: MockField[]): J
         doc: `Repeat per value of “${f.displayName ?? f.name}”`,
       }));
     }
-    if (key === 'inlineEditField' || key === 'defaultHoverField') {
+    if (key === 'inlineEditField' || key === 'defaultHoverField' || key === 'columnFormatterReference') {
       return fields.map((f) => ({ insert: `[$${f.name}]`, doc: f.displayName ?? f.name }));
     }
     if (key === '$schema') {

@@ -39,7 +39,7 @@
 
 import { state, samePath, CARD_SEGMENT } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
-import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange } from '../core/jsonMap';
+import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange, type JsonSection } from '../core/jsonMap';
 import { parseJsonWithMap, type TextParseError } from '../core/jsonText';
 import { preserveCaret, lineSpanOf, lineOfOffset, SyncEcho } from './codeSync';
 import { mountJsonIde } from './jsonIde';
@@ -163,6 +163,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   // ── #218 split-view sync state ──
   let mapRanges: JsonRange[] = []; // offset↔path map for the FULL (unfolded) text
+  let mapSections: JsonSection[] = []; // foldable wrapper sections (groupProps, commandBarProps …)
   const echo = new SyncEcho();
 
   // ── #PR-D the live working map + decorations. While dirty, the debounced
@@ -191,15 +192,30 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   const displayedToFull = (o: number): number => (foldView ? foldView.toFull(o) : o);
   const fullToDisplayed = (o: number): number => (foldView ? foldView.toFolded(o) : o);
+  /** Whether a FULL-text offset sits strictly inside one of the active cuts
+   *  (i.e. is elided into a sentinel right now). */
+  const hiddenInActiveFold = (fullOff: number): boolean =>
+    !!foldView && foldView.cuts.some((c) => fullOff > c.start && fullOff < c.end);
   const pathKey = (p: number[]): string => p.join('/');
+  // wrapper-SECTION fold keys ride the same foldedPaths set, namespaced with
+  // '@' so they can never read as a numeric element path ('@groupProps',
+  // '@commandBarProps/commands' …) — resolved against mapSections
+  const sectionKey = (s: JsonSection): string => `@${s.key}`;
+  const sectionForKey = (key: string): JsonSection | null =>
+    (key.startsWith('@') ? mapSections.find((s) => s.key === key.slice(1)) ?? null : null);
 
   /** Re-derive the fold view from foldedPaths against the current map.
    *  Pure state — callers own the textarea swap (they know their caret rules). */
   const rebuildFoldView = (): void => {
     const resolved: Array<{ key: string; cut: FoldCut }> = [];
     for (const key of [...foldedPaths]) {
-      const path = key === '' ? [] : key.split('/').map(Number);
-      const range = rangeForPath(mapRanges, path);
+      let range: { start: number; end: number } | null;
+      if (key.startsWith('@')) {
+        range = sectionForKey(key);
+      } else {
+        const path = key === '' ? [] : key.split('/').map(Number);
+        range = rangeForPath(mapRanges, path);
+      }
       const cut = range ? cutForRange(fullText, range) : null;
       if (cut) resolved.push({ key, cut });
       else foldedPaths.delete(key); // the node no longer exists / no longer folds
@@ -246,8 +262,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
-    const { text, ranges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    const { text, ranges, sections } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
     mapRanges = ranges;
+    mapSections = sections;
     liveRanges = null; // the serializer's map is the truth again
     liveErrors = [];
     liveLabels = {};
@@ -475,35 +492,47 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       foldableFoldedLines: () => {
         if (dirty) return [];
         const out: Array<{ line: number; folded: boolean; label: string }> = [];
+        const add = (range: { start: number; end: number }, key: string, label: string): void => {
+          const cut = cutForRange(fullText, range);
+          if (!cut) return;
+          const foldedHere = activeFoldKeys.includes(key);
+          // hidden inside an ANCESTOR's fold — clamped offsets land ON the
+          // sentinel's opener line, so test in FULL coordinates or interior
+          // nodes stack ghost chevrons there (and steal the toggle's click)
+          if (!foldedHere && hiddenInActiveFold(range.start)) return;
+          out.push({ line: lineOfOffset(textEl.value, fullToDisplayed(range.start)), folded: foldedHere, label });
+        };
         for (const r of mapRanges) {
           if (r.path.length === 0) continue; // the root never folds — it IS the document
-          const cut = cutForRange(fullText, r);
-          if (!cut) continue;
-          const key = pathKey(r.path);
-          const foldedHere = activeFoldKeys.includes(key);
-          const openerDisplayed = fullToDisplayed(r.start);
-          // hidden inside an ANCESTOR's fold: its opener sits in a sentinel
-          if (!foldedHere && foldView && foldView.cutIndexAtFolded(openerDisplayed) >= 0) continue;
-          out.push({
-            line: lineOfOffset(textEl.value, openerDisplayed),
-            folded: foldedHere,
-            label: `element ${key.replaceAll('/', '.')}`,
-          });
+          add(r, pathKey(r.path), `element ${pathKey(r.path).replaceAll('/', '.')}`);
+        }
+        // wrapper sections (groupProps + its header/footerFormatter trees,
+        // commandBarProps/commands, top-level footerFormatter …) fold too
+        for (const s of mapSections) {
+          add(s, sectionKey(s), `section ${s.key.replaceAll('/', '.')}`);
         }
         return out;
       },
       toggleAtFoldedLine: (line: number) => {
         if (dirty) return;
-        for (const r of mapRanges) {
-          if (r.path.length === 0) continue; // the root never folds
-          const cut = cutForRange(fullText, r);
-          if (!cut) continue;
-          if (lineOfOffset(textEl.value, fullToDisplayed(r.start)) !== line) continue;
-          const key = pathKey(r.path);
+        const toggle = (range: { start: number; end: number }, key: string): boolean => {
+          if (!cutForRange(fullText, range)) return false;
+          const foldedHere = activeFoldKeys.includes(key);
+          // same hidden-interior rule as the chevron list — a node elided
+          // into a sentinel must never swallow the visible chevron's click
+          if (!foldedHere && hiddenInActiveFold(range.start)) return false;
+          if (lineOfOffset(textEl.value, fullToDisplayed(range.start)) !== line) return false;
           if (foldedPaths.has(key)) foldedPaths.delete(key);
           else foldedPaths.add(key);
           applyFolds();
-          return;
+          return true;
+        };
+        for (const r of mapRanges) {
+          if (r.path.length === 0) continue; // the root never folds
+          if (toggle(r, pathKey(r.path))) return;
+        }
+        for (const s of mapSections) {
+          if (toggle(s, sectionKey(s))) return;
         }
       },
       fullLineNumber: (l: number) => (foldView ? fullLineOfFoldedLine(foldView, fullText, l) : l),
@@ -636,9 +665,22 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (e.ctrlKey && e.shiftKey && (e.key === '{' || e.key === '[')) {
       e.preventDefault();
       if (dirty) return;
-      const path = pathAtOffset(mapRanges, displayedToFull(textEl.selectionStart ?? 0));
+      const off = displayedToFull(textEl.selectionStart ?? 0);
+      const path = pathAtOffset(mapRanges, off);
       if (path && path.length > 0) { // the root never folds — it IS the document
         foldedPaths.add(pathKey(path));
+        applyFolds();
+        return;
+      }
+      // wrapper chrome (no element here): fold the INNERMOST section at the
+      // caret — groupProps/commandBarProps interiors fold like elements do
+      let sec: JsonSection | null = null;
+      for (const s of mapSections) {
+        if (off < s.start || off > s.end) continue;
+        if (!sec || s.start > sec.start) sec = s; // sections nest — innermost wins
+      }
+      if (sec) {
+        foldedPaths.add(sectionKey(sec));
         applyFolds();
       }
       return;
@@ -664,6 +706,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       if (r.path.length === 0) continue; // never fold the root — that's the whole doc
       if (sel && (isPrefix(r.path, sel) || isPrefix(sel, r.path))) continue; // keep the selection's chain open
       if (cutForRange(fullText, r)) foldedPaths.add(pathKey(r.path));
+    }
+    // wrapper sections are never in the selection's chain — fold them all
+    // (only outermost cuts survive buildFoldView, so nesting costs nothing)
+    for (const s of mapSections) {
+      if (cutForRange(fullText, s)) foldedPaths.add(sectionKey(s));
     }
     applyFolds();
   });
@@ -1135,25 +1182,25 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (view.hiddenMissing > 0) {
       const hid = document.createElement('span');
       hid.className = 'wb-lint-hiddennote';
-      hid.textContent = `${view.hiddenMissing} hidden`;
-      hid.title = `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} hidden by the filter`;
+      hid.textContent = `${view.hiddenMissing} ignored`;
+      hid.title = `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} ignored by the filter`;
       head.appendChild(hid);
     }
     const missingTotal = issues.filter((i) => i.rule === 'unknown-field' && i.field).length;
     if (missingTotal > 0) {
       const filterLbl = document.createElement('label');
       filterLbl.className = 'wb-check wb-lint-filter';
-      filterLbl.title = 'Working on pasted JSON without wiring up the Data tab? Hide the missing-column warnings (rows and underlines) — the count above stays honest.';
+      filterLbl.title = 'Working on pasted JSON without wiring up the Data tab? Ignore the warnings about columns it doesn\'t have (rows and underlines both) — nothing is hidden from your list, and the count above stays honest.';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.id = 'wb-lint-hide-missing';
+      cb.id = 'wb-lint-hide-missing'; // id is shipped DOM contract — label text changed only
       cb.checked = lintPrefs.hideMissingColumns;
       cb.addEventListener('change', () => {
         lintPrefs = { ...lintPrefs, hideMissingColumns: cb.checked };
         saveLintPrefs(lintPrefs);
         renderLint(lastRuntime);
       });
-      filterLbl.append(cb, document.createTextNode(' hide missing columns'));
+      filterLbl.append(cb, document.createTextNode(' ignore warnings about columns missing from Data'));
       head.appendChild(filterLbl);
     }
     lintEl.appendChild(head);
@@ -1168,7 +1215,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (view.rows.length === 0) {
       const quiet = document.createElement('div');
       quiet.className = 'wb-lint-ok';
-      quiet.textContent = '✓ Nothing to show — every issue is hidden by the filter.';
+      quiet.textContent = '✓ Nothing to show — every issue is ignored by the filter.';
       body.appendChild(quiet);
     }
     lintEl.appendChild(body);
