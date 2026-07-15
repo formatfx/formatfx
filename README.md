@@ -120,7 +120,7 @@ The friendly surface sits on a rigorously tested core:
   engine test files are the spec: semantics change in the test first, then
   the code.
 - **Vanilla TypeScript + Vite, zero runtime dependencies** — no framework,
-  no supply chain, hostable anywhere, and `npm run build:single` emits the
+  nothing third-party shipped to your users, hostable anywhere, and `npm run build:single` emits the
   whole app as one self-contained HTML file you can email or drop in a
   document library.
 - **Nothing leaves your browser.** No telemetry, no backend. Your workspace
