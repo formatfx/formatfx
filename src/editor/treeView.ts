@@ -2,8 +2,11 @@
 // Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
 
 /**
- * editor/treeView.ts — Structure tree: selection, drag-reorder/reparent,
- * duplicate/delete/move, and a card-formatter affordance for customCardProps.
+ * editor/treeView.ts — Structure tree: selection, fold/collapse (synced with
+ * the JSON pane through the shared foldState set — a tree chevron folds the
+ * element's children:[ in the JSON, a JSON fold collapses the row here),
+ * drag-reorder/reparent, duplicate/delete/move, and a card-formatter
+ * affordance for customCardProps.
  *
  * Renders the ACTIVE document (state.doc) — which document that is is chosen
  * by the Left Edit Pane's navigation, not by headers in this tree — OR, while
@@ -19,6 +22,7 @@
 
 import type { SPElement, NodePath } from '../core/types';
 import { state, samePath, CARD_SEGMENT, type WorkshopContext } from './state';
+import { foldState, elmFoldKey, childrenFoldKey } from './foldState';
 import { paletteItemById } from './palette';
 import { instantiate } from './presets';
 import { openElementMenu } from './contextMenu';
@@ -76,6 +80,12 @@ export function mountTree(
   let renameRoot: SPElement | null = null;
   let currentRoot: SPElement | null = null;
 
+  // Workshop-only fold memory: staged paths mean nothing to the JSON pane's
+  // offset map, so workshop collapses stay LOCAL (session-only, dropped on
+  // retarget) instead of riding the shared foldState.
+  const workshopFolds = new Set<string>();
+  let foldRoot: SPElement | null = null;
+
   /** The tree's editing seams, resolved per render: the app document, or the
    *  workshop's staged tree while its tab covers the canvas. */
   interface TreeOps {
@@ -88,6 +98,17 @@ export function mountTree(
     structural: boolean;
     /** Workshop only: an embed placeholder's component name (read-only row). */
     embedNameOf?(el: SPElement): string | null;
+    /** Fold seam (2026-07-16, synced with the JSON pane): how much of this
+     *  node's subtree is hidden. 'children' = the children:[ fold (child rows
+     *  hidden, a card subtree stays); 'elm' = the whole-element fold from the
+     *  JSON side (card hidden too — the JSON elides it as well). */
+    foldStateOf(p: NodePath): 'open' | 'children' | 'elm';
+    /** Chevron toggle. Collapse folds the children:[ level (the element's own
+     *  properties stay visible in the JSON); expand clears BOTH fold kinds so
+     *  it always works, whichever surface folded the node. */
+    toggleCollapsed(p: NodePath, hasChildren: boolean): void;
+    /** Every live selection path — for marking collapsed rows that hide one. */
+    heldSelections(): NodePath[];
   }
   const surfaceOps: TreeOps = {
     isSelected: (p) => state.isSelected(p),
@@ -98,6 +119,24 @@ export function mountTree(
       if (n) fn(n);
     }),
     structural: true,
+    foldStateOf: (p) => (foldState.has(elmFoldKey(p)) ? 'elm'
+      : foldState.has(childrenFoldKey(p)) ? 'children' : 'open'),
+    toggleCollapsed: (p, hasChildren) => {
+      const cKey = childrenFoldKey(p);
+      const eKey = elmFoldKey(p);
+      foldState.update('tree', (set) => {
+        if (set.has(cKey) || set.has(eKey)) {
+          set.delete(cKey);
+          set.delete(eKey);
+        } else {
+          // card-only nodes have no children:[ to fold — fold the element
+          // object instead (never the root: that would elide the whole doc)
+          set.add(hasChildren || p.length === 0 ? cKey : eKey);
+        }
+      });
+      // no render() here — the foldState subscription below re-renders once
+    },
+    heldSelections: () => state.selections,
   };
   const workshopOps = (ctx: WorkshopContext): TreeOps => ({
     isSelected: (p) => samePath(ctx.selection(), p),
@@ -109,6 +148,16 @@ export function mountTree(
     }),
     structural: false,
     embedNameOf: (el) => ctx.embedNameOf(el),
+    // purely local: nothing to mirror in the JSON pane, so a collapse hides
+    // the whole subtree (children AND card rows)
+    foldStateOf: (p) => (workshopFolds.has(childrenFoldKey(p)) ? 'elm' : 'open'),
+    toggleCollapsed: (p) => {
+      const k = childrenFoldKey(p);
+      if (workshopFolds.has(k)) workshopFolds.delete(k);
+      else workshopFolds.add(k);
+      render();
+    },
+    heldSelections: () => [ctx.selection()],
   });
   let ops: TreeOps = surfaceOps;
 
@@ -120,6 +169,12 @@ export function mountTree(
     if (renamePath && renameRoot !== currentRoot) {
       renamePath = null;
       renameRoot = null;
+    }
+    if (foldRoot !== currentRoot) {
+      // a retarget (surface⇄workshop, doc swap) makes the LOCAL fold paths
+      // meaningless — drop them (the shared foldState prunes itself instead)
+      workshopFolds.clear();
+      foldRoot = currentRoot;
     }
     if (ctx) {
       host.appendChild(renderNode(ctx.root(), []));
@@ -179,7 +234,11 @@ export function mountTree(
       const nm0 = document.createElement('span');
       nm0.className = 'wb-tree-name';
       nm0.textContent = embedName;
-      label0.append(mark0, nm0);
+      // chevron-slot spacer so embed rows line up with foldable siblings
+      const pad0 = document.createElement('span');
+      pad0.className = 'wb-tree-fold wb-tree-fold-none';
+      pad0.setAttribute('aria-hidden', 'true');
+      label0.append(pad0, mark0, nm0);
       row.appendChild(label0);
       row.title = `The embedded “${embedName}” component — restyle it in its OWN workshop`;
       row.addEventListener('click', () => ops.select(path));
@@ -207,6 +266,40 @@ export function mountTree(
     const label = document.createElement('span');
     label.className = 'wb-tree-label';
     label.style.paddingLeft = `${depthOf(path) * 12}px`;
+
+    // ── fold chevron (2026-07-16, synced with the JSON pane) ──
+    // Foldable = has child rows to hide (children, or a card-formatter
+    // subtree). Collapse folds the children:[ level in the JSON (card-only
+    // nodes fold their element object — the only JSON fold that hides a
+    // card); expand clears both fold kinds. Leaf rows get a same-width
+    // spacer so icons stay aligned.
+    const kids = el.children?.length ?? 0;
+    const hasCardRows = !!el.customCardProps?.formatter;
+    const foldSt = ops.foldStateOf(path);
+    const collapsed = foldSt !== 'open';
+    if (collapsed) row.dataset.folded = '1';
+    const foldable = kids > 0 || (hasCardRows && path.length > 0);
+    const fold = document.createElement(foldable ? 'button' : 'span') as HTMLElement;
+    fold.className = 'wb-tree-fold' + (foldable ? '' : ' wb-tree-fold-none');
+    if (foldable) {
+      const btn = fold as HTMLButtonElement;
+      btn.type = 'button';
+      btn.textContent = collapsed ? '▸' : '▾';
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      const what = kids > 0
+        ? `${kids} child element${kids === 1 ? '' : 's'}`
+        : 'the card-formatter subtree';
+      btn.title = collapsed
+        ? `Expand — show ${what} (unfolds in the JSON pane too)`
+        : `Collapse — hide ${what} here and fold it in the JSON pane`;
+      btn.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${what}`);
+      btn.addEventListener('click', (e) => { e.stopPropagation(); ops.toggleCollapsed(path, kids > 0); });
+      btn.addEventListener('dblclick', (e) => e.stopPropagation()); // never a rename
+    } else {
+      fold.setAttribute('aria-hidden', 'true');
+    }
+    label.appendChild(fold);
+
     const typeIcon = document.createElement('i');
     typeIcon.className = `ms-Icon ms-Icon--${elmIconName(el.elmType)} wb-tree-elmicon`;
     label.appendChild(typeIcon);
@@ -251,7 +344,7 @@ export function mountTree(
       inp.className = 'wb-tree-rename';
       inp.value = el._elmName ?? '';
       inp.placeholder = 'name this element…';
-      label.replaceChildren(typeIcon, inp);
+      label.replaceChildren(fold, typeIcon, inp);
       row.draggable = false;
       let cancelled = false;
       inp.addEventListener('click', (e) => e.stopPropagation());
@@ -333,6 +426,15 @@ export function mountTree(
         if (e.ctrlKey || e.metaKey || e.shiftKey) ops.toggleSelect(path);
         else ops.select(path);
       }
+      // tree-conventional fold keys: ← collapses, → expands (foldable rows)
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && e.target === row && foldable) {
+        const wantCollapse = e.key === 'ArrowLeft';
+        if (wantCollapse !== collapsed) {
+          e.preventDefault();
+          e.stopPropagation();
+          ops.toggleCollapsed(path, kids > 0);
+        }
+      }
     });
 
     // right-click: the node action menu (Copy/Paste/Group/Ungroup/Duplicate/…),
@@ -393,9 +495,16 @@ export function mountTree(
       }
     });
 
+    // a collapsed row that HIDES the selection says so (accent inset) — the
+    // fold is never auto-expanded for it, mirroring the JSON pane's clamp-to-
+    // sentinel behavior. Recomputed by updateSelectionOnly on selection emits.
+    if (collapsed && holdsSelection(path)) row.classList.add('wb-tree-holdsel');
+
     wrap.appendChild(row);
 
-    if (el.customCardProps?.formatter) {
+    // fold gating mirrors the JSON pane exactly: an 'elm' fold (whole object)
+    // elides the card subtree too; a 'children' fold hides just the child rows
+    if (el.customCardProps?.formatter && foldSt !== 'elm') {
       const cardNote = document.createElement('div');
       cardNote.className = 'wb-tree-cardnote';
       cardNote.style.paddingLeft = `${(depthOf(path) + 1) * 12}px`;
@@ -405,9 +514,16 @@ export function mountTree(
       wrap.appendChild(renderNode(el.customCardProps.formatter, [...path, CARD_SEGMENT]));
     }
 
-    el.children?.forEach((child, i) => wrap.appendChild(renderNode(child, [...path, i])));
+    if (foldSt === 'open') {
+      el.children?.forEach((child, i) => wrap.appendChild(renderNode(child, [...path, i])));
+    }
     return wrap;
   };
+
+  /** Does any live selection sit STRICTLY inside this node's subtree? */
+  const holdsSelection = (path: NodePath): boolean =>
+    ops.heldSelections().some((sel) =>
+      sel.length > path.length && path.every((v, i) => sel[i] === v));
 
   const updateSelectionOnly = () => {
     host.querySelectorAll<HTMLElement>('.wb-tree-row').forEach((row) => {
@@ -415,6 +531,8 @@ export function mountTree(
       if (pathStr === undefined) return;
       const path = pathStr === '' ? [] : pathStr.split('.').map(Number);
       row.classList.toggle('selected', ops.isSelected(path));
+      // collapsed rows keep saying whether they hide the selection
+      row.classList.toggle('wb-tree-holdsel', row.dataset.folded === '1' && holdsSelection(path));
     });
   };
 
@@ -431,6 +549,13 @@ export function mountTree(
       render();
     }
   });
-  (host as any)._unsub = unsub;
+  // fold changes re-render wholesale, whoever made them — this tree's own
+  // chevrons (their toggle doesn't render directly), the JSON pane's chevrons
+  // and fold commands, or a prune after a node vanished
+  const unsubFolds = foldState.subscribe(() => render());
+  (host as any)._unsub = () => {
+    unsub();
+    unsubFolds();
+  };
   render();
 }

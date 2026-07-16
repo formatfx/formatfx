@@ -56,12 +56,25 @@ export interface JsonSection {
   end: number;
 }
 
+/** The text range of an element's `children` ARRAY (`[` through past `]`),
+ *  keyed by the PARENT element's path — so the fold layer can collapse a
+ *  whole children list without hiding the parent's own properties (owner
+ *  ask 2026-07-16: "fold at the children:[ level"). Only non-empty arrays
+ *  are recorded (an empty `[]` renders on one line and can never fold). */
+export interface JsonChildrenRange {
+  path: NodePath;
+  start: number;
+  end: number;
+}
+
 export interface MappedJson {
   text: string;
   ranges: JsonRange[];
   /** Foldable wrapper sections (viewExtras subtrees) — empty for column/tile
    *  payloads, which carry no unmodeled wrapper keys. */
   sections: JsonSection[];
+  /** Foldable `children` arrays, keyed by their parent element's path. */
+  childrenRanges: JsonChildrenRange[];
 }
 
 /** The options the map supports — the JSON pane's exact export shape. */
@@ -77,6 +90,18 @@ function registerPaths(el: SPElement, path: NodePath, map: Map<object, NodePath>
   (el.children ?? []).forEach((c, i) => registerPaths(c, [...path, i], map));
   if (el.customCardProps?.formatter) {
     registerPaths(el.customCardProps.formatter, [...path, CARD_SEGMENT], map);
+  }
+}
+
+/** Register every element's non-empty `children` ARRAY (by identity) with the
+ *  parent element's path. Same identity trick as registerPaths: exportPayload
+ *  embeds the cloned root by reference, so the arrays it carries are the very
+ *  objects the stringifier walks. */
+function registerChildrenArrays(el: SPElement, path: NodePath, map: Map<object, NodePath>): void {
+  if (el.children?.length) map.set(el.children as unknown as object, path);
+  (el.children ?? []).forEach((c, i) => registerChildrenArrays(c, [...path, i], map));
+  if (el.customCardProps?.formatter) {
+    registerChildrenArrays(el.customCardProps.formatter, [...path, CARD_SEGMENT], map);
   }
 }
 
@@ -101,6 +126,8 @@ interface WriteCtx {
   paths: Map<object, NodePath>;
   sections: JsonSection[];
   sectionKeys: Map<object, string>;
+  childrenRanges: JsonChildrenRange[];
+  childrenPaths: Map<object, NodePath>;
 }
 
 function push(ctx: WriteCtx, s: string): void {
@@ -136,6 +163,8 @@ function writeValue(ctx: WriteCtx, value: unknown, depth: number): void {
     push(ctx, `${close}]`);
     const sk = ctx.sectionKeys.get(value);
     if (sk) ctx.sections.push({ key: sk, start, end: ctx.len });
+    const cp = ctx.childrenPaths.get(value);
+    if (cp) ctx.childrenRanges.push({ path: cp, start, end: ctx.len });
     return;
   }
   const path = ctx.paths.get(value);
@@ -179,9 +208,17 @@ export function exportJsonWithMap(doc: FormatterDocument, opts: MapExportOptions
   if (doc.kind === 'row' || doc.kind === 'grid') {
     for (const [k, v] of Object.entries(doc.viewExtras ?? {})) registerSections(v, k, sectionKeys);
   }
-  const ctx: WriteCtx = { chunks: [], len: 0, ranges: [], paths, sections: [], sectionKeys };
+  // `children` arrays fold independently of their parent element (the array
+  // object rides into the payload by reference — the column-kind spread copies
+  // the PROPERTY, which still points at the same array)
+  const childrenPaths = new Map<object, NodePath>();
+  registerChildrenArrays(root, [], childrenPaths);
+  const ctx: WriteCtx = {
+    chunks: [], len: 0, ranges: [], paths, sections: [], sectionKeys,
+    childrenRanges: [], childrenPaths,
+  };
   writeValue(ctx, payload, 0);
-  return { text: ctx.chunks.join(''), ranges: ctx.ranges, sections: ctx.sections };
+  return { text: ctx.chunks.join(''), ranges: ctx.ranges, sections: ctx.sections, childrenRanges: ctx.childrenRanges };
 }
 
 /** The INNERMOST element whose text range contains `offset` (end-inclusive,
@@ -200,5 +237,11 @@ export function pathAtOffset(ranges: JsonRange[], offset: number): NodePath | nu
 /** The text range of the element at `path`, or null if it isn't in the map
  *  (stale path, or a selection cleared to nothing). */
 export function rangeForPath(ranges: JsonRange[], path: NodePath): JsonRange | null {
+  return ranges.find((r) => samePath(r.path, path)) ?? null;
+}
+
+/** The `children` array range of the element at `path`, or null (no children,
+ *  or the path is stale). */
+export function childrenRangeForPath(ranges: JsonChildrenRange[], path: NodePath): JsonChildrenRange | null {
   return ranges.find((r) => samePath(r.path, path)) ?? null;
 }

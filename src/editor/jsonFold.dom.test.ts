@@ -7,7 +7,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
+import { mountTree } from './treeView';
 import { state } from './state';
+import { foldState, childrenFoldKey } from './foldState';
 import { exportJson, importJson } from '../core/serializer';
 import { exportJsonWithMap } from '../core/jsonMap';
 import { cutForRange, FOLD_SENTINEL } from './jsonFold';
@@ -236,5 +238,90 @@ describe('wrapper-section folding (groupProps / commandBarProps / footerFormatte
     expect(textEl.value).toContain('"groupProps"');       // openers stay visible
     expect(textEl.value).toContain('[$Title]');           // the selection chain stays open
     void host;
+  });
+});
+
+describe('children:[ folding (owner ask 2026-07-16)', () => {
+  it('a children array gets its own labelled chevron; folding elides the list but keeps the parent\'s properties', () => {
+    const { host, textEl } = mountPanel();
+    const chev = [...host.querySelectorAll<HTMLButtonElement>('.wb-json-foldcol .wb-json-chev')]
+      .find((b) => (b.getAttribute('aria-label') ?? '') === 'Fold children of the root');
+    expect(chev).toBeDefined();
+    chev!.click();
+    expect(textEl.value).toContain(`"children": [${FOLD_SENTINEL}]`); // the list collapsed in place
+    expect(textEl.value).toContain('"elmType"'); // the parent's own properties stay visible
+    // Apply still reads the FULL text — nothing hidden is lost
+    const before = exportJson(state.doc, { sanitizeWhitespace: true, keepMeta: true });
+    (host.querySelector('#wb-json-apply') as HTMLButtonElement).click();
+    expect((host.querySelector('#wb-json-import-error') as HTMLElement).hidden).toBe(true);
+    expect(exportJson(state.doc, { sanitizeWhitespace: true, keepMeta: true })).toBe(before);
+  });
+
+  it('unfolding via the chevron restores the list', () => {
+    const { host, textEl } = mountPanel();
+    [...host.querySelectorAll<HTMLButtonElement>('.wb-json-foldcol .wb-json-chev')]
+      .find((b) => b.getAttribute('aria-label') === 'Fold children of the root')!.click();
+    const folded = [...host.querySelectorAll<HTMLButtonElement>('.wb-json-foldcol .wb-json-chev')]
+      .find((b) => b.getAttribute('aria-label') === 'Unfold children of the root');
+    expect(folded).toBeDefined();
+    folded!.click();
+    expect(textEl.value).not.toContain('⋯');
+  });
+});
+
+describe('fold sync with the Structure tree (shared foldState)', () => {
+  /** Panel + tree over the SAME row doc (set directly, the treeView.test
+   *  idiom — loadDocument would route a row formatter onto the grid floor). */
+  function mountPanelAndTree(root?: import('../core/types').SPElement) {
+    state.doc = {
+      kind: 'row',
+      root: root ?? { elmType: 'div', children: [{ elmType: 'span', txtContent: '[$Title]' }] },
+    };
+    const { host, textEl } = mountPanel();
+    const treeHost = document.createElement('div');
+    document.body.appendChild(treeHost);
+    mountTree(treeHost);
+    return { host, textEl, treeHost };
+  }
+
+  it('a tree chevron click folds the children:[ level in the JSON pane, and the JSON chevron expands the tree back', () => {
+    const { host, textEl, treeHost } = mountPanelAndTree();
+    expect(treeHost.querySelector('.wb-tree-row[data-path="0"]')).not.toBeNull();
+
+    // tree → JSON: collapse the root row
+    treeHost.querySelector<HTMLButtonElement>('.wb-tree-row[data-path=""] button.wb-tree-fold')!.click();
+    expect(textEl.value).toContain(`"children": [${FOLD_SENTINEL}]`);
+    expect(treeHost.querySelector('.wb-tree-row[data-path="0"]')).toBeNull();
+
+    // JSON → tree: unfold from the pane's chevron column
+    const chev = [...host.querySelectorAll<HTMLButtonElement>('.wb-json-foldcol .wb-json-chev')]
+      .find((b) => b.getAttribute('aria-label') === 'Unfold children of the root');
+    expect(chev).toBeDefined();
+    chev!.click();
+    expect(textEl.value).not.toContain('⋯');
+    expect(treeHost.querySelector('.wb-tree-row[data-path="0"]')).not.toBeNull();
+  });
+
+  it('"Expand all" in the JSON pane un-collapses the tree too', () => {
+    const { host, textEl, treeHost } = mountPanelAndTree();
+    treeHost.querySelector<HTMLButtonElement>('.wb-tree-row[data-path=""] button.wb-tree-fold')!.click();
+    expect(treeHost.querySelector('.wb-tree-row[data-path="0"]')).toBeNull();
+    (host.querySelector('#wb-json-expand-all') as HTMLButtonElement).click();
+    expect(textEl.value).not.toContain('⋯');
+    expect(treeHost.querySelector('.wb-tree-row[data-path="0"]')).not.toBeNull();
+  });
+
+  it('deleting a tree-folded node prunes its key from the shared set (the tree un-collapses with it)', () => {
+    mountPanelAndTree({
+      elmType: 'div',
+      children: [
+        { elmType: 'div', children: [{ elmType: 'span', txtContent: 'a' }] },
+        { elmType: 'span', txtContent: 'b' },
+      ],
+    });
+    foldState.update('tree', (set) => set.add(childrenFoldKey([0])));
+    expect(foldState.has(childrenFoldKey([0]))).toBe(true);
+    state.removeNode([0]); // the folded container goes away
+    expect(foldState.has(childrenFoldKey([0]))).toBe(false); // pruned on regenerate
   });
 });

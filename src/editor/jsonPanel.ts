@@ -39,9 +39,13 @@
 
 import { state, samePath, CARD_SEGMENT } from './state';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
-import { exportJsonWithMap, pathAtOffset, rangeForPath, type JsonRange, type JsonSection } from '../core/jsonMap';
+import {
+  exportJsonWithMap, pathAtOffset, rangeForPath, childrenRangeForPath,
+  type JsonRange, type JsonSection, type JsonChildrenRange,
+} from '../core/jsonMap';
 import { parseJsonWithMap, type TextParseError } from '../core/jsonText';
-import { preserveCaret, lineSpanOf, lineOfOffset, SyncEcho } from './codeSync';
+import { preserveCaret, lineSpanOf, lineOfOffset, selectionEcho } from './codeSync';
+import { foldState, childrenFoldKey, childrenPathOfKey } from './foldState';
 import { mountJsonIde } from './jsonIde';
 import { decorationsFrom, type Decoration } from './jsonDecorations';
 import { hoverAt as hoverInfoAt } from './jsonHover';
@@ -177,7 +181,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // ── #218 split-view sync state ──
   let mapRanges: JsonRange[] = []; // offset↔path map for the FULL (unfolded) text
   let mapSections: JsonSection[] = []; // foldable wrapper sections (groupProps, commandBarProps …)
-  const echo = new SyncEcho();
+  let mapChildren: JsonChildrenRange[] = []; // foldable `children` arrays, by parent path
+  // the SHARED echo (codeSync.ts): the canvas consults it too, to skip its
+  // synced selection pulse for caret-originated selections
+  const echo = selectionEcho;
 
   // ── #PR-D the live working map + decorations. While dirty, the debounced
   // parse below refreshes these so VIEW affordances (scope bar, breadcrumb,
@@ -197,9 +204,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // `fullText` is authoritative; the textarea shows foldView.text when folds
   // are active. Every offset consumer translates through these two maps.
   // Edits never coexist with folds (the beforeinput guard below expands
-  // first), so folds never meet the undo stack. ──
+  // first), so folds never meet the undo stack.
+  // WHICH nodes are folded lives in the SHARED foldState set (2026-07-16) —
+  // the Structure tree reads and writes the same keys, so folding syncs
+  // between the two surfaces. This panel stays the owner of the VIEW (cuts,
+  // sentinel text, caret math) and of pruning keys that stop resolving. ──
   let fullText = '';
-  const foldedPaths = new Set<string>();   // path keys ('0/2') the user folded
   let foldView: FoldView | null = null;
   let activeFoldKeys: string[] = [];       // aligned with foldView.cuts
 
@@ -217,13 +227,19 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sectionForKey = (key: string): JsonSection | null =>
     (key.startsWith('@') ? mapSections.find((s) => s.key === key.slice(1)) ?? null : null);
 
-  /** Re-derive the fold view from foldedPaths against the current map.
-   *  Pure state — callers own the textarea swap (they know their caret rules). */
+  /** Re-derive the fold view from the shared foldState against the current
+   *  map. Pure state — callers own the textarea swap (they know their caret
+   *  rules). Keys that stop resolving (node deleted, no longer multi-line)
+   *  are pruned from the shared set, so the tree un-collapses with them. */
   const rebuildFoldView = (): void => {
     const resolved: Array<{ key: string; cut: FoldCut }> = [];
-    for (const key of [...foldedPaths]) {
+    const stale: string[] = [];
+    for (const key of foldState.keys()) {
       let range: { start: number; end: number } | null;
-      if (key.startsWith('@')) {
+      const childrenOf = childrenPathOfKey(key);
+      if (childrenOf) {
+        range = childrenRangeForPath(mapChildren, childrenOf);
+      } else if (key.startsWith('@')) {
         range = sectionForKey(key);
       } else {
         const path = key === '' ? [] : key.split('/').map(Number);
@@ -231,8 +247,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       }
       const cut = range ? cutForRange(fullText, range) : null;
       if (cut) resolved.push({ key, cut });
-      else foldedPaths.delete(key); // the node no longer exists / no longer folds
+      else stale.push(key); // the node no longer exists / no longer folds
     }
+    if (stale.length) foldState.update('json', (set) => stale.forEach((k) => set.delete(k)));
     const outer = outermost(resolved.map((r) => r.cut));
     activeFoldKeys = outer.map(
       (c) => resolved.find((r) => r.cut.start === c.start && r.cut.end === c.end)!.key,
@@ -245,7 +262,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const syncFoldDisplay = (fullSelStart: number, fullSelEnd: number): void => {
     const next = foldView ? foldView.text : fullText;
     const { scrollTop, scrollLeft } = textEl;
-    if (next !== textEl.value) textEl.value = next;
+    if (next !== textEl.value) {
+      textEl.value = next;
+      clearFlash(); // displayed lines moved — the bar's geometry is a lie now
+    }
     textEl.setSelectionRange(fullToDisplayed(fullSelStart), fullToDisplayed(fullSelEnd));
     textEl.scrollTop = scrollTop;
     textEl.scrollLeft = scrollLeft;
@@ -275,9 +295,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     // the editor view keeps _elmName so "Apply to canvas" never loses names
-    const { text, ranges, sections } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
+    const { text, ranges, sections, childrenRanges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
     mapRanges = ranges;
     mapSections = sections;
+    mapChildren = childrenRanges;
     liveRanges = null; // the serializer's map is the truth again
     liveErrors = [];
     liveLabels = {};
@@ -322,7 +343,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const idx = foldView.cutIndexAtFolded(textEl.selectionStart ?? 0);
       if (idx >= 0) {
         const caretFull = foldView.cuts[idx].start;
-        foldedPaths.delete(activeFoldKeys[idx]);
+        foldState.update('json', (set) => set.delete(activeFoldKeys[idx]));
         rebuildFoldView();
         syncFoldDisplay(caretFull, caretFull);
         return;
@@ -395,12 +416,40 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // ── #218 canvas → code: scroll to + flash the selected element's lines ──
   let flashBar: HTMLDivElement | null = null;
   let flashTimer = 0;
+  let flashTop = 0;    // the bar's CONTENT-space top (scroll-independent) …
+  let flashHeight = 0; // … and height — set when the bar is created
   const clearFlash = (): void => {
     window.clearTimeout(flashTimer);
     flashBar?.remove();
     flashBar = null;
   };
-  textEl.addEventListener('scroll', clearFlash); // a moved viewport orphans the bar
+  /** Glue the bar to its lines at the current scrollTop, clipped to the
+   *  textarea's viewport (scrolled fully out = hidden, not cleared — scrolling
+   *  back mid-animation shows the remainder). offsetTop/Left resolve to the
+   *  textarea's BORDER box; its text sits inside the border, so clientTop/Left
+   *  (the border width) keeps the bar aligned with the content. */
+  const positionFlashBar = (): void => {
+    if (!flashBar) return;
+    let y = flashTop - textEl.scrollTop;
+    let h = flashHeight;
+    if (textEl.clientHeight > 0) { // test DOMs have no layout — skip clipping
+      const y0 = Math.max(0, y);
+      const y1 = Math.min(textEl.clientHeight, y + h);
+      if (y1 <= y0) { flashBar.style.display = 'none'; return; }
+      y = y0;
+      h = y1 - y0;
+    }
+    flashBar.style.display = '';
+    flashBar.style.top = `${textEl.offsetTop + textEl.clientTop + y}px`;
+    flashBar.style.height = `${h}px`;
+  };
+  // The bar TRACKS the viewport instead of dying with it. It used to be
+  // cleared on any scroll — including the reveal's OWN programmatic scroll,
+  // whose async scroll event killed the flash the moment the selected
+  // element's lines needed scrolling into view. That's why big containers
+  // (usually the _elmName'd ones) "never flashed" while small in-view leaves
+  // did (owner report 2026-07-16).
+  textEl.addEventListener('scroll', positionFlashBar);
 
   /** Line metrics for the monospace box (with fallbacks for test DOMs). */
   const lineHeightPx = (): number => {
@@ -425,28 +474,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       // center-ish, biased a third down so context above stays visible
       textEl.scrollTop = Math.max(0, top - Math.max(lh, (textEl.clientHeight - (bottom - top)) / 3));
     }
-    let y = top - textEl.scrollTop;
-    let h = bottom - top;
-    if (textEl.clientHeight > 0) { // clip to the textarea's viewport
-      const y0 = Math.max(0, y);
-      const y1 = Math.min(textEl.clientHeight, y + h);
-      if (y1 <= y0) return;
-      y = y0;
-      h = y1 - y0;
-    }
     const bar = document.createElement('div');
     bar.className = 'wb-code-flashbar';
     bar.dataset.lines = `${first + 1}-${last + 1}`; // 1-based, for humans + tests
     bar.setAttribute('aria-hidden', 'true');
-    // offsetTop/Left resolve to the textarea's BORDER box; its text content
-    // sits inside the border, so add clientTop/Left (the border width) to keep
-    // the flash bar aligned with the content rather than overlapping the border
-    bar.style.top = `${textEl.offsetTop + textEl.clientTop + y}px`;
     bar.style.left = `${textEl.offsetLeft + textEl.clientLeft}px`;
     bar.style.width = textEl.clientWidth ? `${textEl.clientWidth}px` : '100%';
-    bar.style.height = `${h}px`;
     shellEl.appendChild(bar); // the shell is the positioning context (#244)
     flashBar = bar;
+    flashTop = top;
+    flashHeight = bottom - top;
+    positionFlashBar(); // top/height for the current scroll (and viewport clip)
     const done = (): void => {
       if (flashBar === bar) flashBar = null;
       bar.remove();
@@ -539,6 +577,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
           if (r.path.length === 0) continue; // the root never folds — it IS the document
           add(r, pathKey(r.path), `element ${pathKey(r.path).replaceAll('/', '.')}`);
         }
+        // `children` arrays fold on their own line (owner ask 2026-07-16) —
+        // the parent's properties stay visible, only the list collapses
+        for (const c of mapChildren) {
+          add(c, childrenFoldKey(c.path),
+            c.path.length ? `children of element ${pathKey(c.path).replaceAll('/', '.')}` : 'children of the root');
+        }
         // wrapper sections (groupProps + its header/footerFormatter trees,
         // commandBarProps/commands, top-level footerFormatter …) fold too
         for (const s of mapSections) {
@@ -555,14 +599,19 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
           // into a sentinel must never swallow the visible chevron's click
           if (!foldedHere && hiddenInActiveFold(range.start)) return false;
           if (lineOfOffset(textEl.value, fullToDisplayed(range.start)) !== line) return false;
-          if (foldedPaths.has(key)) foldedPaths.delete(key);
-          else foldedPaths.add(key);
+          foldState.update('json', (set) => {
+            if (set.has(key)) set.delete(key);
+            else set.add(key);
+          });
           applyFolds();
           return true;
         };
         for (const r of mapRanges) {
           if (r.path.length === 0) continue; // the root never folds
           if (toggle(r, pathKey(r.path))) return;
+        }
+        for (const c of mapChildren) {
+          if (toggle(c, childrenFoldKey(c.path))) return;
         }
         for (const s of mapSections) {
           if (toggle(s, sectionKey(s))) return;
@@ -701,7 +750,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const off = displayedToFull(textEl.selectionStart ?? 0);
       const path = pathAtOffset(mapRanges, off);
       if (path && path.length > 0) { // the root never folds — it IS the document
-        foldedPaths.add(pathKey(path));
+        foldState.update('json', (set) => set.add(pathKey(path)));
         applyFolds();
         return;
       }
@@ -713,7 +762,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         if (!sec || s.start > sec.start) sec = s; // sections nest — innermost wins
       }
       if (sec) {
-        foldedPaths.add(sectionKey(sec));
+        const key = sectionKey(sec);
+        foldState.update('json', (set) => set.add(key));
         applyFolds();
       }
       return;
@@ -724,7 +774,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const fullCaret = foldView.toFull(textEl.selectionStart ?? 0);
       const idx = foldView.cuts.findIndex((c) => fullCaret >= c.start && fullCaret <= c.end);
       if (idx >= 0) {
-        foldedPaths.delete(activeFoldKeys[idx]);
+        foldState.update('json', (set) => set.delete(activeFoldKeys[idx]));
         applyFolds();
       }
     }
@@ -735,20 +785,22 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   menuHost.querySelector('#wb-json-fold-others')!.addEventListener('click', () => {
     if (dirty) return;
     const sel = state.selection;
-    for (const r of mapRanges) {
-      if (r.path.length === 0) continue; // never fold the root — that's the whole doc
-      if (sel && (isPrefix(r.path, sel) || isPrefix(sel, r.path))) continue; // keep the selection's chain open
-      if (cutForRange(fullText, r)) foldedPaths.add(pathKey(r.path));
-    }
-    // wrapper sections are never in the selection's chain — fold them all
-    // (only outermost cuts survive buildFoldView, so nesting costs nothing)
-    for (const s of mapSections) {
-      if (cutForRange(fullText, s)) foldedPaths.add(sectionKey(s));
-    }
+    foldState.update('json', (set) => {
+      for (const r of mapRanges) {
+        if (r.path.length === 0) continue; // never fold the root — that's the whole doc
+        if (sel && (isPrefix(r.path, sel) || isPrefix(sel, r.path))) continue; // keep the selection's chain open
+        if (cutForRange(fullText, r)) set.add(pathKey(r.path));
+      }
+      // wrapper sections are never in the selection's chain — fold them all
+      // (only outermost cuts survive buildFoldView, so nesting costs nothing)
+      for (const s of mapSections) {
+        if (cutForRange(fullText, s)) set.add(sectionKey(s));
+      }
+    });
     applyFolds();
   });
   menuHost.querySelector('#wb-json-expand-all')!.addEventListener('click', () => {
-    foldedPaths.clear();
+    foldState.clear('json'); // shared: the Structure tree expands with it
     expandAllFolds();
   });
 
@@ -1266,6 +1318,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   if (typeof hostAny._unsub === 'function') {
     hostAny._unsub();
   }
+  // fold changes made ELSEWHERE (the Structure tree's chevrons, a reset)
+  // re-apply the fold view here; our own writes already applied it in the
+  // gesture, and a dirty buffer waits for its next regenerate to re-read
+  // the set (folds are clean-buffer-only — spec §3).
+  const foldUnsub = foldState.subscribe((origin) => {
+    if (origin === 'json' || dirty) return;
+    applyFolds();
+  });
   const stateUnsub = state.subscribe((reason) => {
     if (reason === 'selection') {
       // #218 canvas → code — unless the selection ORIGINATED here (the echo
@@ -1297,6 +1357,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   });
   hostAny._unsub = () => {
     stateUnsub();
+    foldUnsub();
     ide.dispose(); // the shell's ResizeObserver must not outlive the mount
     document.body.classList.remove('wb-json-editing'); // a dirty unmount must not leave the canvas dimmed
     document.removeEventListener('pointerdown', closeKebabOnOutside);

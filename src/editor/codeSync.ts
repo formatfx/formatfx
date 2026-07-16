@@ -79,3 +79,12 @@ export class SyncEcho {
     return this.source === source;
   }
 }
+
+/** The app-wide echo instance for SELECTION sync. Shared (not per-mount)
+ *  because two surfaces consult it: the JSON pane skips revealing/flashing
+ *  selections that originated at its own caret ('code'), and the canvas
+ *  skips its synced selection pulse for the same origin — a caret walking
+ *  through the JSON must never strobe the canvas (#PR-flash, 2026-07-16).
+ *  Holding state only during the synchronous emit cycle, it is safe to
+ *  share across mounts and tests. */
+export const selectionEcho = new SyncEcho();

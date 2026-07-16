@@ -222,6 +222,49 @@ Same-brief follow-ups (2026-07-13):
   AND the JSON pane) now toasts "Jumped to X — Y stays open in its tab":
   the swap is pure navigation, but silent it read as data loss.
 
+Selection-flash + fold-sync brief (2026-07-16, owner report/asks):
+- **The flash that "only worked on unnamed elements"**: the JSON pane's
+  selection flash bar was cleared by ANY textarea scroll event — including
+  the async one fired by the reveal's own `scrollTop` write, so any element
+  whose lines needed scrolling into view (the big containers, i.e. the
+  _elmName'd ones) lost its flash a frame after it appeared. jsdom fires no
+  scroll on scrollTop writes, which is why the suite never saw it. The bar
+  now stores CONTENT-space geometry and a scroll listener repositions it
+  (clipped to the viewport, hidden when scrolled fully out) instead of
+  killing it; buffer swaps (edits, fold toggles, regenerate) still clear it
+  via syncFoldDisplay. jsonPanel.sync.test.ts pins bar-survives-scroll.
+- **Synced canvas pulse**: whenever the JSON pane flashes a selection, the
+  canvas pulses the same element (every rendered instance) with the existing
+  `wb-search-flash` "here it is" language — canvas.ts subscribes and skips
+  origins the pane also skips. The echo instance moved to a shared
+  `selectionEcho` (codeSync.ts) so both surfaces consult ONE origin tag:
+  caret-originated selections ('code') flash/pulse NOTHING — arrow-keying
+  through the JSON must not strobe the canvas.
+- **Folding synced between the Structure tree and the JSON pane**: the fold
+  set moved out of the panel into `editor/foldState.ts` — one shared Set of
+  keys ('0/2' element · '#c/0/2' children array · '@groupProps' section),
+  origin-tagged notifications, cleared by resetAll/loadProject, and
+  stashed/restored PER SURFACE on navigation (swapSelections carries it
+  beside the selection memory, silently — the callers' own 'load' emit is
+  when both surfaces re-read the set, so the pane never prunes incoming
+  keys against the outgoing doc's map; PR #290 review). The tree
+  (treeView.ts) grew chevrons: collapse folds the node's **children:[** in
+  the JSON (card-only nodes fold their element object — the only JSON fold
+  that hides a card subtree), expand clears both fold kinds; an 'elm' fold
+  from the JSON side collapses the row AND its card note, mirroring exactly
+  what the pane elides. Collapsed rows holding the selection get
+  `wb-tree-holdsel` (accent inset; no auto-expand — the same philosophy as
+  the pane's clamp-to-sentinel flash). Workshop trees fold LOCALLY (staged
+  paths mean nothing to the pane's map). The panel stays the owner of the
+  VIEW (cuts/caret math) and prunes keys that stop resolving.
+- **children:[ folds** (owner ask — "let me fold whole children arrays"):
+  `exportJsonWithMap` emits `childrenRanges` (every non-empty children
+  array, keyed by parent path, identity-registered like elements), the pane
+  offers a chevron on each `"children": [` line ("children of element 0.1"),
+  and the fold keeps the parent's own properties visible. Contracts:
+  jsonMap.test.ts, foldState.test.ts, treeView.test.ts, jsonFold.dom.test.ts
+  (tree↔pane round trip), jsonPanel.sync.test.ts (pulse + echo).
+
 DIRTY-BUFFER SAFETY (2026-07-13, owner ask — "can I clobber my own shit if
 I edit the pane without applying?"): a dirty JSON buffer is the maker's
 DRAFT. The panel's subscriber used to `clearDirty()+regenerate()` on every

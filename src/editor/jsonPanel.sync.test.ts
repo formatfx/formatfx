@@ -8,7 +8,7 @@
  *   · the echo guard: code-originated selection never flashes/scrolls the
  *     pane it came from, and sync never creates undo entries.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
 import { mountCanvas } from './canvas';
 import { state } from './state';
@@ -165,5 +165,74 @@ describe('the echo guard', () => {
     const { panelHost } = mountBoth();
     state.select([1]); // what a lint-row jump or tree click does
     expect(panelHost.querySelector('.wb-code-flashbar')).not.toBeNull();
+  });
+});
+
+describe('the flash bar vs scrolling (the "named elements never flash" fix, 2026-07-16)', () => {
+  it('survives scroll events — including the reveal\'s own programmatic scroll — and tracks instead of dying', () => {
+    const { panelHost, textEl } = mountBoth();
+    state.select([1]);
+    const bar = panelHost.querySelector('.wb-code-flashbar') as HTMLElement;
+    expect(bar).not.toBeNull();
+    // the reveal's scrollTop write fires an async scroll event in real
+    // browsers; the old listener cleared the bar the moment that landed
+    textEl.dispatchEvent(new Event('scroll'));
+    expect(panelHost.querySelector('.wb-code-flashbar')).toBe(bar); // still the same bar
+  });
+
+  it('buffer edits still clear it (stale geometry must never lie)', () => {
+    const { panelHost, textEl } = mountBoth();
+    state.select([1]);
+    expect(panelHost.querySelector('.wb-code-flashbar')).not.toBeNull();
+    textEl.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(panelHost.querySelector('.wb-code-flashbar')).toBeNull();
+  });
+});
+
+describe('the synced canvas pulse (owner ask 2026-07-16)', () => {
+  it('a canvas click pulses the clicked element in step with the JSON flash', () => {
+    const { canvasHost, panelHost } = mountBoth();
+    const target = canvasHost.querySelector('[data-sp-path="1"]') as HTMLElement;
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(panelHost.querySelector('.wb-code-flashbar')).not.toBeNull(); // JSON flashed…
+    expect(target.classList.contains('wb-search-flash')).toBe(true);    // …and so did the canvas
+  });
+
+  it('an out-of-band selection (tree, lint row) pulses every rendered instance of the element', () => {
+    const { canvasHost } = mountBoth();
+    state.select([0]);
+    const hits = [...canvasHost.querySelectorAll('[data-sp-path="0"]')];
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((n) => n.classList.contains('wb-search-flash'))).toBe(true);
+  });
+
+  it('code-originated selection (the caret) pulses NOTHING — same echo rule as the pane', () => {
+    const { canvasHost, textEl } = mountBoth();
+    const { ranges } = panelMap();
+    const r = rangeForPath(ranges, [2])!;
+    textEl.setSelectionRange(r.start + 1, r.start + 1);
+    textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).toEqual([2]); // synced out…
+    expect(canvasHost.querySelector('.wb-search-flash')).toBeNull(); // …no strobe anywhere
+  });
+});
+
+describe('back-to-back pulses (PR #290 review)', () => {
+  it('a re-flash cancels the older cleanup timer instead of being clipped by it', () => {
+    vi.useFakeTimers();
+    try {
+      const { canvasHost } = mountBoth();
+      state.select([0]);
+      const hit = canvasHost.querySelector('[data-sp-path="0"]') as HTMLElement;
+      expect(hit.classList.contains('wb-search-flash')).toBe(true);
+      vi.advanceTimersByTime(700);
+      state.select([0]); // pulse the same node again before the first timer fires
+      vi.advanceTimersByTime(700); // now PAST the first pulse's 1300ms cleanup
+      expect(hit.classList.contains('wb-search-flash')).toBe(true); // old timer cancelled
+      vi.advanceTimersByTime(700); // past the second pulse's own cleanup
+      expect(hit.classList.contains('wb-search-flash')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -12,6 +12,7 @@ import { mountTree } from './treeView';
 import { mountComponentWorkshop } from './componentEditor';
 import { componentById } from './componentLibrary';
 import { state } from './state';
+import { foldState, elmFoldKey, childrenFoldKey } from './foldState';
 import type { MockField, SPElement } from '../core/types';
 
 const FIELDS: MockField[] = [
@@ -432,3 +433,129 @@ describe('workshop mode — Copilot findings on PR #270', () => {
   });
 });
 
+
+describe('fold chevrons (2026-07-16 — synced with the JSON pane via foldState)', () => {
+  const FOLD_DOC = (): SPElement => ({
+    elmType: 'div',
+    children: [
+      { elmType: 'span', txtContent: 'x' },
+      { elmType: 'div', _elmName: 'Box', children: [{ elmType: 'span', txtContent: 'y' }] },
+    ],
+  });
+
+  const rowByPath = (host: HTMLElement, p: string): HTMLElement | null =>
+    host.querySelector<HTMLElement>(`.wb-tree-row[data-path="${p}"]`);
+  const chevronOf = (host: HTMLElement, p: string): HTMLButtonElement | null =>
+    rowByPath(host, p)?.querySelector<HTMLButtonElement>('button.wb-tree-fold') ?? null;
+
+  it('parents get a chevron button, leaves get an aria-hidden spacer of the same slot', () => {
+    const host = mountDoc(FOLD_DOC());
+    expect(chevronOf(host, '')).not.toBeNull();
+    expect(chevronOf(host, '1')).not.toBeNull();
+    const leaf = rowByPath(host, '0')!;
+    expect(leaf.querySelector('button.wb-tree-fold')).toBeNull();
+    const spacer = leaf.querySelector('span.wb-tree-fold.wb-tree-fold-none');
+    expect(spacer).not.toBeNull();
+    expect(spacer!.getAttribute('aria-hidden')).toBe('true');
+    const chev = chevronOf(host, '1')!;
+    expect(chev.getAttribute('aria-expanded')).toBe('true');
+    expect(chev.getAttribute('aria-label')).toContain('Collapse');
+  });
+
+  it('a chevron click collapses (hides child rows, folds children:[ in the shared set) without selecting', () => {
+    const host = mountDoc(FOLD_DOC());
+    const before = JSON.stringify(state.selections);
+    chevronOf(host, '1')!.click();
+    expect(rowByPath(host, '1.0')).toBeNull();          // the child row is gone
+    expect(rowByPath(host, '1')).not.toBeNull();        // the node's own row stays
+    expect(foldState.has(childrenFoldKey([1]))).toBe(true); // the JSON pane folds children:[
+    expect(foldState.has(elmFoldKey([1]))).toBe(false);
+    expect(JSON.stringify(state.selections)).toBe(before); // never a selection gesture
+    const chev = chevronOf(host, '1')!;
+    expect(chev.getAttribute('aria-expanded')).toBe('false');
+    chev.click(); // expand again
+    expect(rowByPath(host, '1.0')).not.toBeNull();
+    expect(foldState.keys()).toEqual([]);
+  });
+
+  it('a JSON-side element fold collapses the row too, and the tree expand clears BOTH fold kinds', () => {
+    const host = mountDoc(FOLD_DOC());
+    foldState.update('json', (set) => {
+      set.add(elmFoldKey([1]));
+      set.add(childrenFoldKey([1]));
+    });
+    expect(rowByPath(host, '1.0')).toBeNull(); // collapsed by the other surface
+    chevronOf(host, '1')!.click();
+    expect(rowByPath(host, '1.0')).not.toBeNull();
+    expect(foldState.keys()).toEqual([]); // elm AND children keys cleared
+  });
+
+  it('an elm fold hides the card subtree; a card-only node folds its element object', () => {
+    const host = mountDoc({
+      elmType: 'div',
+      children: [{
+        elmType: 'button',
+        txtContent: 'c',
+        customCardProps: {
+          openOnEvent: 'hover',
+          formatter: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'inside' }] },
+        },
+      }],
+    });
+    expect(host.querySelector('.wb-tree-cardnote')).not.toBeNull();
+    const chev = chevronOf(host, '0')!;
+    expect(chev).not.toBeNull(); // card-only nodes are foldable too
+    chev.click();
+    expect(foldState.has(elmFoldKey([0]))).toBe(true); // the only JSON fold that hides a card
+    expect(host.querySelector('.wb-tree-cardnote')).toBeNull();
+    expect(rowByPath(host, `0.${-1}`)).toBeNull();
+    chevronOf(host, '0')!.click();
+    expect(host.querySelector('.wb-tree-cardnote')).not.toBeNull();
+  });
+
+  it('a collapsed row that hides the selection is marked, live across selection-only emits', () => {
+    const host = mountDoc(FOLD_DOC());
+    state.select([1, 0]);
+    chevronOf(host, '1')!.click();
+    expect(rowByPath(host, '1')!.classList.contains('wb-tree-holdsel')).toBe(true);
+    state.select([0]); // selection-only emit — no full re-render
+    expect(rowByPath(host, '1')!.classList.contains('wb-tree-holdsel')).toBe(false);
+    state.select([1, 0]);
+    expect(rowByPath(host, '1')!.classList.contains('wb-tree-holdsel')).toBe(true);
+  });
+
+  it('ArrowLeft collapses and ArrowRight expands a focused foldable row', () => {
+    const host = mountDoc(FOLD_DOC());
+    const key = (p: string, k: string) => rowByPath(host, p)!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    key('1', 'ArrowLeft');
+    expect(foldState.has(childrenFoldKey([1]))).toBe(true);
+    expect(rowByPath(host, '1.0')).toBeNull();
+    key('1', 'ArrowRight');
+    expect(foldState.keys()).toEqual([]);
+    expect(rowByPath(host, '1.0')).not.toBeNull();
+  });
+
+  it('workshop collapses stay LOCAL — nothing lands in the shared foldState', () => {
+    state.openComponentTab('builtin-deadline-chip');
+    const wsHost = document.createElement('div');
+    document.body.append(wsHost);
+    const handle = mountComponentWorkshop(wsHost, componentById('builtin-deadline-chip')!, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+    });
+    const ctx = state.workshopCtx!;
+    ctx.commit(() => {
+      ctx.root().children = [{ elmType: 'span', txtContent: 'a' }];
+    });
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host);
+    const chev = host.querySelector<HTMLButtonElement>('.wb-tree-row[data-path=""] button.wb-tree-fold');
+    expect(chev).not.toBeNull();
+    chev!.click();
+    expect(host.querySelector('.wb-tree-row[data-path="0"]')).toBeNull(); // collapsed here…
+    expect(foldState.keys()).toEqual([]); // …but the shared set never heard of it
+    handle.destroy();
+    state.deactivateComponentTab();
+  });
+});
