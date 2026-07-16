@@ -850,7 +850,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 - `inlineEditField` renders an indicator, not an editable control.
 - `defaultHoverField` is accepted/round-tripped but not emulated.
-- `@isSelected` is always false; `executeQuickstep` actions aren't modeled.
+- `@isSelected` is always false; `executeQuickStep` actions aren't modeled.
 - `filepreview` renders as a plain `img`.
 - Footer/group formatters and form (body/header/footer sections) JSON are
   detected and **rejected with explanatory errors** — not editable.
