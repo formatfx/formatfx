@@ -1503,6 +1503,15 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-radius: 3px; padding: 4px 8px; cursor: pointer; font-size: 11px;
 }
 .wb-json-toolbar button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+/* the prominent COPY JSON call-to-action, centered directly above the editor */
+.wb-json-copybar { display: flex; justify-content: center; margin: 4px 0 8px; }
+.wb-json-copy-big {
+  border: 1px solid var(--wb-accent); background: var(--wb-accent); color: var(--wb-accent-text);
+  border-radius: 5px; padding: 10px 28px; cursor: pointer;
+  font-size: 15px; font-weight: 700; letter-spacing: .06em;
+}
+.wb-json-copy-big:hover { filter: brightness(1.08); }
+.wb-json-copy-big:active { filter: brightness(.94); }
 .wb-check { font-size: 11px; color: var(--wb-text-2); display: flex; align-items: center; gap: 3px; }
 .wb-check input { width: auto; }
 /* the head kebab — trigger beside the JSON ⇄ Explain tabs; dropdown carries
