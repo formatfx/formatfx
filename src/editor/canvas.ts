@@ -435,12 +435,21 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
   // clicks too (the flash affirms the click), but NOT for caret-originated
   // selections (echo 'code'): arrow-keying through the JSON must not strobe
   // the canvas — the same rule that keeps the JSON pane from flashing itself.
+  const flashTimers = new WeakMap<HTMLElement, number>();
   const flashSelection = () => {
     host.querySelectorAll<HTMLElement>('.wb-selected').forEach((n) => {
+      // cancel the previous pulse's cleanup first — back-to-back flashes on
+      // the same node must not have the OLD timer strip the class mid-pulse
+      // (PR #290 review); WeakMap so re-rendered nodes just fall away
+      const prior = flashTimers.get(n);
+      if (prior !== undefined) window.clearTimeout(prior);
       n.classList.remove('wb-search-flash');
       void n.offsetWidth; // restart the CSS animation on back-to-back flashes
       n.classList.add('wb-search-flash');
-      window.setTimeout(() => n.classList.remove('wb-search-flash'), 1300);
+      flashTimers.set(n, window.setTimeout(() => {
+        n.classList.remove('wb-search-flash');
+        flashTimers.delete(n);
+      }, 1300));
     });
   };
 

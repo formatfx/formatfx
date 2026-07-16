@@ -243,7 +243,11 @@ Selection-flash + fold-sync brief (2026-07-16, owner report/asks):
 - **Folding synced between the Structure tree and the JSON pane**: the fold
   set moved out of the panel into `editor/foldState.ts` — one shared Set of
   keys ('0/2' element · '#c/0/2' children array · '@groupProps' section),
-  origin-tagged notifications, cleared by resetAll/loadProject. The tree
+  origin-tagged notifications, cleared by resetAll/loadProject, and
+  stashed/restored PER SURFACE on navigation (swapSelections carries it
+  beside the selection memory, silently — the callers' own 'load' emit is
+  when both surfaces re-read the set, so the pane never prunes incoming
+  keys against the outgoing doc's map; PR #290 review). The tree
   (treeView.ts) grew chevrons: collapse folds the node's **children:[** in
   the JSON (card-only nodes fold their element object — the only JSON fold
   that hides a card subtree), expand clears both fold kinds; an 'elm' fold

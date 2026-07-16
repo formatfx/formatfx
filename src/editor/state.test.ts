@@ -19,6 +19,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { EditorState, CARD_SEGMENT } from './state';
+import { foldState } from './foldState';
 import { gridColumnField } from './gridScaffold';
 import type { ComponentDef } from './components';
 import type { Snapshot } from './snapshots';
@@ -1474,5 +1475,21 @@ describe('canvas tabs (§2): openTabs bookkeeping', () => {
     ];
     expect(JSON.parse(JSON.stringify(tabs))).toEqual(tabs);
     expect(tabs.map(tabKey)).toEqual(['grid', 'view:v1', 'component:c-20260706-abc']);
+  });
+});
+
+describe('per-surface fold memory (PR #290 review)', () => {
+  it('folds stash on navigation and restore on return — never bleeding across surfaces', () => {
+    foldState.clear();
+    const s = new EditorState();
+    foldState.update('tree', (set) => set.add('#c/0')); // fold something on the floor
+    const sheet = s.createView(rowDoc([{ elmType: 'div', children: [{ elmType: 'span', txtContent: 'x' }] }]))!;
+    expect(foldState.keys()).toEqual([]); // the new sheet starts unfolded — no path bleed
+    foldState.update('tree', (set) => set.add('0')); // fold on the sheet
+    s.minimizeView();
+    expect(foldState.keys()).toEqual(['#c/0']); // the floor's folds came back
+    s.openView(sheet.id);
+    expect(foldState.keys()).toEqual(['0']); // and the sheet's folds survived the round trip
+    foldState.clear();
   });
 });

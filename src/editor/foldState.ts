@@ -70,6 +70,17 @@ class SharedFoldState {
     this.update(origin, (set) => set.clear());
   }
 
+  /** Replace the whole set WITHOUT notifying — the surface-navigation seam
+   *  (state.swapSelections stashes/restores folds per surface, PR #290
+   *  review). Silent on purpose: the caller emits 'load' right after, which
+   *  re-renders the tree and regenerates the JSON pane against the NEW doc.
+   *  A notification here would fire the pane's applyFolds while its offset
+   *  map still describes the OUTGOING surface — pruning the incoming keys
+   *  against the wrong document. */
+  swap(keys: string[]): void {
+    this.folded = new Set(keys);
+  }
+
   subscribe(fn: FoldListener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);

@@ -8,7 +8,7 @@
  *   · the echo guard: code-originated selection never flashes/scrolls the
  *     pane it came from, and sync never creates undo entries.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
 import { mountCanvas } from './canvas';
 import { state } from './state';
@@ -214,5 +214,25 @@ describe('the synced canvas pulse (owner ask 2026-07-16)', () => {
     textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(state.selection).toEqual([2]); // synced out…
     expect(canvasHost.querySelector('.wb-search-flash')).toBeNull(); // …no strobe anywhere
+  });
+});
+
+describe('back-to-back pulses (PR #290 review)', () => {
+  it('a re-flash cancels the older cleanup timer instead of being clipped by it', () => {
+    vi.useFakeTimers();
+    try {
+      const { canvasHost } = mountBoth();
+      state.select([0]);
+      const hit = canvasHost.querySelector('[data-sp-path="0"]') as HTMLElement;
+      expect(hit.classList.contains('wb-search-flash')).toBe(true);
+      vi.advanceTimersByTime(700);
+      state.select([0]); // pulse the same node again before the first timer fires
+      vi.advanceTimersByTime(700); // now PAST the first pulse's 1300ms cleanup
+      expect(hit.classList.contains('wb-search-flash')).toBe(true); // old timer cancelled
+      vi.advanceTimersByTime(700); // past the second pulse's own cleanup
+      expect(hit.classList.contains('wb-search-flash')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

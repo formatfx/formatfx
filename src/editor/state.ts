@@ -303,6 +303,11 @@ export class EditorState {
   /** Per-surface selection memory (pure view state): 'floor' or a view id →
    *  the selection that was live when you navigated away. */
   private surfaceSelections: Record<string, NodePath[]> = {};
+  /** Per-surface FOLD memory (same idea, PR #290 review): the shared
+   *  foldState set that was live when you navigated away — restored on
+   *  return, so folds never bleed onto another surface's same-numbered
+   *  paths. Session-only, never snapshotted or persisted. */
+  private surfaceFolds: Record<string, string[]> = {};
   /** Monotonic view-id source, seeded past any loaded ids. */
   private viewIdCounter = 0;
 
@@ -448,10 +453,19 @@ export class EditorState {
     else this.floorDoc = this.doc;
   }
 
-  /** Stash the current selection under its surface key and restore the target's. */
+  /** Stash the current selection under its surface key and restore the
+   *  target's. Fold state rides along (PR #290 review): fold keys are
+   *  numeric node paths, so leaving them live across a surface switch would
+   *  collapse whatever unrelated nodes share those paths on the next
+   *  surface. The restore is SILENT (foldState.swap) — every caller emits
+   *  'load' right after, which is when both fold surfaces re-read the set
+   *  against the newly-active document. */
   private swapSelections(toKey: string): void {
-    this.surfaceSelections[this.surfaceKey()] = this._selections;
+    const fromKey = this.surfaceKey();
+    this.surfaceSelections[fromKey] = this._selections;
     this._selections = this.surfaceSelections[toKey] ?? [[]];
+    this.surfaceFolds[fromKey] = foldState.keys();
+    foldState.swap(this.surfaceFolds[toKey] ?? []);
   }
 
   /**
@@ -895,6 +909,7 @@ export class EditorState {
     this.undoStack = [];
     this.redoStack = [];
     this.surfaceSelections = {};
+    this.surfaceFolds = {};
     this.navStack = [];
     this.viewIdCounter = 0;
     // folds are view state SHARED between the JSON pane and the tree
@@ -942,6 +957,7 @@ export class EditorState {
     this.undoStack = [];
     this.redoStack = [];
     this.surfaceSelections = {};
+    this.surfaceFolds = {};
     this.navStack = [];
     this.viewIdCounter = 0;
     // folds are view state SHARED between the JSON pane and the tree
