@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/formatfx/formatfx/actions/workflows/ci.yml/badge.svg)](https://github.com/formatfx/formatfx/actions/workflows/ci.yml)
 
-**Build SharePoint list formatting visually. Export bulletproof JSON.**
+**A visual IDE for SharePoint list formatting. Click or code—both are first-class.**
 
 [**Try it: formatfx.dev**](https://formatfx.dev) — no sign-in, no install. Fully client-side.
 
@@ -10,17 +10,17 @@
 
 ### What you get
 
-- **Click, don't code.** Format cells dialog. Conditional rules built from your field type. Live preview against your actual data.
-- **Your list, not a demo.** Import your real SharePoint list in seconds. Edit columns and rows you recognize. Every choice, every theme, every formatter synced live.
-- **Bulletproof JSON.** The linter catches SharePoint's silent-failure quirks before they ship. Stress-test against null dates, boundary numbers, crowded multi-values. The exporter refuses to let you break it.
-- **Teaching built-in.** Every rule, error, and style carries an explanation written for the person who owns the list, not the person who wrote the schema. Paste a community formatter and Explain decompiles it into English. One-click playground to poke at ideas risk-free.
-- **Copy and ship.** One-click Deploy snippet from your own list page, using your permissions, showing exactly what it will replace. Or copy the JSON straight into SharePoint's Format pane. A companion browser extension turns the whole round-trip into one gesture.
+- **Visual & JSON, side-by-side.** Format cells dialog for clicking. Live JSON editor for typing. Both feed the same preview; changes in one reflect instantly in the other.
+- **SharePoint JSON that actually works.** The editor knows SP's expression syntax, allow-lists, quirks, and silent-failure gotchas. Type a formula; it auto-compiles to SharePoint AST or Excel-string form. Paste community JSON; it decompiles back to something you can read and edit.
+- **Your list, not a demo.** Import your real SharePoint list in seconds. Edit columns and rows you recognize. Every choice, every theme, every formatter synced live from your actual data.
+- **Linter + stress test + explainer.** Catch silent-failure quirks before you ship. Stress-test against null dates, boundary numbers, crowded multi-values. Paste any formatter and get plain-English breakdown of what it does.
+- **One gesture to deploy.** One-click Deploy snippet from your own list page. Or copy the JSON straight into SharePoint. A companion browser extension makes the round-trip automatic.
 
 ---
 
 ### Why it matters
 
-SharePoint lists are a real database with auth and permissions already solved. But the tool for formatting them—raw JSON in a narrow sidebar—leaves makers with a choice: learn to code or give up on polish. FormatFX gives you both: the visual sandbox and ribbon experience you already know, plus a JSON editor that knows SharePoint's quirks, dialects, and limits. What you build in the UI compiles into schema-valid, tested JSON. What you paste from the community, you actually understand.
+SharePoint lists are a real database with auth and permissions already solved. But formatting them meant choosing: learn raw JSON in a sidebar, or give up on polish. FormatFX collapses that choice. Build in the UI when it's faster. Drop into the editor when you need precision. The linter and stress-test run either way—you never ship something that silently fails. And because the editor understands SharePoint's JSON dialects and limits, what you write is guaranteed schema-valid and tested against real SharePoint behavior.
 
 ---
 
@@ -45,7 +45,7 @@ npm run build:single  # everything inlined into one dist-single/index.html
 
 ## The npm package
 
-The UI-free engine ships as [**`formatfx`**](https://www.npmjs.com/package/formatfx) on npm — the teaching linter and expression engine, headless and dependency-free:
+The UI-free engine ships as [**`formatfx`**](https://www.npmjs.com/package/formatfx) on npm — the teaching linter, expression engine, and SharePoint JSON tools, headless and dependency-free:
 
 ```bash
 npx formatfx lint my-formatter.json        # the silent-failure quirks, explained
@@ -57,7 +57,7 @@ npx formatfx validate my-formatter.json    # shape check only
 import { importJson, lintDocument, evaluate, buildExtractSnippet } from 'formatfx';
 ```
 
-The package exports the schema types, JSON ⇄ document serializer, expression engine, allow-lists, schema importer, and connectivity snippet builders. The renderer is deliberately not part of the headless surface — the sandbox at formatfx.dev *is* the renderer.
+The package exports the schema types, JSON ⇄ document serializer, expression engine (both SharePoint syntaxes), allow-lists, schema importer, and connectivity snippet builders. The renderer is deliberately not part of the headless surface — the sandbox at formatfx.dev *is* the renderer.
 
 ## Contributing
 
