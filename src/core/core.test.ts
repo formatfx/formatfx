@@ -147,6 +147,49 @@ describe('linter', () => {
     expect(lintDocument(doc).map((i) => i.rule)).not.toContain('flow-missing-id');
   });
 
+  // pnp/List-Formatting-verified action extras + executeQuickStep (issue #286)
+
+  it('accepts the PnP list-safe actions with no lint noise (copyLink / comment / openApprovalDialog)', () => {
+    for (const action of ['copyLink', 'comment', 'openApprovalDialog'] as const) {
+      const doc: FormatterDocument = { kind: 'row', root: { elmType: 'button', customRowAction: { action } } };
+      expect(lintDocument(doc)).toEqual([]);
+    }
+  });
+
+  it('teaches that previewFileAction / copyFile / moveFile are library-only (action-library-only, info)', () => {
+    for (const action of ['previewFileAction', 'copyFile', 'moveFile'] as const) {
+      const doc: FormatterDocument = { kind: 'row', root: { elmType: 'button', customRowAction: { action } } };
+      const issue = lintDocument(doc).find((i) => i.rule === 'action-library-only')!;
+      // info, not a gate — the tool can't know if this deploys to a library
+      expect(issue.severity).toBe('info');
+      expect(issue.message).toContain(action);
+    }
+  });
+
+  it('ALWAYS warns on executeQuickStep — an undocumented identifier (quickstep-undocumented)', () => {
+    const doc: FormatterDocument = {
+      kind: 'row',
+      root: { elmType: 'div', customRowAction: { action: 'executeQuickStep', actionInput: { ruleTemplateId: '42' } } },
+    };
+    const issues = lintDocument(doc);
+    expect(issues.find((i) => i.rule === 'quickstep-undocumented')!.severity).toBe('warning');
+    // complete shape: the warning stands alone, no missing-id error
+    expect(issues.map((i) => i.rule)).not.toContain('quickstep-missing-id');
+  });
+
+  it('flags executeQuickStep with no ruleTemplateId (quickstep-missing-id, error)', () => {
+    const shapes: FormatterDocument[] = [
+      { kind: 'row', root: { elmType: 'div', customRowAction: { action: 'executeQuickStep' } } },
+      { kind: 'row', root: { elmType: 'div', customRowAction: { action: 'executeQuickStep', actionInput: { ruleTemplateId: '  ' } } } },
+      // actionInput as a string can't carry the id shape SP expects here
+      { kind: 'row', root: { elmType: 'div', customRowAction: { action: 'executeQuickStep', actionInput: 'ruleTemplateId' } } },
+    ];
+    for (const doc of shapes) {
+      const issue = lintDocument(doc).find((i) => i.rule === 'quickstep-missing-id')!;
+      expect(issue.severity).toBe('error');
+    }
+  });
+
   it('keeps the card-internal path on issues inside customCardProps.formatter (#76)', () => {
     const doc: FormatterDocument = {
       kind: 'column',

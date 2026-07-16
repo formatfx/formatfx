@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { explainValue, explainDocument, astFromObjectForm, explainAst } from './explain';
-import type { FormatterDocument, SPExpr } from './types';
+import type { CustomRowAction, FormatterDocument, SPExpr } from './types';
 
 const ok = (v: SPExpr, ctx = {}): string => {
   const r = explainValue(v, ctx);
@@ -162,6 +162,21 @@ describe('explainDocument — the element walk', () => {
   it('actions read as what clicking DOES', () => {
     expect(byPath([1])!.lines.some((l) => l.text === 'Clicking runs the Power Automate flow abc-123.')).toBe(true);
     expect(byPath([2])!.lines.some((l) => l.text.includes('sets “Status” to ‘Done’'))).toBe(true);
+  });
+
+  it('the PnP action extras and executeQuickStep read as what clicking does (#286)', () => {
+    const line = (action: CustomRowAction['action'], actionInput?: Record<string, unknown>): string => {
+      const doc: FormatterDocument = {
+        kind: 'row',
+        root: { elmType: 'button', customRowAction: { action, ...(actionInput ? { actionInput } : {}) } },
+      };
+      return explainDocument(doc)[0].lines[0].text;
+    };
+    expect(line('comment')).toContain('comments pane');
+    // library-only actions carry their caveat in the sentence
+    expect(line('copyFile')).toContain('document libraries only');
+    expect(line('executeQuickStep', { ruleTemplateId: '42' })).toContain('Quick Step with rule template id 42');
+    expect(line('executeQuickStep')).toContain('no ruleTemplateId is set');
   });
 
   it('cards recurse via the CARD_SEGMENT path, like lint issues do', () => {

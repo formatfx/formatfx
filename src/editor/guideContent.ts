@@ -922,6 +922,18 @@ date/time, choice + multi-choice, person + multi-person.</td></tr>
 <tr><td><code>share</code> / <code>delete</code> / <code>editProps</code> /
 <code>openContextMenu</code></td><td>the standard item commands, as buttons you place</td></tr>
 <tr><td><code>embed</code></td><td>open the file's embed experience</td></tr>
+<tr><td><code>copyLink</code> / <code>comment</code> /
+<code>openApprovalDialog</code></td><td>the copy-link dialog, the comments pane, and the
+approval dialog — runtime-accepted beyond the published schema (verified working in the
+pnp/List-Formatting samples)</td></tr>
+<tr><td><code>previewFileAction</code> / <code>copyFile</code> /
+<code>moveFile</code></td><td>file preview / copy / move dialogs — <strong>document libraries
+only</strong>; on a plain list the button renders but the click does nothing (the linter
+reminds you)</td></tr>
+<tr><td><code>executeQuickStep</code></td><td>fire an existing Quick Step —
+<code>actionInput</code> carries its <code>ruleTemplateId</code>. <strong>Undocumented</strong>:
+not in the published schema, and the id is unversioned and list-specific, so the linter always
+warns. Prefer documented primitives where they can reproduce the action.</td></tr>
 </tbody>
 </table>
 <pre><code>{

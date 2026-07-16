@@ -38,7 +38,7 @@
  */
 
 import type { SPElement, NodePath, FormatterDocument } from './types';
-import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES, SP_FUNCTIONS, SP_FUNCTION_DOCS } from './schema';
+import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES, SP_FUNCTIONS, SP_FUNCTION_DOCS, LIBRARY_ONLY_ROW_ACTIONS } from './schema';
 import { parseExpression, parseForEach, type AstNode } from './expressions';
 import { cfrFieldName } from './refs';
 
@@ -440,6 +440,22 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     if (a.action === 'setValue') {
       const ok = a.actionInput && typeof a.actionInput === 'object' && Object.keys(a.actionInput).length > 0;
       if (!ok) push('error', 'setvalue-missing-target', 'setValue needs actionInput keyed by the column internal name (e.g. {"Status":"Done"}) — set a field and value.');
+    }
+    // library-only actions (pnp/List-Formatting generic-rowactions; #286) —
+    // real and working in document libraries, silently dead on a plain list.
+    // Info, not a gate: the tool can't know which surface this deploys to.
+    if (LIBRARY_ONLY_ROW_ACTIONS.has(a.action)) {
+      push('info', 'action-library-only', `${a.action} works in document libraries only — on a plain list the button renders but the click does nothing.`);
+    }
+    // executeQuickStep is runtime-accepted but NOT in the published v2 schema
+    // (docs/QUICK-STEPS.md §4.3) — always warn, and refuse-and-teach when the
+    // ruleTemplateId is missing (a blank trigger does nothing, like executeFlow).
+    if (a.action === 'executeQuickStep') {
+      push('warning', 'quickstep-undocumented', 'executeQuickStep is an undocumented identifier — it works today but is not in the published v2 schema, and the ruleTemplateId it targets is unversioned, list-specific and non-portable. Prefer reproducing the action with documented primitives where possible.');
+      const hasId = a.actionInput && typeof a.actionInput === 'object'
+        && typeof (a.actionInput as Record<string, unknown>).ruleTemplateId === 'string'
+        && ((a.actionInput as Record<string, unknown>).ruleTemplateId as string).trim() !== '';
+      if (!hasId) push('error', 'quickstep-missing-id', 'executeQuickStep needs actionInput {"ruleTemplateId":"<RuleTemplateId from GetAllRules>"} — without it the action does nothing on the list.');
     }
   }
 

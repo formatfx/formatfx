@@ -302,6 +302,12 @@ const ACTION_PHRASES: Record<string, string> = {
   editProps: 'Clicking opens the item’s properties for editing.',
   openContextMenu: 'Clicking opens the item’s context menu (the “…” menu).',
   embed: 'Clicking opens an embedded preview.',
+  copyLink: 'Clicking opens the copy-link dialog for the item.',
+  comment: 'Clicking opens the item’s comments pane.',
+  openApprovalDialog: 'Clicking opens the approval dialog for the item.',
+  previewFileAction: 'Clicking opens the file preview (document libraries only — does nothing on a plain list).',
+  copyFile: 'Clicking opens the copy-file dialog (document libraries only — does nothing on a plain list).',
+  moveFile: 'Clicking opens the move-file dialog (document libraries only — does nothing on a plain list).',
 };
 
 /**
@@ -415,6 +421,13 @@ function actionLine(action: NonNullable<SPElement['customRowAction']>, ctx: Expl
       };
     }
     return { text: 'Clicking is meant to set a field value, but no field/value is configured — it will do nothing on the real list.' };
+  }
+  if (action.action === 'executeQuickStep') {
+    const input = action.actionInput;
+    const id = input && typeof input === 'object' ? (input as Record<string, unknown>).ruleTemplateId : undefined;
+    return { text: typeof id === 'string' && id.trim()
+      ? `Clicking fires the existing Quick Step with rule template id ${id} (an undocumented action — see the lint note).`
+      : 'Clicking is meant to fire an existing Quick Step, but no ruleTemplateId is set — it will do nothing on the real list.' };
   }
   const known = ACTION_PHRASES[action.action];
   if (known) return { text: known };

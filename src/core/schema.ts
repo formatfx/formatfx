@@ -176,10 +176,26 @@ export const SPECIAL_TOKENS = [
   '@thumbnail', '@window.innerWidth', '@window.innerHeight',
 ] as const;
 
+/** Every action value real SP accepts (kept in sync with the
+ *  CustomRowAction.action union in types.ts). The published-schema 8 first,
+ *  then the PnP-verified extras and the undocumented executeQuickStep
+ *  (issue #286). */
 export const ROW_ACTIONS = [
   'defaultClick', 'share', 'delete', 'editProps', 'openContextMenu',
-  'setValue', 'embed', 'executeFlow', '',
+  'setValue', 'embed', 'executeFlow',
+  'copyLink', 'comment', 'openApprovalDialog',
+  'previewFileAction', 'copyFile', 'moveFile',
+  'executeQuickStep', '',
 ] as const;
+
+export type RowActionValue = (typeof ROW_ACTIONS)[number];
+
+/** Actions that only work in document libraries — on a plain list the button
+ *  renders but the click does nothing (pnp/List-Formatting
+ *  generic-rowactions README; issue #286). Typed against ROW_ACTIONS so a
+ *  typo here is a compile error, not a silently-dead lint rule. */
+export const LIBRARY_ONLY_ROW_ACTIONS: ReadonlySet<RowActionValue> =
+  new Set<RowActionValue>(['previewFileAction', 'copyFile', 'moveFile']);
 
 export const DIRECTIONAL_HINTS = [
   'topLeftEdge', 'topCenter', 'topRightEdge', 'topAutoEdge',
