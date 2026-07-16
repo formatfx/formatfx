@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { explainValue, explainDocument, astFromObjectForm, explainAst } from './explain';
-import type { FormatterDocument, SPExpr } from './types';
+import type { CustomRowAction, FormatterDocument, SPExpr } from './types';
 
 const ok = (v: SPExpr, ctx = {}): string => {
   const r = explainValue(v, ctx);
@@ -165,10 +165,10 @@ describe('explainDocument — the element walk', () => {
   });
 
   it('the PnP action extras and executeQuickStep read as what clicking does (#286)', () => {
-    const line = (action: string, actionInput?: Record<string, unknown>): string => {
+    const line = (action: CustomRowAction['action'], actionInput?: Record<string, unknown>): string => {
       const doc: FormatterDocument = {
         kind: 'row',
-        root: { elmType: 'button', customRowAction: { action, ...(actionInput ? { actionInput } : {}) } as never },
+        root: { elmType: 'button', customRowAction: { action, ...(actionInput ? { actionInput } : {}) } },
       };
       return explainDocument(doc)[0].lines[0].text;
     };

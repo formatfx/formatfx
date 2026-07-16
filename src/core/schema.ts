@@ -188,11 +188,14 @@ export const ROW_ACTIONS = [
   'executeQuickStep', '',
 ] as const;
 
+export type RowActionValue = (typeof ROW_ACTIONS)[number];
+
 /** Actions that only work in document libraries — on a plain list the button
  *  renders but the click does nothing (pnp/List-Formatting
- *  generic-rowactions README; issue #286). */
-export const LIBRARY_ONLY_ROW_ACTIONS: ReadonlySet<string> =
-  new Set(['previewFileAction', 'copyFile', 'moveFile']);
+ *  generic-rowactions README; issue #286). Typed against ROW_ACTIONS so a
+ *  typo here is a compile error, not a silently-dead lint rule. */
+export const LIBRARY_ONLY_ROW_ACTIONS: ReadonlySet<RowActionValue> =
+  new Set<RowActionValue>(['previewFileAction', 'copyFile', 'moveFile']);
 
 export const DIRECTIONAL_HINTS = [
   'topLeftEdge', 'topCenter', 'topRightEdge', 'topAutoEdge',
