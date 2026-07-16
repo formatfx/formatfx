@@ -38,9 +38,10 @@
   - The **`=` expression toggle** on Simple/Pro visual controls.
   - **Multi-edit**: dedicated controls write to every selected node (`commitAll`)
     with a "Mixed" indicator; whole-object/identity editors stay primary-only.
-- **Tree** (`treeView.ts`) — 13×13 multi-select checkboxes, 👁 eye visibility
-  toggle, right-click context menu (Copy/Paste/Group/Ungroup/Duplicate/Delete via
-  `contextMenu.ts` + `clipboard.ts`).
+- **Tree** (`treeView.ts`) — 13×13 multi-select checkboxes, right-click context
+  menu (Copy/Paste/Group/Ungroup/Duplicate/Delete via `contextMenu.ts` +
+  `clipboard.ts`). (The 👁 hide/show toggle was removed 2026-07-16, issue #288 —
+  it wrote a lossy `display:none`; a lossless version is tracked for reintroduction.)
 - **Re-skin** — Microsoft-blue CTA + cool Fluent pane (tokenized in `style.css`).
 
 ## What remained — now COMPLETE (2026-06-29)

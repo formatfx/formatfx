@@ -74,7 +74,7 @@ describe('elemType far-right + hover-actions swap slot (#219, #220)', () => {
     expect(row.lastElementChild).toBe(meta);
   });
 
-  it('keeps the meta slot far-right even on rows with a binding tag and eye toggle', () => {
+  it('keeps the meta slot far-right even on rows with a binding tag', () => {
     const host = mountDoc({
       elmType: 'div',
       children: [
@@ -88,7 +88,6 @@ describe('elemType far-right + hover-actions swap slot (#219, #220)', () => {
     });
     const row = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1];
     expect(row.querySelector('.wb-tree-bindtag')).not.toBeNull();
-    expect(row.querySelector('.wb-tree-eye')).not.toBeNull();
     expect(row.lastElementChild).toBe(row.querySelector('.wb-tree-meta'));
   });
 });
@@ -125,9 +124,8 @@ describe('component-instance rows (the "⬡ Name ← Column" binding language)',
     expect(tag?.textContent).toBe('← Due date');
     expect(tag?.title).toContain('bound to Due date');
     expect(tag?.title).toContain('inspector'); // remapping lives there — read-only here
-    // an instance row is an ordinary row otherwise: actions + eye intact
+    // an instance row is an ordinary row otherwise: actions intact
     expect(inst.querySelectorAll('.wb-tree-actions button').length).toBeGreaterThan(0);
-    expect(inst.querySelector('.wb-tree-eye')).not.toBeNull();
   });
 
   it('multi-slot bindings dedupe columns and join with " · "', () => {
@@ -355,7 +353,7 @@ describe('workshop mode (spec §C, 2026-07-09 — supersedes the v1 "never re-ta
     expect(selRow).not.toBeNull();
   });
 
-  it('structural actions are gated off; rename and the eye ride the staged commit (modal-undo, not app undo)', () => {
+  it('structural actions are gated off; rename rides the staged commit (modal-undo, not app undo)', () => {
     openWorkshop();
     const host = document.createElement('div');
     document.body.append(host);
@@ -363,15 +361,18 @@ describe('workshop mode (spec §C, 2026-07-09 — supersedes the v1 "never re-ta
     expect(host.querySelector('.wb-tree-actions [aria-label="Delete"]')).toBeNull();
     expect(host.querySelector('.wb-tree-actions [aria-label="Move up"]')).toBeNull();
     const appUndo = (state as unknown as { undoStack: string[] }).undoStack.length;
-    // the eye hides the staged node
-    const eye = host.querySelectorAll<HTMLButtonElement>('.wb-tree-eye')[1] ?? host.querySelector<HTMLButtonElement>('.wb-tree-eye')!;
-    eye.click();
+    // rename the staged node — a non-structural edit that rides ctx.commit
+    const target = host.querySelectorAll<HTMLElement>('.wb-tree-row')[1] ?? host.querySelector<HTMLElement>('.wb-tree-row')!;
+    target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const inp = host.querySelector<HTMLInputElement>('.wb-tree-rename')!;
+    inp.value = 'Renamed in workshop';
+    inp.dispatchEvent(new Event('blur'));
     const ctx = state.workshopCtx!;
-    const anyHidden = (function scan(el): boolean {
-      if (el.style?.["display"] === "none") return true;
+    const anyRenamed = (function scan(el): boolean {
+      if (el._elmName === 'Renamed in workshop') return true;
       return (el.children ?? []).some((c: SPElement) => scan(c));
     })(ctx.root());
-    expect(anyHidden).toBe(true);
+    expect(anyRenamed).toBe(true);
     expect((state as unknown as { undoStack: string[] }).undoStack.length).toBe(appUndo);
     // the workshop's own undo pair knows about it
     expect(wsHost.querySelector<HTMLButtonElement>('.wb-mu-undo')!.disabled).toBe(false);
