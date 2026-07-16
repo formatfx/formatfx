@@ -164,6 +164,21 @@ describe('explainDocument — the element walk', () => {
     expect(byPath([2])!.lines.some((l) => l.text.includes('sets “Status” to ‘Done’'))).toBe(true);
   });
 
+  it('the PnP action extras and executeQuickStep read as what clicking does (#286)', () => {
+    const line = (action: string, actionInput?: Record<string, unknown>): string => {
+      const doc: FormatterDocument = {
+        kind: 'row',
+        root: { elmType: 'button', customRowAction: { action, ...(actionInput ? { actionInput } : {}) } as never },
+      };
+      return explainDocument(doc)[0].lines[0].text;
+    };
+    expect(line('comment')).toContain('comments pane');
+    // library-only actions carry their caveat in the sentence
+    expect(line('copyFile')).toContain('document libraries only');
+    expect(line('executeQuickStep', { ruleTemplateId: '42' })).toContain('Quick Step with rule template id 42');
+    expect(line('executeQuickStep')).toContain('no ruleTemplateId is set');
+  });
+
   it('cards recurse via the CARD_SEGMENT path, like lint issues do', () => {
     expect(byPath([3])!.lines.some((l) => l.text.includes('hover card'))).toBe(true);
     const inside = byPath([3, -1, 0]);

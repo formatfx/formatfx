@@ -393,6 +393,13 @@ const ROW_ACTION_DOCS: Record<string, string> = {
   setValue: 'Write field values (actionInput carries them)',
   embed: 'Open a URL in an embed panel (actionParams)',
   executeFlow: 'Run a Power Automate flow (actionParams carries the flow id)',
+  copyLink: 'Open the copy-link dialog',
+  comment: 'Open the item’s comments pane',
+  openApprovalDialog: 'Open the approval dialog',
+  previewFileAction: 'Open the file preview (libraries only)',
+  copyFile: 'Open the copy-file dialog (libraries only)',
+  moveFile: 'Open the move-file dialog (libraries only)',
+  executeQuickStep: 'Fire an existing Quick Step by ruleTemplateId (UNDOCUMENTED — lint-warned)',
 };
 
 /** Multi-value field types forEach can legally iterate. */

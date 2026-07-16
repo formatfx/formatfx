@@ -318,7 +318,9 @@ warner.digital/summary20260521). Exact shape recovered from the demo:
   `defaultClick, share, delete, editProps, openContextMenu, setValue,
   executeFlow, embed`), so it is runtime-accepted but **unpublished** — his own
   editor shows a schema squiggle. Ship it only behind a clear "uses an
-  undocumented identifier" warning.
+  undocumented identifier" warning. *(Landed via #286: the type/linter model it
+  now — `quickstep-undocumented` always warns, `quickstep-missing-id` errors on
+  a blank `ruleTemplateId`.)*
 - **The id is `ruleTemplateId`** (the REST `RuleTemplateId`, not `ID`). This
   closes the §6.1 question about *which* id the trigger path references: it is
   `RuleTemplateId`, which in every case we observed equals `ID`.

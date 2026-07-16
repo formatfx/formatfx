@@ -18,8 +18,20 @@ export type ElmType =
 
 export interface CustomRowAction {
   action:
+    // the published v2 column-formatting schema set
     | 'defaultClick' | 'share' | 'delete' | 'editProps'
-    | 'openContextMenu' | 'setValue' | 'embed' | 'executeFlow' | '';
+    | 'openContextMenu' | 'setValue' | 'embed' | 'executeFlow'
+    // runtime-accepted on lists AND libraries — verified working samples in
+    // pnp/List-Formatting column-samples/generic-rowactions (issue #286)
+    | 'copyLink' | 'comment' | 'openApprovalDialog'
+    // runtime-accepted, DOCUMENT-LIBRARY only — do nothing on a plain list
+    // (same PnP source; the linter says so instead of letting them fail silently)
+    | 'previewFileAction' | 'copyFile' | 'moveFile'
+    // unpublished/undocumented — fires an existing Quick Step by
+    // actionInput.ruleTemplateId (docs/QUICK-STEPS.md §4.3); always
+    // lint-warned as an undocumented identifier
+    | 'executeQuickStep'
+    | '';
   actionParams?: string;
   actionInput?: Record<string, unknown> | string;
 }
