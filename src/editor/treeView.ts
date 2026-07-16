@@ -9,8 +9,8 @@
  * by the Left Edit Pane's navigation, not by headers in this tree — OR, while
  * a component WORKSHOP tab is up, the workshop's STAGED tree via
  * state.workshopCtx (spec §C, 2026-07-09 — supersedes the v1 "a workshop tab
- * never re-targets the tree" constraint). Workshop mode is select + rename +
- * eye only: those ride ctx.commit (the workshop's modal-undo, one gesture =
+ * never re-targets the tree" constraint). Workshop mode is select + rename
+ * only: those ride ctx.commit (the workshop's modal-undo, one gesture =
  * one ↶ step); the structural gestures (wrap/move/duplicate/delete, drag and
  * drop, the context menu) stay surface-only — the workshop never offered
  * them, and its Save remains the one app-level undo step.
@@ -81,7 +81,7 @@ export function mountTree(
     isSelected(p: NodePath): boolean;
     select(p: NodePath): void;
     toggleSelect(p: NodePath): void;
-    /** Rename/eye — the non-structural node edits both modes allow. */
+    /** Rename — the non-structural node edit both modes allow. */
     commitNode(p: NodePath, fn: (n: SPElement) => void): void;
     /** Structural gestures (wrap/move/dup/delete/dnd/menu) offered? */
     structural: boolean;
@@ -165,7 +165,7 @@ export function mountTree(
 
     // workshop mode: an EMBED PLACEHOLDER (#225) is a read-only stand-in —
     // label it as the component it stands in for (⬡ name), selectable so the
-    // inspector can teach, but no rename/eye (edits would vanish on flatten)
+    // inspector can teach, but no rename (edits would vanish on flatten)
     const embedName = ops.embedNameOf?.(el) ?? null;
     if (embedName !== null) {
       const label0 = document.createElement('span');
@@ -293,25 +293,12 @@ export function mountTree(
         mk('Delete', 'Delete', () => state.removeNode(path));
       }
     }
-    // 👁 visibility toggle — flips display:none on the canvas for this node
-    const eye = document.createElement('button');
-    eye.className = 'wb-tree-eye';
-    const hidden = el.style?.['display'] === 'none';
-    eye.textContent = hidden ? '🚫' : '👁';
-    eye.title = hidden ? 'Show on canvas' : 'Hide on canvas (display:none)';
-    eye.setAttribute('aria-label', eye.title);
-    eye.addEventListener('click', (e) => {
-      e.stopPropagation();
-      ops.commitNode(path, (n) => {
-        if (n.style?.['display'] === 'none') {
-          delete n.style['display'];
-          if (n.style && Object.keys(n.style).length === 0) delete n.style;
-        } else {
-          n.style = n.style ?? {};
-          n.style['display'] = 'none';
-        }
-      });
-    });
+    // NOTE: the 👁 hide/show toggle was removed (2026-07-16, issue #288) — it
+    // wrote a raw display:none, clobbering any existing `display` value (e.g.
+    // flex) and never restoring it on un-hide (it just deleted the property).
+    // Tracked as a bug to reintroduce a lossless version. The .wb-tree-hidden
+    // row treatment below still dims nodes that carry display:none from
+    // imported/authored JSON.
     // the binding tag: which column(s) this component instance is bound to —
     // read-only provenance; remapping lives on the inspector's instance card.
     if (boundColumns.length) {
@@ -321,7 +308,6 @@ export function mountTree(
       tag.title = `This component instance is bound to ${boundColumns.join(', ')} — remap it from the inspector`;
       row.appendChild(tag);
     }
-    row.appendChild(eye);
     // far-right "meta" slot (#219): elemType and the hover actions share the
     // same space, stacked in a CSS grid cell — at rest elemType shows, and
     // hovering the row fades/slides it out while the actions fade/slide in

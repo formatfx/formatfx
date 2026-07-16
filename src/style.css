@@ -3720,21 +3720,12 @@ body.wb-json-editing #wb-canvas::after {
   font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--wb-text-2);
 }
 
-/* ── Left Edit Pane: structure tree visibility toggle ──────────────────────── */
+/* ── Left Edit Pane: structure tree row layout / hidden-node treatment ──────── */
+/* The 👁 hide/show toggle (.wb-tree-eye) was removed 2026-07-16 (issue #288) —
+   it wrote a lossy display:none. The row layout + dimming for nodes that carry
+   display:none (from imported/authored JSON) stays. */
 .wb-lp-tree .wb-tree-row { display: flex; align-items: center; }
 .wb-lp-tree .wb-tree-label { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
-.wb-tree-eye {
-  flex: 0 0 auto; border: none; background: none; cursor: pointer; color: var(--wb-lp-text-2);
-  font-size: 12px; line-height: 1; padding: 2px 4px; opacity: 0; transition: opacity .12s;
-}
-.wb-lp-tree .wb-tree-row:hover .wb-tree-eye,
-.wb-lp-tree .wb-tree-row.selected .wb-tree-eye { opacity: .65; }
-.wb-tree-eye:hover { opacity: 1; }
-.wb-tree-eye:focus-visible {
-  opacity: 1;
-  outline: 1.5px solid var(--wb-accent);
-  outline-offset: -1px;
-}
 .wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
 /* The base .wb-tree-row.selected (studio tree) is accent-fill + white text; the
    Left Edit Pane swaps the fill for the soft --wb-lp-selected blue, so the text
