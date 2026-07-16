@@ -9,9 +9,10 @@
  * by the Left Edit Pane's navigation, not by headers in this tree — OR, while
  * a component WORKSHOP tab is up, the workshop's STAGED tree via
  * state.workshopCtx (spec §C, 2026-07-09 — supersedes the v1 "a workshop tab
- * never re-targets the tree" constraint). Workshop mode is select + rename
- * only: those ride ctx.commit (the workshop's modal-undo, one gesture =
- * one ↶ step); the structural gestures (wrap/move/duplicate/delete, drag and
+ * never re-targets the tree" constraint). Workshop mode allows select +
+ * rename: selection rides ctx.select, and rename rides ctx.commit (the
+ * workshop's modal-undo, one gesture = one ↶ step); the structural gestures
+ * (wrap/move/duplicate/delete, drag and
  * drop, the context menu) stay surface-only — the workshop never offered
  * them, and its Save remains the one app-level undo step.
  */
