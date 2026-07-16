@@ -87,6 +87,9 @@ app.innerHTML = `
                 <option value="tile-card">Gallery tile (3-layer)</option>
               </select>
             </label>
+            <hr>
+            <div class="wb-menu-sec" title="Editor behavior preferences — saved on this browser, never part of the project">Preferences</div>
+            <label class="wb-check" title="When you select an element (canvas click, JSON caret, lint row), scroll the Structure tree so its row stays in view — uncheck if you'd rather the tree never moves on its own"><input type="checkbox" id="wb-pref-tree-follow" checked> Structure tree follows selection</label>
             <label class="wb-check" title="Outline every element on the canvas so you can see the boxes you're building"><input type="checkbox" id="wb-outlines"> Outline every element</label>
             <button id="wb-playground" title="A consequence-free sandbox-within-the-sandbox: click through every style property on sample elements">⚗ Style playground</button>
             <button id="wb-stress" title="Will this break in production? Render this formatter against generated edge-case data — empty items, extreme dates, boundary numbers, crowded multi-values — without touching your workspace">🧪 Stress test</button>
@@ -172,6 +175,9 @@ interface UiPrefs {
   sideMode: SideMode;
   leftMode: LeftMode;
   leftW: number;
+  /** ☰ → Preferences: the Structure tree scrolls to keep the selected row in
+   *  view (owner ask 2026-07-16). ADDITIVE field in this frozen blob. */
+  treeFollowSelection: boolean;
   /** Canvas view controls (#216/#224): the preview zoom factor (1 = 100%)
    *  and the simulated viewport width in px (null = fit the canvas).
    *  ADDITIVE fields in this frozen blob — read-only view prefs, never part
@@ -191,12 +197,14 @@ const uiPrefs: UiPrefs = {
   leftW: 360,
   canvasZoom: 1,
   canvasViewportW: null,
+  treeFollowSelection: true,
   ...JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}'),
 };
 // a stored blob predating these fields — or a corrupt one — lands on defaults
 uiPrefs.sideMode = sanitizeSideMode(uiPrefs.sideMode);
 uiPrefs.leftMode = sanitizeLeftMode(uiPrefs.leftMode);
 uiPrefs.leftW = sanitizeLeftW(uiPrefs.leftW);
+uiPrefs.treeFollowSelection = uiPrefs.treeFollowSelection !== false; // default on; only an explicit false opts out
 const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
@@ -577,7 +585,10 @@ state.subscribe((reason) => {
 });
 
 // ─── panels ─────────────────────────────────────────────────────────────────
-mountLeftPane(document.getElementById('wb-leftpane')!, { toast });
+mountLeftPane(document.getElementById('wb-leftpane')!, {
+  toast,
+  treeFollowSelection: () => uiPrefs.treeFollowSelection,
+});
 // the edit pane's minimize control rides the nav row the pane just rendered —
 // shell-owned (it drives shell layout state), so leftPane.ts stays untouched
 {
@@ -644,6 +655,16 @@ sendExtBtn.addEventListener('click', async () => {
 // debug outlines
 (document.getElementById('wb-outlines') as HTMLInputElement).addEventListener('change', (e) => {
   canvas.setOutlines((e.target as HTMLInputElement).checked);
+});
+
+// ☰ → Preferences: the Structure tree's follow-selection scroll (persisted
+// view pref — the tree reads it live through mountLeftPane's getter, so the
+// toggle takes effect on the very next selection, no re-mount)
+const treeFollowCb = document.getElementById('wb-pref-tree-follow') as HTMLInputElement;
+treeFollowCb.checked = uiPrefs.treeFollowSelection;
+treeFollowCb.addEventListener('change', () => {
+  uiPrefs.treeFollowSelection = treeFollowCb.checked;
+  saveUiPrefs();
 });
 
 // Title context column in the column-formatter preview (persisted view pref)

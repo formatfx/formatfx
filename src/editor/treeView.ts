@@ -62,6 +62,12 @@ function nodeChips(el: SPElement): HTMLElement[] {
   return chips;
 }
 
+export interface TreeViewOptions {
+  /** Preference read (☰ → Preferences): keep the selected row scrolled into
+   *  view on selection changes. Absent = follow (the default behavior). */
+  followSelection?: () => boolean;
+}
+
 /**
  * The structure tree of the active document, mounted into `host` (the Left
  * Edit Pane's tree body). Selection is shown by row highlight only —
@@ -70,6 +76,7 @@ function nodeChips(el: SPElement): HTMLElement[] {
 export function mountTree(
   host: HTMLElement,
   onToast: (m: string) => void = () => {},
+  treeOpts: TreeViewOptions = {},
 ): void {
   // rename-in-progress, by path — part of render state (not a DOM patch),
   // because selecting a row re-renders the whole tree mid-double-click.
@@ -534,6 +541,32 @@ export function mountTree(
       // collapsed rows keep saying whether they hide the selection
       row.classList.toggle('wb-tree-holdsel', row.dataset.folded === '1' && holdsSelection(path));
     });
+    revealSelectedRow();
+  };
+
+  /** Owner ask 2026-07-16: the tree keeps the selection in view, the way the
+   *  JSON pane reveals its lines — gated behind ☰ → Preferences ("Structure
+   *  tree follows selection", default on). Like the scope bar, it follows
+   *  EVERY origin (canvas click, JSON caret, lint row): marking where you are
+   *  is the whole job, and block:'nearest' keeps it gentle — a row already on
+   *  screen doesn't move at all. A selection buried in a collapsed subtree
+   *  reveals its nearest VISIBLE ancestor (the wb-tree-holdsel row) — folds
+   *  are never auto-expanded. Runs only on 'selection' emits, never on
+   *  document/data re-renders: a maker who scrolled away to browse must not
+   *  be yanked back by an unrelated repaint. Surface tree only — the app
+   *  selection's paths mean nothing to a workshop's staged tree. */
+  const revealSelectedRow = (): void => {
+    if (ops !== surfaceOps) return;
+    if (!(treeOpts.followSelection?.() ?? true)) return;
+    const sel = state.selection;
+    if (!sel) return;
+    for (let n = sel.length; n >= 0; n--) {
+      const row = host.querySelector<HTMLElement>(`.wb-tree-row[data-path="${sel.slice(0, n).join('.')}"]`);
+      if (row) {
+        row.scrollIntoView?.({ block: 'nearest' }); // absent in test DOMs
+        return;
+      }
+    }
   };
 
   if ((host as any)._unsub) {

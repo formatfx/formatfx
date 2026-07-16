@@ -622,6 +622,12 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 /* the More… drawer (#257): same column layout as the panel it extends */
 .wb-menu-extra { display: flex; flex-direction: column; gap: 2px; }
 .wb-menu-extra[hidden] { display: none; }
+/* section heading inside the panel (☰ → Preferences, 2026-07-16) — the same
+   dim-caps voice as the pane section titles */
+.wb-menu-sec {
+  padding: 4px 8px 2px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--wb-text-2); cursor: default;
+}
 
 /* ── layout ──────────────────────────────────────────────── */
 .wb-layout {

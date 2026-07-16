@@ -264,6 +264,19 @@ Selection-flash + fold-sync brief (2026-07-16, owner report/asks):
   and the fold keeps the parent's own properties visible. Contracts:
   jsonMap.test.ts, foldState.test.ts, treeView.test.ts, jsonFold.dom.test.ts
   (tree↔pane round trip), jsonPanel.sync.test.ts (pulse + echo).
+- **The tree follows the selection + ☰ Preferences** (owner ask, the PR
+  after): on every 'selection' emit the Structure tree scrolls its selected
+  row into view — `scrollIntoView({block:'nearest'})`, so an already-visible
+  row never moves; a selection buried in a collapsed subtree reveals its
+  nearest VISIBLE ancestor (the holdsel row) rather than auto-expanding.
+  Deliberately NEVER on document/data re-renders — a maker who scrolled away
+  to browse must not be yanked back by a repaint. Gated behind the new
+  ☰ → More… → **Preferences** section ("Structure tree follows selection",
+  default on), persisted as the ADDITIVE `treeFollowSelection` field in the
+  frozen `wb-ui-prefs` blob and read live through a getter threaded
+  main.ts → mountLeftPane → mountTree, so toggling needs no re-mount. The
+  Preferences heading (.wb-menu-sec) is the home for future editor-behavior
+  toggles; "Outline every element" moved under it.
 
 DIRTY-BUFFER SAFETY (2026-07-13, owner ask — "can I clobber my own shit if
 I edit the pane without applying?"): a dirty JSON buffer is the maker's

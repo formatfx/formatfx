@@ -107,6 +107,23 @@ test('outlines toggle (in the ☰ menu, behind More…) draws element boxes', as
   await expect(page.locator('#wb-canvas')).toHaveClass(/wb-outlines/);
 });
 
+test('☰ Preferences: "Structure tree follows selection" defaults on, persists across reloads', async ({ page }) => {
+  await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
+  const cb = page.locator('#wb-pref-tree-follow');
+  await expect(cb).toBeVisible();
+  await expect(cb).toBeChecked(); // follow is the default
+  await cb.uncheck();
+  // the pref rides the wb-ui-prefs blob (additive field — frozen-keys rule)
+  await expect.poll(() => page.evaluate(
+    () => JSON.parse(localStorage.getItem('wb-ui-prefs') ?? '{}').treeFollowSelection,
+  )).toBe(false);
+  await page.reload();
+  await page.click('#wb-menu-btn');
+  await page.click('#wb-menu-more');
+  await expect(page.locator('#wb-pref-tree-follow')).not.toBeChecked();
+});
+
 test('one unified surface — left pane, canvas tab strip and fx bar all present', async ({ page }) => {
   // there is no mode toggle anymore — everything is on screen at once
   await expect(page.locator('#wb-mode')).toHaveCount(0);
