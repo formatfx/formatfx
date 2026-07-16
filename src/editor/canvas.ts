@@ -11,6 +11,7 @@
  */
 
 import { state } from './state';
+import { selectionEcho } from './codeSync';
 import { renderElement, closeFlyout, type RenderIssue } from '../core/renderer';
 import type { EvalContext } from '../core/expressions';
 import { paletteItemById } from './palette';
@@ -427,6 +428,22 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     });
   };
 
+  // The synced selection pulse (owner ask 2026-07-16): whenever the JSON pane
+  // flashes the selected element's lines, the canvas pulses the same element —
+  // in every mock row it renders in — with the existing "here it is" language
+  // (wb-search-flash, the pulse search jumps already use). Fires for canvas
+  // clicks too (the flash affirms the click), but NOT for caret-originated
+  // selections (echo 'code'): arrow-keying through the JSON must not strobe
+  // the canvas — the same rule that keeps the JSON pane from flashing itself.
+  const flashSelection = () => {
+    host.querySelectorAll<HTMLElement>('.wb-selected').forEach((n) => {
+      n.classList.remove('wb-search-flash');
+      void n.offsetWidth; // restart the CSS animation on back-to-back flashes
+      n.classList.add('wb-search-flash');
+      window.setTimeout(() => n.classList.remove('wb-search-flash'), 1300);
+    });
+  };
+
   // click-to-select — flyouts are appended to <body>, so listen there too.
   // Live mode routes clicks through the real behaviors instead (Stage 3):
   // nothing selects, so the canvas feels like the list it will become.
@@ -545,8 +562,12 @@ export function mountCanvas(host: HTMLElement, onToast: (msg: string) => void, v
     (host as any)._unsub();
   }
   const unsub = state.subscribe((reason) => {
-    if (reason === 'selection') highlightSelection();
-    else render();
+    if (reason === 'selection') {
+      highlightSelection();
+      if (!selectionEcho.from('code')) flashSelection();
+    } else {
+      render();
+    }
   });
   (host as any)._unsub = () => {
     unsub();

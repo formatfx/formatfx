@@ -3727,6 +3727,24 @@ body.wb-json-editing #wb-canvas::after {
 .wb-lp-tree .wb-tree-row { display: flex; align-items: center; }
 .wb-lp-tree .wb-tree-label { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
 .wb-lp-tree .wb-tree-row.wb-tree-hidden .wb-tree-label { opacity: .45; }
+
+/* ── tree fold chevrons (2026-07-16) — collapse hides the child rows here and
+   folds the children:[ level in the JSON pane (shared foldState). Leaf rows
+   carry a same-width spacer so element icons stay aligned. ─────────────────── */
+.wb-tree-fold {
+  flex: 0 0 14px; width: 14px; height: 16px; padding: 0; margin: 0 1px 0 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 3px;
+  color: var(--wb-text-2); font-size: 9px; line-height: 1; cursor: pointer;
+}
+button.wb-tree-fold:hover { color: var(--wb-text); background: var(--wb-bg); }
+.wb-tree-fold-none { cursor: default; }
+.wb-tree-row.selected .wb-tree-fold { color: inherit; }
+/* a collapsed row that HIDES the current selection hints where it went —
+   mirroring the JSON pane's clamp-to-the-sentinel flash, no auto-expand */
+.wb-lp-tree .wb-tree-row.wb-tree-holdsel:not(.selected) {
+  box-shadow: inset 2px 0 0 var(--wb-accent);
+}
 /* The base .wb-tree-row.selected (studio tree) is accent-fill + white text; the
    Left Edit Pane swaps the fill for the soft --wb-lp-selected blue, so the text
    must come back to the pane's own ink — white on #cfe4f7 is unreadable. */

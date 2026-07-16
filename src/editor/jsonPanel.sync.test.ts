@@ -167,3 +167,52 @@ describe('the echo guard', () => {
     expect(panelHost.querySelector('.wb-code-flashbar')).not.toBeNull();
   });
 });
+
+describe('the flash bar vs scrolling (the "named elements never flash" fix, 2026-07-16)', () => {
+  it('survives scroll events — including the reveal\'s own programmatic scroll — and tracks instead of dying', () => {
+    const { panelHost, textEl } = mountBoth();
+    state.select([1]);
+    const bar = panelHost.querySelector('.wb-code-flashbar') as HTMLElement;
+    expect(bar).not.toBeNull();
+    // the reveal's scrollTop write fires an async scroll event in real
+    // browsers; the old listener cleared the bar the moment that landed
+    textEl.dispatchEvent(new Event('scroll'));
+    expect(panelHost.querySelector('.wb-code-flashbar')).toBe(bar); // still the same bar
+  });
+
+  it('buffer edits still clear it (stale geometry must never lie)', () => {
+    const { panelHost, textEl } = mountBoth();
+    state.select([1]);
+    expect(panelHost.querySelector('.wb-code-flashbar')).not.toBeNull();
+    textEl.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(panelHost.querySelector('.wb-code-flashbar')).toBeNull();
+  });
+});
+
+describe('the synced canvas pulse (owner ask 2026-07-16)', () => {
+  it('a canvas click pulses the clicked element in step with the JSON flash', () => {
+    const { canvasHost, panelHost } = mountBoth();
+    const target = canvasHost.querySelector('[data-sp-path="1"]') as HTMLElement;
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(panelHost.querySelector('.wb-code-flashbar')).not.toBeNull(); // JSON flashed…
+    expect(target.classList.contains('wb-search-flash')).toBe(true);    // …and so did the canvas
+  });
+
+  it('an out-of-band selection (tree, lint row) pulses every rendered instance of the element', () => {
+    const { canvasHost } = mountBoth();
+    state.select([0]);
+    const hits = [...canvasHost.querySelectorAll('[data-sp-path="0"]')];
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((n) => n.classList.contains('wb-search-flash'))).toBe(true);
+  });
+
+  it('code-originated selection (the caret) pulses NOTHING — same echo rule as the pane', () => {
+    const { canvasHost, textEl } = mountBoth();
+    const { ranges } = panelMap();
+    const r = rangeForPath(ranges, [2])!;
+    textEl.setSelectionRange(r.start + 1, r.start + 1);
+    textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).toEqual([2]); // synced out…
+    expect(canvasHost.querySelector('.wb-search-flash')).toBeNull(); // …no strobe anywhere
+  });
+});

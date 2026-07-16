@@ -59,6 +59,7 @@ import {
   snapshotId, defaultLabel,
   type Snapshot, type SnapshotScope,
 } from './snapshots';
+import { foldState } from './foldState';
 
 export type ChangeReason =
   | 'document' | 'selection' | 'data' | 'kind' | 'theme' | 'load' | 'lens'
@@ -896,6 +897,10 @@ export class EditorState {
     this.surfaceSelections = {};
     this.navStack = [];
     this.viewIdCounter = 0;
+    // folds are view state SHARED between the JSON pane and the tree
+    // (foldState) — a whole-workspace swap starts unfolded, old paths
+    // would just resolve onto unrelated nodes
+    foldState.clear();
     this.markSavepoint();
     this.emit('load');
     this.emit('data');
@@ -939,6 +944,10 @@ export class EditorState {
     this.surfaceSelections = {};
     this.navStack = [];
     this.viewIdCounter = 0;
+    // folds are view state SHARED between the JSON pane and the tree
+    // (foldState) — a whole-workspace swap starts unfolded, old paths
+    // would just resolve onto unrelated nodes
+    foldState.clear();
     this.markSavepoint();
     this.emit('load');
     this.emit('data');

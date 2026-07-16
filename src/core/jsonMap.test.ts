@@ -239,3 +239,46 @@ describe('wrapper sections (foldable viewExtras subtrees)', () => {
     expect(exportJsonWithMap(doc).text).toBe(exportJson(doc, { indent: 2 }));
   });
 });
+
+describe('children ranges (the foldable children:[ level, 2026-07-16)', () => {
+  it('every non-empty children array gets a range keyed by its parent path, slicing to the exact array', () => {
+    for (const doc of [columnDoc(), rowDoc(), tileDoc(), gridDoc()]) {
+      const { text, childrenRanges, ranges } = exportJsonWithMap(doc);
+      for (const c of childrenRanges) {
+        const slice = text.slice(c.start, c.end);
+        expect(slice[0]).toBe('[');
+        expect(slice[slice.length - 1]).toBe(']');
+        const arr = JSON.parse(slice) as unknown[];
+        // the parsed array is exactly the parent's children list
+        const parent = rangeForPath(ranges, c.path)!;
+        const parentObj = JSON.parse(text.slice(parent.start, parent.end)) as { children?: unknown[] };
+        expect(arr).toEqual(parentObj.children);
+        // and the array sits INSIDE its parent element's range
+        expect(c.start).toBeGreaterThan(parent.start);
+        expect(c.end).toBeLessThan(parent.end);
+      }
+    }
+  });
+
+  it('covers the root, nested containers and card-formatter subtrees; skips empty arrays and leaves', () => {
+    const { childrenRanges } = exportJsonWithMap(rowDoc());
+    const keys = childrenRanges.map((c) => c.path.join('/'));
+    expect(keys).toContain('');       // the root's children
+    expect(keys).toContain('0');      // the nested container's children
+    expect(keys).toContain(`1/${CARD}`); // the card formatter root's children
+    expect(keys).not.toContain('0/0');   // a leaf span has no children array
+    // grid: the second column's children:[] is EMPTY — single line, never foldable
+    const grid = exportJsonWithMap(gridDoc());
+    const gridKeys = grid.childrenRanges.map((c) => c.path.join('/'));
+    expect(gridKeys).toContain('');
+    expect(gridKeys).toContain('0');
+    expect(gridKeys).not.toContain('1');
+  });
+
+  it('the column-kind spread still maps the root children (property copied by reference)', () => {
+    const { text, childrenRanges } = exportJsonWithMap(columnDoc());
+    const rootChildren = childrenRanges.find((c) => c.path.length === 0);
+    expect(rootChildren).toBeDefined();
+    expect(text.slice(0, rootChildren!.start)).toContain('"children"');
+  });
+});
