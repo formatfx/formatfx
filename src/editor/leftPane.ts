@@ -47,6 +47,9 @@ import {
 
 export interface LeftPaneOptions {
   toast: (msg: string) => void;
+  /** Preference read for the Structure tree's follow-selection scroll
+   *  (☰ → Preferences; main.ts backs it with the wb-ui-prefs blob). */
+  treeFollowSelection?: () => boolean;
 }
 
 const COLLAPSIBLE_SECTIONS: { id: PaneSectionId; label: string }[] = [
@@ -127,7 +130,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
 
   // ── mount the sections ─────────────────────────────────────────────────────
   mountViewCard(host.querySelector<HTMLElement>('#wb-lp-viewcard')!, toast);
-  mountTree(host.querySelector<HTMLElement>('#wb-tree-body')!, toast);
+  mountTree(host.querySelector<HTMLElement>('#wb-tree-body')!, toast,
+    { ...(opts.treeFollowSelection ? { followSelection: opts.treeFollowSelection } : {}) });
   mountColumnShelf(host.querySelector<HTMLElement>('#wb-lp-shelf')!, toast);
   mountComponentLibrary(host.querySelector<HTMLElement>('#wb-lp-library')!, toast);
   mountViewsList(host.querySelector<HTMLElement>('#wb-lp-views')!, toast);

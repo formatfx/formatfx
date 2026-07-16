@@ -32,6 +32,12 @@ function mountDoc(root: SPElement, kind: 'row' | 'grid' = 'row'): HTMLElement {
 }
 
 beforeEach(() => {
+  // unhook every leaked mount BEFORE wiping the DOM — innerHTML = '' detaches
+  // hosts but their state/foldState subscriptions kept firing on detached
+  // trees (visible the moment a test observes side effects like scrolls)
+  document.querySelectorAll<HTMLElement>('body > *').forEach((el) => {
+    (el as unknown as { _unsub?: () => void })._unsub?.();
+  });
   document.body.innerHTML = '';
   localStorage.clear();
   state.resetAll();
@@ -557,5 +563,67 @@ describe('fold chevrons (2026-07-16 — synced with the JSON pane via foldState)
     expect(foldState.keys()).toEqual([]); // …but the shared set never heard of it
     handle.destroy();
     state.deactivateComponentTab();
+  });
+});
+
+describe('follow-selection scroll (☰ → Preferences, 2026-07-16)', () => {
+  // jsdom has no scrollIntoView at all — stub it to record which row asked;
+  // assertions scope to the CURRENT host so any stray mount can't pollute
+  const scrolled: HTMLElement[] = [];
+  const scrolledIn = (host: HTMLElement): string[] =>
+    scrolled.filter((el) => host.contains(el)).map((el) => el.dataset.path ?? '?');
+  beforeEach(() => {
+    scrolled.length = 0;
+    (HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView =
+      function (this: HTMLElement) { scrolled.push(this); };
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  const DOC = (): SPElement => ({
+    elmType: 'div',
+    children: [
+      { elmType: 'span', txtContent: 'x' },
+      { elmType: 'div', _elmName: 'Box', children: [{ elmType: 'span', txtContent: 'y' }] },
+    ],
+  });
+
+  it('follows every selection by default — the selected row scrolls into view', () => {
+    const host = mountDoc(DOC());
+    state.select([1, 0]);
+    expect(scrolledIn(host)).toEqual(['1.0']);
+    state.select([0]);
+    expect(scrolledIn(host)).toEqual(['1.0', '0']);
+  });
+
+  it('the preference turns it off — selection still highlights, nothing scrolls', () => {
+    state.doc = { kind: 'row', root: DOC() };
+    state.selection = null;
+    const host = document.createElement('div');
+    document.body.append(host);
+    mountTree(host, () => {}, { followSelection: () => false });
+    state.select([1, 0]);
+    expect(host.querySelector('.wb-tree-row.selected')).not.toBeNull();
+    expect(scrolledIn(host)).toEqual([]);
+  });
+
+  it('a selection buried in a collapsed subtree reveals its nearest visible ancestor', () => {
+    const host = mountDoc(DOC());
+    host.querySelector<HTMLButtonElement>('.wb-tree-row[data-path="1"] button.wb-tree-fold')!.click();
+    scrolled.length = 0; // fold re-render settled — watch only the selection
+    state.select([1, 0]); // hidden under the collapsed Box
+    expect(scrolledIn(host)).toEqual(['1']); // the holdsel row, not a missing '1.0'
+  });
+
+  it('document re-renders never scroll — only selection emits do', () => {
+    const host = mountDoc(DOC());
+    state.select([1, 0]);
+    scrolled.length = 0;
+    state.mutateDocument(() => {
+      const n = state.nodeAt([0]);
+      if (n) n.txtContent = 'edited';
+    });
+    expect(scrolledIn(host)).toEqual([]); // browsing position is sacred on repaints
   });
 });
