@@ -66,7 +66,7 @@ import { buildCurrentApplyPayload } from './deployPayload';
 import { lintBadge, lintAriaLabel } from './lintBadge';
 import {
   buildLintView, inferFieldType, loadLintPrefs, saveLintPrefs,
-  type MissingColumnRow,
+  type MissingColumnRow, type SeverityTally,
 } from './lintView';
 import { FIELD_TYPE_OPTIONS } from '../core/schemaImport';
 import type { FieldType, MockField } from '../core/types';
@@ -1258,14 +1258,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     const sum = document.createElement('span');
     sum.className = 'wb-lint-sum';
     const parts: string[] = [];
-    const chip = (sev: string, n: number, word: string): void => {
-      if (!n) return;
+    // "2 errors (×51)" per level: 2 distinct KINDS of error, 51 occurrences
+    const chip = (sev: string, t: SeverityTally, word: string): void => {
+      if (!t.total) return;
       const s = document.createElement('span');
       s.className = `wb-lint-chip wb-lint-chip-${sev}`;
-      s.textContent = `${lintBadge(sev).glyph} ${n}`;
-      s.title = `${n} ${word}${n === 1 ? '' : 's'}`;
+      s.textContent = `${lintBadge(sev).glyph} ${t.types} ${word}${t.types === 1 ? '' : 's'} (×${t.total})`;
+      const detail = `${t.types} ${word} type${t.types === 1 ? '' : 's'}, ${t.total} occurrence${t.total === 1 ? '' : 's'}`;
+      s.title = detail;
       sum.appendChild(s);
-      parts.push(`${n} ${word}${n === 1 ? '' : 's'}`);
+      parts.push(detail);
     };
     chip('error', errors, 'error');
     chip('warning', warnings, 'warning');
@@ -1315,7 +1317,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       body.appendChild(quiet);
     }
     lintEl.appendChild(body);
-    return { errors, warnings, runtime: runtime.length };
+    return { errors: errors.total, warnings: warnings.total, runtime: runtime.length };
   };
 
   const hostAny = host as any;

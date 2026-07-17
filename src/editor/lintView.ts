@@ -8,7 +8,8 @@
  * footer with one 'unknown-field' warning per REFERENCE. This module folds
  * that flood into one row per missing COLUMN (count badge = how many places
  * reference it), leaves every other diagnostic untouched in walk order, and
- * totals a severity summary the panel can show even while collapsed.
+ * tallies a severity summary (distinct issue types + total occurrences per
+ * level) the panel can show even while collapsed.
  *
  * The missing-column filter is for the paste-JSON-as-scratchpad workflow
  * (using the editor on a formatter without wiring up the Data tab): it
@@ -28,11 +29,21 @@ import type { LintIssue } from '../core/linter';
 import type { RenderIssue } from '../core/renderer';
 import { parseForEach } from '../core/expressions';
 
+/** One severity level's tally. The head-bar chips read "2 errors (×51)":
+ *  2 distinct KINDS of error, 51 occurrences between them. */
+export interface SeverityTally {
+  /** Distinct issue types at this level (lint rules; runtime issues carry no
+   *  rule, so distinct messages stand in). */
+  types: number;
+  /** Every occurrence at this level — the full-truth count. */
+  total: number;
+}
+
 export interface LintSummary {
-  errors: number;
-  warnings: number;
-  infos: number;
-  runtime: number;
+  errors: SeverityTally;
+  warnings: SeverityTally;
+  infos: SeverityTally;
+  runtime: SeverityTally;
 }
 
 /** A diagnostic rendered as-is (everything except grouped missing columns). */
@@ -68,11 +79,15 @@ export function buildLintView(
   runtime: RenderIssue[],
   opts: { hideMissingColumns?: boolean } = {},
 ): LintViewModel {
+  const tally = (sev: LintIssue['severity']): SeverityTally => {
+    const at = issues.filter((i) => i.severity === sev);
+    return { types: new Set(at.map((i) => i.rule)).size, total: at.length };
+  };
   const summary: LintSummary = {
-    errors: issues.filter((i) => i.severity === 'error').length,
-    warnings: issues.filter((i) => i.severity === 'warning').length,
-    infos: issues.filter((i) => i.severity === 'info').length,
-    runtime: runtime.length,
+    errors: tally('error'),
+    warnings: tally('warning'),
+    infos: tally('info'),
+    runtime: { types: new Set(runtime.map((r) => r.message)).size, total: runtime.length },
   };
   const rows: LintRow[] = [];
   const groups = new Map<string, MissingColumnRow>();

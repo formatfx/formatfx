@@ -56,7 +56,7 @@ describe('buildLintView — the missing-column fold', () => {
     const rt = view.rows[1] as PlainLintRow;
     expect(rt.sev).toBe('runtime');
     expect(rt.text).toBe('boom');
-    expect(view.summary.runtime).toBe(1);
+    expect(view.summary.runtime).toEqual({ types: 1, total: 1 });
   });
 
   it('the filter suppresses missing-column rows but never the accounting', () => {
@@ -65,10 +65,10 @@ describe('buildLintView — the missing-column fold', () => {
     expect(view.rows.map((r) => r.kind)).toEqual(['issue']); // only css-unknown survives
     expect(view.hiddenMissing).toBe(3);
     // the summary is the full truth — hiding is never silent
-    expect(view.summary.warnings).toBe(4);
+    expect(view.summary.warnings).toEqual({ types: 2, total: 4 });
     const unfiltered = buildLintView(issues, []);
     expect(unfiltered.hiddenMissing).toBe(0);
-    expect(unfiltered.summary.warnings).toBe(4);
+    expect(unfiltered.summary.warnings).toEqual({ types: 2, total: 4 });
   });
 
   it('an unknown-field issue without structured field data falls back to a plain row', () => {
@@ -78,12 +78,18 @@ describe('buildLintView — the missing-column fold', () => {
     expect(view.rows[0].kind).toBe('issue');
   });
 
-  it('totals the severity summary', () => {
+  it('tallies each severity as distinct issue types AND total occurrences', () => {
     const view = buildLintView([
-      issue('error', 'a', [0]), issue('error', 'b', [1]),
-      issue('warning', 'c', [2]), issue('info', 'd', [3]),
-    ], [{ path: [], message: 'r' }]);
-    expect(view.summary).toEqual({ errors: 2, warnings: 1, infos: 1, runtime: 1 });
+      issue('error', 'a', [0]), issue('error', 'a', [1]), issue('error', 'b', [2]),
+      issue('warning', 'c', [3]), issue('info', 'd', [4]),
+    ], [{ path: [], message: 'boom' }, { path: [1], message: 'boom' }, { path: [2], message: 'bang' }]);
+    expect(view.summary).toEqual({
+      errors: { types: 2, total: 3 },
+      warnings: { types: 1, total: 1 },
+      infos: { types: 1, total: 1 },
+      // runtime issues carry no rule — distinct messages stand in for types
+      runtime: { types: 2, total: 3 },
+    });
   });
 });
 
