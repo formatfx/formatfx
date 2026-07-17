@@ -1426,6 +1426,14 @@ export class EditorState {
     this.doc.kind = 'tile';
     this.doc.tileWidth = size?.width ?? this.doc.tileWidth ?? 254;
     this.doc.tileHeight = size?.height ?? this.doc.tileHeight ?? 220;
+    // tile payloads pass viewExtras through now — a stale additionalRowClass
+    // left over from the row days is row-only (and retired) metadata that
+    // must not leak into the tile export; other extras (groupProps, …) are
+    // layout-agnostic and stay untouched
+    if (this.doc.viewExtras?.additionalRowClass !== undefined) {
+      this.doc.viewExtras = { ...this.doc.viewExtras };
+      delete this.doc.viewExtras.additionalRowClass;
+    }
     if (this.snapState() !== before) this.pushUndo(before);
     this.selection = [];
     this.emit('kind');

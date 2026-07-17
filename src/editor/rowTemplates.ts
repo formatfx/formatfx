@@ -690,21 +690,23 @@ export function buildTemplateView(
 export function foldRowClassIntoRoot(root: SPElement, rowClass: string): SPElement {
   const out = JSON.parse(JSON.stringify(root)) as SPElement;
   const existing = out.attributes?.class;
-  const existingStr = typeof existing === 'string' ? existing : undefined;
-  let next: string | undefined;
-  if (rowClass.startsWith('=')) {
-    const body = rowClass.slice(1);
-    if (existingStr === undefined) next = rowClass;
-    else if (!existingStr.startsWith('=')) next = `='${existingStr} ' + ${body}`;
-    // expression + expression: keep the root's own class untouched
-  } else if (existingStr === undefined) {
+  // an AST (object-form) class is a supported SPExpr the string composer
+  // can't rewrite — REFUSE the fold rather than overwrite either side
+  if (existing !== undefined && typeof existing !== 'string') return out;
+  let next: string;
+  if (existing === undefined) {
     next = rowClass;
-  } else if (!existingStr.startsWith('=')) {
-    next = `${existingStr} ${rowClass}`;
+  } else if (rowClass.startsWith('=') && existing.startsWith('=')) {
+    // both are class-string expressions — compose them (a space between)
+    next = `=(${existing.slice(1)}) + ' ' + (${rowClass.slice(1)})`;
+  } else if (rowClass.startsWith('=')) {
+    next = `='${existing} ' + ${rowClass.slice(1)}`;
+  } else if (existing.startsWith('=')) {
+    next = `=(${existing.slice(1)}) + ' ${rowClass}'`;
   } else {
-    next = `=(${existingStr.slice(1)}) + ' ${rowClass}'`;
+    next = `${existing} ${rowClass}`;
   }
-  if (next !== undefined) out.attributes = { ...out.attributes, class: next };
+  out.attributes = { ...out.attributes, class: next };
   return out;
 }
 

@@ -5,6 +5,7 @@ import {
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem, wireframeById,
   childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
+  foldRowClassIntoRoot,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem, type WireframeId,
   type ZoneAlign, type ZoneVAlign, type RootVAlign,
 } from './rowTemplates';
@@ -21,6 +22,40 @@ const base = (over: Partial<RowTemplateConfig> = {}): RowTemplateConfig => ({
   zones: [], kebab: { enabled: false, behavior: 'custom', position: 'right',
     actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } },
   ...over,
+});
+
+describe('foldRowClassIntoRoot — the retired wrapper class folds without data loss', () => {
+  const rootWith = (cls?: unknown) => ({
+    elmType: 'div',
+    ...(cls !== undefined ? { attributes: { class: cls } } : {}),
+  }) as import('../core/types').SPElement;
+
+  it('lands directly when the root has no class; appends to a static class', () => {
+    expect(foldRowClassIntoRoot(rootWith(), 'zebra').attributes!.class).toBe('zebra');
+    expect(foldRowClassIntoRoot(rootWith('a b'), 'zebra').attributes!.class).toBe('a b zebra');
+  });
+
+  it('composes expressions in every string pairing', () => {
+    expect(foldRowClassIntoRoot(rootWith('a'), ZEBRA_ROW_CLASS).attributes!.class)
+      .toBe(`='a ' + ${ZEBRA_ROW_CLASS.slice(1)}`);
+    expect(foldRowClassIntoRoot(rootWith("=if([$X],'y','')"), 'zebra').attributes!.class)
+      .toBe("=(if([$X],'y','')) + ' zebra'");
+    // expression + expression composes too — the incoming class is never dropped
+    expect(foldRowClassIntoRoot(rootWith("=if([$X],'y','')"), ZEBRA_ROW_CLASS).attributes!.class)
+      .toBe(`=(if([$X],'y','')) + ' ' + (${ZEBRA_ROW_CLASS.slice(1)})`);
+  });
+
+  it('REFUSES to touch an AST (object-form) class — neither side is overwritten', () => {
+    const ast = { operator: '?', operands: ['[$X]', 'y', ''] };
+    const out = foldRowClassIntoRoot(rootWith(ast), 'zebra');
+    expect(out.attributes!.class).toEqual(ast);
+  });
+
+  it('never mutates its input', () => {
+    const root = rootWith('a');
+    foldRowClassIntoRoot(root, 'zebra');
+    expect(root.attributes!.class).toBe('a');
+  });
 });
 
 describe('composeRowStyle — conflict precedence + exclusion', () => {

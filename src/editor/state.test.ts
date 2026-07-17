@@ -890,8 +890,13 @@ describe('applyRowTemplate / applyTileTemplate', () => {
   it('applyTileTemplate on a sheet flips kind + tile box in one step; from the floor it creates', () => {
     const s = new EditorState();
     s.createView(rowDoc());
+    // a stale (retired) additionalRowClass must not leak into tile exports;
+    // layout-agnostic extras survive the conversion untouched
+    s.doc.viewExtras = { additionalRowClass: 'zebra', groupProps: { hideFooter: true } };
     s.applyTileTemplate({ elmType: 'div', _elmName: 'Tile layout' }, { width: 300, height: 240 });
     expect(s.doc.kind).toBe('tile');
+    expect(s.doc.viewExtras!.additionalRowClass).toBeUndefined();
+    expect(s.doc.viewExtras!.groupProps).toEqual({ hideFooter: true });
     expect(s.doc.tileWidth).toBe(300);
     expect(s.doc.tileHeight).toBe(240);
     s.undo();

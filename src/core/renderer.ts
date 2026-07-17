@@ -98,6 +98,12 @@ export function renderElement(
   if (opts.tagPaths) {
     (node as HTMLElement).dataset.spPath = path.join('.');
   }
+  // Every rendered ROOT is marked wb-sp-render so the app's box-sizing reset
+  // can exempt formatter content on EVERY surface — independent of tagPaths
+  // (stress test, cond-format receipts, library previews render untagged).
+  // Surfaces that pass a non-empty root path (grid cells, card flyouts) are
+  // covered by their [data-sp-path] tagging; see style.css.
+  if (path.length === 0) node.classList.add('wb-sp-render');
 
   // attributes
   if (el.attributes) {

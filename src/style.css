@@ -117,8 +117,15 @@ body.wb-dark {
    CHROME (beak/positioning) deliberately keeps border-box. Untagged
    thumbnail previews (component library cards, playground stage) are an
    accepted gap. A formatter's own allow-listed box-sizing style is inline
-   and still wins over this rule. */
-[data-sp-path], [data-sp-path] * { box-sizing: content-box; }
+   and still wins over this rule.
+   Coverage is the UNION of two markers: the renderer stamps wb-sp-render on
+   every rendered root invoked at path [] (tagPaths-independent — stress
+   test, cond-format receipts, library previews), and [data-sp-path] covers
+   surfaces that render subtrees at non-empty paths (grid cells, card
+   flyout content). Flyout CHROME (the beak) carries neither marker and
+   keeps border-box. */
+[data-sp-path], [data-sp-path] *,
+.wb-sp-render, .wb-sp-render * { box-sizing: content-box; }
 
 /* Keyboard-focus floor: every interactive element shows an accent ring when
    focused via keyboard. Bare :focus-visible loses to any class-scoped :focus

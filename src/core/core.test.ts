@@ -564,6 +564,21 @@ describe('tileProps wrapper import (pnp-compare finding 13)', () => {
     expect(doc.tileHeight).toBe(200);
   });
 
+  it('unmodeled tileProps-INTERIOR keys keep their nesting through the round trip (modern shape back out)', () => {
+    const src = {
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      tileProps: { height: 200, width: 250, someFutureKey: { a: 1 }, formatter: { elmType: 'div' } },
+    };
+    const doc = importJson(JSON.stringify(src));
+    expect((doc.viewExtras?.tileProps as Record<string, unknown>).someFutureKey).toEqual({ a: 1 });
+    const out = JSON.parse(exportJson(doc));
+    // the key stays INSIDE tileProps — never relocated to the wrapper top
+    expect(out.tileProps.someFutureKey).toEqual({ a: 1 });
+    expect(out.someFutureKey).toBeUndefined();
+    expect(out.tileProps.formatter.elmType).toBe('div');
+    expect(importJson(JSON.stringify(out)).viewExtras?.tileProps).toEqual({ someFutureKey: { a: 1 } });
+  });
+
   it('carries tile wrapper siblings (groupProps etc.) through import → export', () => {
     const src = {
       $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',

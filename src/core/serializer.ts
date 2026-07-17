@@ -58,14 +58,17 @@ export function importJson(text: string): FormatterDocument {
   // {formatter, height, width} shape below remains accepted)
   if ('tileProps' in parsed && typeof parsed.tileProps === 'object' && parsed.tileProps !== null
     && !('elmType' in parsed)) {
-    // Wrapper siblings (groupProps, commandBarProps, …) and unmodeled
-    // tileProps keys ride viewExtras verbatim, like the row path — an
-    // import/edit/export cycle must never silently destroy them.
+    // Wrapper siblings (groupProps, commandBarProps, …) ride viewExtras
+    // verbatim, like the row path; unmodeled keys from INSIDE tileProps keep
+    // their nesting under viewExtras.tileProps so the passthrough never
+    // relocates them or collides with a same-named sibling — export emits
+    // the modern tileProps shape whenever that nested marker exists.
     const tp = parsed.tileProps as Record<string, unknown>;
     const { formatter, width, height, hideSelection: tpHide, fillHorizontally, ...tpExtras } = tp;
     const { $schema, tileProps, hideSelection, ...siblings } = parsed;
     void $schema; void tileProps;
-    const extras = { ...siblings, ...tpExtras };
+    const extras: Record<string, unknown> = { ...siblings };
+    if (Object.keys(tpExtras).length) extras.tileProps = tpExtras;
     return {
       kind: 'tile',
       root: formatter as SPElement,
@@ -148,17 +151,22 @@ export function exportPayload(doc: FormatterDocument, opts: ExportOptions = {}):
         rowFormatter: root,
       };
       break;
-    case 'tile':
-      payload = {
-        $schema: SCHEMA_URLS.tile,
+    case 'tile': {
+      // viewExtras.tileProps marks a modern-shape import whose unmodeled
+      // interior keys must go back INSIDE tileProps; everything else is a
+      // top-level wrapper sibling (groupProps, …) either way.
+      const { tileProps: tpExtras, ...topExtras } = doc.viewExtras ?? {};
+      const box = {
         height: doc.tileHeight ?? 220,
         width: doc.tileWidth ?? 254,
         ...(doc.hideSelection !== undefined ? { hideSelection: doc.hideSelection } : {}),
         ...(doc.fillHorizontally !== undefined ? { fillHorizontally: doc.fillHorizontally } : {}),
-        ...(doc.viewExtras ?? {}), // verbatim passthrough (groupProps, …)
-        formatter: root,
       };
+      payload = tpExtras && typeof tpExtras === 'object'
+        ? { $schema: SCHEMA_URLS.tile, ...topExtras, tileProps: { ...box, ...(tpExtras as Record<string, unknown>), formatter: root } }
+        : { $schema: SCHEMA_URLS.tile, ...box, ...topExtras, formatter: root };
       break;
+    }
     default:
       payload = { $schema: SCHEMA_URLS.column, ...root };
   }
