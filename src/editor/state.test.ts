@@ -872,6 +872,17 @@ describe('applyRowTemplate / applyTileTemplate', () => {
     expect(s.doc.root._elmName).toBe('A');
   });
 
+  it('an AST root class REFUSES the legacy-class fold and KEEPS the wrapper key (never silent loss)', () => {
+    const s = new EditorState();
+    s.createView(rowDoc());
+    const ast = { operator: '?', operands: ['[$X]', 'y', ''] };
+    s.applyRowTemplate({ elmType: 'div', attributes: { class: ast } } as never, 'zebra');
+    // neither class is destroyed: the AST stays on the root, the legacy class
+    // stays on the wrapper where the rowclass-with-rowformatter lint flags it
+    expect(s.doc.root.attributes!.class).toEqual(ast);
+    expect(s.doc.viewExtras!.additionalRowClass).toBe('zebra');
+  });
+
   it('from the floor: CREATES a new named sheet — the floor is never overwritten', () => {
     const s = new EditorState();
     const floorJson = JSON.stringify(s.floorDoc);

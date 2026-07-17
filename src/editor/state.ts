@@ -1386,23 +1386,35 @@ export class EditorState {
     // so wrapper-borne striping silently never worked on real lists. A class
     // still arriving here (a stored row-component def from before the
     // retirement) gets FOLDED into the root's own class expression, where the
-    // same @rowIndex conditional actually works; any stale wrapper key on the
-    // target doc is cleared.
-    if (additionalRowClass) root = foldRowClassIntoRoot(root, additionalRowClass);
+    // same @rowIndex conditional actually works. The ONE fold the string
+    // composer refuses — an AST (object-form) root class — KEEPS the wrapper
+    // key instead (never silent loss; the rowclass-with-rowformatter lint
+    // rule surfaces it); otherwise any stale wrapper key is cleared.
+    const astRootClass = root.attributes?.class !== undefined
+      && typeof root.attributes.class !== 'string';
+    const keepWrapperClass = Boolean(additionalRowClass) && astRootClass;
+    if (additionalRowClass && !keepWrapperClass) {
+      root = foldRowClassIntoRoot(root, additionalRowClass);
+    }
     if (this.activeDocKey !== 'main') this.openMain();
     if (this.onFloor) {
-      this.createView({ kind: 'row', root });
+      this.createView({
+        kind: 'row', root,
+        ...(keepWrapperClass ? { viewExtras: { additionalRowClass } } : {}),
+      });
       return;
     }
     // Snapshot BEFORE mutating and push undo only if the doc actually changed —
     // an Apply that reproduces the current layout must not push a phantom undo
     // step (the no-op-snapshot invariant from 5df1f99 / mutateDocument). Touch
-    // viewExtras only when there's a stale class to clear, so a no-op Apply
+    // viewExtras only when there's a class to keep or clear, so a no-op Apply
     // doesn't flip viewExtras from undefined to {} and read as a change.
     const before = this.snapState();
     this.doc.root = root;
     this.doc.kind = 'row';
-    if (this.doc.viewExtras?.additionalRowClass !== undefined) {
+    if (keepWrapperClass) {
+      this.doc.viewExtras = { ...this.doc.viewExtras, additionalRowClass };
+    } else if (this.doc.viewExtras?.additionalRowClass !== undefined) {
       this.doc.viewExtras = { ...this.doc.viewExtras };
       delete this.doc.viewExtras.additionalRowClass;
     }

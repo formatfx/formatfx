@@ -673,6 +673,20 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
     expect(reopen(card)!.zebraStriping).toBe(false); // what actually painted
   });
 
+  it("zebra survives the app's OWN export → import (sanitize strips expression whitespace)", async () => {
+    const { exportJson: exp, importJson: imp } = await import('../core/serializer');
+    for (const cfg of [
+      { ...defaultConfigFor('equal', FIELDS), zebraStriping: true },
+      { ...defaultConfigFor('equal', FIELDS), zebraStriping: true, hoverHighlight: true }, // statics + zebra
+    ]) {
+      const { root } = buildTemplateView(cfg, FIELDS, {}, PAL, [CHIP], { prune: true });
+      const doc = imp(exp({ kind: 'row', root }, { keepMeta: true }));
+      const parsed = configFromView(doc.root, undefined, FIELDS, {}, [CHIP]);
+      expect(parsed, cfg.hoverHighlight ? 'statics form' : 'bare form').not.toBeNull();
+      expect(parsed!.zebraStriping).toBe(true);
+    }
+  });
+
   it('a dashed flat border and the left accent stripe round-trip', () => {
     const c = { ...defaultConfigFor('equal', FIELDS), borderStyle: 'dashed' as const,
       borderColor: 'themePrimary', leftStripe: 'neutral' as const };

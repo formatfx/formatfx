@@ -32,6 +32,7 @@ import type { AreaWeight, RowDensity } from './areas';
 import { WEIGHT_FLEX, setRowDensity, rowDensityOf } from './areas';
 import { gridCellForField, fieldRefsIn as gridFieldRefsIn } from './gridScaffold';
 import { bindComponentInstance, type ComponentDef } from './components';
+import { stripExpressionWhitespace } from '../core/linter';
 
 export type WireframeId =
   | 'lead-detail' | 'avatar-card' | 'title-chips' | 'dashboard' | 'equal' | 'blank'
@@ -1076,15 +1077,20 @@ export function configFromView(
 
   // zebra lives in the root's CLASS EXPRESSION: either bare
   // `=if(@rowIndex % 2…)` or `='<statics> ' + if(@rowIndex % 2…)`.
-  // Any OTHER class expression is foreign; a plain string is all statics.
+  // Matching is WHITESPACE-INSENSITIVE (sanitize-on-export strips spaces
+  // outside quotes, and the app's own export must reopen) — quoted statics
+  // keep their trailing space either way. Any OTHER class expression is
+  // foreign; a plain string is all statics.
   const rawClass = root.attributes?.class;
   let zebraStriping = false;
   let staticClasses = typeof rawClass === 'string' ? rawClass : '';
   if (typeof rawClass === 'string' && rawClass.startsWith('=')) {
-    if (rawClass === `=${ZEBRA_CLASS_EXPR}`) {
+    const sanZebra = stripExpressionWhitespace(`=${ZEBRA_CLASS_EXPR}`);
+    const san = stripExpressionWhitespace(rawClass);
+    if (san === sanZebra) {
       zebraStriping = true; staticClasses = '';
     } else {
-      const m = new RegExp(`^='(.*) ' \\+ ${ZEBRA_CLASS_EXPR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).exec(rawClass);
+      const m = new RegExp(`^='(.*) '\\+${sanZebra.slice(1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).exec(san);
       if (!m) return null;
       zebraStriping = true; staticClasses = m[1];
     }
@@ -1166,8 +1172,26 @@ export function configFromView(
   // round-trips (the next Apply re-bakes the current theme, which is correct).
   const verifyPalette = { themePrimary: stripe?.[1] ?? '' };
   const rebuilt = buildTemplateView(config, fields, columnLooks, verifyPalette, components);
-  if (!deepEq(rebuilt.root, root)) return null;
+  // whitespace-insensitive equivalence: sanitize-on-export strips spaces in
+  // every =expression, and the app's own export must reopen losslessly
+  if (!deepEq(normalizeExprs(rebuilt.root), normalizeExprs(root))) return null;
   return config;
+}
+
+/** Deep-copy with every '='-expression string sanitized — the equivalence the
+ *  rebuild-verify gate compares under (semantics-preserving per the linter's
+ *  own sanitize treatment; quoted literals keep their spaces). */
+function normalizeExprs<T>(v: T): T {
+  if (typeof v === 'string') {
+    return (v.startsWith('=') ? stripExpressionWhitespace(v) : v) as unknown as T;
+  }
+  if (Array.isArray(v)) return v.map(normalizeExprs) as unknown as T;
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) out[k] = normalizeExprs(val);
+    return out as unknown as T;
+  }
+  return v;
 }
 
 /** The order buildTemplateView lays out root children: each entry is a zone
