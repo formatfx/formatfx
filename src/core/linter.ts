@@ -95,6 +95,18 @@ export function lintDocument(
   fieldTypes?: Record<string, string>,
 ): LintIssue[] {
   const issues: LintIssue[] = [];
+  // additionalRowClass + rowFormatter are mutually exclusive on real SP: "If
+  // a rowFormatter is specified, then additionalRowClass is ignored" (MS
+  // view-formatting syntax reference). A row doc here always exports a
+  // rowFormatter, so a class riding viewExtras will be silently dropped by
+  // SharePoint — classic silent-failure territory, teach it.
+  if (doc.kind === 'row' && typeof doc.viewExtras?.additionalRowClass === 'string'
+    && doc.viewExtras.additionalRowClass.trim()) {
+    issues.push({
+      severity: 'warning', rule: 'rowclass-with-rowformatter', path: [],
+      message: 'additionalRowClass is IGNORED by SharePoint when a rowFormatter is present (they are mutually exclusive — MS syntax reference). This view exports a rowFormatter, so the row class will silently not apply on the real list; put the styling on the row root element instead.',
+    });
+  }
   walk(doc.root, [], {
     knownFields: knownFields ? new Set(knownFields) : undefined,
     fieldTypes,

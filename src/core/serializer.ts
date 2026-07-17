@@ -53,6 +53,21 @@ export function importJson(text: string): FormatterDocument {
       ...(Object.keys(extras).length ? { viewExtras: extras } : {}),
     };
   }
+  // Modern tile syntax: everything nested under tileProps (what the current
+  // view-formatting panel and community samples emit — the legacy bare
+  // {formatter, height, width} shape below remains accepted)
+  if ('tileProps' in parsed && typeof parsed.tileProps === 'object' && parsed.tileProps !== null
+    && !('elmType' in parsed)) {
+    const tp = parsed.tileProps as Record<string, unknown>;
+    return {
+      kind: 'tile',
+      root: tp.formatter as SPElement,
+      tileWidth: tp.width as number | undefined,
+      tileHeight: tp.height as number | undefined,
+      hideSelection: (tp.hideSelection ?? parsed.hideSelection) as boolean | undefined,
+      fillHorizontally: tp.fillHorizontally as boolean | undefined,
+    };
+  }
   // Tile formatter wrapper
   if ('formatter' in parsed && !('elmType' in parsed)) {
     return {

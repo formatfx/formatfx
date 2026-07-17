@@ -521,6 +521,69 @@ describe('tenant theme', () => {
       setCustomPalette(null);
     }
   });
+
+  it('sp-row-* and sp-field classes render SP-faithfully in both modes (pnp-compare findings 10-12)', async () => {
+    const { buildThemeCss } = await import('./theme');
+    for (const mode of ['light', 'dark'] as const) {
+      const css = buildThemeCss(mode);
+      // the multi-line row-card family exists with card chrome
+      expect(css).toMatch(/\.sp-row-card\{[^}]*border:1px solid/);
+      expect(css).toMatch(/\.sp-row-card\{[^}]*padding:/);
+      expect(css).toMatch(/\.sp-row-title\{[^}]*font-weight:600/);
+      expect(css).toMatch(/\.sp-row-listPadding\{[^}]*padding:/);
+      expect(css).toMatch(/\.sp-row-button\{[^}]*cursor:pointer/);
+      // severity--low is untinted on real SP; dataBars are the light tint
+      expect(css).toContain('.sp-field-severity--low{background:transparent;}');
+      expect(css).toMatch(/\.sp-field-dataBars\{background:#[0-9a-f]{6}/);
+    }
+    // the bar follows the palette's LIGHT slot with readable body text per
+    // mode (light: light-blue bar + dark text — the SP pairing the pnp
+    // screenshot shows; dark: dark-blue bar + light text)
+    expect(buildThemeCss('light')).toContain('.sp-field-dataBars{background:#c7e0f4;color:#323130');
+    expect(buildThemeCss('dark')).toContain('.sp-field-dataBars{background:#004c87;color:#ffffff');
+  });
+});
+
+describe('tileProps wrapper import (pnp-compare finding 13)', () => {
+  it('imports the modern tileProps view-formatting shape as a tile doc', () => {
+    const doc = importJson(JSON.stringify({
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      hideSelection: true,
+      tileProps: { height: 220, width: 254, formatter: { elmType: 'div', txtContent: '[$Title]' } },
+    }));
+    expect(doc.kind).toBe('tile');
+    expect(doc.root.elmType).toBe('div');
+    expect(doc.tileWidth).toBe(254);
+    expect(doc.tileHeight).toBe(220);
+    expect(doc.hideSelection).toBe(true);
+  });
+
+  it('keeps the legacy bare tile shape working', () => {
+    const doc = importJson(JSON.stringify({ height: 200, width: 250, formatter: { elmType: 'div' } }));
+    expect(doc.kind).toBe('tile');
+    expect(doc.tileHeight).toBe(200);
+  });
+});
+
+describe('linter — additionalRowClass vs rowFormatter mutual exclusivity', () => {
+  it('warns when a row doc carries viewExtras.additionalRowClass (SP ignores it)', () => {
+    const doc: FormatterDocument = {
+      kind: 'row',
+      root: { elmType: 'div', txtContent: '[$Title]' },
+      viewExtras: { additionalRowClass: "=if(@rowIndex%2==0,'ms-bgColor-themeLighter','')" },
+    };
+    const hits = lintDocument(doc).filter((i) => i.rule === 'rowclass-with-rowformatter');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe('warning');
+    expect(hits[0].message).toContain('IGNORED');
+  });
+
+  it('stays quiet without the class, and on non-row docs', () => {
+    expect(lintDocument({ kind: 'row', root: { elmType: 'div' } })
+      .filter((i) => i.rule === 'rowclass-with-rowformatter')).toHaveLength(0);
+    expect(lintDocument({ kind: 'column', root: { elmType: 'div' } })
+      .filter((i) => i.rule === 'rowclass-with-rowformatter')).toHaveLength(0);
+  });
 });
 
 describe('SP numeric/date coercion + accessors (pnp-compare findings)', () => {
