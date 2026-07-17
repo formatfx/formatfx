@@ -129,7 +129,8 @@ describe('the head bar', () => {
     const { lint, api } = mountPanel();
     addGhostRefs();
     api.refreshLint([]);
-    expect(lint.querySelector('.wb-lint-chip-warning')!.textContent).toContain('3');
+    // one issue TYPE (unknown-field) occurring 3 times at warning level
+    expect(lint.querySelector('.wb-lint-chip-warning')!.textContent).toContain('1 warning (×3)');
 
     const fold = lint.querySelector('.wb-lint-fold') as HTMLButtonElement;
     expect(fold.getAttribute('aria-expanded')).toBe('true');
@@ -149,7 +150,7 @@ describe('the head bar', () => {
   it('runtime issues count in the summary as their own kind', () => {
     const { lint, api } = mountPanel();
     api.refreshLint([{ path: [0], message: 'runtime boom' }]);
-    expect(lint.querySelector('.wb-lint-chip-runtime')!.textContent).toContain('1');
+    expect(lint.querySelector('.wb-lint-chip-runtime')!.textContent).toContain('1 runtime issue (×1)');
     expect(lint.querySelector('.wb-lint-runtime .wb-lint-msg')!.textContent).toBe('runtime boom');
   });
 });
@@ -171,7 +172,7 @@ describe('the hide-missing-columns filter', () => {
     expect(lint.querySelector('.wb-lint-hiddennote')!.textContent).toBe('3 ignored');
     expect(shell.querySelector('.wb-json-sq .wb-sq-warning')).toBeNull();
     // the summary stays the full truth
-    expect(lint.querySelector('.wb-lint-chip-warning')!.textContent).toContain('3');
+    expect(lint.querySelector('.wb-lint-chip-warning')!.textContent).toContain('1 warning (×3)');
     expect(JSON.parse(localStorage.getItem(LINT_PREFS_KEY)!)).toEqual({ hideMissingColumns: true });
   });
 

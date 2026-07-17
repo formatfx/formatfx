@@ -177,7 +177,10 @@ arithmetic, boolean compares — `inferFieldType`). The row's "＋ Create
 column" opens a type picker preseeded with the guess; Add rides
 `state.addMockField` (the Data-tab recipe, shared now: sample values
 seeded, a pure floor grows its grid column as ONE undoable mutation). The
-head bar minimizes the list to a severity summary (session-only state) and
+head bar minimizes the list to a severity summary (session-only state;
+per level the chip reads "2 errors (×51)" — distinct issue TYPES, then
+total occurrences, runtime issues folding by message since they carry no
+rule — owner ask 2026-07-17) and
 hosts the missing-column filter for the paste-JSON-as-scratchpad workflow
 (label reads "ignore warnings about columns missing from Data" — owner
 call 2026-07-13: "hide … columns" sounded like list columns get hidden) —
