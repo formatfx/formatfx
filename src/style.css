@@ -1494,8 +1494,9 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 .wb-box-hint { font-size: 10px; color: var(--wb-text-2); margin-top: 4px; }
 
 /* ── JSON panel ──────────────────────────────────────────── */
-/* Slim chrome (#257 follow-up): the JSON tab body carries ONLY the Apply row —
-   every other action/option lives in the head kebab beside the tabs. */
+/* Slim chrome (#257 follow-up): the JSON tab body carries the Apply / Copy row
+   (Apply to canvas + a quick COPY JSON) — every other action/option lives in
+   the head kebab beside the tabs. */
 .wb-json-toolbar { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
 .wb-json-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .wb-json-toolbar button {

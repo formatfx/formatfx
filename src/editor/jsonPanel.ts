@@ -110,10 +110,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   `;
 
   // The pane chrome is one slim head row (JSON ⇄ Explain + ⋮, owned by the app
-  // shell) plus the Apply row above the editor — every other JSON action lives
-  // in the head's ⋮ dropdown (owner call, #257 follow-up). The shell provides
-  // the dropdown slot; bare test mounts get a hidden local stand-in so the
-  // controls (and regenerate's option reads) keep existing.
+  // shell) plus the Apply / Copy row above the editor — a quick COPY JSON sits
+  // beside Apply, and every other JSON action lives in the head's ⋮ dropdown
+  // (owner call, #257 follow-up). The shell provides the dropdown slot; bare
+  // test mounts get a hidden local stand-in so the controls (and regenerate's
+  // option reads) keep existing.
   const menuHost = document.getElementById('wb-json-kebab-slot') ?? (() => {
     const d = document.createElement('div');
     d.hidden = true;
