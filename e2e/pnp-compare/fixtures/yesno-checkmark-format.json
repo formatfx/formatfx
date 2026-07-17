@@ -1,0 +1,38 @@
+{
+  "id": "yesno-checkmark-format",
+  "kind": "column",
+  "field": "YesNo",
+  "source": "column-samples/yesno-checkmark-format/yesno-checkmark-format.json",
+  "screenshot": "column-samples/yesno-checkmark-format/assets/screenshot.png",
+  "notes": "Blank boolean → red blocked pill with ErrorBadge; true → green good pill with CheckMark; false → unstyled (severity--low has no tint).",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "YesNo", "type": "boolean" }
+  ],
+  "rows": [
+    { "Title": "Yes/No left blank!", "YesNo": null },
+    { "Title": "This one is true", "YesNo": true },
+    { "Title": "This one is false", "YesNo": false },
+    { "Title": "Another false one", "YesNo": false },
+    { "Title": "One more true", "YesNo": true }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "attributes": {
+      "class": "=if(@currentField == '', 'sp-field-severity--blocked', if(@currentField, 'sp-field-severity--good', 'sp-field-severity--low')) + ' ms-fontColor-neutralSecondary'"
+    },
+    "children": [
+      {
+        "elmType": "span",
+        "style": {
+          "display": "inline-block",
+          "padding": "0 4px"
+        },
+        "attributes": {
+          "iconName": "=if(@currentField == '', 'ErrorBadge', if(@currentField, 'CheckMark', ''))"
+        }
+      }
+    ]
+  }
+}

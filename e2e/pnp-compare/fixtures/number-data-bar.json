@@ -1,0 +1,43 @@
+{
+  "id": "number-data-bar",
+  "kind": "column",
+  "field": "Effort",
+  "source": "column-samples/number-data-bar/number-data-bar.json",
+  "screenshot": "column-samples/number-data-bar/assets/screenshot.png",
+  "notes": "Effort (Days) column renders light-blue data bars (sp-field-dataBars: tinted background with a darker blue top border) whose widths scale at value*5% below 20 and cap at 100% at 20+: 7→35%, 4→20%, 10→50%, 1→5%, 0→no bar (0% width), 20→full width, 14→70%. The numeric value stays visible as left-padded text on every row, including the 0 row with no bar.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Effort", "type": "number", "displayName": "Effort (Days)" }
+  ],
+  "rows": [
+    { "Title": "Task 1", "Effort": 7 },
+    { "Title": "Task 2", "Effort": 4 },
+    { "Title": "Task 3", "Effort": 10 },
+    { "Title": "Task 4", "Effort": 1 },
+    { "Title": "Task 5", "Effort": 0 },
+    { "Title": "Task 6", "Effort": 20 },
+    { "Title": "Task 7", "Effort": 14 }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "children": [
+      {
+        "elmType": "span",
+        "txtContent": "@currentField",
+        "style": {
+          "padding-left": "8px",
+          "white-space": "nowrap"
+        }
+      }
+    ],
+    "attributes": {
+      "class": "sp-field-dataBars"
+    },
+    "style": {
+      "padding": "0",
+      "width": "=if(@currentField >= 20, '100%', (@currentField * 5) + '%')",
+      "box-sizing": "border-box"
+    }
+  }
+}

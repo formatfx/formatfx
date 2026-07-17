@@ -1,0 +1,45 @@
+{
+  "id": "currency-symbol-concatenation",
+  "kind": "column",
+  "field": "ExpenditureToDate",
+  "source": "column-samples/currency-symbol-concatenation/currency-symbol-concatenation.json",
+  "screenshot": "column-samples/currency-symbol-concatenation/assets/screenshot.png",
+  "notes": "The Expenditure To date column renders as a solid colored block with white text '£' + value: teal/green (#00B294) when expenditure is under [$ProjectBudget], red (#e81123) when it meets or exceeds it. Screenshot order: 40000 green, 10000 green, 19000 green, 0 green, 71000 red (budget 70000), 15000 green, 40000 red (budget 33000). The unformatted Project Budget column shows plain numbers (its '£' prefix in the screenshot comes from a separate format not under test); Start/End Date and Days columns in the screenshot are view-only context and are omitted.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "ProjectBudget", "type": "number", "displayName": "Project Budget" },
+    { "name": "ExpenditureToDate", "type": "number", "displayName": "Expenditure To date" }
+  ],
+  "rows": [
+    { "Title": "Project 1", "ProjectBudget": 90000, "ExpenditureToDate": 40000 },
+    { "Title": "Project 2", "ProjectBudget": 90000, "ExpenditureToDate": 10000 },
+    { "Title": "Project 3", "ProjectBudget": 96000, "ExpenditureToDate": 19000 },
+    { "Title": "Project 4", "ProjectBudget": 10000, "ExpenditureToDate": 0 },
+    { "Title": "Project 5", "ProjectBudget": 70000, "ExpenditureToDate": 71000 },
+    { "Title": "Project 6", "ProjectBudget": 23000, "ExpenditureToDate": 15000 },
+    { "Title": "Project 7", "ProjectBudget": 33000, "ExpenditureToDate": 40000 }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "style": {
+      "color": "#fff",
+      "padding-left": "10px",
+      "background-color": "=if(@currentField >= [$ProjectBudget], '#e81123', '#00B294')"
+    },
+    "children": [
+      {
+        "elmType": "span",
+        "txtContent": "£",
+        "style": {
+          "display": "inline-block",
+          "padding": "0 1px"
+        }
+      },
+      {
+        "elmType": "span",
+        "txtContent": "@currentField"
+      }
+    ]
+  }
+}

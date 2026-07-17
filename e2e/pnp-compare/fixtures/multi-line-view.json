@@ -1,0 +1,78 @@
+{
+  "id": "multi-line-view",
+  "kind": "row",
+  "source": "view-samples/multi-line-view/multi-line-view.json",
+  "screenshot": "view-samples/multi-line-view/assets/screenshot.png",
+  "notes": "rowFormatter replaces each row with an sp-row-card: bold Title line, multi-line Feedback text, and a 'Give feedback' button. The button shows only where [$Assigned_x0020_To.email] == @me (sandbox identity me@contoso.com) — visible on cards 1 and 3, hidden on card 2. hideSelection and hideColumnHeader are both true, so no checkboxes or header row.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Feedback", "type": "note" },
+    { "name": "Assigned_x0020_To", "type": "person", "displayName": "Assigned To" }
+  ],
+  "rows": [
+    { "Title": "Provide feedback on execution plan", "Feedback": "Do more with less!\n\nFocus on customer requirements.", "Assigned_x0020_To": { "title": "Me Contoso", "email": "me@contoso.com" } },
+    { "Title": "Provide feedback on executive retreat", "Feedback": "A lot got done.\nThe agenda was a bit hectic.\nThe trapeze artists were a nice touch!", "Assigned_x0020_To": { "title": "Lincoln DeMaris", "email": "lincoln@contoso.com" } },
+    { "Title": "Provide feedback on morale event", "Feedback": "More drinks, please!", "Assigned_x0020_To": { "title": "Me Contoso", "email": "me@contoso.com" } }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json",
+    "hideSelection": true,
+    "hideColumnHeader": true,
+    "rowFormatter": {
+      "elmType": "div",
+      "attributes": {
+        "class": "sp-row-card"
+      },
+      "children": [
+        {
+          "elmType": "div",
+          "style": {
+            "text-align": "left"
+          },
+          "children": [
+            {
+              "elmType": "div",
+              "attributes": {
+                "class": "sp-row-title"
+              },
+              "txtContent": "[$Title]"
+            },
+            {
+              "elmType": "div",
+              "attributes": {
+                "class": "sp-row-listPadding"
+              },
+              "txtContent": "[$Feedback]"
+            },
+            {
+              "elmType": "button",
+              "customRowAction": {
+                "action": "defaultClick"
+              },
+              "txtContent": "Give feedback",
+              "attributes": {
+                "class": "sp-row-button"
+              },
+              "style": {
+                "display": {
+                  "operator": "?",
+                  "operands": [
+                    {
+                      "operator": "==",
+                      "operands": [
+                        "@me",
+                        "[$Assigned_x0020_To.email]"
+                      ]
+                    },
+                    "",
+                    "none"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

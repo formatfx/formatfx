@@ -1,0 +1,50 @@
+{
+  "id": "date-range-rag",
+  "kind": "column",
+  "field": "MyField",
+  "source": "column-samples/date-range-rag/date-range-rag.json",
+  "screenshot": "column-samples/date-range-rag/assets/screenshot.png",
+  "notes": "4 rows: a colored data bar behind the MyField text whose width is the fraction of the Start-to-Due range elapsed at @now. Relative to 2026-07-17: row 1 is ~81% elapsed (>=0.7) so amber (sp-field-severity--warning), row 2 is overdue so full-width red (severeWarning), row 3 is ~38% elapsed so green (good), row 4 has not started yet (negative width) so no visible bar — text only. The field text itself always renders, absolutely positioned over the bar.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "MyField", "type": "text" },
+    { "name": "StartDate", "type": "date" },
+    { "name": "DueDate", "type": "date" }
+  ],
+  "rows": [
+    { "Title": "Item 1", "MyField": "Lovely Refridgerator", "StartDate": "2026-05-10", "DueDate": "2026-08-02" },
+    { "Title": "Item 2", "MyField": "Squishy Snake", "StartDate": "2026-05-15", "DueDate": "2026-05-22" },
+    { "Title": "Item 3", "MyField": "New Popsicle", "StartDate": "2026-05-17", "DueDate": "2026-10-23" },
+    { "Title": "Item 4", "MyField": "Friendly Fan", "StartDate": "2026-09-18", "DueDate": "2027-03-06" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "style": {
+      "position": "relative"
+    },
+    "children": [
+      {
+        "elmType": "div",
+        "attributes": {
+          "class": "=if([$DueDate] <= @now, 'sp-field-severity--severeWarning', if(1 - Number([$DueDate] - @now) / Number([$DueDate] - [$StartDate]) >= 0.7, 'sp-field-severity--warning', 'sp-field-severity--good'))"
+        },
+        "style": {
+          "min-height": "inherit",
+          "width": "=if([$DueDate] <= @now, '100%', (1 - Number([$DueDate] - @now) / Number([$DueDate] - [$StartDate])) * 100 + '%')"
+        }
+      },
+      {
+        "elmType": "span",
+        "txtContent": "@currentField",
+        "style": {
+          "position": "absolute",
+          "left": "8px"
+        },
+        "attributes": {
+          "class": "ms-fontColor-neutralSecondary"
+        }
+      }
+    ]
+  }
+}

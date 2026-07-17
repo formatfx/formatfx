@@ -1,0 +1,27 @@
+{
+  "id": "date-difference",
+  "kind": "column",
+  "field": "Age",
+  "source": "column-samples/date-difference/date-difference.json",
+  "screenshot": "column-samples/date-difference/assets/screenshot.png",
+  "notes": "The formatted Age column shows plain unstyled text: the whole-year difference between [$Died] and [$Born] computed as floor(ms-delta / 365-day years). Screenshot rows must yield 20, 24, 18, 89, 27, 36 in that order (verified against date-only values; the screenshot's times of day do not change any floored result). No @now dependency, so results are stable offline.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Born", "type": "date" },
+    { "name": "Died", "type": "date" },
+    { "name": "Age", "type": "number" }
+  ],
+  "rows": [
+    { "Title": "Person 1", "Born": "1997-06-10", "Died": "2017-12-21", "Age": 20 },
+    { "Title": "Person 2", "Born": "1984-02-29", "Died": "2008-02-29", "Age": 24 },
+    { "Title": "Person 3", "Born": "2001-03-04", "Died": "2019-07-12", "Age": 18 },
+    { "Title": "Person 4", "Born": "1929-06-11", "Died": "2019-04-01", "Age": 89 },
+    { "Title": "Person 5", "Born": "1991-08-24", "Died": "2019-05-31", "Age": 27 },
+    { "Title": "Person 6", "Born": "1932-09-15", "Died": "1968-10-31", "Age": 36 }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "txtContent": "=floor((Number([$Died])-Number([$Born]))/(1000*60*60*24*365))"
+  }
+}

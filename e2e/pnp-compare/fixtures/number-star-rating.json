@@ -1,0 +1,70 @@
+{
+  "id": "number-star-rating",
+  "kind": "column",
+  "field": "Rating",
+  "source": "column-samples/number-star-rating/number-star-rating.json",
+  "screenshot": "column-samples/number-star-rating/assets/screenshot.png",
+  "notes": "Left column of the screenshot (theme-color variant): 7 rows, each a row of 5 gray stars overlaid by theme-colored stars clipped to (value/5)*100% width — fractional values like 3.6 and 3.4 show a partially filled star — with the numeric value printed to the right of the stars. The trailing number comes from @currentField.displayValue; mock number fields may not provide displayValue, and that fallback behavior is part of what's under test.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Rating", "type": "number" }
+  ],
+  "rows": [
+    { "Title": "Item 1", "Rating": 4 },
+    { "Title": "Item 2", "Rating": 3.6 },
+    { "Title": "Item 3", "Rating": 3.4 },
+    { "Title": "Item 4", "Rating": 3 },
+    { "Title": "Item 5", "Rating": 2.6 },
+    { "Title": "Item 6", "Rating": 2.3 },
+    { "Title": "Item 7", "Rating": 2 }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "style": {
+      "display": "flex",
+      "flex-direction": "row",
+      "white-space": "nowrap"
+    },
+    "children": [
+      {
+        "elmType": "div",
+        "style": {
+          "font-size": "24px",
+          "position": "relative"
+        },
+        "children": [
+          {
+            "elmType": "div",
+            "txtContent": "★★★★★",
+            "attributes": {
+              "class": "ms-fontColor-neutralTertiaryAlt"
+            }
+          },
+          {
+            "elmType": "div",
+            "txtContent": "★★★★★",
+            "style": {
+              "position": "absolute",
+              "top": "0",
+              "overflow": "hidden",
+              "max-width": "100%",
+              "width": "=if(@currentField < 0, '0px',(@currentField / 5) * 100 + '%')"
+            },
+            "attributes": {
+              "class": "ms-fontColor-themePrimary"
+            }
+          }
+        ]
+      },
+      {
+        "elmType": "div",
+        "txtContent": "@currentField.displayValue",
+        "style": {
+          "margin-left": "10px",
+          "font-size": "16px"
+        }
+      }
+    ]
+  }
+}

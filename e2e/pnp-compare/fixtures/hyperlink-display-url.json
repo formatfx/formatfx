@@ -1,0 +1,52 @@
+{
+  "id": "hyperlink-display-url",
+  "kind": "column",
+  "field": "Hyperlink",
+  "source": "column-samples/hyperlink-display-url/hyperlink-display-url.json",
+  "screenshot": "column-samples/hyperlink-display-url/assets/screenshot.png",
+  "notes": "Left column of the screenshot: each cell stacks a small blue underlined link (the link's description, e.g. 'Apple') over the raw URL in extra-small text (e.g. https://dummy/apple). The link text comes from @currentField.desc; mock hyperlink values are plain URL strings with no .desc, so a mock render is expected to fall back to 'No alternative text' — that displayValue/desc behavior is part of what's under test. Empty values collapse via display:none.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Hyperlink", "type": "hyperlink" }
+  ],
+  "rows": [
+    { "Title": "Apple", "Hyperlink": "https://dummy/apple" },
+    { "Title": "Banana", "Hyperlink": "https://dummy/banana" },
+    { "Title": "Grape", "Hyperlink": "https://dummy/grape" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "children": [
+      {
+        "elmType": "div",
+        "style": {
+          "display": "=if(@currentField,'flex','none')",
+          "flex-direction": "column",
+          "margin": "6px"
+        },
+        "children": [
+          {
+            "elmType": "a",
+            "txtContent": "=if(@currentField.desc,@currentField.desc,'No alternative text')",
+            "attributes": {
+              "href": "@currentField",
+              "target": "_blank",
+              "class": "ms-fontSize-s"
+            }
+          },
+          {
+            "elmType": "div",
+            "txtContent": "@currentField",
+            "style": {
+              "word-break": "break-all"
+            },
+            "attributes": {
+              "class": "ms-fontSize-xs"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
