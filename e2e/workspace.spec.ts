@@ -409,7 +409,7 @@ test('the pane sections fold away and back (Columns · Components · Inspector),
   await expect(shelf).toBeHidden(); // Columns still folded
 });
 
-test('the structure-header ⋮ kebab holds density, row class, hide toggles and command buttons', async ({ page }) => {
+test('the structure-header ⋮ kebab holds density, hide toggles and command buttons (no row-class input)', async ({ page }) => {
   // a view via the kind select in the pane's head kebab (carries the grid's columns)
   await openJsonKebab(page);
   await page.selectOption('#wb-pane-side #wb-kind', 'row');
@@ -433,12 +433,10 @@ test('the structure-header ⋮ kebab holds density, row class, hide toggles and 
   await expect(kebab).toBeVisible();
   await page.keyboard.press('Control+z');
 
-  // the row class commits on Enter as ONE mutation, lands in viewExtras
-  await kebab.locator('.wb-viewcard-rowclass').fill('sp-row-card');
-  await kebab.locator('.wb-viewcard-rowclass').press('Enter');
-  await expect(page.locator('#wb-toast')).toContainText('sp-row-card');
-  expect(await page.inputValue('#wb-json-text')).toContain('"additionalRowClass": "sp-row-card"');
-  await page.keyboard.press('Control+z');
+  // the Row class input is GONE (owner call 2026-07-17): SP ignores
+  // additionalRowClass whenever a rowFormatter is present, so the app no
+  // longer authors it — conditional row styling lives on the row root
+  await expect(kebab.locator('.wb-viewcard-rowclass')).toHaveCount(0);
 
   // a hide toggle writes the wrapper prop (Show later deletes it — clean export)
   await kebab.locator('[data-prop="hideSelection"] .wb-viewcard-segbtn', { hasText: 'Hide' }).click();
