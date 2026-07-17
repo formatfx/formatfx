@@ -852,7 +852,11 @@ describe('applyRowTemplate / applyTileTemplate', () => {
     });
     s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' }, "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
     expect(s.doc.kind).toBe('row');
-    expect(s.doc.viewExtras!.additionalRowClass as string).toContain('@rowIndex');
+    // the retired wrapper class FOLDS into the root's own class expression
+    // (SP ignores additionalRowClass next to a rowFormatter) — the wrapper
+    // key is never written
+    expect(s.doc.viewExtras!.additionalRowClass).toBeUndefined();
+    expect(s.doc.root.attributes!.class as string).toContain('@rowIndex');
     expect(s.doc.viewExtras!.footerFormatter).toBeDefined();
     s.undo(); // a single undo reverts the whole apply
     expect(s.doc.root._elmName).toBe('seed');
@@ -874,7 +878,9 @@ describe('applyRowTemplate / applyTileTemplate', () => {
     s.applyRowTemplate({ elmType: 'div', _elmName: 'Row layout' }, 'zebra');
     expect(s.views).toHaveLength(1);
     expect(s.doc.kind).toBe('row');
-    expect(s.doc.viewExtras!.additionalRowClass).toBe('zebra');
+    // static legacy class folds onto the root; no wrapper key is written
+    expect(s.doc.viewExtras?.additionalRowClass).toBeUndefined();
+    expect(s.doc.root.attributes!.class).toBe('zebra');
     expect(JSON.stringify(s.floorDoc)).toBe(floorJson);
     s.undo(); // removes the sheet, back on the intact floor
     expect(s.views).toEqual([]);

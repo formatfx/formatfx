@@ -111,10 +111,14 @@ body.wb-dark {
 /* …but never inside RENDERED FORMATTER content: SharePoint's runtime leaves
    the browser default content-box, and the reset above was clipping any
    sample that mixes explicit width/height with padding (pnp-compare finding
-   8 — the svg-icon glyphs). Every preview surface stamps data-sp-path on
-   rendered roots; a formatter's own allow-listed box-sizing style is inline
+   8 — the svg-icon glyphs). Scoped to data-sp-path subtrees only: every
+   primary render surface tags its roots (canvas, grid cells, workshop, the
+   builder previews, flyout CARD content via the shared opts) — flyout
+   CHROME (beak/positioning) deliberately keeps border-box. Untagged
+   thumbnail previews (component library cards, playground stage) are an
+   accepted gap. A formatter's own allow-listed box-sizing style is inline
    and still wins over this rule. */
-[data-sp-path], [data-sp-path] *, .wb-flyout, .wb-flyout * { box-sizing: content-box; }
+[data-sp-path], [data-sp-path] * { box-sizing: content-box; }
 
 /* Keyboard-focus floor: every interactive element shows an accent ring when
    focused via keyboard. Bare :focus-visible loses to any class-scoped :focus

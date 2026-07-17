@@ -30,16 +30,16 @@ describe('composeRowStyle — conflict precedence + exclusion', () => {
     expect(c.disabled.zebra).toBe('Card fill covers row striping');
     // the user-chosen generic border is suppressed (its color class does not leak)…
     expect(c.rootClass).not.toContain('sp-css-borderColor-red');
-    expect(c.wrapperAdditionalRowClass).toBeUndefined();
+    expect(c.zebra).toBe(false); // suppressed by the card fill
     // …while the card paints its own surface: white fill, rounded, bordered, shadowed
     expect(c.rootClass).toContain('ms-bgColor-white');
     expect(c.rootClass).toContain('sp-css-borderColor-neutralQuaternaryAlt');
     expect(c.rootStyle['border-radius']).toBe('4px');
   });
 
-  it('zebra emits a wrapper additionalRowClass, never a root background', () => {
+  it('zebra composes as a root-class concern, never a root background or wrapper key', () => {
     const c = composeRowStyle(base({ zebraStriping: true }), PAL);
-    expect(c.wrapperAdditionalRowClass).toBe("=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
+    expect(c.zebra).toBe(true);
     expect(c.rootStyle['background-color']).toBeUndefined();
   });
 
@@ -321,8 +321,8 @@ describe('alignment — two axes at every level (the container owns alignment: t
     let c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), rootVAlign: 'stretch', rootAlign: 'right' };
     c = patchZoneAt(c, [0], { valign: 'top' });      // side zone
     c = patchZoneAt(c, [1], { valign: 'bottom' });   // stack zone
-    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, PAL, [CHIP], { prune: true });
-    const parsed = configFromView(root, additionalRowClass, FIELDS, {}, [CHIP])!;
+    const { root } = buildTemplateView(c, FIELDS, {}, PAL, [CHIP], { prune: true });
+    const parsed = configFromView(root, undefined, FIELDS, {}, [CHIP])!;
     expect(parsed).toMatchObject({ rootVAlign: 'stretch', rootAlign: 'right' });
     expect(parsed.zones[0].valign).toBe('top');
     expect(parsed.zones[1].valign).toBe('bottom');
@@ -358,12 +358,18 @@ describe('buildTemplateView over zones', () => {
     expect(pruned).toBe(3);
   });
 
-  it('zebra lands on the returned additionalRowClass, never on root style', () => {
+  it('zebra lands on the ROOT class expression (the @rowIndex modulus trick — SP ignores wrapper zebra)', () => {
     const c = defaultConfigFor('equal', FIELDS);
     c.zebraStriping = true;
-    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, PAL);
-    expect(additionalRowClass).toBe("=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
+    const { root } = buildTemplateView(c, FIELDS, {}, PAL);
+    expect(root.attributes!.class).toBe("=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
     expect(root.style!['background-color']).toBeUndefined();
+    // statics compose INTO the expression (hover class + zebra together)
+    const h = defaultConfigFor('equal', FIELDS);
+    h.zebraStriping = true; h.hoverHighlight = true;
+    const built = buildTemplateView(h, FIELDS, {}, PAL);
+    expect(built.root.attributes!.class)
+      .toBe("='ms-bgColor-themeLighter--hover ' + if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')");
   });
 
   it('hover-positioned kebab puts showOnHoverParent on the row and showOnHoverChild on the kebab', () => {
@@ -571,8 +577,8 @@ describe('nested zones — the recursive model', () => {
 
   it('nested zones round-trip through apply → reopen (parser recursion)', () => {
     const c = nested();
-    const { root, additionalRowClass } = buildTemplateView(c, FIELDS, {}, PAL, [CHIP], { prune: true });
-    const parsed = configFromView(root, additionalRowClass, FIELDS, {}, [CHIP]);
+    const { root } = buildTemplateView(c, FIELDS, {}, PAL, [CHIP], { prune: true });
+    const parsed = configFromView(root, undefined, FIELDS, {}, [CHIP]);
     expect(parsed).not.toBeNull();
     expect(zoneAt(parsed!, [1, 1])?.label).toBe('Badges');
     expect(nodeAt(parsed!, [1, 1, 0])).toMatchObject({ kind: 'field', fieldName: 'Status' });
@@ -604,8 +610,8 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
     config: RowTemplateConfig,
     columnLooks: Record<string, import('../core/types').SPElement> = {},
   ): RowTemplateConfig | null => {
-    const { root, additionalRowClass } = buildTemplateView(config, FIELDS, columnLooks, PAL, [CHIP], { prune: true });
-    return configFromView(root, additionalRowClass, FIELDS, columnLooks, [CHIP], config.target);
+    const { root } = buildTemplateView(config, FIELDS, columnLooks, PAL, [CHIP], { prune: true });
+    return configFromView(root, undefined, FIELDS, columnLooks, [CHIP], config.target);
   };
 
   it('every wireframe seed survives apply → reopen with zones intact', () => {
@@ -703,9 +709,13 @@ describe('configFromView — the lossless round trip (reopen as zones)', () => {
     expect(configFromView(root, undefined, FIELDS, {}, [])).toBeNull();
   });
 
-  it('refuses a foreign additionalRowClass (only the builder zebra is known)', () => {
+  it('refuses ANY wrapper additionalRowClass — including the retired wrapper-zebra form', () => {
     const { root } = buildTemplateView({ ...defaultConfigFor('equal', FIELDS), zebraStriping: true }, FIELDS, {}, PAL, [], { prune: true });
-    expect(configFromView(root, ZEBRA_ROW_CLASS, FIELDS, {}, [])).not.toBeNull();
+    // root-class zebra round-trips fine with no wrapper key…
+    expect(configFromView(root, undefined, FIELDS, {}, [])).not.toBeNull();
+    // …but the retired wrapper form (legacy applied views) now reopens via
+    // the gallery + foreign note, like any other wrapper class
+    expect(configFromView(root, ZEBRA_ROW_CLASS, FIELDS, {}, [])).toBeNull();
     expect(configFromView(root, "=if([$Status]=='Done','ms-bgColor-green','')", FIELDS, {}, [])).toBeNull();
   });
 
@@ -746,20 +756,19 @@ describe('tile target — the same zones on a vertical canvas', () => {
   });
 
   it('builds a vertical stack that fills the tile box, allow-listed styles only', async () => {
-    const { root, additionalRowClass } = buildTemplateView(tileCfg(), NUMFIELDS, {}, PAL);
+    const { root } = buildTemplateView(tileCfg(), NUMFIELDS, {}, PAL);
     expect(root._elmName).toBe('Tile layout');
     expect(root.style!['flex-direction']).toBe('column');
     expect(root.style!['height']).toBe('100%');
     expect(root.style!['box-sizing']).toBe('border-box');
-    expect(additionalRowClass).toBeUndefined();
     const { ALLOWED_STYLES } = await import('../core/schema');
     for (const k of Object.keys(root.style!)) expect(ALLOWED_STYLES.has(k), k).toBe(true);
   });
 
-  it('zebra is disabled for tiles with a reason and never reaches the wrapper', () => {
+  it('zebra is disabled for tiles with a reason and never reaches the root class', () => {
     const c = { ...tileCfg(), zebraStriping: true };
     expect(composeRowStyle(c, PAL).disabled.zebra).toContain('tiles sit in a grid');
-    expect(buildTemplateView(c, NUMFIELDS, {}, PAL).additionalRowClass).toBeUndefined();
+    expect(String(buildTemplateView(c, NUMFIELDS, {}, PAL).root.attributes?.class ?? '')).not.toContain('@rowIndex');
   });
 
   it('the kebab never lands in a tile — buildTemplateView and childSlotOrder agree', () => {
@@ -780,8 +789,7 @@ describe('tile target — the same zones on a vertical canvas', () => {
   it('every tile wireframe survives apply → reopen as a TILE config (the round trip)', () => {
     for (const wf of WIREFRAMES.filter((w) => w.target === 'tile')) {
       const seeded = defaultConfigFor(wf.id, NUMFIELDS);
-      const { root, additionalRowClass } = buildTemplateView(seeded, NUMFIELDS, {}, PAL, [CHIP], { prune: true });
-      expect(additionalRowClass, wf.id).toBeUndefined();
+      const { root } = buildTemplateView(seeded, NUMFIELDS, {}, PAL, [CHIP], { prune: true });
       const parsed = configFromView(root, undefined, NUMFIELDS, {}, [CHIP], 'tile');
       expect(parsed, wf.id).not.toBeNull();
       expect(parsed!.target).toBe('tile');

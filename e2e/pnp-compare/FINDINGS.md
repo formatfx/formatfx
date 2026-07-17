@@ -65,7 +65,9 @@ Finding 21 (lookDialect) was found *by* the fix pass and is fixed.
    of choice count (3) (expressions.ts:409-410 falls through to
    `toStr(v).length`). Fix candidates: split `';#'` strings in
    evaluateForEachList + length(), or store choiceMulti rows as arrays.
-   **FIXED** (split in evaluateForEachList + length()): the sample now
+   **FIXED** (type-aware: choiceMulti cells normalize to choice arrays at
+   field resolution via the new EvalContext.fieldTypes — string shape alone
+   never decides, so text cells containing ';#' stay scalar): the sample
    renders one box per choice, matching SP.
 
 4. **`toLocaleString(number)` renders a date.**
@@ -80,11 +82,12 @@ Finding 21 (lookDialect) was found *by* the fix pass and is fixed.
    `@currentField.displayValue` is the locale display string of the field.
    The mock model has no display-string channel; emulating "number → short
    locale string, date → locale date string" would cover the common cases.
-   **PARTIALLY FIXED**: displayValue now approximates by type (number →
-   locale number, date → locale date, boolean → Yes/No). Columns with SP
-   display *settings* still differ — the battery sample shows "0.9" where
-   SP shows "90%" (percent-format display isn't in the mock model), so its
-   fill math stays off too.
+   **PARTIALLY FIXED**: displayValue approximates by FIELD type (number →
+   locale number, date-typed strings → locale date, boolean → Yes/No; a
+   text cell that merely looks like a date keeps its literal text). Columns
+   with SP display *settings* still differ — the battery sample shows "0.9"
+   where SP shows "90%" (percent-format display isn't in the mock model),
+   so its fill math stays off too.
 
 6. **Blank-cell `== ''` nuance for null non-date cells.** A `null` cell
    compares `== ''` → false, while a *missing* key → true. For dates that
@@ -118,8 +121,13 @@ Finding 21 (lookDialect) was found *by* the fix pass and is fixed.
    silently ignore** — flagged to the owner, needs a live-tenant check and
    probably a builder change; (c) a new teaching lint rule
    `rowclass-with-rowformatter` (warning) now catches the dead combination
-   for makers — and it fires on the builder's own zebra output, which is
-   the point.
+   for makers. **(b) is FIXED (owner call, same day)**: the app retired
+   additionalRowClass authoring entirely — the builder's zebra now folds
+   the `@rowIndex % 2` conditional into the row ROOT's own class
+   expression (which works on real SP), the view kebab's Row-class input
+   is gone, and legacy row-component classes fold into the root at apply
+   time. Pasted JSON carrying the key still round-trips verbatim and the
+   lint rule teaches why it won't paint.
 
 8. **The app's global `* { box-sizing: border-box }` reset leaks into
    rendered formatter content** (style.css:109). SP's default is

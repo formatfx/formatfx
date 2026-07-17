@@ -29,6 +29,13 @@ export interface EvalContext {
   iteratorIndex: Record<string, number>;
   displayNames: Record<string, string>;
   now: Date;
+  /** Field internal name → mock field type ('choiceMulti', 'date', …).
+   *  Optional: when present, field VALUES normalize type-awarely at
+   *  resolution (multi-choice ';#' strings become choice arrays, and
+   *  .displayValue can format date strings) — string SHAPE alone never
+   *  decides, so text cells that merely contain ';#' or look like dates
+   *  keep their literal value. */
+  fieldTypes?: Record<string, string>;
 }
 
 export class ExpressionError extends Error {}
@@ -317,10 +324,34 @@ function svgAvatar(seed: string): string {
 
 // ─── Evaluator ───────────────────────────────────────────────────────────────
 
-/** ';#'-packed multi-choice cell → its choice list (the mock model stores
- *  multi-choice as SP's classic delimiter-joined string). */
-function multiChoiceParts(v: string): string[] {
-  return v.split(';#').filter(Boolean);
+/** Type-aware cell normalization at FIELD resolution (never by string shape
+ *  alone — a text cell containing ';#' stays scalar): a choiceMulti cell's
+ *  ';#'-joined string becomes the choice array SP exposes, so length(),
+ *  forEach and .length see a list naturally. Blank stays '' for the pinned
+ *  == '' semantics. */
+function normalizeCell(name: string, value: SPValue, ctx: EvalContext): SPValue {
+  if (ctx.fieldTypes?.[name] === 'choiceMulti' && typeof value === 'string' && value !== '') {
+    return value.split(';#').filter(Boolean);
+  }
+  return value;
+}
+
+/** .displayValue approximation, with the field's TYPE deciding how strings
+ *  render (a date cell formats as a locale date; a text cell that merely
+ *  looks like a date keeps its literal text). Per-column display settings
+ *  (percent formats etc.) aren't in the mock model — FINDINGS.md. */
+function displayString(value: SPValue, fieldType?: string): SPValue {
+  if (typeof value === 'number') return value.toLocaleString();
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value instanceof Date) return value.toLocaleDateString();
+  if (typeof value === 'string') {
+    if (fieldType === 'date' && ISO_DATE_RE.test(value.trim())) {
+      return new Date(value.trim()).toLocaleDateString();
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(toStr).join(', ');
+  return resolveProp(value, 'displayValue');
 }
 
 function resolveProp(base: SPValue, prop: string): SPValue {
@@ -329,20 +360,11 @@ function resolveProp(base: SPValue, prop: string): SPValue {
   // (the colored-pills sample computes colors from lookupValue.length).
   if (prop === 'length') {
     if (Array.isArray(base)) return base.length;
-    if (typeof base === 'string') {
-      return base.includes(';#') ? multiChoiceParts(base).length : base.length;
-    }
+    if (typeof base === 'string') return base.length;
   }
-  // .displayValue — SP's locale display string for the cell. The mock model
-  // has no per-column display settings, so approximate by type (a percent-
-  // formatted number column still differs — FINDINGS.md).
-  if (prop === 'displayValue' && (typeof base !== 'object' || base instanceof Date)) {
-    if (typeof base === 'number') return base.toLocaleString();
-    if (typeof base === 'boolean') return base ? 'Yes' : 'No';
-    if (base instanceof Date) return base.toLocaleDateString();
-    if (typeof base === 'string') {
-      return ISO_DATE_RE.test(base.trim()) ? new Date(base.trim()).toLocaleDateString() : base;
-    }
+  // value-unambiguous displayValue (typed values need no field metadata)
+  if (prop === 'displayValue' && (typeof base === 'number' || typeof base === 'boolean' || base instanceof Date)) {
+    return displayString(base);
   }
   if (Array.isArray(base)) {
     return base.map((item) => resolveProp(item, prop)) as SPValue[];
@@ -374,7 +396,12 @@ function resolveFieldRef(ref: string, ctx: EvalContext): SPValue {
     // absent fields resolve to '' — but a present-but-null cell (empty Date)
     // stays null so SP's =='' semantics hold
     const cell = ctx.row[name];
-    value = (cell === undefined ? '' : cell) as SPValue;
+    value = normalizeCell(name, (cell === undefined ? '' : cell) as SPValue, ctx);
+  }
+  // [$Field.displayValue] formats by the FIELD's type (date strings → locale
+  // date); deeper displayValue chains fall back to value-shape resolution
+  if (parts.length === 2 && parts[1] === 'displayValue') {
+    return displayString(value, ctx.fieldTypes?.[name]);
   }
   for (const prop of parts.slice(1)) value = resolveProp(value, prop);
   return value;
@@ -386,7 +413,10 @@ function resolveToken(name: string, ctx: EvalContext): SPValue {
   switch (head) {
     case '@currentField': {
       const cell = ctx.row[ctx.currentFieldName];
-      value = (cell === undefined ? '' : cell) as SPValue;
+      value = normalizeCell(ctx.currentFieldName, (cell === undefined ? '' : cell) as SPValue, ctx);
+      if (props.length === 1 && props[0] === 'displayValue') {
+        return displayString(value, ctx.fieldTypes?.[ctx.currentFieldName]);
+      }
       break;
     }
     case '@me': value = props.length ? (ctx.me as SPValue) : ctx.me.email; break;
@@ -442,11 +472,11 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
     case 'split': return toStr(a(0)).split(toStr(a(1))) as SPValue[];
     case 'join': return (Array.isArray(a(0)) ? (a(0) as SPValue[]) : [a(0)]).map(toStr).join(toStr(a(1) ?? ','));
     case 'length': {
+      // multi-choice cells arrive pre-normalized to arrays (type-aware, at
+      // field resolution) — a string here is genuinely a string
       const v = a(0);
       if (Array.isArray(v)) return v.length;
-      // multi-choice cells arrive as ';#'-joined strings — SP counts choices
-      const s = toStr(v);
-      return s.includes(';#') ? multiChoiceParts(s).length : s.length;
+      return toStr(v).length;
     }
     case 'appendTo': {
       const arr = Array.isArray(a(0)) ? [...(a(0) as SPValue[])] : toStr(a(0)).split(',').filter(Boolean);
@@ -675,9 +705,8 @@ export function evaluateForEachList(listExpr: string, ctx: EvalContext): SPValue
     : evalAst(parseExpression(listExpr), ctx);
   if (Array.isArray(v)) return v;
   if (v === null || v === '') return [];
-  // multi-choice cells are ';#'-joined strings in the mock model — SP's
-  // forEach iterates each selected choice (pnp multi-choice-foreach sample)
-  if (typeof v === 'string' && v.includes(';#')) return multiChoiceParts(v);
+  // multi-choice cells arrive pre-normalized to arrays (type-aware, at field
+  // resolution) — a scalar here iterates once, like SP
   return [v];
 }
 

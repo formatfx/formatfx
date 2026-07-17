@@ -155,14 +155,22 @@ export interface RowTemplateConfig {
 export const TILE_DEFAULT_WIDTH = 254;
 export const TILE_DEFAULT_HEIGHT = 220;
 
-/** The one zebra wrapper expression the builder emits — also what the
- *  round-trip parser recognizes (any OTHER additionalRowClass refuses). */
-export const ZEBRA_ROW_CLASS = "=if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')";
+/** The zebra conditional the builder folds into the ROOT's class expression
+ *  (the `@rowIndex % 2` trick). It deliberately does NOT ride the wrapper's
+ *  additionalRowClass: SharePoint IGNORES that property whenever a
+ *  rowFormatter is present (MS syntax reference — they are mutually
+ *  exclusive), so wrapper-borne zebra silently never striped on real SP. */
+export const ZEBRA_CLASS_EXPR = "if(@rowIndex % 2 == 0,'ms-bgColor-themeLighter','')";
+/** The RETIRED wrapper form older applied views carry. The round-trip parser
+ *  refuses it like any other additionalRowClass now (reopen falls back to
+ *  the gallery with the honest foreign note; re-Apply emits the root form). */
+export const ZEBRA_ROW_CLASS = `=${ZEBRA_CLASS_EXPR}`;
 
 export interface ComposedRowStyle {
   rootStyle: Record<string, string>;
   rootClass: string[];
-  wrapperAdditionalRowClass?: string;
+  /** Fold ZEBRA_CLASS_EXPR into the root's class (build-time concern). */
+  zebra: boolean;
   disabled: Partial<Record<StyleToggle, string>>;
 }
 
@@ -182,8 +190,7 @@ export function composeRowStyle(config: RowTemplateConfig, palette: Record<strin
   } else if (config.rowStyle === 'minimalist') {
     disabled.border = 'Minimalist uses only a bottom separator';
   }
-  // zebra rides the view wrapper's additionalRowClass — the tile wrapper has no
-  // such key, and tiles sit in a grid, so "every other row" has no meaning there
+  // tiles sit in a grid, so "every other row" has no meaning there
   // (the target fact outranks any style reason, so it's stamped last)
   if (config.target === 'tile') {
     disabled.zebra = 'Striping alternates rows — tiles sit in a grid';
@@ -216,21 +223,18 @@ export function composeRowStyle(config: RowTemplateConfig, palette: Record<strin
     rootStyle['border-left'] = `3px solid ${palette.themePrimary}`;
   }
 
-  // --- layer 4: background/state ---
-  if (zebraLive && config.zebraStriping) {
-    // ROOT carries nothing; the stripe lives on the view wrapper (see buildTemplateView).
-    return finalize(rootStyle, rootClass, disabled, ZEBRA_ROW_CLASS, config);
-  }
-  return finalize(rootStyle, rootClass, disabled, undefined, config);
+  // --- layer 4: background/state --- (zebra folds into the root CLASS at
+  // build time — the @rowIndex modulus conditional, never the wrapper)
+  return finalize(rootStyle, rootClass, disabled, zebraLive && config.zebraStriping, config);
 }
 
 function finalize(
   rootStyle: Record<string, string>, rootClass: string[],
   disabled: Partial<Record<StyleToggle, string>>,
-  wrapperAdditionalRowClass: string | undefined, config: RowTemplateConfig,
+  zebra: boolean, config: RowTemplateConfig,
 ): ComposedRowStyle {
   if (config.hoverHighlight) rootClass.push(`ms-bgColor-${config.hoverToken}--hover`);
-  return { rootStyle, rootClass, wrapperAdditionalRowClass, disabled };
+  return { rootStyle, rootClass, zebra, disabled };
 }
 
 // ─── kebab ───────────────────────────────────────────────────────────────────
@@ -619,7 +623,7 @@ export function buildTemplateView(
   columnLooks: Record<string, SPElement>, palette: Record<string, string>,
   components: ComponentDef[] = [],
   opts: { prune?: boolean } = {},
-): { root: SPElement; additionalRowClass?: string } {
+): { root: SPElement } {
   const composed = composeRowStyle(config, palette);
   const zones = opts.prune ? pruneZones(config.zones) : config.zones;
   const zoneEls = zones.map((z) => buildZone(z, fields, columnLooks, components));
@@ -663,9 +667,45 @@ export function buildTemplateView(
     };
   const cls = composed.rootClass.slice();
   if (kebab && config.kebab.position === 'hover') cls.push('sp-card-showOnHoverParent');
-  if (cls.length) root.attributes = { class: cls.join(' ') };
+  if (composed.zebra) {
+    // statics + the modulus conditional in ONE class expression — this is
+    // the striping that actually works on real SP (wrapper zebra died with
+    // the additionalRowClass retirement, see ZEBRA_CLASS_EXPR)
+    root.attributes = {
+      class: cls.length ? `='${cls.join(' ')} ' + ${ZEBRA_CLASS_EXPR}` : `=${ZEBRA_CLASS_EXPR}`,
+    };
+  } else if (cls.length) {
+    root.attributes = { class: cls.join(' ') };
+  }
   setRowDensity(root, config.density);          // areas.ts: gap + padding only
-  return { root, additionalRowClass: composed.wrapperAdditionalRowClass };
+  return { root };
+}
+
+/** Fold a retired wrapper additionalRowClass into the ROOT's class, where
+ *  conditional row styling actually works on real SP (the wrapper form is
+ *  ignored next to a rowFormatter). Handles the stored row-component defs
+ *  from before the retirement: static classes append; an `=`-expression
+ *  composes with any existing static class; an expression-on-expression
+ *  collision keeps the root's own class (never emit un-parseable output). */
+export function foldRowClassIntoRoot(root: SPElement, rowClass: string): SPElement {
+  const out = JSON.parse(JSON.stringify(root)) as SPElement;
+  const existing = out.attributes?.class;
+  const existingStr = typeof existing === 'string' ? existing : undefined;
+  let next: string | undefined;
+  if (rowClass.startsWith('=')) {
+    const body = rowClass.slice(1);
+    if (existingStr === undefined) next = rowClass;
+    else if (!existingStr.startsWith('=')) next = `='${existingStr} ' + ${body}`;
+    // expression + expression: keep the root's own class untouched
+  } else if (existingStr === undefined) {
+    next = rowClass;
+  } else if (!existingStr.startsWith('=')) {
+    next = `${existingStr} ${rowClass}`;
+  } else {
+    next = `=(${existingStr.slice(1)}) + ' ${rowClass}'`;
+  }
+  if (next !== undefined) out.attributes = { ...out.attributes, class: next };
+  return out;
 }
 
 // ─── free-form zone/item ops (immutable; consumed by the builder modal) ──────
@@ -1026,11 +1066,31 @@ export function configFromView(
   target: BuilderTarget = 'row',
 ): RowTemplateConfig | null {
   if (root.elmType !== 'div' || root.style?.['display'] !== 'flex') return null;
-  // the tile wrapper has no additionalRowClass — one arriving here is foreign
-  if (target === 'tile' && additionalRowClass) return null;
-  if (additionalRowClass && additionalRowClass !== ZEBRA_ROW_CLASS) return null;
+  // The builder never writes additionalRowClass anymore (SP ignores it next
+  // to a rowFormatter) — ANY wrapper class is foreign now, including the
+  // retired wrapper-zebra form: those reopen via the gallery + foreign note,
+  // and the next Apply emits the working root-class form.
+  if (additionalRowClass) return null;
 
-  const classes = classListOf(root);
+  // zebra lives in the root's CLASS EXPRESSION: either bare
+  // `=if(@rowIndex % 2…)` or `='<statics> ' + if(@rowIndex % 2…)`.
+  // Any OTHER class expression is foreign; a plain string is all statics.
+  const rawClass = root.attributes?.class;
+  let zebraStriping = false;
+  let staticClasses = typeof rawClass === 'string' ? rawClass : '';
+  if (typeof rawClass === 'string' && rawClass.startsWith('=')) {
+    if (rawClass === `=${ZEBRA_CLASS_EXPR}`) {
+      zebraStriping = true; staticClasses = '';
+    } else {
+      const m = new RegExp(`^='(.*) ' \\+ ${ZEBRA_CLASS_EXPR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).exec(rawClass);
+      if (!m) return null;
+      zebraStriping = true; staticClasses = m[1];
+    }
+  } else if (rawClass !== undefined && typeof rawClass !== 'string') {
+    return null; // AST class on the root is foreign to the builder
+  }
+
+  const classes = staticClasses.split(/\s+/).filter(Boolean);
   const rowStyle: RowStyle = classes.includes('ms-bgColor-white') && root.style['border-radius'] === '4px'
     ? 'card'
     : root.style['border-bottom-style'] === 'solid' && root.style['border-style'] === undefined
@@ -1083,7 +1143,7 @@ export function configFromView(
     target,
     rowStyle,
     density: rowDensityOf(root),
-    zebraStriping: additionalRowClass === ZEBRA_ROW_CLASS,
+    zebraStriping,
     hoverHighlight: Boolean(hoverClass),
     hoverToken: hoverClass?.[1] ?? 'themeLighter',
     borderStyle: genericBorder ? (root.style['border-style'] as BorderStyle) : 'none',
@@ -1105,7 +1165,6 @@ export function configFromView(
   const verifyPalette = { themePrimary: stripe?.[1] ?? '' };
   const rebuilt = buildTemplateView(config, fields, columnLooks, verifyPalette, components);
   if (!deepEq(rebuilt.root, root)) return null;
-  if ((rebuilt.additionalRowClass ?? '') !== (additionalRowClass ?? '')) return null;
   return config;
 }
 

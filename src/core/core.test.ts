@@ -563,6 +563,20 @@ describe('tileProps wrapper import (pnp-compare finding 13)', () => {
     expect(doc.kind).toBe('tile');
     expect(doc.tileHeight).toBe(200);
   });
+
+  it('carries tile wrapper siblings (groupProps etc.) through import → export', () => {
+    const src = {
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      groupProps: { headerFormatter: { elmType: 'div', txtContent: '@group.count' } },
+      tileProps: { height: 200, width: 250, formatter: { elmType: 'div' } },
+    };
+    const doc = importJson(JSON.stringify(src));
+    expect(doc.viewExtras?.groupProps).toEqual(src.groupProps);
+    const out = JSON.parse(exportJson(doc));
+    expect(out.groupProps).toEqual(src.groupProps); // never silently destroyed
+    // and re-importing the export keeps them again
+    expect(importJson(JSON.stringify(out)).viewExtras?.groupProps).toEqual(src.groupProps);
+  });
 });
 
 describe('linter — additionalRowClass vs rowFormatter mutual exclusivity', () => {
@@ -578,7 +592,16 @@ describe('linter — additionalRowClass vs rowFormatter mutual exclusivity', () 
     expect(hits[0].message).toContain('IGNORED');
   });
 
-  it('stays quiet without the class, and on non-row docs', () => {
+  it('fires on grid docs too (they export as rowFormatter views)', () => {
+    const doc: FormatterDocument = {
+      kind: 'grid',
+      root: { elmType: 'div', children: [{ elmType: 'div', txtContent: '[$Title]' }] },
+      viewExtras: { additionalRowClass: 'zebra' },
+    };
+    expect(lintDocument(doc).map((i) => i.rule)).toContain('rowclass-with-rowformatter');
+  });
+
+  it('stays quiet without the class, and on non-view docs', () => {
     expect(lintDocument({ kind: 'row', root: { elmType: 'div' } })
       .filter((i) => i.rule === 'rowclass-with-rowformatter')).toHaveLength(0);
     expect(lintDocument({ kind: 'column', root: { elmType: 'div' } })
@@ -597,6 +620,15 @@ describe('SP numeric/date coercion + accessors (pnp-compare findings)', () => {
       Letters: 'A;#B;#C',
       Vendor: { lookupId: 3, lookupValue: 'Contoso Ltd' },
       Score: 1234.5,
+      Notes: 'A;#B literal in plain text',
+      Code: '2026-07-10',
+    },
+    // type-aware normalization: string SHAPE alone never decides (a text
+    // cell containing ';#' or an ISO-looking date keeps its literal value)
+    fieldTypes: {
+      Born: 'date', Died: 'date', Letters: 'choiceMulti', Vendor: 'lookup',
+      Score: 'number', Progress: 'number', Notes: 'text', Code: 'text',
+      Title: 'text', AssignedTo: 'personMulti',
     },
   };
 
@@ -618,11 +650,16 @@ describe('SP numeric/date coercion + accessors (pnp-compare findings)', () => {
     expect(evaluate('=[$Title.length]', pctx)).toBe('Launch new intranet'.length);
   });
 
-  it("forEach and length() treat ';#' multi-choice strings as the choice list", () => {
+  it("forEach and length() treat choiceMulti cells as the choice list (type-aware, not by string shape)", () => {
     expect(evaluateForEachList('[$Letters]', pctx)).toEqual(['A', 'B', 'C']);
     expect(evaluate('=length([$Letters])', pctx)).toBe(3);
     // plain strings keep their character length
     expect(evaluate('=length([$Title])', pctx)).toBe(19);
+    // a TEXT cell that merely contains ';#' stays scalar — no splitting
+    expect(evaluateForEachList('[$Notes]', pctx)).toEqual(['A;#B literal in plain text']);
+    expect(evaluate('=length([$Notes])', pctx)).toBe('A;#B literal in plain text'.length);
+    // and a string LITERAL is never a choice list
+    expect(evaluate("=length('A;#B')", pctx)).toBe(4);
   });
 
   it('toLocaleString on a number formats the number, not a date', () => {
@@ -630,10 +667,13 @@ describe('SP numeric/date coercion + accessors (pnp-compare findings)', () => {
     expect(evaluate('=toLocaleString([$Progress])', pctx)).toBe('64');
   });
 
-  it('.displayValue approximates the display string for number/date/boolean cells', () => {
+  it('.displayValue approximates the display string by FIELD type', () => {
     expect(evaluate('=[$Progress.displayValue]', pctx)).toBe('64');
     expect(evaluate('=[$Score.displayValue]', pctx)).toBe((1234.5).toLocaleString());
+    // a DATE field's string formats as a locale date…
     expect(evaluate('=[$Born.displayValue]', pctx)).toBe(new Date('1997-06-10').toLocaleDateString());
+    // …but a TEXT field whose value merely looks like a date keeps its text
+    expect(evaluate('=[$Code.displayValue]', pctx)).toBe('2026-07-10');
     expect(evaluate('=@currentField.displayValue', { ...pctx, currentFieldName: 'Score' })).toBe((1234.5).toLocaleString());
   });
 });

@@ -242,6 +242,7 @@ export function openCondFormat(target: CondTarget, onToast?: (m: string) => void
     iterators: {},
     iteratorIndex: {},
     displayNames: Object.fromEntries(state.fields.map((f) => [f.name, f.displayName ?? f.name])),
+    fieldTypes: Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
     now: new Date(),
   });
 

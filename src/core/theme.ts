@@ -146,7 +146,7 @@ export function buildThemeCss(mode: ThemeMode): string {
     `.sp-field-severity--blocked{background:#fde7e9;}`,
     // data bars: SP paints the LIGHT theme tint with dark text (pnp
     // number-data-bar screenshot), not a solid primary bar
-    `.sp-field-dataBars{background:${pal.themeLight};color:${pal.neutralPrimary};padding:0 4px;}`,
+    `.sp-field-dataBars{background:${pal.themeLight};color:${pal.neutralPrimary};padding:0 4px;box-shadow:inset 0 2px 0 ${pal.themePrimary};}`,
     `.sp-field-trending--up{color:#107c10;}`,
     `.sp-field-trending--down{color:#e81123;}`,
     `.sp-field-quickActionButton{display:inline-flex;align-items:center;cursor:pointer;color:${pal.themePrimary};background:transparent;border:none;font-size:13px;}`,

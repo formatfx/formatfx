@@ -58,25 +58,36 @@ export function importJson(text: string): FormatterDocument {
   // {formatter, height, width} shape below remains accepted)
   if ('tileProps' in parsed && typeof parsed.tileProps === 'object' && parsed.tileProps !== null
     && !('elmType' in parsed)) {
+    // Wrapper siblings (groupProps, commandBarProps, …) and unmodeled
+    // tileProps keys ride viewExtras verbatim, like the row path — an
+    // import/edit/export cycle must never silently destroy them.
     const tp = parsed.tileProps as Record<string, unknown>;
+    const { formatter, width, height, hideSelection: tpHide, fillHorizontally, ...tpExtras } = tp;
+    const { $schema, tileProps, hideSelection, ...siblings } = parsed;
+    void $schema; void tileProps;
+    const extras = { ...siblings, ...tpExtras };
     return {
       kind: 'tile',
-      root: tp.formatter as SPElement,
-      tileWidth: tp.width as number | undefined,
-      tileHeight: tp.height as number | undefined,
-      hideSelection: (tp.hideSelection ?? parsed.hideSelection) as boolean | undefined,
-      fillHorizontally: tp.fillHorizontally as boolean | undefined,
+      root: formatter as SPElement,
+      tileWidth: width as number | undefined,
+      tileHeight: height as number | undefined,
+      hideSelection: (tpHide ?? hideSelection) as boolean | undefined,
+      fillHorizontally: fillHorizontally as boolean | undefined,
+      ...(Object.keys(extras).length ? { viewExtras: extras } : {}),
     };
   }
-  // Tile formatter wrapper
+  // Tile formatter wrapper (legacy bare shape)
   if ('formatter' in parsed && !('elmType' in parsed)) {
+    const { formatter, width, height, hideSelection, fillHorizontally, $schema, ...extras } = parsed;
+    void $schema;
     return {
       kind: 'tile',
-      root: parsed.formatter as SPElement,
-      tileWidth: parsed.width as number | undefined,
-      tileHeight: parsed.height as number | undefined,
-      hideSelection: parsed.hideSelection as boolean | undefined,
-      fillHorizontally: parsed.fillHorizontally as boolean | undefined,
+      root: formatter as SPElement,
+      tileWidth: width as number | undefined,
+      tileHeight: height as number | undefined,
+      hideSelection: hideSelection as boolean | undefined,
+      fillHorizontally: fillHorizontally as boolean | undefined,
+      ...(Object.keys(extras).length ? { viewExtras: extras } : {}),
     };
   }
   // Bare element root → column formatter
@@ -144,6 +155,7 @@ export function exportPayload(doc: FormatterDocument, opts: ExportOptions = {}):
         width: doc.tileWidth ?? 254,
         ...(doc.hideSelection !== undefined ? { hideSelection: doc.hideSelection } : {}),
         ...(doc.fillHorizontally !== undefined ? { fillHorizontally: doc.fillHorizontally } : {}),
+        ...(doc.viewExtras ?? {}), // verbatim passthrough (groupProps, …)
         formatter: root,
       };
       break;
