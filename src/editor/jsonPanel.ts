@@ -81,6 +81,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
     <div class="wb-json-toolbar">
       <div class="wb-json-actions">
         <button id="wb-json-apply" title="Parse the JSON below back into the visual editor">⬅ Apply to canvas</button>
+        <button id="wb-json-copy-btn" class="wb-json-copybtn" title="Copy the compiled formatter JSON to the clipboard">COPY JSON</button>
         <button id="wb-json-revert" hidden title="Throw away the hand-edits in this pane and re-sync it from the canvas — the canvas document is untouched">↩ Discard edits</button>
       </div>
     </div>
@@ -99,7 +100,6 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     <div id="wb-syn-panel" class="wb-syn-panel" hidden></div>
     <div class="wb-json-crumbrow">
       <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
-      <button id="wb-json-copy-btn" class="wb-json-copybtn" title="Copy the compiled formatter JSON to the clipboard">COPY JSON</button>
       <span id="wb-json-size" class="wb-json-size" title="Size of the JSON that Copy produces, with the current sanitize/names toggles"></span>
     </div>
     <div id="wb-json-shell" class="wb-json-shell wb-codesync">

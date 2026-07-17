@@ -1503,15 +1503,10 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-radius: 3px; padding: 4px 8px; cursor: pointer; font-size: 11px;
 }
 .wb-json-toolbar button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-/* COPY JSON: a compact button centered in the crumbrow — it shares that
-   already-present row (no dedicated row stealing editor height) */
-.wb-json-copybtn {
-  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
-  border-radius: 4px; padding: 3px 12px; cursor: pointer;
-  font-size: 11px; font-weight: 600; letter-spacing: .02em; white-space: nowrap;
-}
-.wb-json-copybtn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-.wb-json-copybtn:active { background: var(--wb-bg-2, var(--wb-surface)); }
+/* COPY JSON sits in the toolbar row beside Apply — it inherits the shared
+   .wb-json-toolbar button look; a little weight/tracking marks it as the
+   primary copy affordance without reaching for the accent fill. */
+.wb-json-copybtn { font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
 .wb-check { font-size: 11px; color: var(--wb-text-2); display: flex; align-items: center; gap: 3px; }
 .wb-check input { width: auto; }
 /* the head kebab — trigger beside the JSON ⇄ Explain tabs; dropdown carries
@@ -1661,34 +1656,18 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 /* #PR-D breadcrumb strip — the caret's element chain over the editor;
    #PR-E: the strip is a flex ROW now, size meter pinned at its right edge
    (the crumbs' own hidden-contract is untouched — the row stays) */
-/* Three non-overlapping lanes: crumbs (left) · COPY JSON (centered) · size
-   (right). The button shares this already-present row (no dedicated row
-   stealing editor height). A symmetric grid — equal minmax(0,1fr) flanks
-   around a max-content middle track sized exactly to the button — keeps it
-   dead-centered while the crumbs and meter get their own lanes, so a long
-   breadcrumb path can never render underneath the button and swallow its
-   clicks (matters most at the 220px minimum pane width). Explicit column
-   assignments are required: crumbs is [hidden]→display:none by default, and
-   without them auto-placement would slide the button into the empty left
-   lane. */
 .wb-json-crumbrow {
-  display: grid; grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
-  align-items: center; gap: 8px; min-height: 24px; padding: 0 8px 3px;
+  display: flex; align-items: center; gap: 8px; min-height: 18px;
+  padding: 0 8px 3px;
 }
 .wb-json-crumbs {
-  grid-column: 1; display: flex; align-items: center; gap: 2px; min-width: 0;
+  display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
   font-size: 11px; color: var(--wb-text-2);
   white-space: nowrap; overflow: hidden;
 }
 .wb-json-crumbs[hidden] { display: none; } /* display:flex above would defeat [hidden] */
-.wb-json-copybtn { grid-column: 2; }
-/* fill the right lane (min-width:0 so the track's minmax(0,1fr) can clip it)
-   and ellipsize, so a wide value like "123.4 KB" stays inside its lane at the
-   220px min width instead of spilling left over the button (justify-self:end
-   would leave the item content-sized and free to overflow). */
 .wb-json-size {
-  grid-column: 3; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  text-align: right; font-size: 10.5px; color: var(--wb-text-2);
+  margin-left: auto; font-size: 10.5px; color: var(--wb-text-2);
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .wb-crumb {
