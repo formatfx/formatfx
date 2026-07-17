@@ -564,6 +564,18 @@ describe('tileProps wrapper import (pnp-compare finding 13)', () => {
     expect(doc.tileHeight).toBe(200);
   });
 
+  it('coerces "286"-style numeric-string tile dimensions (the pnp event-tiles shape)', () => {
+    const doc = importJson(JSON.stringify({
+      tileProps: { height: '352', width: '286', formatter: { elmType: 'div' } },
+    }));
+    expect(doc.tileWidth).toBe(286);
+    expect(doc.tileHeight).toBe(352);
+    // junk dimensions drop to undefined so the stock default applies
+    const junk = importJson(JSON.stringify({ height: 'tall', width: 250, formatter: { elmType: 'div' } }));
+    expect(junk.tileHeight).toBeUndefined();
+    expect(junk.tileWidth).toBe(250);
+  });
+
   it('unmodeled tileProps-INTERIOR keys keep their nesting through the round trip (modern shape back out)', () => {
     const src = {
       $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',

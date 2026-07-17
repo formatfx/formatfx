@@ -27,6 +27,14 @@ export interface ExportOptions {
 
 // ─── Import ──────────────────────────────────────────────────────────────────
 
+/** A tile dimension as a real number — community JSON carries "286"-style
+ *  numeric strings (the pnp event-tiles sample does); anything non-finite
+ *  drops to undefined so the stock default applies. */
+function tileDim(v: unknown): number | undefined {
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+}
+
 export function importJson(text: string): FormatterDocument {
   let parsed: Record<string, unknown>;
   try {
@@ -72,8 +80,8 @@ export function importJson(text: string): FormatterDocument {
     return {
       kind: 'tile',
       root: formatter as SPElement,
-      tileWidth: width as number | undefined,
-      tileHeight: height as number | undefined,
+      tileWidth: tileDim(width),
+      tileHeight: tileDim(height),
       hideSelection: (tpHide ?? hideSelection) as boolean | undefined,
       fillHorizontally: fillHorizontally as boolean | undefined,
       ...(Object.keys(extras).length ? { viewExtras: extras } : {}),
@@ -86,8 +94,8 @@ export function importJson(text: string): FormatterDocument {
     return {
       kind: 'tile',
       root: formatter as SPElement,
-      tileWidth: width as number | undefined,
-      tileHeight: height as number | undefined,
+      tileWidth: tileDim(width),
+      tileHeight: tileDim(height),
       hideSelection: hideSelection as boolean | undefined,
       fillHorizontally: fillHorizontally as boolean | undefined,
       ...(Object.keys(extras).length ? { viewExtras: extras } : {}),

@@ -298,7 +298,10 @@ node --input-type=module -e "
 import { evaluate, evaluateForEachList } from './dist-lib/core/expressions.js';
 const ctx = (row, cf='F') => ({ row, currentFieldName: cf,
   me: {title:'S', email:'me@contoso.com'}, iterators:{}, iteratorIndex:{},
-  displayNames:{}, now: new Date('2026-07-17T12:00:00') });
+  displayNames:{}, now: new Date('2026-07-17T12:00:00'),
+  // the fix pass made value normalization FIELD-TYPE-aware — the probes
+  // must say what F is, exactly as the app's surfaces do
+  fieldTypes: { F: 'choiceMulti' } });
 const t = (label, expr, row) => { try {
   console.log(label, '→', JSON.stringify(evaluate(expr, ctx(row))));
 } catch(e) { console.log(label, '→ ERROR:', e.message); } };
@@ -307,7 +310,8 @@ t('Number(date)', '=Number([\$F])', { F: '2026-07-10' });
 t('date minus date', '=[\$A]-[\$B]', { A: '2026-07-10', B: '2026-07-01' });
 // finding 2 — was '' → rgba(NaN…); now 11
 t('.length', '=[\$F.lookupValue.length]', { F: { lookupId: 3, lookupValue: 'Contoso Ltd' } });
-// finding 3 — was ['A;#B;#C'] / 7; now ['A','B','C'] / 3
+// finding 3 — was ['A;#B;#C'] / 7; now ['A','B','C'] / 3 (needs the
+// fieldTypes entry above — a TEXT-typed field keeps the literal string)
 console.log('forEach', evaluateForEachList('[\$F]', ctx({ F: 'A;#B;#C' })));
 t('length()', '=length([\$F])', { F: 'A;#B;#C' });
 // finding 4 — was '12/5/2001, 12:00:00 AM'; now '12.5'
