@@ -1661,24 +1661,29 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 /* #PR-D breadcrumb strip — the caret's element chain over the editor;
    #PR-E: the strip is a flex ROW now, size meter pinned at its right edge
    (the crumbs' own hidden-contract is untouched — the row stays) */
-/* crumbs (left) and size (right) flow normally; COPY JSON is absolutely
-   centered OVER the row so it stays dead-center whether or not the crumbs
-   are showing — and it shares this already-present row (no dedicated row
-   stealing editor height). min-height reserves space for the button since
-   absolute positioning takes it out of flow. */
+/* Three non-overlapping lanes: crumbs (left) · COPY JSON (centered) · size
+   (right). The button shares this already-present row (no dedicated row
+   stealing editor height). A symmetric grid — equal minmax(0,1fr) flanks
+   around a max-content middle track sized exactly to the button — keeps it
+   dead-centered while the crumbs and meter get their own lanes, so a long
+   breadcrumb path can never render underneath the button and swallow its
+   clicks (matters most at the 220px minimum pane width). Explicit column
+   assignments are required: crumbs is [hidden]→display:none by default, and
+   without them auto-placement would slide the button into the empty left
+   lane. */
 .wb-json-crumbrow {
-  position: relative; display: flex; align-items: center; gap: 8px;
-  min-height: 24px; padding: 0 8px 3px;
+  display: grid; grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
+  align-items: center; gap: 8px; min-height: 24px; padding: 0 8px 3px;
 }
 .wb-json-crumbs {
-  display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
+  grid-column: 1; display: flex; align-items: center; gap: 2px; min-width: 0;
   font-size: 11px; color: var(--wb-text-2);
   white-space: nowrap; overflow: hidden;
 }
 .wb-json-crumbs[hidden] { display: none; } /* display:flex above would defeat [hidden] */
-.wb-json-copybtn { position: absolute; left: 50%; transform: translateX(-50%); }
+.wb-json-copybtn { grid-column: 2; }
 .wb-json-size {
-  margin-left: auto; font-size: 10.5px; color: var(--wb-text-2);
+  grid-column: 3; justify-self: end; font-size: 10.5px; color: var(--wb-text-2);
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .wb-crumb {
