@@ -523,6 +523,58 @@ describe('tenant theme', () => {
   });
 });
 
+describe('SP numeric/date coercion + accessors (pnp-compare findings)', () => {
+  // Real-SP behaviors verified against pnp/List-Formatting samples that work
+  // on live tenants (e2e/pnp-compare/FINDINGS.md, 2026-07-17 sweep).
+  const pctx: EvalContext = {
+    ...ctx,
+    row: {
+      ...ctx.row,
+      Born: '1997-06-10', Died: '2017-12-21',
+      Letters: 'A;#B;#C',
+      Vendor: { lookupId: 3, lookupValue: 'Contoso Ltd' },
+      Score: 1234.5,
+    },
+  };
+
+  it('Number() on an ISO date string returns epoch ms (the day-counter idiom)', () => {
+    expect(evaluate('=Number([$Born])', pctx)).toBe(new Date('1997-06-10').getTime());
+    expect(evaluate('=floor((Number([$Died])-Number([$Born]))/(1000*60*60*24*365))', pctx)).toBe(20);
+    // non-date strings keep parseFloat semantics
+    expect(evaluate("=Number('12px')", pctx)).toBe(12);
+  });
+
+  it('subtracting two date-string fields yields their ms difference', () => {
+    const ms = new Date('2017-12-21').getTime() - new Date('1997-06-10').getTime();
+    expect(evaluate('=[$Died]-[$Born]', pctx)).toBe(ms);
+  });
+
+  it('.length property accessor works on strings and arrays (colored-pills sample)', () => {
+    expect(evaluate('=[$Vendor.lookupValue.length]', pctx)).toBe(11);
+    expect(evaluate('=[$AssignedTo.length]', pctx)).toBe(2);
+    expect(evaluate('=[$Title.length]', pctx)).toBe('Launch new intranet'.length);
+  });
+
+  it("forEach and length() treat ';#' multi-choice strings as the choice list", () => {
+    expect(evaluateForEachList('[$Letters]', pctx)).toEqual(['A', 'B', 'C']);
+    expect(evaluate('=length([$Letters])', pctx)).toBe(3);
+    // plain strings keep their character length
+    expect(evaluate('=length([$Title])', pctx)).toBe(19);
+  });
+
+  it('toLocaleString on a number formats the number, not a date', () => {
+    expect(evaluate('=toLocaleString([$Score])', pctx)).toBe((1234.5).toLocaleString());
+    expect(evaluate('=toLocaleString([$Progress])', pctx)).toBe('64');
+  });
+
+  it('.displayValue approximates the display string for number/date/boolean cells', () => {
+    expect(evaluate('=[$Progress.displayValue]', pctx)).toBe('64');
+    expect(evaluate('=[$Score.displayValue]', pctx)).toBe((1234.5).toLocaleString());
+    expect(evaluate('=[$Born.displayValue]', pctx)).toBe(new Date('1997-06-10').toLocaleDateString());
+    expect(evaluate('=@currentField.displayValue', { ...pctx, currentFieldName: 'Score' })).toBe((1234.5).toLocaleString());
+  });
+});
+
 describe('blank-cell semantics', () => {
   const dctx: EvalContext = { ...ctx, row: { ...ctx.row, EmptyDate: null, EmptyText: '' } as never };
 

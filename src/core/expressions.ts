@@ -262,11 +262,23 @@ export function toStr(v: SPValue): string {
   return String(v);
 }
 
+/** A whole-string ISO date ('2026-07-10', optionally with a time part) — the
+ *  shape date cells hold in the mock model. Anchored so ordinary numeric or
+ *  prefixed strings ('12px', '2026 report') keep parseFloat semantics. */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([T ].+)?$/;
+
 export function toNum(v: SPValue): number {
   if (v === null || v === undefined || v === '') return NaN;
   if (v instanceof Date) return v.getTime();
   if (typeof v === 'boolean') return v ? 1 : 0;
   if (typeof v === 'number') return v;
+  if (typeof v === 'string' && ISO_DATE_RE.test(v.trim())) {
+    // On real SP, Number([$DateField]) is the epoch ms — the classic
+    // day-counter idiom floor((Number(a)-Number(b))/86400000) depends on it
+    // (pnp-compare finding: date-difference, date-range-rag).
+    const t = Date.parse(v.trim());
+    if (!Number.isNaN(t)) return t;
+  }
   return parseFloat(toStr(v));
 }
 
@@ -305,8 +317,33 @@ function svgAvatar(seed: string): string {
 
 // ─── Evaluator ───────────────────────────────────────────────────────────────
 
+/** ';#'-packed multi-choice cell → its choice list (the mock model stores
+ *  multi-choice as SP's classic delimiter-joined string). */
+function multiChoiceParts(v: string): string[] {
+  return v.split(';#').filter(Boolean);
+}
+
 function resolveProp(base: SPValue, prop: string): SPValue {
   if (base === null || base === undefined) return '';
+  // .length is a real property on SP's underlying values — strings included
+  // (the colored-pills sample computes colors from lookupValue.length).
+  if (prop === 'length') {
+    if (Array.isArray(base)) return base.length;
+    if (typeof base === 'string') {
+      return base.includes(';#') ? multiChoiceParts(base).length : base.length;
+    }
+  }
+  // .displayValue — SP's locale display string for the cell. The mock model
+  // has no per-column display settings, so approximate by type (a percent-
+  // formatted number column still differs — FINDINGS.md).
+  if (prop === 'displayValue' && (typeof base !== 'object' || base instanceof Date)) {
+    if (typeof base === 'number') return base.toLocaleString();
+    if (typeof base === 'boolean') return base ? 'Yes' : 'No';
+    if (base instanceof Date) return base.toLocaleDateString();
+    if (typeof base === 'string') {
+      return ISO_DATE_RE.test(base.trim()) ? new Date(base.trim()).toLocaleDateString() : base;
+    }
+  }
   if (Array.isArray(base)) {
     return base.map((item) => resolveProp(item, prop)) as SPValue[];
   }
@@ -407,7 +444,9 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
     case 'length': {
       const v = a(0);
       if (Array.isArray(v)) return v.length;
-      return toStr(v).length;
+      // multi-choice cells arrive as ';#'-joined strings — SP counts choices
+      const s = toStr(v);
+      return s.includes(';#') ? multiChoiceParts(s).length : s.length;
     }
     case 'appendTo': {
       const arr = Array.isArray(a(0)) ? [...(a(0) as SPValue[])] : toStr(a(0)).split(',').filter(Boolean);
@@ -422,7 +461,12 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
     case 'getMonth': return dateOf(a(0)).getMonth();
     case 'getYear': return dateOf(a(0)).getFullYear();
     // empty dates render as empty text on real SP, not the epoch
-    case 'toLocaleString': return isEmptyValue(a(0)) ? '' : dateOf(a(0)).toLocaleString();
+    // toLocaleString on a NUMBER formats the number ('1,234.5'), never a date
+    case 'toLocaleString': {
+      const v = a(0);
+      if (typeof v === 'number') return v.toLocaleString();
+      return isEmptyValue(v) ? '' : dateOf(v).toLocaleString();
+    }
     case 'toLocaleDateString': return isEmptyValue(a(0)) ? '' : dateOf(a(0)).toLocaleDateString();
     case 'toLocaleTimeString': return isEmptyValue(a(0)) ? '' : dateOf(a(0)).toLocaleTimeString();
     case 'addDays': {
@@ -631,6 +675,9 @@ export function evaluateForEachList(listExpr: string, ctx: EvalContext): SPValue
     : evalAst(parseExpression(listExpr), ctx);
   if (Array.isArray(v)) return v;
   if (v === null || v === '') return [];
+  // multi-choice cells are ';#'-joined strings in the mock model — SP's
+  // forEach iterates each selected choice (pnp multi-choice-foreach sample)
+  if (typeof v === 'string' && v.includes(';#')) return multiChoiceParts(v);
   return [v];
 }
 
