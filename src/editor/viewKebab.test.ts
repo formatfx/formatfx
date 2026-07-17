@@ -103,37 +103,15 @@ describe('main mode — the view-scoped settings', () => {
     expect(after?.textContent).toBe('Compact');
   });
 
-  it('row class commits from the panel (one mutation, empty clears clean)', () => {
+  it('the Row class input is GONE — additionalRowClass is dead next to a rowFormatter (owner call 2026-07-17)', () => {
     const panel = openOnRowView();
-    const inp = panel.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    const d = undoDepth();
-    inp.value = 'sp-zebra';
-    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-    expect(state.doc.viewExtras?.additionalRowClass).toBe('sp-zebra');
-    expect(undoDepth()).toBe(d + 1);
-    // clearing deletes the key AND the now-empty viewExtras (clean export)
-    const inp2 = document.body.querySelector('.wb-viewkebab .wb-viewcard-rowclass') as HTMLInputElement;
-    inp2.value = '';
-    inp2.dispatchEvent(new Event('blur'));
-    expect(state.doc.viewExtras).toBeUndefined();
-    expect(undoDepth()).toBe(d + 2);
+    expect(panel.querySelector('.wb-viewcard-rowclass')).toBeNull();
   });
 
-  it('a no-op row-class commit pushes NO undo step', () => {
-    const panel = openOnRowView();
-    const d = undoDepth();
-    const inp = panel.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    inp.dispatchEvent(new Event('blur')); // '' → '' — nothing changed
-    expect(undoDepth()).toBe(d);
-  });
-
-  it('other viewExtras keys survive a row-class clear (carried verbatim — the import contract)', () => {
-    const panel = openOnRowView({ additionalRowClass: 'x', hideListHeader: true });
-    const inp = panel.querySelector('.wb-viewcard-rowclass') as HTMLInputElement;
-    expect(inp.value).toBe('x');
-    inp.value = '';
-    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-    expect(state.doc.viewExtras).toEqual({ hideListHeader: true });
+  it('a pasted additionalRowClass still rides viewExtras untouched (import passthrough, lint teaches it)', () => {
+    openOnRowView({ additionalRowClass: 'x', hideListHeader: true });
+    // no kebab control edits it anymore — the key sits exactly as imported
+    expect(state.doc.viewExtras).toEqual({ additionalRowClass: 'x', hideListHeader: true });
   });
 
   it('Selection boxes: Hide sets true, Show removes the prop entirely (clean export)', () => {

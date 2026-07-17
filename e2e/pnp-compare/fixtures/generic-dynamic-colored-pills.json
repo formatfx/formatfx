@@ -1,0 +1,65 @@
+{
+  "id": "generic-dynamic-colored-pills",
+  "kind": "column",
+  "field": "SoldTo",
+  "source": "column-samples/generic-dynamic-colored-pills/generic-dynamic-colored-pills.json",
+  "screenshot": "column-samples/generic-dynamic-colored-pills/assets/screenshot.png",
+  "notes": "Screenshot shows 8 rows in a 'SoldTo' lookup column, each rendered as one fully-rounded pill (border-radius 25px, 2px contrasting border) in a mix of purple/blue and green hues with black or white text picked by a luminance test. Pill labels in the screenshot are redacted, so row values here are representative; what a correct render must reproduce is the pill shape and the deterministic background/border/text colors computed from lookupValue.length and lookupId (pow/ceiling/mod math).",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "SoldTo", "type": "lookup", "displayName": "SoldTo" }
+  ],
+  "rows": [
+    { "Title": "Order 1", "SoldTo": { "lookupId": 1, "lookupValue": "Contoso Ltd" } },
+    { "Title": "Order 2", "SoldTo": { "lookupId": 2, "lookupValue": "Fabrikam" } },
+    { "Title": "Order 3", "SoldTo": { "lookupId": 5, "lookupValue": "Litware" } },
+    { "Title": "Order 4", "SoldTo": { "lookupId": 3, "lookupValue": "Trey Research" } },
+    { "Title": "Order 5", "SoldTo": { "lookupId": 8, "lookupValue": "Wide World" } },
+    { "Title": "Order 6", "SoldTo": { "lookupId": 10, "lookupValue": "Acme" } },
+    { "Title": "Order 7", "SoldTo": { "lookupId": 7, "lookupValue": "Tailspin" } },
+    { "Title": "Order 8", "SoldTo": { "lookupId": 4, "lookupValue": "Adventure Works" } }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "style": {
+      "display": "flex",
+      "flex-wrap": "wrap",
+      "width": "100%"
+    },
+    "children": [
+      {
+        "elmType": "div",
+        "style": {
+          "margin": "2px auto"
+        },
+        "children": [
+          {
+            "elmType": "div",
+            "style": {
+              "vertical-align": "middle",
+              "white-space": "nowrap",
+              "width": "auto",
+              "padding": "5px",
+              "color": "=if( ((((ceiling((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5)) % 255) / 10) * 10) * 0.299) + (ceiling(((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5) + @currentField.lookupId ) % 255) / 10) * 10) * 0.587) + ((255 - ceiling(((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5) + @currentField.lookupId ) % 255) / 10) * 10)) * 0.114)) ) > 145, '#000000', '#ffffff')",
+              "background-color": "='rgba(' + (ceiling((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5)) % 255) / 10) * 10) + ', ' + (ceiling((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5) + @currentField.lookupId ) % 255) / 10) * 10)  + ', ' + (255 - ceiling(((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5) + @currentField.lookupId ) % 255) / 10) * 10)) + ', 1)'",
+              "border-width": "2px",
+              "border-style": "solid",
+              "border-color": "='rgba(' + (255 - ceiling((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5)) % 255) / 10) * 10) + ', ' + (255 - ceiling((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5) + @currentField.lookupId ) % 255) / 10) * 10)  + ', ' + (ceiling(((((@currentField.lookupValue.length) * pow(@currentField.lookupId, 5) + @currentField.lookupId ) % 255) / 10) * 10)) + ', 1)'",
+              "border-radius": "25px"
+            },
+            "children": [
+              {
+                "elmType": "span",
+                "style": {
+                  "padding": "8px"
+                },
+                "txtContent": "@currentField.lookupValue"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "id": "bar-graph",
+  "kind": "row",
+  "source": "view-samples/bar-graph/bar-graph.json",
+  "screenshot": "view-samples/bar-graph/assets/screenshot.png",
+  "notes": "Horizontal bar chart: each row's bar width scales as Votes/1000 of 755px (capped at >=1000); bars with Votes >= 700 (Grapes, Orange) go dark themeDarker with white text and a Trending12 icon, others light themeLighterAlt. Grapes (1024 votes) shows '1000+' and the gold CrownSolid because IsHighest is Yes. Mango is the last row with IsLastItem = Yes, which draws the vertical 'Fruits' axis label + ChevronUp, the horizontal baseline, and the ChevronRight + 'Votes' axis label; every row also draws a segment of the dashed 700-vote threshold line at absolute positions derived from @rowIndex. [$Icon] is an <img> URL for the fruit emoji — external images will not load offline (broken/blank 20px img). The 'animated bounceInLeft' classes need injected animate.css and do nothing here.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Votes", "type": "number" },
+    { "name": "IsLastItem", "type": "boolean" },
+    { "name": "IsHighest", "type": "boolean" },
+    { "name": "Icon", "type": "text" }
+  ],
+  "rows": [
+    { "Title": "Apple", "Votes": 500, "IsLastItem": false, "IsHighest": false, "Icon": "https://em-content.zobj.net/thumbs/120/apple/354/red-apple_1f34e.png" },
+    { "Title": "Banana", "Votes": 620, "IsLastItem": false, "IsHighest": false, "Icon": "https://em-content.zobj.net/thumbs/120/apple/354/banana_1f34c.png" },
+    { "Title": "Grapes", "Votes": 1024, "IsLastItem": false, "IsHighest": true, "Icon": "https://em-content.zobj.net/thumbs/120/apple/354/grapes_1f347.png" },
+    { "Title": "Pear", "Votes": 227, "IsLastItem": false, "IsHighest": false, "Icon": "https://em-content.zobj.net/thumbs/120/apple/354/pear_1f350.png" },
+    { "Title": "Orange", "Votes": 758, "IsLastItem": false, "IsHighest": false, "Icon": "https://em-content.zobj.net/thumbs/120/apple/354/tangerine_1f34a.png" },
+    { "Title": "Mango", "Votes": 550, "IsLastItem": true, "IsHighest": false, "Icon": "https://em-content.zobj.net/thumbs/120/apple/354/mango_1f96d.png" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json",
+    "hideSelection": "true",
+    "hideColumnHeader": "true",
+    "rowFormatter": {
+      "elmType": "div",
+      "style": {
+        "align-items": "flex-end",
+        "width": "800px",
+        "box-sizing": "border-box",
+        "border-left": "3px solid"
+      },
+      "attributes": {
+        "class": "ms-fontColor-themeDark"
+      },
+      "children": [
+        {
+          "elmType": "span",
+          "txtContent": "Fruits",
+          "style": {
+            "display": "=if([$IsLastItem], 'block','none')",
+            "position": "absolute",
+            "left": "-21px",
+            "top": "=@rowIndex*70 -130 + 'px'",
+            "width": "12px",
+            "text-align": "center",
+            "font-size": "24px",
+            "line-height": "22px"
+          }
+        },
+        {
+          "elmType": "span",
+          "style": {
+            "display": "=if([$IsLastItem], 'block','none')",
+            "position": "absolute",
+            "left": "-27px",
+            "top": "=@rowIndex*70 + 'px'",
+            "width": "10px",
+            "font-size": "24px"
+          },
+          "attributes": {
+            "iconName": "ChevronUp"
+          }
+        },
+        {
+          "elmType": "div",
+          "style": {
+            "position": "absolute",
+            "top": "=@rowIndex*65 + 'px'",
+            "left": "=(700 / 1000) * (800 - 45) + 'px'",
+            "border-left": "3px dashed",
+            "width": "2px",
+            "height": "65px"
+          },
+          "attributes": {
+            "class": "animated zoomIn"
+          }
+        },
+        {
+          "elmType": "span",
+          "style": {
+            "display": "=if([$IsLastItem], 'block','none')",
+            "position": "absolute",
+            "left": "4px",
+            "top": "=@rowIndex*70+48 + 'px'",
+            "font-size": "24px"
+          },
+          "attributes": {
+            "iconName": "ChevronRight"
+          }
+        },
+        {
+          "elmType": "span",
+          "txtContent": "Votes",
+          "style": {
+            "display": "=if([$IsLastItem], 'block','none')",
+            "position": "absolute",
+            "left": "28px",
+            "top": "=@rowIndex*70+48 + 'px'",
+            "font-size": "24px",
+            "line-height": "24px"
+          }
+        },
+        {
+          "elmType": "div",
+          "style": {
+            "position": "absolute",
+            "display": "=if([$IsLastItem], 'block','none')",
+            "left": "px",
+            "top": "=@rowIndex*70+42 + 'px'",
+            "border-bottom": "3px solid",
+            "width": "800px",
+            "height": "2px"
+          }
+        },
+        {
+          "elmType": "div",
+          "attributes": {
+            "class": "=if([$Votes] >= 700, 'ms-bgColor-themeDarker ms-fontColor-white ms-bgColor-themePrimary--hover ms-fontColor-white--hover ms-font-m animated bounceInLeft delay-1s', 'ms-bgColor-themeLighterAlt ms-bgColor-themePrimary--hover ms-fontColor-white--hover ms-font-m animated bounceInLeft delay-1s')",
+            "title": "=[$Title] + ' has ' + [$Votes] + ' Votes' + if([$Votes] >= 700, ' and is trending.','.')"
+          },
+          "style": {
+            "height": "56px",
+            "width": "=if([$Votes] >= 1000, (800 - 45) + 'px', ([$Votes] / 1000) * (800 - 45) + 'px')",
+            "margin": "5px 0px",
+            "box-shadow": "2px 0px 4px 0px darkgrey",
+            "box-sizing": "border-box",
+            "padding": "15px 10px",
+            "border-right": "2px solid",
+            "z-index": "1"
+          },
+          "children": [
+            {
+              "elmType": "div",
+              "style": {
+                "margin-top": "-12px",
+                "margin-bottom": "10px",
+                "display": "=if([$IsHighest], 'block','none')",
+                "color": "#FFD700",
+                "font-size": "42px",
+                "float": "right"
+              },
+              "attributes": {
+                "iconName": "CrownSolid"
+              }
+            },
+            {
+              "elmType": "div",
+              "style": {
+                "display": "=if([$Votes] >= 700, 'block','none')",
+                "float": "right",
+                "margin-left": "5px",
+                "margin-right": "5px"
+              },
+              "attributes": {
+                "iconName": "Trending12"
+              }
+            },
+            {
+              "elmType": "span",
+              "txtContent": "=if([$Votes] > 1000, '1000+', [$Votes])",
+              "style": {
+                "display": "block",
+                "float": "right"
+              }
+            },
+            {
+              "elmType": "span",
+              "txtContent": "[$Title]",
+              "style": {
+                "display": "block",
+                "float": "left"
+              }
+            },
+            {
+              "elmType": "img",
+              "attributes": {
+                "src": "[$Icon]"
+              },
+              "style": {
+                "display": "block",
+                "float": "left",
+                "width": "20px",
+                "margin-left": "5px"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

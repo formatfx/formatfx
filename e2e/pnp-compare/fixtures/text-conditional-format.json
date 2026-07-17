@@ -1,0 +1,42 @@
+{
+  "id": "text-conditional-format",
+  "kind": "column",
+  "field": "Severity",
+  "source": "column-samples/text-conditional-format/text-conditional-format.json",
+  "screenshot": "column-samples/text-conditional-format/assets/screenshot.png",
+  "notes": "Each row is a full-width tinted pill with a Fluent icon then the value text: Done = green tint + CheckMark, In progress = no tint (severity--low) + Forward arrow, In review = yellow tint + Error (!) icon, Has issues = light-red severeWarning tint + Warning triangle, Blocked = pink blocked tint + ErrorBadge (circled x). Text is neutralSecondary gray in all rows.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Severity", "type": "choice", "choices": ["Done", "In progress", "In review", "Has issues", "Blocked"] }
+  ],
+  "rows": [
+    { "Title": "Item 1", "Severity": "Done" },
+    { "Title": "Item 2", "Severity": "In progress" },
+    { "Title": "Item 3", "Severity": "In review" },
+    { "Title": "Item 4", "Severity": "Has issues" },
+    { "Title": "Item 5", "Severity": "Blocked" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "attributes": {
+      "class": "=if(@currentField == 'Done', 'sp-field-severity--good', if(@currentField == 'In progress', 'sp-field-severity--low', if(@currentField == 'In review', 'sp-field-severity--warning', if(@currentField == 'Has issues', 'sp-field-severity--severeWarning', 'sp-field-severity--blocked')))) + ' ms-fontColor-neutralSecondary'"
+    },
+    "children": [
+      {
+        "elmType": "span",
+        "style": {
+          "display": "inline-block",
+          "padding": "0 4px"
+        },
+        "attributes": {
+          "iconName": "=if(@currentField == 'Done', 'CheckMark', if(@currentField == 'In progress', 'Forward', if(@currentField == 'In review', 'Error', if(@currentField == 'Has issues', 'Warning', 'ErrorBadge'))))"
+        }
+      },
+      {
+        "elmType": "span",
+        "txtContent": "@currentField"
+      }
+    ]
+  }
+}

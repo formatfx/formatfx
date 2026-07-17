@@ -29,6 +29,13 @@ export interface EvalContext {
   iteratorIndex: Record<string, number>;
   displayNames: Record<string, string>;
   now: Date;
+  /** Field internal name → mock field type ('choiceMulti', 'date', …).
+   *  Optional: when present, field VALUES normalize type-awarely at
+   *  resolution (multi-choice ';#' strings become choice arrays, and
+   *  .displayValue can format date strings) — string SHAPE alone never
+   *  decides, so text cells that merely contain ';#' or look like dates
+   *  keep their literal value. */
+  fieldTypes?: Record<string, string>;
 }
 
 export class ExpressionError extends Error {}
@@ -262,11 +269,23 @@ export function toStr(v: SPValue): string {
   return String(v);
 }
 
+/** A whole-string ISO date ('2026-07-10', optionally with a time part) — the
+ *  shape date cells hold in the mock model. Anchored so ordinary numeric or
+ *  prefixed strings ('12px', '2026 report') keep parseFloat semantics. */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([T ].+)?$/;
+
 export function toNum(v: SPValue): number {
   if (v === null || v === undefined || v === '') return NaN;
   if (v instanceof Date) return v.getTime();
   if (typeof v === 'boolean') return v ? 1 : 0;
   if (typeof v === 'number') return v;
+  if (typeof v === 'string' && ISO_DATE_RE.test(v.trim())) {
+    // On real SP, Number([$DateField]) is the epoch ms — the classic
+    // day-counter idiom floor((Number(a)-Number(b))/86400000) depends on it
+    // (pnp-compare finding: date-difference, date-range-rag).
+    const t = Date.parse(v.trim());
+    if (!Number.isNaN(t)) return t;
+  }
   return parseFloat(toStr(v));
 }
 
@@ -305,8 +324,48 @@ function svgAvatar(seed: string): string {
 
 // ─── Evaluator ───────────────────────────────────────────────────────────────
 
+/** Type-aware cell normalization at FIELD resolution (never by string shape
+ *  alone — a text cell containing ';#' stays scalar): a choiceMulti cell's
+ *  ';#'-joined string becomes the choice array SP exposes, so length(),
+ *  forEach and .length see a list naturally. Blank stays '' for the pinned
+ *  == '' semantics. */
+function normalizeCell(name: string, value: SPValue, ctx: EvalContext): SPValue {
+  if (ctx.fieldTypes?.[name] === 'choiceMulti' && typeof value === 'string' && value !== '') {
+    return value.split(';#').filter(Boolean);
+  }
+  return value;
+}
+
+/** .displayValue approximation, with the field's TYPE deciding how strings
+ *  render (a date cell formats as a locale date; a text cell that merely
+ *  looks like a date keeps its literal text). Per-column display settings
+ *  (percent formats etc.) aren't in the mock model — FINDINGS.md. */
+function displayString(value: SPValue, fieldType?: string): SPValue {
+  if (typeof value === 'number') return value.toLocaleString();
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value instanceof Date) return value.toLocaleDateString();
+  if (typeof value === 'string') {
+    if (fieldType === 'date' && ISO_DATE_RE.test(value.trim())) {
+      return new Date(value.trim()).toLocaleDateString();
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(toStr).join(', ');
+  return resolveProp(value, 'displayValue');
+}
+
 function resolveProp(base: SPValue, prop: string): SPValue {
   if (base === null || base === undefined) return '';
+  // .length is a real property on SP's underlying values — strings included
+  // (the colored-pills sample computes colors from lookupValue.length).
+  if (prop === 'length') {
+    if (Array.isArray(base)) return base.length;
+    if (typeof base === 'string') return base.length;
+  }
+  // value-unambiguous displayValue (typed values need no field metadata)
+  if (prop === 'displayValue' && (typeof base === 'number' || typeof base === 'boolean' || base instanceof Date)) {
+    return displayString(base);
+  }
   if (Array.isArray(base)) {
     return base.map((item) => resolveProp(item, prop)) as SPValue[];
   }
@@ -337,7 +396,12 @@ function resolveFieldRef(ref: string, ctx: EvalContext): SPValue {
     // absent fields resolve to '' — but a present-but-null cell (empty Date)
     // stays null so SP's =='' semantics hold
     const cell = ctx.row[name];
-    value = (cell === undefined ? '' : cell) as SPValue;
+    value = normalizeCell(name, (cell === undefined ? '' : cell) as SPValue, ctx);
+  }
+  // [$Field.displayValue] formats by the FIELD's type (date strings → locale
+  // date); deeper displayValue chains fall back to value-shape resolution
+  if (parts.length === 2 && parts[1] === 'displayValue') {
+    return displayString(value, ctx.fieldTypes?.[name]);
   }
   for (const prop of parts.slice(1)) value = resolveProp(value, prop);
   return value;
@@ -349,7 +413,10 @@ function resolveToken(name: string, ctx: EvalContext): SPValue {
   switch (head) {
     case '@currentField': {
       const cell = ctx.row[ctx.currentFieldName];
-      value = (cell === undefined ? '' : cell) as SPValue;
+      value = normalizeCell(ctx.currentFieldName, (cell === undefined ? '' : cell) as SPValue, ctx);
+      if (props.length === 1 && props[0] === 'displayValue') {
+        return displayString(value, ctx.fieldTypes?.[ctx.currentFieldName]);
+      }
       break;
     }
     case '@me': value = props.length ? (ctx.me as SPValue) : ctx.me.email; break;
@@ -405,6 +472,8 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
     case 'split': return toStr(a(0)).split(toStr(a(1))) as SPValue[];
     case 'join': return (Array.isArray(a(0)) ? (a(0) as SPValue[]) : [a(0)]).map(toStr).join(toStr(a(1) ?? ','));
     case 'length': {
+      // multi-choice cells arrive pre-normalized to arrays (type-aware, at
+      // field resolution) — a string here is genuinely a string
       const v = a(0);
       if (Array.isArray(v)) return v.length;
       return toStr(v).length;
@@ -422,7 +491,12 @@ function callFn(fn: string, args: SPValue[], ctx: EvalContext): SPValue {
     case 'getMonth': return dateOf(a(0)).getMonth();
     case 'getYear': return dateOf(a(0)).getFullYear();
     // empty dates render as empty text on real SP, not the epoch
-    case 'toLocaleString': return isEmptyValue(a(0)) ? '' : dateOf(a(0)).toLocaleString();
+    // toLocaleString on a NUMBER formats the number ('1,234.5'), never a date
+    case 'toLocaleString': {
+      const v = a(0);
+      if (typeof v === 'number') return v.toLocaleString();
+      return isEmptyValue(v) ? '' : dateOf(v).toLocaleString();
+    }
     case 'toLocaleDateString': return isEmptyValue(a(0)) ? '' : dateOf(a(0)).toLocaleDateString();
     case 'toLocaleTimeString': return isEmptyValue(a(0)) ? '' : dateOf(a(0)).toLocaleTimeString();
     case 'addDays': {
@@ -631,6 +705,8 @@ export function evaluateForEachList(listExpr: string, ctx: EvalContext): SPValue
     : evalAst(parseExpression(listExpr), ctx);
   if (Array.isArray(v)) return v;
   if (v === null || v === '') return [];
+  // multi-choice cells arrive pre-normalized to arrays (type-aware, at field
+  // resolution) — a scalar here iterates once, like SP
   return [v];
 }
 

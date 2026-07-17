@@ -1,0 +1,183 @@
+{
+  "id": "faq-accordion",
+  "kind": "row",
+  "source": "view-samples/faq-accordion/faq-accordion.json",
+  "screenshot": "view-samples/faq-accordion/assets/screenshot.png",
+  "notes": "Accordion FAQ grouped by Question: each group header is a rounded light-grey pill with the question text; the row body is a themeLighterAlt rounded panel indented 60px with a Lightbulb icon, a bold 'Answer' label, the [$Answer] text, and a blue 'Show more' button only when [$ShowMore] == 'Yes'. In the screenshot only the 'Create list of participants...' group is expanded (its answer text is transcribed verbatim, typos included); all other groups are collapsed, so their Answer/ShowMore values are invented, and one blurred question is approximated as 'How to use custom background image'. Offline render shows every row body since SP's group collapse state cannot be reproduced.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Question", "type": "text" },
+    { "name": "Answer", "type": "note" },
+    { "name": "ShowMore", "type": "text" }
+  ],
+  "rows": [
+    { "Title": "FAQ 1", "Question": "After the dial-in functionality has been enabled in Teams, is it still possible to use Skype audio conferencing?", "Answer": "Yes, existing Skype audio conferencing keeps working until the upgrade completes.", "ShowMore": "No" },
+    { "Title": "FAQ 2", "Question": "Can external parties call in Teams meetings using the phone number in the invite?", "Answer": "Yes, anyone with the dial-in number and conference ID can join by phone.", "ShowMore": "No" },
+    { "Title": "FAQ 3", "Question": "Can I still use Skype for Business after being upgraded?", "Answer": "No, after the upgrade to Teams only mode Skype for Business is disabled.", "ShowMore": "No" },
+    { "Title": "FAQ 4", "Question": "Check audio and video before meeting in Teams and Skype", "Answer": "Use the device settings test call to check your microphone and camera before joining.", "ShowMore": "No" },
+    { "Title": "FAQ 5", "Question": "Create list of participants from Teams meeting", "Answer": "There is no easy way to get a list of participants from a normal Teams meeting.\n\nIt is in theMicrosoft Uservoice wishlist\n\nOne workaround is to copy the participants from the chat:Open the chat (which you find if you go the meeting in the Teams calendar)Open the list of participants and copy all (Ctrl-A, then Ctrl -C)Paste the text into Word (Ctrl-V)Copy the part where the participants are listed (mark and Ctrl -C)Paste into Excel (Ctrl -V)Create a table (Ctrl-T)\n(slightly related, i.e. how to get a list of memberos in a Teasm group, is shown in the beginning ofthis video).", "ShowMore": "Yes" },
+    { "Title": "FAQ 6", "Question": "External users unable to access Microsoft Teams", "Answer": "Check that guest access is enabled for the tenant and the team.", "ShowMore": "No" },
+    { "Title": "FAQ 7", "Question": "How to use custom background image", "Answer": "Choose background effects in the meeting toolbar and upload your own image.", "ShowMore": "No" },
+    { "Title": "FAQ 8", "Question": "How to use Teams with ELX", "Answer": "Install the ELX connector from the Teams app store and sign in with your work account.", "ShowMore": "No" },
+    { "Title": "FAQ 9", "Question": "How to use the dial-in functionality in Teams meetings?", "Answer": "Schedule the meeting in Outlook or Teams; the invite includes the dial-in number and conference ID.", "ShowMore": "No" },
+    { "Title": "FAQ 10", "Question": "Is the dial in number in the Teams meeting invite toll-free?", "Answer": "No, the default numbers are toll numbers; toll-free numbers require an add-on license.", "ShowMore": "No" },
+    { "Title": "FAQ 11", "Question": "Is there a chat history like in skype? How long the chat history will stay? Will they be automatically deleted after some time?", "Answer": "Teams keeps chat history indefinitely unless a retention policy deletes it.", "ShowMore": "No" },
+    { "Title": "FAQ 12", "Question": "Is there a dial-out functionality in Teams?", "Answer": "Yes, meeting organizers with audio conferencing can call out to phone numbers.", "ShowMore": "No" },
+    { "Title": "FAQ 13", "Question": "Unable to add Dial-in numbers in Team meetings", "Answer": "Verify the organizer has an audio conferencing license assigned.", "ShowMore": "No" },
+    { "Title": "FAQ 14", "Question": "Unable to add Third party connectors in Microsoft Teams (Eg : Webhook, Polly, MindMeister etc )", "Answer": "Third-party apps may be blocked by policy; ask your admin to allow them in the Teams admin center.", "ShowMore": "No" },
+    { "Title": "FAQ 15", "Question": "What do I need to do?", "Answer": "Nothing; the upgrade happens automatically and your meetings move to Teams.", "ShowMore": "No" },
+    { "Title": "FAQ 16", "Question": "What happens with meeting invites that have been created in past after the Teams dial-in functionality has been enabled", "Answer": "Existing invites keep their Skype details until the meetings are updated or recreated.", "ShowMore": "No" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json",
+    "hideSelection": true,
+    "hideColumnHeader": true,
+    "hideListHeader": true,
+    "groupProps": {
+      "headerFormatter": {
+        "elmType": "div",
+        "attributes": {
+          "class": "sp-row-card"
+        },
+        "style": {
+          "color": "black",
+          "background-color": "#FAF9F9",
+          "flex-grow": "1",
+          "display": "flex",
+          "flex-direction": "row",
+          "box-sizing": "border-box",
+          "padding": "4px 8px 5px 8px",
+          "border-radius": "6px",
+          "align-items": "center",
+          "flex-wrap": "nowrap",
+          "overflow": "auto",
+          "margin": "1px 4px 4px 1px",
+          "min-width": "max-content"
+        },
+        "children": [
+          {
+            "elmType": "img",
+            "style": {
+              "max-width": "24px",
+              "max-height": "24px",
+              "margin-top": "2px",
+              "border-radius": "2px"
+            }
+          },
+          {
+            "elmType": "div",
+            "children": [
+              {
+                "elmType": "span",
+                "style": {
+                  "padding": "5px 5px 5px 5px",
+                  "font-weight": "500",
+                  "font-size": "15px"
+                },
+                "txtContent": "@group.fieldData.displayValue"
+              }
+            ]
+          },
+          {
+            "elmType": "div",
+            "children": [
+              {
+                "elmType": "div",
+                "style": {
+                  "display": "flex",
+                  "flex-direction": "column",
+                  "justify-content": "center"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "rowFormatter": {
+      "elmType": "div",
+      "attributes": {
+        "class": "ms-bgColor-themeLighterAlt"
+      },
+      "style": {
+        "justify-content": "start",
+        "color": "ms-fontColor-Primary",
+        "display": "flex",
+        "padding": "1px 8px 5px 20px",
+        "border-radius": "6px",
+        "max-width": "905px",
+        "margin": "1px 4px 4px 60px"
+      },
+      "children": [
+        {
+          "elmType": "div",
+          "style": {
+            "text-align": "left",
+            "font-weight": "400",
+            "font-size": "15px"
+          },
+          "children": [
+            {
+              "elmType": "span",
+              "style": {
+                "margin-top": "8px",
+                "padding-left": "1px",
+                "color": "black"
+              },
+              "attributes": {
+                "class": "ms-fontSize-m",
+                "iconName": "Lightbulb"
+              }
+            },
+            {
+              "elmType": "span",
+              "attributes": {
+                "class": "sp-row-listPadding"
+              },
+              "txtContent": "Answer",
+              "style": {
+                "font-weight": "500",
+                "color": "black",
+                "padding-left": "4px"
+              }
+            },
+            {
+              "elmType": "div",
+              "attributes": {
+                "class": "sp-row-listPadding"
+              },
+              "txtContent": "[$Answer]",
+              "style": {
+                "flex-grow": "1",
+                "display": "flex",
+                "flex-direction": "column",
+                "flex-wrap": "nowrap",
+                "align-items": "center",
+                "max-width": "900px",
+                "min-width": "205px",
+                "margin-top": "8px",
+                "margin-bottom": "8px"
+              }
+            },
+            {
+              "elmType": "button",
+              "customRowAction": {
+                "action": "defaultClick"
+              },
+              "txtContent": "Show more",
+              "attributes": {
+                "class": "sp-row-button"
+              },
+              "style": {
+                "display": "=if([$ShowMore] == 'Yes', 'block', 'none')",
+                "margin-bottom": "8px",
+                "color": "white",
+                "background-color": "#0077DB"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

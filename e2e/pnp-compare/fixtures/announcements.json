@@ -1,0 +1,110 @@
+{
+  "id": "announcements",
+  "kind": "row",
+  "source": "view-samples/announcements/announcements.json",
+  "screenshot": "view-samples/announcements/assets/screenshot.png",
+  "notes": "Four rounded announcement cards, color/icon driven by TypeAnn: Error → red card with ErrorBadge icon, Success → green with Completed, Info → light blue with info, Warning → orange with warning; bold Title with Description underneath. All RemoveDate values are in the future (past dates would set display:none and hide the card). ImgHover feeds a hover card via getThumbnailImage — offline the external image cannot load, and the hover card only appears on pointer hover, so the FIFA image popout in the screenshot will not reproduce.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Description", "type": "text" },
+    { "name": "TypeAnn", "type": "choice", "choices": ["Error", "Success", "Info", "Warning"] },
+    { "name": "RemoveDate", "type": "date" },
+    { "name": "ImgHover", "type": "hyperlink" }
+  ],
+  "rows": [
+    { "Title": "Qatar 2022 World Cup", "Description": "This is the world cup tracker", "TypeAnn": "Error", "RemoveDate": "2027-01-01", "ImgHover": "https://upload.wikimedia.org/wikipedia/en/e/e3/2022_FIFA_World_Cup.svg" },
+    { "Title": "Collab Summit 2021", "Description": "It show time! Join live", "TypeAnn": "Success", "RemoveDate": "2027-01-01", "ImgHover": "" },
+    { "Title": "Christmas 2021", "Description": "Be ready to share with your beloved ones", "TypeAnn": "Info", "RemoveDate": "2027-01-01", "ImgHover": "" },
+    { "Title": "New Year's 2022", "Description": "Around the world this event will be happening", "TypeAnn": "Warning", "RemoveDate": "2027-01-01", "ImgHover": "" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json",
+    "hideColumnHeader": true,
+    "hideSelection": true,
+    "rowFormatter": {
+      "elmType": "div",
+      "style": {
+        "min-width": "15vw",
+        "max-width": "19vw",
+        "padding-bottom": "20px",
+        "display": "=if([$RemoveDate] <= @now, 'none', '')",
+        "color": "black"
+      },
+      "customCardProps": {
+        "formatter": {
+          "elmType": "div",
+          "style": {
+            "display": "=if([$ImgHover], '', 'none')",
+            "height": "200px",
+            "width": "200px",
+            "font-size": "14px",
+            "padding": "14px",
+            "align-items": "stretch"
+          },
+          "children": [
+            {
+              "elmType": "img",
+              "attributes": {
+                "src": "=getThumbnailImage([$ImgHover], 200, 200)"
+              },
+              "style": {
+                "max-width": "100%"
+              }
+            }
+          ]
+        },
+        "openOnEvent": "hover",
+        "directionalHint": "leftCenter",
+        "isBeakVisible": false,
+        "beakStyle": {
+          "backgroundColor": "white"
+        }
+      },
+      "children": [
+        {
+          "elmType": "div",
+          "style": {
+            "border-radius": "8px",
+            "box-shadow": "#00000022 0px 1.6px 3.6px 0px, #00000022 0px 0.3px 0.9px 0px",
+            "display": "flex",
+            "font-size": "1rem",
+            "background-color": "=if([$TypeAnn] == 'Error', '#fdeded', if([$TypeAnn] == 'Success', '#edf7ed', if([$TypeAnn] == 'Warning', '#fff4e5', '#e5f6fd')))",
+            "line-height": "1.43",
+            "padding": "6px 16px",
+            "align-items": "center",
+            "flex-flow": "wrap"
+          },
+          "children": [
+            {
+              "elmType": "span",
+              "attributes": {
+                "iconName": "=if([$TypeAnn] == 'Error', 'ErrorBadge', if([$TypeAnn] == 'Success', 'Completed', if([$TypeAnn] == 'Warning', 'warning', 'info')))"
+              },
+              "style": {
+                "padding-right": "10px",
+                "font-weight": "700",
+                "color": "=if([$TypeAnn] == 'Error', '#ef5350', if([$TypeAnn] == 'Success', '#4caf50', if([$TypeAnn] == 'Warning', '#ff9800', '#03a9f4')))"
+              }
+            },
+            {
+              "txtContent": "[$Title]",
+              "elmType": "div",
+              "style": {
+                "font-weight": "700",
+                "margin-bottom": "0.35em"
+              }
+            },
+            {
+              "elmType": "div",
+              "txtContent": "[$Description]",
+              "style": {
+                "padding-left": "26px",
+                "flex-direction": "column"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "id": "picture-link-tiles",
+  "kind": "tile",
+  "source": "view-samples/picture-link-tiles/picture-link-tiles.json",
+  "screenshot": "view-samples/picture-link-tiles/assets/screenshot.png",
+  "notes": "Gallery of 230x180 rounded link cards grouped by Category (header bar shows group name + '(count)'). Cards with an Image show a 300x300 thumbnail in the top 65%; cards without one show the plain themeLighter block. Thumbnails come from getThumbnailImage on an image column and cannot load offline; the Portal group's single tile is cut off in the screenshot, so its Title/URL are invented.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Category", "type": "text" },
+    { "name": "URL", "type": "hyperlink" },
+    { "name": "Image", "type": "text" }
+  ],
+  "rows": [
+    { "Title": "pnp/List-Formatting (GitHub)", "Category": "List Formatting", "URL": "https://github.com/pnp/List-Formatting", "Image": { "serverRelativeUrl": "/sites/x/list-formatting.jpg", "id": "1", "fileName": "list-formatting.jpg" } },
+    { "Title": "Microsoft Docs", "Category": "List Formatting", "URL": "https://learn.microsoft.com/en-us/sharepoint/dev/declarative-customization/view-formatting", "Image": { "serverRelativeUrl": "/sites/x/ms-docs.jpg", "id": "2", "fileName": "ms-docs.jpg" } },
+    { "Title": "Flicon", "Category": "List Formatting", "URL": "https://flicon.io/", "Image": null },
+    { "Title": "SP Formatter", "Category": "List Formatting", "URL": "https://spformatter.azurewebsites.net/", "Image": null },
+    { "Title": "List Formatting", "Category": "List Formatting", "URL": "https://pnp.github.io/List-Formatting/", "Image": null },
+    { "Title": "Microsoft 365 Portal", "Category": "Portal", "URL": "https://portal.office.com/", "Image": null }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/tile-formatting.schema.json",
+    "hideSelection": true,
+    "height": 200,
+    "width": 250,
+    "groupProps": {
+      "headerFormatter": {
+        "elmType": "div",
+        "style": {
+          "border-left": "10px solid",
+          "display": "flex",
+          "flex-direction": "row",
+          "width": "98%",
+          "height": "50px",
+          "margin-top": "10px",
+          "margin-bottom": "10px"
+        },
+        "attributes": {
+          "class": "ms-bgColor-themeLighter ms-fontColor-themePrimary"
+        },
+        "children": [
+          {
+            "elmType": "span",
+            "txtContent": "@group.fieldData.displayValue",
+            "style": {
+              "padding-left": "25px",
+              "font-size": "20px",
+              "padding-right": "10px"
+            },
+            "attributes": {
+              "class": "ms-fontColor-neutralPrimary ms-fontWeight-bold"
+            }
+          },
+          {
+            "elmType": "span",
+            "txtContent": "= '(' + @group.count + ')'",
+            "style": {
+              "font-size": "20px",
+              "padding-right": "10px"
+            },
+            "attributes": {
+              "class": "ms-fontColor-neutralPrimary ms-fontWeight-bold"
+            }
+          }
+        ]
+      }
+    },
+    "formatter": {
+      "elmType": "a",
+      "style": {
+        "diplay": "flex",
+        "flex-direction": "column",
+        "width": "230px",
+        "height": "180px",
+        "box-shadow": "0 3px 10px rgba(0,0,0,.2)",
+        "border": "1px solid",
+        "border-radius": "10px",
+        "cursor": "pointer",
+        "text-decoration": "none",
+        "margin": "10px"
+      },
+      "attributes": {
+        "class": "ms-fontColor-neutralTertiaryAlt ms-bgColor-white",
+        "href": "[$URL]",
+        "target": "_blank"
+      },
+      "children": [
+        {
+          "elmType": "div",
+          "style": {
+            "display": "flex",
+            "height": "65%",
+            "width": "100%",
+            "border-radius": "10px 10px 0px 0px",
+            "justify-content": "center",
+            "align-items": "center"
+          },
+          "attributes": {
+            "class": "ms-bgColor-themeLighter"
+          },
+          "children": [
+            {
+              "elmType": "img",
+              "style": {
+                "display": "=if([$Image.serverRelativeUrl]=='','none','')",
+                "width": "100%",
+                "height": "100%",
+                "object-fit": "cover"
+              },
+              "attributes": {
+                "src": "=getThumbnailImage([$Image], 300, 300)"
+              }
+            }
+          ]
+        },
+        {
+          "elmType": "div",
+          "style": {
+            "display": "flex",
+            "align-items": "center",
+            "width": "85%",
+            "height": "35%",
+            "font-size": "15px",
+            "overflow": "hidden"
+          },
+          "txtContent": "[$Title]",
+          "attributes": {
+            "class": "ms-fontWeight-bold ms-fontColor-neutralPrimary"
+          }
+        }
+      ]
+    }
+  }
+}

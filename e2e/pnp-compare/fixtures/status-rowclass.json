@@ -1,0 +1,22 @@
+{
+  "id": "status-rowclass",
+  "kind": "row",
+  "source": "view-samples/status-rowclass/status-rowclass.json",
+  "screenshot": "view-samples/status-rowclass/assets/screenshot.png",
+  "notes": "Whole-row severity tint from Status: Done → green (good), Blocked → red (blocked), In progress → untinted (low), In review → yellow (warning). The sample expression is missing two closing parens (verbatim from PnP) — SharePoint's parser tolerates unclosed if() at end of expression, so the renderer must too. Original screenshot is a document library (file icons, relative Modified times); the fixture reproduces it as a plain list with Title and a date Modified column.",
+  "fields": [
+    { "name": "Title", "type": "text", "displayName": "Name" },
+    { "name": "Modified", "type": "date" },
+    { "name": "Status", "type": "choice", "choices": ["Done", "In progress", "In review", "Blocked"] }
+  ],
+  "rows": [
+    { "Title": "Test Done.docx", "Modified": "2026-07-17", "Status": "Done" },
+    { "Title": "Test Has issues.docx", "Modified": "2026-07-17", "Status": "Blocked" },
+    { "Title": "Test In progress.docx", "Modified": "2026-07-17", "Status": "In progress" },
+    { "Title": "Test In review.docx", "Modified": "2026-07-17", "Status": "In review" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json",
+    "additionalRowClass": "=if([$Status] == 'Done', 'sp-field-severity--good', if([$Status] == 'In progress', 'sp-field-severity--low' ,if([$Status] == 'In review','sp-field-severity--warning', if([$Status] == 'Blocked','sp-field-severity--blocked', ''))"
+  }
+}

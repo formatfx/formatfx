@@ -108,6 +108,27 @@ body.wb-dark {
 
 * { box-sizing: border-box; }
 
+/* …but never inside RENDERED FORMATTER content: SharePoint's runtime leaves
+   the browser's UA defaults (content-box for most elements, border-box for
+   buttons/inputs/tables), and the reset above was clipping any sample that
+   mixes explicit width/height with padding (pnp-compare finding 8 — the
+   svg-icon glyphs). `revert` rolls back ONLY the author-level reset, so
+   each element keeps its real UA default instead of a forced content-box. Scoped to data-sp-path subtrees only: every
+   primary render surface tags its roots (canvas, grid cells, workshop, the
+   builder previews, flyout CARD content via the shared opts) — flyout
+   CHROME (beak/positioning) deliberately keeps border-box. Untagged
+   thumbnail previews (component library cards, playground stage) are an
+   accepted gap. A formatter's own allow-listed box-sizing style is inline
+   and still wins over this rule.
+   Coverage is the UNION of two markers: the renderer stamps wb-sp-render on
+   every rendered root invoked at path [] (tagPaths-independent — stress
+   test, cond-format receipts, library previews), and [data-sp-path] covers
+   surfaces that render subtrees at non-empty paths (grid cells, card
+   flyout content). Flyout CHROME (the beak) carries neither marker and
+   keeps border-box. */
+[data-sp-path], [data-sp-path] *,
+.wb-sp-render, .wb-sp-render * { box-sizing: revert; }
+
 /* Keyboard-focus floor: every interactive element shows an accent ring when
    focused via keyboard. Bare :focus-visible loses to any class-scoped :focus
    rule (inputs keep their border-color treatment); this only fills the gaps —

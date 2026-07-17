@@ -1,0 +1,67 @@
+{
+  "id": "number-piechart",
+  "kind": "column",
+  "field": "Pie",
+  "source": "column-samples/number-piechart/number-piechart.json",
+  "screenshot": "column-samples/number-piechart/assets/screenshot.png",
+  "notes": "100px circle: whole pie in ms-bgColor-neutralLight with a blue #0078d4 SVG wedge starting at 12 o'clock sweeping clockwise by the fraction (arc geometry must match — large-arc flag flips past 50%), and the percentage label ('77%' etc., value * 100) overlaid in the lower half in neutralPrimary light-weight xl text. Values are fractions 0..1; screenshot shows 77%, 33%, 16%, 45%.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Pie", "type": "number" }
+  ],
+  "rows": [
+    { "Title": "Row 1", "Pie": 0.77 },
+    { "Title": "Row 2", "Pie": 0.33 },
+    { "Title": "Row 3", "Pie": 0.16 },
+    { "Title": "Row 4", "Pie": 0.45 }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "style": {
+      "display": "flex",
+      "padding": "4px"
+    },
+    "children": [
+      {
+        "elmType": "div",
+        "style": {
+          "display": "inline-block",
+          "border-radius": "100%",
+          "fill": "#0078d4",
+          "width": "100px",
+          "height": "100px"
+        },
+        "attributes": {
+          "class": "ms-bgColor-neutralLight"
+        },
+        "children": [
+          {
+            "elmType": "svg",
+            "children": [
+              {
+                "elmType": "path",
+                "attributes": {
+                  "d": "='M50,50 L50,0, A50,50 0 ' + if(@currentField <= 0.5, '0', '1') + ',1 ' + toString(50 + (sin(6.2831853 * if(@currentField >= 1, 0.9999, if(@currentField < 0, 0, @currentField))) * 50)) + ',' + toString(50 - (cos(6.2831853 * if(@currentField >= 1, 0.9999, if(@currentField < 0, 0, @currentField))) * 50)) + ' z'"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "elmType": "div",
+        "style": {
+          "position": "relative",
+          "left": "-69px",
+          "top": "30px",
+          "white-space": "nowrap"
+        },
+        "attributes": {
+          "class": "ms-fontColor-neutralPrimary ms-fontWeight-light ms-fontSize-xl"
+        },
+        "txtContent": "=toString(@currentField * 100) + '%'"
+      }
+    ]
+  }
+}

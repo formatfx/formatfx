@@ -1,0 +1,21 @@
+{
+  "id": "overdue-rowclass",
+  "kind": "row",
+  "source": "view-samples/overdue-rowclass/overdue-rowclass.json",
+  "screenshot": "view-samples/overdue-rowclass/assets/screenshot.png",
+  "notes": "Rows 1 and 3 have DueDate in the past relative to 2026-07-17, so they get the pink sp-field-severity--severeWarning row tint; row 2 (due 2026-07-29, future) stays untinted. Dates were shifted from the 2018 screenshot so the same rows highlight relative to @now.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Feedback", "type": "note" },
+    { "name": "DueDate", "type": "date" }
+  ],
+  "rows": [
+    { "Title": "Provide feedback on execution plan", "Feedback": "Do more with less!\n\nFocus on customer requirements.", "DueDate": "2026-06-07" },
+    { "Title": "Provide feedback on executive retreat", "Feedback": "A lot got done.\nThe agenda was a bit hectic.\nThe trapeze artists were a nice touch!", "DueDate": "2026-07-29" },
+    { "Title": "Provide feedback on happy hour menu", "Feedback": "Truly world class!", "DueDate": "2026-06-05" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json",
+    "additionalRowClass": "=if([$DueDate] <= @now, 'sp-field-severity--severeWarning', '')"
+  }
+}

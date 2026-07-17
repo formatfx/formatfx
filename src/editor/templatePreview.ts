@@ -20,7 +20,6 @@
  */
 import { state } from './state';
 import { renderElement, type RenderOptions } from '../core/renderer';
-import { evaluate, type EvalContext } from '../core/expressions';
 import { ctxForRow } from './previewCtx';
 import {
   buildTemplateView, childSlotOrder, WIREFRAMES,
@@ -387,9 +386,9 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   host.appendChild(body);
 
   // the EDIT row/tile (full config — empty zones stay visible as drop targets)…
-  const { root, additionalRowClass } = buildTemplateView(
+  const { root } = buildTemplateView(
     ui.config, state.fields, state.columnLooks, api.palette(), api.components());
-  renderEditExemplar(stage, root, additionalRowClass, ui, api);
+  renderEditExemplar(stage, root, ui, api);
 
   // …and the always-LIVE rows/tiles beneath it: the PRUNED layout, exactly
   // what Apply writes — hover and custom kebab flyouts are real
@@ -397,7 +396,7 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   const pruned = buildTemplateView(
     ui.config, state.fields, state.columnLooks, api.palette(), api.components(), { prune: true });
   if (tile) renderLiveTiles(stage, pruned.root, ui, api);
-  else renderLiveRows(stage, pruned.root, pruned.additionalRowClass, ui, api);
+  else renderLiveRows(stage, pruned.root, ui, api);
 
   host.appendChild(el('div', 'wb-template-note',
     'Click selects the zone; click again drills into what\'s inside. Drag anything anywhere — edges drop beside, the middle drops inside. '
@@ -456,7 +455,7 @@ function widthHandle(stage: HTMLElement, api: ModalApi): HTMLElement {
 }
 
 function renderEditExemplar(
-  body: HTMLElement, root: SPElement, additionalRowClass: string | undefined, ui: ModalUI, api: ModalApi,
+  body: HTMLElement, root: SPElement, ui: ModalUI, api: ModalApi,
 ): void {
   const ctx = ctxForRow(0);
   const tile = ui.config.target === 'tile';
@@ -468,10 +467,9 @@ function renderEditExemplar(
     prow.style.width = `${ui.config.tileWidth ?? 254}px`;
     prow.style.minHeight = `${ui.config.tileHeight ?? 220}px`;
   }
-  applyRowClass(prow, additionalRowClass, ctx);
   let rendered: HTMLElement;
   try {
-    rendered = renderElement(root, ctx, { tagPaths: false, issues: [] }) as HTMLElement;
+    rendered = renderElement(root, ctx, { tagPaths: true, issues: [] }) as HTMLElement;
   } catch (e) {
     prow.textContent = `⚠ ${(e as Error).message}`;
     body.appendChild(prow);
@@ -664,16 +662,15 @@ function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLEleme
 }
 
 function renderLiveRows(
-  body: HTMLElement, root: SPElement, additionalRowClass: string | undefined, ui: ModalUI, api: ModalApi,
+  body: HTMLElement, root: SPElement, ui: ModalUI, api: ModalApi,
 ): void {
   const rowCount = Math.min(3, Math.max(1, state.rows.length));
   const onAction = (elx: SPElement, summary: string): void => api.notify(stubMessage(elx, summary));
   for (let i = 0; i < rowCount; i++) {
     const ctx = ctxForRow(i);
-    const opts: RenderOptions = { tagPaths: false, issues: [], onAction };
+    const opts: RenderOptions = { tagPaths: true, issues: [], onAction };
     const prow = el('div', 'wb-template-prow');
     if (ui.config.hoverHighlight) prow.classList.add('wb-prow-hoverable');
-    applyRowClass(prow, additionalRowClass, ctx);
     try {
       prow.appendChild(renderElement(root, ctx, opts));
     } catch (e) {
@@ -695,7 +692,7 @@ function renderLiveTiles(body: HTMLElement, root: SPElement, ui: ModalUI, api: M
     box.style.height = `${ui.config.tileHeight ?? 220}px`;
     if (ui.config.hoverHighlight) box.classList.add('wb-prow-hoverable');
     try {
-      box.appendChild(renderElement(root, ctxForRow(i), { tagPaths: false, issues: [], onAction }));
+      box.appendChild(renderElement(root, ctxForRow(i), { tagPaths: true, issues: [], onAction }));
     } catch (e) {
       box.textContent = `⚠ ${(e as Error).message}`;
     }
@@ -709,12 +706,4 @@ function stubMessage(elx: SPElement, summary: string): string {
     return "Native kebab — SharePoint's item menu opens here (stubbed in preview).";
   }
   return summary;
-}
-
-function applyRowClass(prow: HTMLElement, expr: string | undefined, ctx: EvalContext): void {
-  if (!expr) return;
-  try {
-    const cls = String(evaluate(expr, ctx) ?? '').trim();
-    if (cls) for (const c of cls.split(/\s+/)) prow.classList.add(c);
-  } catch { /* preview-only — ignore evaluation noise */ }
 }

@@ -521,6 +521,188 @@ describe('tenant theme', () => {
       setCustomPalette(null);
     }
   });
+
+  it('sp-row-* and sp-field classes render SP-faithfully in both modes (pnp-compare findings 10-12)', async () => {
+    const { buildThemeCss } = await import('./theme');
+    for (const mode of ['light', 'dark'] as const) {
+      const css = buildThemeCss(mode);
+      // the multi-line row-card family exists with card chrome
+      expect(css).toMatch(/\.sp-row-card\{[^}]*border:1px solid/);
+      expect(css).toMatch(/\.sp-row-card\{[^}]*padding:/);
+      expect(css).toMatch(/\.sp-row-title\{[^}]*font-weight:600/);
+      expect(css).toMatch(/\.sp-row-listPadding\{[^}]*padding:/);
+      expect(css).toMatch(/\.sp-row-button\{[^}]*cursor:pointer/);
+      // severity--low is untinted on real SP; dataBars are the light tint
+      expect(css).toContain('.sp-field-severity--low{background:transparent;}');
+      expect(css).toMatch(/\.sp-field-dataBars\{background:#[0-9a-f]{6}/);
+    }
+    // the bar follows the palette's LIGHT slot with readable body text per
+    // mode (light: light-blue bar + dark text — the SP pairing the pnp
+    // screenshot shows; dark: dark-blue bar + light text)
+    expect(buildThemeCss('light')).toContain('.sp-field-dataBars{background:#c7e0f4;color:#323130');
+    expect(buildThemeCss('dark')).toContain('.sp-field-dataBars{background:#004c87;color:#ffffff');
+  });
+});
+
+describe('tileProps wrapper import (pnp-compare finding 13)', () => {
+  it('imports the modern tileProps view-formatting shape as a tile doc', () => {
+    const doc = importJson(JSON.stringify({
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      hideSelection: true,
+      tileProps: { height: 220, width: 254, formatter: { elmType: 'div', txtContent: '[$Title]' } },
+    }));
+    expect(doc.kind).toBe('tile');
+    expect(doc.root.elmType).toBe('div');
+    expect(doc.tileWidth).toBe(254);
+    expect(doc.tileHeight).toBe(220);
+    expect(doc.hideSelection).toBe(true);
+  });
+
+  it('keeps the legacy bare tile shape working', () => {
+    const doc = importJson(JSON.stringify({ height: 200, width: 250, formatter: { elmType: 'div' } }));
+    expect(doc.kind).toBe('tile');
+    expect(doc.tileHeight).toBe(200);
+  });
+
+  it('coerces "286"-style numeric-string tile dimensions (the pnp event-tiles shape)', () => {
+    const doc = importJson(JSON.stringify({
+      tileProps: { height: '352', width: '286', formatter: { elmType: 'div' } },
+    }));
+    expect(doc.tileWidth).toBe(286);
+    expect(doc.tileHeight).toBe(352);
+    // junk dimensions drop to undefined so the stock default applies
+    const junk = importJson(JSON.stringify({ height: 'tall', width: 250, formatter: { elmType: 'div' } }));
+    expect(junk.tileHeight).toBeUndefined();
+    expect(junk.tileWidth).toBe(250);
+  });
+
+  it('unmodeled tileProps-INTERIOR keys keep their nesting through the round trip (modern shape back out)', () => {
+    const src = {
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      tileProps: { height: 200, width: 250, someFutureKey: { a: 1 }, formatter: { elmType: 'div' } },
+    };
+    const doc = importJson(JSON.stringify(src));
+    expect((doc.viewExtras?.tileProps as Record<string, unknown>).someFutureKey).toEqual({ a: 1 });
+    const out = JSON.parse(exportJson(doc));
+    // the key stays INSIDE tileProps — never relocated to the wrapper top
+    expect(out.tileProps.someFutureKey).toEqual({ a: 1 });
+    expect(out.someFutureKey).toBeUndefined();
+    expect(out.tileProps.formatter.elmType).toBe('div');
+    expect(importJson(JSON.stringify(out)).viewExtras?.tileProps).toEqual({ someFutureKey: { a: 1 } });
+  });
+
+  it('carries tile wrapper siblings (groupProps etc.) through import → export', () => {
+    const src = {
+      $schema: 'https://developer.microsoft.com/json-schemas/sp/view-formatting.schema.json',
+      groupProps: { headerFormatter: { elmType: 'div', txtContent: '@group.count' } },
+      tileProps: { height: 200, width: 250, formatter: { elmType: 'div' } },
+    };
+    const doc = importJson(JSON.stringify(src));
+    expect(doc.viewExtras?.groupProps).toEqual(src.groupProps);
+    const out = JSON.parse(exportJson(doc));
+    expect(out.groupProps).toEqual(src.groupProps); // never silently destroyed
+    // and re-importing the export keeps them again
+    expect(importJson(JSON.stringify(out)).viewExtras?.groupProps).toEqual(src.groupProps);
+  });
+});
+
+describe('linter — additionalRowClass vs rowFormatter mutual exclusivity', () => {
+  it('warns when a row doc carries viewExtras.additionalRowClass (SP ignores it)', () => {
+    const doc: FormatterDocument = {
+      kind: 'row',
+      root: { elmType: 'div', txtContent: '[$Title]' },
+      viewExtras: { additionalRowClass: "=if(@rowIndex%2==0,'ms-bgColor-themeLighter','')" },
+    };
+    const hits = lintDocument(doc).filter((i) => i.rule === 'rowclass-with-rowformatter');
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe('warning');
+    expect(hits[0].message).toContain('IGNORED');
+  });
+
+  it('fires on grid docs too (they export as rowFormatter views)', () => {
+    const doc: FormatterDocument = {
+      kind: 'grid',
+      root: { elmType: 'div', children: [{ elmType: 'div', txtContent: '[$Title]' }] },
+      viewExtras: { additionalRowClass: 'zebra' },
+    };
+    expect(lintDocument(doc).map((i) => i.rule)).toContain('rowclass-with-rowformatter');
+  });
+
+  it('stays quiet without the class, and on non-view docs', () => {
+    expect(lintDocument({ kind: 'row', root: { elmType: 'div' } })
+      .filter((i) => i.rule === 'rowclass-with-rowformatter')).toHaveLength(0);
+    expect(lintDocument({ kind: 'column', root: { elmType: 'div' } })
+      .filter((i) => i.rule === 'rowclass-with-rowformatter')).toHaveLength(0);
+  });
+});
+
+describe('SP numeric/date coercion + accessors (pnp-compare findings)', () => {
+  // Real-SP behaviors verified against pnp/List-Formatting samples that work
+  // on live tenants (e2e/pnp-compare/FINDINGS.md, 2026-07-17 sweep).
+  const pctx: EvalContext = {
+    ...ctx,
+    row: {
+      ...ctx.row,
+      Born: '1997-06-10', Died: '2017-12-21',
+      Letters: 'A;#B;#C',
+      Vendor: { lookupId: 3, lookupValue: 'Contoso Ltd' },
+      Score: 1234.5,
+      Notes: 'A;#B literal in plain text',
+      Code: '2026-07-10',
+    },
+    // type-aware normalization: string SHAPE alone never decides (a text
+    // cell containing ';#' or an ISO-looking date keeps its literal value)
+    fieldTypes: {
+      Born: 'date', Died: 'date', Letters: 'choiceMulti', Vendor: 'lookup',
+      Score: 'number', Progress: 'number', Notes: 'text', Code: 'text',
+      Title: 'text', AssignedTo: 'personMulti',
+    },
+  };
+
+  it('Number() on an ISO date string returns epoch ms (the day-counter idiom)', () => {
+    expect(evaluate('=Number([$Born])', pctx)).toBe(new Date('1997-06-10').getTime());
+    expect(evaluate('=floor((Number([$Died])-Number([$Born]))/(1000*60*60*24*365))', pctx)).toBe(20);
+    // non-date strings keep parseFloat semantics
+    expect(evaluate("=Number('12px')", pctx)).toBe(12);
+  });
+
+  it('subtracting two date-string fields yields their ms difference', () => {
+    const ms = new Date('2017-12-21').getTime() - new Date('1997-06-10').getTime();
+    expect(evaluate('=[$Died]-[$Born]', pctx)).toBe(ms);
+  });
+
+  it('.length property accessor works on strings and arrays (colored-pills sample)', () => {
+    expect(evaluate('=[$Vendor.lookupValue.length]', pctx)).toBe(11);
+    expect(evaluate('=[$AssignedTo.length]', pctx)).toBe(2);
+    expect(evaluate('=[$Title.length]', pctx)).toBe('Launch new intranet'.length);
+  });
+
+  it("forEach and length() treat choiceMulti cells as the choice list (type-aware, not by string shape)", () => {
+    expect(evaluateForEachList('[$Letters]', pctx)).toEqual(['A', 'B', 'C']);
+    expect(evaluate('=length([$Letters])', pctx)).toBe(3);
+    // plain strings keep their character length
+    expect(evaluate('=length([$Title])', pctx)).toBe(19);
+    // a TEXT cell that merely contains ';#' stays scalar — no splitting
+    expect(evaluateForEachList('[$Notes]', pctx)).toEqual(['A;#B literal in plain text']);
+    expect(evaluate('=length([$Notes])', pctx)).toBe('A;#B literal in plain text'.length);
+    // and a string LITERAL is never a choice list
+    expect(evaluate("=length('A;#B')", pctx)).toBe(4);
+  });
+
+  it('toLocaleString on a number formats the number, not a date', () => {
+    expect(evaluate('=toLocaleString([$Score])', pctx)).toBe((1234.5).toLocaleString());
+    expect(evaluate('=toLocaleString([$Progress])', pctx)).toBe('64');
+  });
+
+  it('.displayValue approximates the display string by FIELD type', () => {
+    expect(evaluate('=[$Progress.displayValue]', pctx)).toBe('64');
+    expect(evaluate('=[$Score.displayValue]', pctx)).toBe((1234.5).toLocaleString());
+    // a DATE field's string formats as a locale date…
+    expect(evaluate('=[$Born.displayValue]', pctx)).toBe(new Date('1997-06-10').toLocaleDateString());
+    // …but a TEXT field whose value merely looks like a date keeps its text
+    expect(evaluate('=[$Code.displayValue]', pctx)).toBe('2026-07-10');
+    expect(evaluate('=@currentField.displayValue', { ...pctx, currentFieldName: 'Score' })).toBe((1234.5).toLocaleString());
+  });
 });
 
 describe('blank-cell semantics', () => {

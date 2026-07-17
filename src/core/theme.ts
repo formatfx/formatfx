@@ -128,13 +128,25 @@ export function buildThemeCss(mode: ThemeMode): string {
     `.sp-card-showOnHoverChild{visibility:hidden;}`,
     `.sp-card-showOnHoverParent:hover .sp-card-showOnHoverChild{visibility:visible;}`,
     `.sp-card-keyboard-focusable:focus{outline:2px solid ${pal.themePrimary};}`,
-    `.sp-row-card{background:${cardBg};border:1px solid ${border};border-radius:6px;}`,
+    // sp-row-* — the multi-line row-card family (MS docs' rowFormatter
+    // example; pnp view-samples/multi-line-view). SP doesn't document the
+    // pixel values; these are calibrated against that sample's screenshot
+    // (pnp-compare finding 12) — refine via the live visual-compare harness.
+    `.sp-row-card{background:${cardBg};border:1px solid ${border};border-radius:6px;padding:14px 16px;margin:8px 0;box-shadow:0 1.6px 3.6px rgba(0,0,0,.08);}`,
+    `.sp-row-title{font-size:16px;font-weight:600;color:${pal.neutralPrimary};}`,
+    `.sp-row-listPadding{padding:8px 0;color:${pal.neutralPrimary};}`,
+    `.sp-row-button{display:inline-block;background:${pal.neutralLighter};color:${pal.neutralPrimary};border:1px solid ${border};border-radius:2px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;}`,
     `.sp-field-severity--good{background:#dff6dd;}`,
-    `.sp-field-severity--low{background:#fff4ce;}`,
+    // severity--low paints NO tint on real SP — 'false' rows in the pnp
+    // yesno-checkmark screenshot and 'In progress' rows in
+    // text-conditional-format are plain white (pnp-compare finding 10)
+    `.sp-field-severity--low{background:transparent;}`,
     `.sp-field-severity--warning{background:#fff4ce;}`,
     `.sp-field-severity--severeWarning{background:#fed9cc;}`,
     `.sp-field-severity--blocked{background:#fde7e9;}`,
-    `.sp-field-dataBars{background:${pal.themePrimary};color:${mode === 'dark' ? pal.black : '#fff'};padding:0 4px;}`,
+    // data bars: SP paints the LIGHT theme tint with dark text (pnp
+    // number-data-bar screenshot), not a solid primary bar
+    `.sp-field-dataBars{background:${pal.themeLight};color:${pal.neutralPrimary};padding:0 4px;box-shadow:inset 0 2px 0 ${pal.themePrimary};}`,
     `.sp-field-trending--up{color:#107c10;}`,
     `.sp-field-trending--down{color:#e81123;}`,
     `.sp-field-quickActionButton{display:inline-flex;align-items:center;cursor:pointer;color:${pal.themePrimary};background:transparent;border:none;font-size:13px;}`,

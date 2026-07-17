@@ -179,41 +179,13 @@ export function openViewKebab(anchor: HTMLElement, onToast: (m: string) => void)
       },
     ));
 
-    // row class — moved from the card, same commit discipline
-    const classRow = document.createElement('label');
-    classRow.className = 'wb-viewcard-row';
-    classRow.dataset.prop = 'rowClass';
-    const classLab = document.createElement('span');
-    classLab.className = 'wb-viewcard-label';
-    classLab.textContent = 'Row class';
-    const classInp = document.createElement('input');
-    classInp.type = 'text';
-    classInp.className = 'wb-viewcard-rowclass';
-    classInp.placeholder = 'none';
-    const current = doc.viewExtras?.additionalRowClass;
-    classInp.value = typeof current === 'string' ? current : '';
-    classInp.title = 'additionalRowClass — a CSS class SharePoint puts on every row this view renders (zebra striping and friends). Clear it to remove.';
-    const commitClass = (): void => {
-      const v = classInp.value.trim();
-      const before = state.doc.viewExtras?.additionalRowClass;
-      if (v === (typeof before === 'string' ? before : '')) return;
-      state.mutateDocument(() => {
-        if (v) {
-          state.doc.viewExtras = { ...state.doc.viewExtras, additionalRowClass: v };
-        } else if (state.doc.viewExtras) {
-          const next = { ...state.doc.viewExtras };
-          delete next.additionalRowClass;
-          putExtras(Object.keys(next).length ? next : undefined);
-        }
-      });
-      onToast(v ? `Every row now carries the "${v}" class — Ctrl+Z undoes` : 'Row class removed — Ctrl+Z undoes');
-    };
-    classInp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); commitClass(); }
-    });
-    classInp.addEventListener('blur', commitClass);
-    classRow.append(classLab, classInp);
-    out.push(classRow, sep());
+    // The "Row class" (additionalRowClass) input is GONE (owner call
+    // 2026-07-17): SharePoint ignores the property whenever a rowFormatter
+    // is present — every view here exports one, so the field only ever
+    // authored dead JSON. Conditional row styling belongs on the row root
+    // (the builder's zebra emits the @rowIndex class expression there);
+    // pasted JSON carrying the key still round-trips via viewExtras and the
+    // rowclass-with-rowformatter lint rule teaches why it won't paint.
 
     // the hide toggles — Show deletes, Hide writes true
     out.push(hideRow(

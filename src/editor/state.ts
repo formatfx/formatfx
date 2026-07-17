@@ -44,6 +44,7 @@ import { sampleValue, type ImportedView, type ImportedRule } from '../core/schem
 import { buildGridRoot, gridCellForField, gridColumnField, isPureGrid } from './gridScaffold';
 import { addGroup, sanitizeGroups, type ColumnGroup } from './colGroups';
 import { inlineColumnFormatter } from './lookDialect';
+import { foldRowClassIntoRoot } from './rowTemplates';
 import {
   bindComponentInstance, bestGuessMapping,
   BUILTIN_COMPONENTS, COMPONENTS_KEY, loadComponents,
@@ -1380,22 +1381,38 @@ export class EditorState {
    *  preserved. From the floor: register a NEW sheet carrying the template
    *  (nothing is overwritten — the floor never holds a layout). */
   applyRowTemplate(root: SPElement, additionalRowClass?: string): void {
+    // The app never writes additionalRowClass anymore: SP IGNORES it whenever
+    // a rowFormatter is present (MS syntax reference — mutual exclusivity),
+    // so wrapper-borne striping silently never worked on real lists. A class
+    // still arriving here (a stored row-component def from before the
+    // retirement) gets FOLDED into the root's own class expression, where the
+    // same @rowIndex conditional actually works. The ONE fold the string
+    // composer refuses — an AST (object-form) root class — KEEPS the wrapper
+    // key instead (never silent loss; the rowclass-with-rowformatter lint
+    // rule surfaces it); otherwise any stale wrapper key is cleared.
+    const astRootClass = root.attributes?.class !== undefined
+      && typeof root.attributes.class !== 'string';
+    const keepWrapperClass = Boolean(additionalRowClass) && astRootClass;
+    if (additionalRowClass && !keepWrapperClass) {
+      root = foldRowClassIntoRoot(root, additionalRowClass);
+    }
     if (this.activeDocKey !== 'main') this.openMain();
     if (this.onFloor) {
-      const doc: FormatterDocument = { kind: 'row', root };
-      if (additionalRowClass) doc.viewExtras = { additionalRowClass };
-      this.createView(doc);
+      this.createView({
+        kind: 'row', root,
+        ...(keepWrapperClass ? { viewExtras: { additionalRowClass } } : {}),
+      });
       return;
     }
     // Snapshot BEFORE mutating and push undo only if the doc actually changed —
     // an Apply that reproduces the current layout must not push a phantom undo
     // step (the no-op-snapshot invariant from 5df1f99 / mutateDocument). Touch
-    // viewExtras only when there's a zebra class to set or clear, so a no-op
-    // Apply doesn't flip viewExtras from undefined to {} and read as a change.
+    // viewExtras only when there's a class to keep or clear, so a no-op Apply
+    // doesn't flip viewExtras from undefined to {} and read as a change.
     const before = this.snapState();
     this.doc.root = root;
     this.doc.kind = 'row';
-    if (additionalRowClass) {
+    if (keepWrapperClass) {
       this.doc.viewExtras = { ...this.doc.viewExtras, additionalRowClass };
     } else if (this.doc.viewExtras?.additionalRowClass !== undefined) {
       this.doc.viewExtras = { ...this.doc.viewExtras };
@@ -1421,6 +1438,14 @@ export class EditorState {
     this.doc.kind = 'tile';
     this.doc.tileWidth = size?.width ?? this.doc.tileWidth ?? 254;
     this.doc.tileHeight = size?.height ?? this.doc.tileHeight ?? 220;
+    // tile payloads pass viewExtras through now — a stale additionalRowClass
+    // left over from the row days is row-only (and retired) metadata that
+    // must not leak into the tile export; other extras (groupProps, …) are
+    // layout-agnostic and stay untouched
+    if (this.doc.viewExtras?.additionalRowClass !== undefined) {
+      this.doc.viewExtras = { ...this.doc.viewExtras };
+      delete this.doc.viewExtras.additionalRowClass;
+    }
     if (this.snapState() !== before) this.pushUndo(before);
     this.selection = [];
     this.emit('kind');

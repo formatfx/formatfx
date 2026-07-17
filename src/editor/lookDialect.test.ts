@@ -162,6 +162,18 @@ describe('AST (object-form SPExpr) rewriting — PR #213 Copilot regression', ()
     expect(JSON.stringify(out.style)).toContain('[$Status]');
   });
 
+  it('multi-segment props stay INSIDE the reference (@currentField.lookupValue.length — the pnp colored-pills shape)', () => {
+    const tree = {
+      elmType: 'div',
+      style: { 'background-color': "='rgba(' + ((@currentField.lookupValue.length) * 3) + ',0,0,1)'" },
+    } as unknown as import('../core/types').SPElement;
+    const out = inlineColumnFormatter(tree, 'SoldTo');
+    expect(JSON.stringify(out.style)).toContain('[$SoldTo.lookupValue.length]');
+    expect(JSON.stringify(out.style)).not.toContain(']​.length'); // no dangling segment outside the brackets
+    // and the reverse compiles it back whole
+    expect(JSON.stringify(toColumnFormatter(out, 'SoldTo').style)).toContain('@currentField.lookupValue.length');
+  });
+
   it('toColumnFormatter rewrites [$Field] inside AST operands (round-trip)', () => {
     const tree = {
       elmType: 'div',

@@ -57,8 +57,13 @@ function transformRefs(tree: SPElement, fn: (s: string) => string): SPElement {
  * tree. Dotted props (@currentField.title) carry through.
  */
 export function inlineColumnFormatter(tree: SPElement, field: string): SPElement {
+  // (\.[seg])* — MULTI-segment props must ride inside the brackets whole:
+  // @currentField.lookupValue.length → [$F.lookupValue.length]. The old
+  // single-segment ? left trailing segments dangling OUTSIDE the reference
+  // ([$F.lookupValue].length — a syntax error the pnp colored-pills sample
+  // exposed).
   return transformRefs(tree, (s) =>
-    s.replace(/@currentField(\.[A-Za-z0-9_]+)?/g, (_m, prop: string | undefined) => `[$${field}${prop ?? ''}]`));
+    s.replace(/@currentField((?:\.[A-Za-z0-9_]+)*)/g, (_m, prop: string) => `[$${field}${prop}]`));
 }
 
 /**

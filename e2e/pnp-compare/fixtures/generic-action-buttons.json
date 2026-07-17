@@ -1,0 +1,69 @@
+{
+  "id": "generic-action-buttons",
+  "kind": "column",
+  "field": "Actions",
+  "source": "column-samples/generic-action-buttons/generic-action-buttons.json",
+  "screenshot": "column-samples/generic-action-buttons/assets/screenshot.png",
+  "notes": "Two side-by-side rounded buttons per row. Escalate: teal #287b7d with white bold text only when Priority is 'high', otherwise gray #e0e0e0 with #888888 text and not-allowed cursor. Resolve: teal #287b7d outline with teal text unless Status is 'new', in which case #f0f0f0 fill with #aaaaaa text. Rows cover both enabled and disabled states of each button; the executeFlow customRowAction does nothing offline (buttons render, no flow launches).",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Status", "type": "choice", "choices": ["new", "in progress", "resolved"] },
+    { "name": "Priority", "type": "choice", "choices": ["low", "medium", "high"] },
+    { "name": "Actions", "type": "text" }
+  ],
+  "rows": [
+    { "Title": "Printer only works when you whisper to it", "Status": "new", "Priority": "medium", "Actions": "" },
+    { "Title": "Outlook crashes if you type “ASAP” in the subject line", "Status": "in progress", "Priority": "high", "Actions": "" },
+    { "Title": "Excel file vanishes every full moon", "Status": "resolved", "Priority": "low", "Actions": "" },
+    { "Title": "Wi-Fi goes down whenever someone microwaves their lunch", "Status": "in progress", "Priority": "high", "Actions": "" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "style": {
+      "display": "flex",
+      "gap": "10px",
+      "justify-content": "center"
+    },
+    "children": [
+      {
+        "elmType": "button",
+        "txtContent": "Escalate",
+        "style": {
+          "background-color": "=if([$Priority] == 'high', '#287b7d', '#e0e0e0')",
+          "color": "=if([$Priority] == 'high', 'white', '#888888')",
+          "border": "2px solid transparent",
+          "padding": "6px 12px",
+          "border-radius": "4px",
+          "cursor": "=if([$Priority] == 'high', 'pointer', 'not-allowed')",
+          "font-weight": "600",
+          "margin": "2px",
+          "box-sizing": "border-box"
+        },
+        "customRowAction": {
+          "action": "executeFlow",
+          "actionParams": "=if([$Priority] == 'high', '{\"id\": \"<FLOWID_ESCALATE>\"}', '')"
+        }
+      },
+      {
+        "elmType": "button",
+        "txtContent": "Resolve",
+        "style": {
+          "background-color": "=if([$Status] == 'new', '#f0f0f0', 'transparent')",
+          "color": "=if([$Status] == 'new', '#aaaaaa', '#287b7d')",
+          "border": "2px solid #287b7d",
+          "padding": "6px 12px",
+          "border-radius": "4px",
+          "cursor": "=if([$Status] == 'new', 'not-allowed', 'pointer')",
+          "font-weight": "500",
+          "margin": "2px",
+          "box-sizing": "border-box"
+        },
+        "customRowAction": {
+          "action": "executeFlow",
+          "actionParams": "=if([$Status] != 'new', '{\"id\": \"<FLOWID_RESOLVE>\"}', '')"
+        }
+      }
+    ]
+  }
+}

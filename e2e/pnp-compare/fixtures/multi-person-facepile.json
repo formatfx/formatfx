@@ -1,0 +1,92 @@
+{
+  "id": "multi-person-facepile",
+  "kind": "column",
+  "field": "AssignedTo",
+  "source": "column-samples/multi-person-facepile/multi-person-facepile.json",
+  "screenshot": "column-samples/multi-person-facepile/assets/screenshot.png",
+  "notes": "Row of 32px circular avatars, one per person, max 3 circles; with more than 3 people the third circle becomes a gray (ms-bgColor-neutralLight) '+N' overflow badge where N = count - 2 (5 people → two avatars + '+3'). Avatar images come from @currentWeb + /_layouts/15/userphoto.aspx which 404s offline — broken-image placeholders inside the circular clipped divs are expected; circle geometry, margins, and the +N badge text must still match.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "AssignedTo", "type": "personMulti", "displayName": "Assigned To" }
+  ],
+  "rows": [
+    { "Title": "One person", "AssignedTo": [
+      { "title": "Keri Hawn", "email": "keri.hawn@contoso.com" }
+    ] },
+    { "Title": "Two people", "AssignedTo": [
+      { "title": "Dan Gump", "email": "dan.gump@contoso.com" },
+      { "title": "Chris Kent", "email": "chris.kent@contoso.com" }
+    ] },
+    { "Title": "Three people", "AssignedTo": [
+      { "title": "Dan Gump", "email": "dan.gump@contoso.com" },
+      { "title": "Chris Kent", "email": "chris.kent@contoso.com" },
+      { "title": "Nate Williams", "email": "nate.williams@contoso.com" }
+    ] },
+    { "Title": "Five people shows +3", "AssignedTo": [
+      { "title": "Dan Gump", "email": "dan.gump@contoso.com" },
+      { "title": "Chris Kent", "email": "chris.kent@contoso.com" },
+      { "title": "Nate Williams", "email": "nate.williams@contoso.com" },
+      { "title": "Keri Hawn", "email": "keri.hawn@contoso.com" },
+      { "title": "Noah Kent", "email": "noah.kent@contoso.com" }
+    ] }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "children": [
+      {
+        "forEach": "personIterator in @currentField",
+        "elmType": "div",
+        "style": {
+          "width": "32px",
+          "height": "32px",
+          "overflow": "hidden",
+          "border-radius": "50%",
+          "margin": "2px",
+          "display": "=if(loopIndex('personIterator') >= 3, 'none', '')"
+        },
+        "children": [
+          {
+            "elmType": "img",
+            "attributes": {
+              "src": "=@currentWeb + '/_layouts/15/userphoto.aspx?size=S&accountname=' + [$personIterator.email]",
+              "title": "[$personIterator.title]"
+            },
+            "style": {
+              "position": "relative",
+              "top": "50%",
+              "left": "50%",
+              "width": "100%",
+              "height": "auto",
+              "margin-left": "-50%",
+              "margin-top": "-50%",
+              "display": "=if(length(@currentField) > 3 && loopIndex('personIterator') >= 2, 'none', '')",
+              "vertical-align": "baseline"
+            }
+          },
+          {
+            "elmType": "div",
+            "attributes": {
+              "title": "=join(@currentField.title, ', ')",
+              "class": "ms-bgColor-neutralLight ms-fontColor-neutralSecondary"
+            },
+            "style": {
+              "width": "100%",
+              "height": "100%",
+              "text-align": "center",
+              "line-height": "30px",
+              "font-size": "14px",
+              "display": "=if(length(@currentField) > 3 && loopIndex('personIterator') == 2, '', 'none')"
+            },
+            "children": [
+              {
+                "elmType": "span",
+                "txtContent": "='+' + toString(length(@currentField) - (2))"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

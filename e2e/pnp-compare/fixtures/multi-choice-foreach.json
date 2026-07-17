@@ -1,0 +1,38 @@
+{
+  "id": "multi-choice-foreach",
+  "kind": "column",
+  "field": "Letters",
+  "source": "column-samples/multi-choice-foreach/multi-choice-foreach.json",
+  "screenshot": "column-samples/multi-choice-foreach/assets/screenshot.png",
+  "notes": "Each selected choice renders as its own 16x16px square (white centered letter on the theme-primary background) laid side by side: row 1 = A B C D, row 2 = E F G, row 3 = C. Each square carries a tooltip 'I am the letter X'. The PnP tenant's theme primary is green in the screenshot; a default theme renders the same squares in theme blue — square count, letters, and layout are what must match.",
+  "fields": [
+    { "name": "Title", "type": "text" },
+    { "name": "Letters", "type": "choiceMulti", "choices": ["A", "B", "C", "D", "E", "F", "G"] }
+  ],
+  "rows": [
+    { "Title": "Row 1", "Letters": "A;#B;#C;#D" },
+    { "Title": "Row 2", "Letters": "E;#F;#G" },
+    { "Title": "Row 3", "Letters": "C" }
+  ],
+  "formatter": {
+    "$schema": "https://developer.microsoft.com/json-schemas/sp/v2/column-formatting.schema.json",
+    "elmType": "div",
+    "children": [
+      {
+        "forEach": "choiceIterator in @currentField",
+        "elmType": "div",
+        "txtContent": "[$choiceIterator]",
+        "attributes": {
+          "class": "ms-bgColor-themePrimary ms-fontColor-white",
+          "title": "='I am the letter ' + [$choiceIterator]"
+        },
+        "style": {
+          "width": "16px",
+          "height": "16px",
+          "text-align": "center",
+          "margin": "1px"
+        }
+      }
+    ]
+  }
+}

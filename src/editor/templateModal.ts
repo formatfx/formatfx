@@ -232,7 +232,9 @@ export function openTemplateModal(
     const pristine = !state.doc.root.children?.length || isPureGrid(state.doc.root);
     const overwrites = !creating && !editingExisting && !pristine;
     if (overwrites && !confirm(`Replace this view's layout with the ${noun.toLowerCase()}? Ctrl+Z reverts it in one step.`)) return;
-    const { root, additionalRowClass } = buildTemplateView(
+    // zebra rides the root's own class expression now — the wrapper's
+    // additionalRowClass is dead next to a rowFormatter on real SP
+    const { root } = buildTemplateView(
       ui.config, state.fields, state.columnLooks, palette(), comps, { prune: true });
     if (creating) {
       const doc = ui.config.target === 'tile'
@@ -240,17 +242,14 @@ export function openTemplateModal(
           kind: 'tile' as const, root,
           tileWidth: ui.config.tileWidth ?? 254, tileHeight: ui.config.tileHeight ?? 220,
         }
-        : {
-          kind: 'row' as const, root,
-          ...(additionalRowClass ? { viewExtras: { additionalRowClass } } : {}),
-        };
+        : { kind: 'row' as const, root };
       const sheet = state.createView(doc);
       onToast(sheet ? `${noun} created as “${sheet.name}” — it's in the view list` : `${noun} created`);
     } else {
       if (ui.config.target === 'tile') {
         state.applyTileTemplate(root, { width: ui.config.tileWidth, height: ui.config.tileHeight });
       } else {
-        state.applyRowTemplate(root, additionalRowClass);
+        state.applyRowTemplate(root);
       }
       onToast(editingExisting ? `${noun} updated` : `${noun} applied`);
     }
