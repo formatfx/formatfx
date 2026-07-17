@@ -1503,15 +1503,15 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-radius: 3px; padding: 4px 8px; cursor: pointer; font-size: 11px;
 }
 .wb-json-toolbar button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
-/* the prominent COPY JSON call-to-action, centered directly above the editor */
-.wb-json-copybar { display: flex; justify-content: center; margin: 4px 0 8px; }
-.wb-json-copy-big {
-  border: 1px solid var(--wb-accent); background: var(--wb-accent); color: var(--wb-accent-text);
-  border-radius: 5px; padding: 10px 28px; cursor: pointer;
-  font-size: 15px; font-weight: 700; letter-spacing: .06em;
+/* COPY JSON: a compact button centered in the crumbrow — it shares that
+   already-present row (no dedicated row stealing editor height) */
+.wb-json-copybtn {
+  border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);
+  border-radius: 4px; padding: 3px 12px; cursor: pointer;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; white-space: nowrap;
 }
-.wb-json-copy-big:hover { filter: brightness(1.08); }
-.wb-json-copy-big:active { filter: brightness(.94); }
+.wb-json-copybtn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-json-copybtn:active { background: var(--wb-bg-2, var(--wb-surface)); }
 .wb-check { font-size: 11px; color: var(--wb-text-2); display: flex; align-items: center; gap: 3px; }
 .wb-check input { width: auto; }
 /* the head kebab — trigger beside the JSON ⇄ Explain tabs; dropdown carries
@@ -1661,9 +1661,14 @@ body.wb-dark .wb-ce-save { color: #10393b; }
 /* #PR-D breadcrumb strip — the caret's element chain over the editor;
    #PR-E: the strip is a flex ROW now, size meter pinned at its right edge
    (the crumbs' own hidden-contract is untouched — the row stays) */
+/* crumbs (left) and size (right) flow normally; COPY JSON is absolutely
+   centered OVER the row so it stays dead-center whether or not the crumbs
+   are showing — and it shares this already-present row (no dedicated row
+   stealing editor height). min-height reserves space for the button since
+   absolute positioning takes it out of flow. */
 .wb-json-crumbrow {
-  display: flex; align-items: center; gap: 8px; min-height: 18px;
-  padding: 0 8px 3px;
+  position: relative; display: flex; align-items: center; gap: 8px;
+  min-height: 24px; padding: 0 8px 3px;
 }
 .wb-json-crumbs {
   display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
@@ -1671,6 +1676,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   white-space: nowrap; overflow: hidden;
 }
 .wb-json-crumbs[hidden] { display: none; } /* display:flex above would defeat [hidden] */
+.wb-json-copybtn { position: absolute; left: 50%; transform: translateX(-50%); }
 .wb-json-size {
   margin-left: auto; font-size: 10.5px; color: var(--wb-text-2);
   white-space: nowrap; font-variant-numeric: tabular-nums;

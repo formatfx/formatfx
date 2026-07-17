@@ -99,10 +99,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     <div id="wb-syn-panel" class="wb-syn-panel" hidden></div>
     <div class="wb-json-crumbrow">
       <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
+      <button id="wb-json-copy-btn" class="wb-json-copybtn" title="Copy the compiled formatter JSON to the clipboard">COPY JSON</button>
       <span id="wb-json-size" class="wb-json-size" title="Size of the JSON that Copy produces, with the current sanitize/names toggles"></span>
-    </div>
-    <div class="wb-json-copybar">
-      <button id="wb-json-copy-big" class="wb-json-copy-big" title="Copy the compiled formatter JSON to the clipboard">COPY JSON</button>
     </div>
     <div id="wb-json-shell" class="wb-json-shell wb-codesync">
       <textarea id="wb-json-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
@@ -910,7 +908,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     }
   };
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', copyFormatterJson);
-  host.querySelector('#wb-json-copy-big')!.addEventListener('click', copyFormatterJson);
+  host.querySelector('#wb-json-copy-btn')!.addEventListener('click', copyFormatterJson);
   menuHost.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked, csomSafe: true }));
