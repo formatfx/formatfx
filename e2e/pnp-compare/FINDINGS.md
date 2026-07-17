@@ -15,6 +15,13 @@ probes are quoted). SP-side claims rest on the samples' own screenshots —
 they worked on a real tenant. HANDOFF §3 closed topics were checked first;
 nothing below contradicts a pinned date/lookup/person blank-semantics test.
 
+## Fix status (2026-07-17 fix pass, same PR)
+
+Findings 1–4, 8, 10–13 are **FIXED** in this PR (test-first; affected
+samples re-captured and re-compared). 5 is partially fixed. 6, 9, 14–16
+are owner calls / model extensions; 17–20 await live-tenant verification.
+Finding 21 (lookDialect) was found *by* the fix pass and is fixed.
+
 ## A. Engine (expressions.ts) — confirmed divergences
 
 1. **`Number(dateString)` / date arithmetic returns garbage, not epoch ms.**
@@ -44,6 +51,10 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
    pills instead of vivid per-vendor colors. Culprit: the dotted-prop path
    in `resolveFieldRef`/property access (expressions.ts:323 area) knows
    person/lookup props but not `length`.
+   **FIXED**: `.length` resolves on strings (multi-choice `;#` strings
+   count choices) and arrays. Fixing it exposed finding 21 (the dialect
+   converter was breaking the same expression a second way); with both
+   fixed, the pills render computed rgba colors + borders.
 
 3. **`forEach` over a multi-choice value doesn't split.**
    Mock choiceMulti cells store `'A;#B;#C'`; `evaluateForEachList`
@@ -54,12 +65,14 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
    of choice count (3) (expressions.ts:409-410 falls through to
    `toStr(v).length`). Fix candidates: split `';#'` strings in
    evaluateForEachList + length(), or store choiceMulti rows as arrays.
+   **FIXED** (split in evaluateForEachList + length()): the sample now
+   renders one box per choice, matching SP.
 
 4. **`toLocaleString(number)` renders a date.**
    `=toLocaleString(12.5)` → `"12/5/2001, 12:00:00 AM"`. SP produces a
    locale-formatted *number* ("12.5") for numeric input. Probe-only finding
    (the sampled formatters didn't hit it, `number-localization` in the pnp
-   repo does).
+   repo does). **FIXED**: numbers now format as locale numbers.
 
 5. **`.displayValue` on number/date fields returns `''`.**
    `number-battery` loses both its fill width and its "90%" labels;
@@ -67,6 +80,11 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
    `@currentField.displayValue` is the locale display string of the field.
    The mock model has no display-string channel; emulating "number → short
    locale string, date → locale date string" would cover the common cases.
+   **PARTIALLY FIXED**: displayValue now approximates by type (number →
+   locale number, date → locale date, boolean → Yes/No). Columns with SP
+   display *settings* still differ — the battery sample shows "0.9" where
+   SP shows "90%" (percent-format display isn't in the mock model), so its
+   fill math stays off too.
 
 6. **Blank-cell `== ''` nuance for null non-date cells.** A `null` cell
    compares `== ''` → false, while a *missing* key → true. For dates that
@@ -83,15 +101,25 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
 
 ## B. Renderer / canvas — confirmed divergences
 
-7. **`viewExtras.additionalRowClass` is never applied to canvas rows.**
-   canvas.ts's row/tile loops (~line 385) render `state.doc.root` per row
-   and ignore the wrapper class; only templatePreview.ts has an
-   `applyRowClass`. All three rowclass samples (`alternating-rows`,
-   `overdue-rowclass`, `status-rowclass`) render with zero row tinting —
-   on SP they zebra-stripe / tint overdue rows / tint by status. This is
-   the whole point of those formatters, and the class is already carried
-   in viewExtras. Fix: evaluate the class expression per row (same
-   EvalContext) and add it to `.wb-mock-viewrow`.
+7. **RETRACTED as a renderer bug — and it exposed a different one.** The
+   original finding said the canvas should apply
+   `viewExtras.additionalRowClass` per row. The MS syntax reference says
+   the opposite: *"Using the rowFormatter property will override anything
+   specified in the additionalRowClass property. They are mutually
+   exclusive… If a rowFormatter is specified, then additionalRowClass is
+   ignored."* A FormatFX row view always exports a rowFormatter, so the
+   canvas IGNORING the class is faithful. The untinted rowclass renders in
+   this sweep were a harness artifact (its fallback synthesizes a
+   rowFormatter — exactly the combination SP ignores). What this actually
+   surfaced: (a) the real gap is that `additionalRowClass`-ONLY JSON — the
+   mode where the class works, riding native rows — can't be imported at
+   all (finding 14); (b) **the row-view builder's zebra option exports
+   `additionalRowClass` alongside a built rowFormatter, which real SP will
+   silently ignore** — flagged to the owner, needs a live-tenant check and
+   probably a builder change; (c) a new teaching lint rule
+   `rowclass-with-rowformatter` (warning) now catches the dead combination
+   for makers — and it fires on the builder's own zebra output, which is
+   the point.
 
 8. **The app's global `* { box-sizing: border-box }` reset leaks into
    rendered formatter content** (style.css:109). SP's default is
@@ -102,6 +130,9 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
    way. Fix: reset `box-sizing: content-box` on the preview subtree
    (canvas + flyout + grid cells), letting formatters opt back in like
    `number-data-bar` explicitly does.
+   **FIXED**: `[data-sp-path]` subtrees + flyouts get `box-sizing:
+   content-box` (a formatter's own inline box-sizing still wins).
+   Re-captured: the svg glyphs render whole.
 
 9. **Grid column looks override the formatter's own root `width`** —
    `gridCellForField` merges `flex: 1; min-width: 0` onto the look's root
@@ -121,11 +152,17 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
     show SP rendering `--low` cells untinted white ("false" rows, "In
     progress" rows). Ours tints them amber, which also makes blank-vs-
     false rows indistinguishable in the yesno sample.
+    **FIXED**: `--low` is untinted now (pinned in core.test.ts, both
+    theme modes); re-captured yesno/text-conditional match the SP
+    screenshots on this.
 
 11. **`sp-field-dataBars` colors are inverted.** theme.ts:137 paints solid
     `themePrimary` background with white text; SP paints the light tint
     (themeLighter-family, ~#c7e0f4 stock) with dark text and a thin
     primary top edge. See the `number-data-bar` screenshot.
+    **FIXED**: light theme tint + body text per palette mode (pinned in
+    core.test.ts). Bar WIDTHS remain full-column — that's finding 9, the
+    deferred flex-merge owner call.
 
 12. **The `sp-row-*` family was mostly missing** — only a bare
     `sp-row-card` existed (no padding/margin), so `multi-line-view`
@@ -143,14 +180,20 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
     (serializer.ts:57 only detects the legacy bare
     `{formatter, height, width}` shape). `event-tiles-only.json` — the
     documented current tile syntax `{$schema, tileProps: {…}}` — throws
-    "Unrecognized formatter shape". The harness unwraps it as a workaround;
-    the serializer should detect it (and export it back).
+    "Unrecognized formatter shape". ~~The harness unwraps it as a
+    workaround~~ **FIXED**: importJson detects tileProps now (legacy bare
+    shape still accepted; export unchanged — SP accepts both). The harness
+    workaround is removed; event-tiles builds through the real path.
 
 14. **`additionalRowClass`-only view JSON is rejected** ("Unrecognized
     formatter shape") — `overdue-rowclass` et al are real, popular
     formatters with no `rowFormatter` key. SP keeps native row rendering
-    and adds the class. Import could accept it as a row doc with an
-    empty/default root (or the grid scaffold) + viewExtras.
+    and adds the class — and per the MS syntax reference this is the ONLY
+    mode where additionalRowClass works at all (finding 7), which makes
+    accepting it more valuable than first thought: it can't be emulated by
+    synthesizing a rowFormatter without changing its SP semantics. Owner
+    call on the product shape (likely: a row doc flagged "native rows",
+    rendered as the grid scaffold + per-row class in the canvas only).
 
 15. **Hyperlink cells have no description channel** — `@currentField.desc`
     always falls to the fallback branch ('No alternative text' in
@@ -202,7 +245,12 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
     in that sample matches. Likely interaction between position:absolute
     and the row host's overflow/position context.
 
-## Clean passes (same branches, colors, shapes, text as the SP screenshots)
+## Aspects that matched the SP screenshots (pre-fix pass)
+
+Not full-sample passes — several samples below also appear in the findings
+(star-rating lost its label pre-fix, to-do stacks per finding 17,
+bar-graph's axis decorations are finding 20, event-tiles' all-day branch
+is finding 6). Listed per aspect:
 
 `currency-symbol-concatenation` (green/red budget compare), `generic-action-buttons`
 (all four enabled/disabled state combos), `generic-traffic-light-status`
@@ -217,3 +265,54 @@ content, `multi-line-view` @me logic (AST syntax), `text-conditional-format`
 & `yesno-checkmark-format` apart from the findings above, `faq-accordion`
 row bodies (question pills are group headers — the known groupProps
 emulation gap, HANDOFF §4).
+
+## F. Found while fixing
+
+21. **`inlineColumnFormatter` breaks multi-segment `@currentField` props.**
+    The dialect regex captured only ONE dotted segment, so
+    `@currentField.lookupValue.length` registered as
+    `[$SoldTo.lookupValue].length` — a syntax error (27 runtime lint
+    errors; the pills sample died a second way even after finding 2's
+    engine fix — caught by the new runtime-lint capture in
+    capture-log.json). Affects any pasted/imported column formatter using
+    multi-segment props when it becomes a column look.
+    **FIXED** in lookDialect.ts (`(\.[seg])*`, pinned in
+    lookDialect.test.ts; the reverse `toColumnFormatter` already handled
+    multi-segment props, so round-trips hold).
+
+## Appendix — probe commands
+
+Every engine claim above reproduces headlessly against `dist-lib`
+(`npm run build:lib` first). The probe harness:
+
+```sh
+node --input-type=module -e "
+import { evaluate, evaluateForEachList } from './dist-lib/core/expressions.js';
+const ctx = (row, cf='F') => ({ row, currentFieldName: cf,
+  me: {title:'S', email:'me@contoso.com'}, iterators:{}, iteratorIndex:{},
+  displayNames:{}, now: new Date('2026-07-17T12:00:00') });
+const t = (label, expr, row) => { try {
+  console.log(label, '→', JSON.stringify(evaluate(expr, ctx(row))));
+} catch(e) { console.log(label, '→ ERROR:', e.message); } };
+// finding 1 — was 2026 / 0; now epoch ms / ms difference
+t('Number(date)', '=Number([\$F])', { F: '2026-07-10' });
+t('date minus date', '=[\$A]-[\$B]', { A: '2026-07-10', B: '2026-07-01' });
+// finding 2 — was '' → rgba(NaN…); now 11
+t('.length', '=[\$F.lookupValue.length]', { F: { lookupId: 3, lookupValue: 'Contoso Ltd' } });
+// finding 3 — was ['A;#B;#C'] / 7; now ['A','B','C'] / 3
+console.log('forEach', evaluateForEachList('[\$F]', ctx({ F: 'A;#B;#C' })));
+t('length()', '=length([\$F])', { F: 'A;#B;#C' });
+// finding 4 — was '12/5/2001, 12:00:00 AM'; now '12.5'
+t('toLocaleString', '=toLocaleString(12.5)', {});
+// finding 5 — was ''; now '64'
+t('.displayValue', '=[\$F.displayValue]', { F: 64 });
+// finding 6 (open) — null == '' is false; missing key == '' is true
+t('null==\'\'', "=if([\$F] == '', 'BLANK', 'notblank')", { F: null });
+t('missing==\'\'', "=if([\$F] == '', 'BLANK', 'notblank')", {});
+"
+```
+
+The date-range-rag per-row class/width probe and the rendered-DOM
+min-height probe (findings 1/17) are quoted in the PR discussion; both
+just evaluate the fixture's own expressions with `evaluate()` per row and
+dump the grid cell's DOM via Playwright.

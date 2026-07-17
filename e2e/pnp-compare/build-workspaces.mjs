@@ -53,8 +53,9 @@ function transformRefs(tree, fn) {
   return clone;
 }
 function inlineColumnFormatter(tree, field) {
+  // multi-segment props ride inside the brackets whole (mirrors lookDialect.ts)
   return transformRefs(tree, (s) =>
-    s.replace(/@currentField(\.[A-Za-z0-9_]+)?/g, (_m, prop) => `[$${field}${prop ?? ''}]`));
+    s.replace(/@currentField((?:\.[A-Za-z0-9_]+)*)/g, (_m, prop) => `[$${field}${prop}]`));
 }
 
 /** editor/gridScaffold.ts buildGridRoot/gridCellForField, minus look layering
@@ -136,13 +137,7 @@ function projectFor(fx) {
   } else {
     let doc;
     try {
-      // The modern tile syntax nests everything under `tileProps` — importJson
-      // doesn't recognize that wrapper today (FINDINGS.md); unwrap it here so
-      // the render itself still gets compared.
-      const raw = fx.formatter.tileProps
-        ? { $schema: fx.formatter.$schema, hideSelection: fx.formatter.hideSelection, ...fx.formatter.tileProps }
-        : fx.formatter;
-      doc = importJson(JSON.stringify(raw));
+      doc = importJson(JSON.stringify(fx.formatter));
     } catch (e) {
       // additionalRowClass-only view formatting (no rowFormatter): real SP
       // keeps native row rendering and adds the class; emulate with the grid
@@ -191,3 +186,7 @@ for (const file of fixtures) {
 }
 fs.writeFileSync(path.join(outDir, 'workspaces.json'), JSON.stringify(out, null, 2));
 console.log(`\n${out.filter((o) => o.url).length}/${out.length} workspaces → ${path.join(outDir, 'workspaces.json')}`);
+if (out.some((o) => !o.url)) {
+  console.error('some fixtures failed to build — the sweep would be partial.');
+  process.exitCode = 1;
+}

@@ -25,7 +25,13 @@ for (const file of fs.readdirSync(libDir).filter((f) => /^fabric-icons(-\d+)?\.j
   const src = fs.readFileSync(path.join(libDir, file), 'utf8');
   const family = src.match(/fontFamily:\s*"\\"([^"\\]+)\\""/)?.[1];
   const woffName = src.match(/concat\(baseUrl,\s*"([^"']+\.woff)/)?.[1];
-  if (!family || !woffName) { console.error(`skip ${file}: no fontFace found`); continue; }
+  if (!family || !woffName) {
+    // a silently-skipped subset means missing glyphs that would read as
+    // renderer divergences — fail loudly instead (pin the package version)
+    console.error(`${file}: fontFace not found — the package's generated-file format changed; pin/downgrade @fluentui/font-icons-mdl2.`);
+    process.exitCode = 1;
+    continue;
+  }
   const woff = fs.readFileSync(path.join(libDir, '..', 'fonts', woffName));
   const data = `data:application/octet-stream;base64,${woff.toString('base64')}`;
   css.push(`@font-face{font-family:"${family}";src:url('${data}') format('woff')}`);

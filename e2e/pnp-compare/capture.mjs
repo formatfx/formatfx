@@ -75,14 +75,28 @@ for (const ws of workspaces) {
       await page.locator('.wb-has-card').first().click({ force: true });
       await page.waitForTimeout(400);
       const fly = page.locator('.wb-flyout');
-      if (await fly.isVisible().catch(() => false)) {
-        await page.waitForTimeout(300);
-        await fly.screenshot({ path: path.join(rendersDir, `${ws.id}-card.png`) });
-      } else {
-        consoleErrors.push('hover card: flyout did not open');
+      if (!(await fly.isVisible().catch(() => false))) {
+        // required evidence — a missing card is a failed capture, not a pass
+        throw new Error('hover card: flyout did not open');
       }
+      await page.waitForTimeout(300);
+      await fly.screenshot({ path: path.join(rendersDir, `${ws.id}-card.png`) });
     }
-    log.push({ id: ws.id, ok: true, consoleErrors });
+
+    // The app's own runtime render issues surface in the lint badge/footer,
+    // not the console — collect them so a silently-failing expression can't
+    // hide behind ok:true (they're findings data, not capture failures).
+    const lint = await page.evaluate(() => {
+      const badge = document.getElementById('wb-lint-badge');
+      const summary = badge && !badge.hidden ? badge.title : '';
+      const toggle = document.getElementById('wb-json-toggle');
+      if (summary && toggle) toggle.click();
+      return summary;
+    });
+    const lintMessages = lint
+      ? await page.locator('#wb-lint .wb-lint-msg').allTextContents().then((m) => m.slice(0, 10)).catch(() => [])
+      : [];
+    log.push({ id: ws.id, ok: true, consoleErrors, lint: lint || undefined, lintMessages: lintMessages.length ? lintMessages : undefined });
     console.log(`✓ ${ws.id}${consoleErrors.length ? ` (${consoleErrors.length} console errors)` : ''}`);
   } catch (e) {
     log.push({ id: ws.id, ok: false, error: String(e.message ?? e).slice(0, 300), consoleErrors });
@@ -94,3 +108,8 @@ for (const ws of workspaces) {
 await browser.close();
 fs.writeFileSync(path.join(outDir, 'capture-log.json'), JSON.stringify(log, null, 2));
 console.log(`\nrenders → ${rendersDir}`);
+const bad = log.filter((e) => !e.ok);
+if (bad.length) {
+  console.error(`${bad.length} capture(s) failed or were skipped — the sweep is incomplete.`);
+  process.exitCode = 1;
+}

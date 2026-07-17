@@ -40,12 +40,18 @@ npm run build:lib                     # dist-lib for importJson
 npx vite --port 5199 --strictPort &   # the app under test
 
 S=/path/to/scratch
-git clone --depth 1 https://github.com/pnp/List-Formatting.git $S/pnp
+# Pinned to the commit the 2026-07-17 sweep ran against — the fixtures'
+# embedded JSON and expected screenshots are frozen to it:
+PNP_SHA=eddd4025886c0ad16243ecd55141447639ab0800
+git clone https://github.com/pnp/List-Formatting.git $S/pnp \
+  && git -C $S/pnp checkout $PNP_SHA
 
 # optional, for offline icon + ms-* utility fidelity (subshell so the
-# node commands below still run from the repo root):
-(cd $S && npm pack office-ui-fabric-core@11.1.0 && tar xzf office-ui-fabric-core-*.tgz \
-  && npm pack @fluentui/font-icons-mdl2 && mkdir -p mdl2 && tar xzf fluentui-font-icons-mdl2-*.tgz -C mdl2 --strip-components=1)
+# node commands below still run from the repo root). Versions are PINNED:
+# fabric 11.0.0 is what index.html actually loads from the CDN, and
+# gen-icon-css.mjs parses font-icons-mdl2's internal generated-file format:
+(cd $S && npm pack office-ui-fabric-core@11.0.0 && tar xzf office-ui-fabric-core-*.tgz \
+  && npm pack @fluentui/font-icons-mdl2@8.5.74 && mkdir -p mdl2 && tar xzf fluentui-font-icons-mdl2-*.tgz -C mdl2 --strip-components=1)
 node e2e/pnp-compare/gen-icon-css.mjs $S/mdl2/lib $S/out/icons.css
 
 node e2e/pnp-compare/build-workspaces.mjs e2e/pnp-compare/fixtures $S/out
