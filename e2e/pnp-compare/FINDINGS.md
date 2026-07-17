@@ -127,12 +127,15 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
     (themeLighter-family, ~#c7e0f4 stock) with dark text and a thin
     primary top edge. See the `number-data-bar` screenshot.
 
-12. **The `sp-row-*` family is mostly missing.** Only `sp-row-card` exists
-    (theme.ts:131) and it lacks SP's padding/margin, so `multi-line-view`
-    renders as flat full-width text instead of card rows; `sp-row-title`
-    (title weight/size), `sp-row-listPadding` and `sp-row-button` have no
-    rules at all. (The sample's @me-conditional button logic — AST syntax
-    — evaluated perfectly; this is purely the class CSS.)
+12. **The `sp-row-*` family was mostly missing** — only a bare
+    `sp-row-card` existed (no padding/margin), so `multi-line-view`
+    rendered as flat full-width text instead of card rows, and
+    `sp-row-title`/`sp-row-listPadding`/`sp-row-button` had no rules at
+    all. (The sample's @me-conditional button logic — AST syntax —
+    evaluated perfectly; this was purely class CSS.) **FIXED in this PR**:
+    theme.ts now styles all four, calibrated against the sample's
+    screenshot since SP doesn't document the pixel values (re-verified
+    render matches; fine-tune later via the live visual-compare harness).
 
 ## D. Import / document model gaps
 

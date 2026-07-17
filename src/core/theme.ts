@@ -128,7 +128,14 @@ export function buildThemeCss(mode: ThemeMode): string {
     `.sp-card-showOnHoverChild{visibility:hidden;}`,
     `.sp-card-showOnHoverParent:hover .sp-card-showOnHoverChild{visibility:visible;}`,
     `.sp-card-keyboard-focusable:focus{outline:2px solid ${pal.themePrimary};}`,
-    `.sp-row-card{background:${cardBg};border:1px solid ${border};border-radius:6px;}`,
+    // sp-row-* — the multi-line row-card family (MS docs' rowFormatter
+    // example; pnp view-samples/multi-line-view). SP doesn't document the
+    // pixel values; these are calibrated against that sample's screenshot
+    // (pnp-compare finding 12) — refine via the live visual-compare harness.
+    `.sp-row-card{background:${cardBg};border:1px solid ${border};border-radius:6px;padding:14px 16px;margin:8px 0;box-shadow:0 1.6px 3.6px rgba(0,0,0,.08);}`,
+    `.sp-row-title{font-size:16px;font-weight:600;color:${pal.neutralPrimary};}`,
+    `.sp-row-listPadding{padding:8px 0;color:${pal.neutralPrimary};}`,
+    `.sp-row-button{display:inline-block;background:${pal.neutralLighter};color:${pal.neutralPrimary};border:1px solid ${border};border-radius:2px;padding:6px 16px;font-size:13px;font-weight:600;cursor:pointer;}`,
     `.sp-field-severity--good{background:#dff6dd;}`,
     `.sp-field-severity--low{background:#fff4ce;}`,
     `.sp-field-severity--warning{background:#fff4ce;}`,
