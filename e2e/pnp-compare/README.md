@@ -42,9 +42,10 @@ npx vite --port 5199 --strictPort &   # the app under test
 S=/path/to/scratch
 git clone --depth 1 https://github.com/pnp/List-Formatting.git $S/pnp
 
-# optional, for offline icon + ms-* utility fidelity:
-cd $S && npm pack office-ui-fabric-core@11.1.0 && tar xzf office-ui-fabric-core-*.tgz
-npm pack @fluentui/font-icons-mdl2 && mkdir -p mdl2 && tar xzf fluentui-font-icons-mdl2-*.tgz -C mdl2 --strip-components=1
+# optional, for offline icon + ms-* utility fidelity (subshell so the
+# node commands below still run from the repo root):
+(cd $S && npm pack office-ui-fabric-core@11.1.0 && tar xzf office-ui-fabric-core-*.tgz \
+  && npm pack @fluentui/font-icons-mdl2 && mkdir -p mdl2 && tar xzf fluentui-font-icons-mdl2-*.tgz -C mdl2 --strip-components=1)
 node e2e/pnp-compare/gen-icon-css.mjs $S/mdl2/lib $S/out/icons.css
 
 node e2e/pnp-compare/build-workspaces.mjs e2e/pnp-compare/fixtures $S/out

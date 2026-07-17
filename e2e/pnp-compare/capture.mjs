@@ -39,8 +39,15 @@ const iconsCss = fs.existsSync(path.join(outDir, 'icons.css'))
 const log = [];
 for (const ws of workspaces) {
   if (!ws.url) { log.push({ id: ws.id, skipped: ws.error }); continue; }
-  const ctx = await browser.newContext({ viewport: { width: 1360, height: 960 }, deviceScaleFactor: 2 });
+  // Reproducibility: fixtures were authored against this date — pin the
+  // clock (Date only; real timers keep the app responsive), locale and
+  // timezone so @now branches and locale date labels don't drift by host.
+  const ctx = await browser.newContext({
+    viewport: { width: 1360, height: 960 }, deviceScaleFactor: 2,
+    locale: 'en-US', timezoneId: 'UTC',
+  });
   const page = await ctx.newPage();
+  await page.clock.setFixedTime(new Date(process.env.SWEEP_TIME ?? '2026-07-17T12:00:00Z'));
   const consoleErrors = [];
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => consoleErrors.push(String(e).slice(0, 300)));

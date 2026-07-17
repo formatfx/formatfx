@@ -23,8 +23,15 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
    silently yields 0. Date *functions* (`getMonth`, `toLocaleDateString`,
    `<=` comparisons vs `@now`) handle ISO strings fine — only numeric
    coercion doesn't. Evidence: `date-difference` renders Age 0 for every row
-   (SP: 20/24/18/89/27/36); `date-range-rag` loses ALL of its RAG tints
-   because its elapsed-fraction math collapses. Note the existing contract
+   (SP: 20/24/18/89/27/36). In `date-range-rag` the *class* branches still
+   evaluate (`<=` works, so overdue → severeWarning and the elapsed
+   fraction picks warning for the rest — per-row probe), but the bar
+   *widths* come out `Infinity%` / `178428959797400%` (zero/garbage
+   denominators from string date subtraction) and are dropped as invalid
+   CSS; the reason no tint is VISIBLE either is recorded under finding 17
+   (the tinted bar collapses to 0px height — `min-height: inherit` has no
+   cell min-height to inherit in our grid; DOM probe: class present,
+   height 0). Note the existing contract
    test only pins the `Number(Date([$X]))` form (core.test.ts:41) — the
    bare `Number([$X])` form real samples use is the gap. Suggested fix:
    `toNumber` should treat ISO-date-shaped strings (and Date values) as
@@ -163,15 +170,24 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
     horizontal facepile, ours: vertical stack), `to-do` (circle/text/icons
     stack instead of one row), `picture-link-tiles` (root `a` with
     width/height but no display — SP sizes it as a 230×180 card, ours
-    treats it as inline so width/height are ignored). Hypothesis: SP's
+    treats it as inline so width/height are ignored). A fourth signal:
+    `date-range-rag`'s bar div uses `min-height: inherit`, which resolves
+    to nothing in our grid cell but picks up SP's native cell min-height
+    on a real list (DOM probe: class applied, height 0). Hypothesis: SP's
     cell/tile container renders the root with `display:flex` (list cells)
-    or at least block-level sizing. Verify against a live tenant before
-    changing the renderer default.
+    or at least block-level sizing plus a cell min-height. Verify against
+    a live tenant before changing the renderer default.
 
-18. **`clip-path` is listed KNOWN_UNSUPPORTED (schema.ts:74) but
-    `chevron-shape-format` uses it and works on SP** — our render shows
-    rectangles instead of chevrons. §3b-style canon correction candidate;
-    re-verify on tenant, then move it to the allow-list.
+18. **`chevron-shape-format` renders visibly off, but offline evidence is
+    inconclusive.** (An earlier draft of this report blamed `clip-path`;
+    that was wrong — the sample builds its chevrons from CSS *border
+    triangles* over absolutely-positioned children, no clip-path anywhere.
+    schema.ts:74's "clip-path: not supported" entry is untested by this
+    sweep either way.) The divergence we see — labels landing below the
+    200×120 box instead of centered, shapes reading as rectangles — is
+    entangled with the site-relative images being offline and with the
+    absolute-positioning static-offset context, so it needs a live-tenant
+    look before any code is blamed.
 
 19. **Icon-overlay metrics**: `custom-hover-card`'s two-icon overlay
     (16px + margin-left:-16px) misaligns slightly in ours — glyph advance
@@ -191,7 +207,9 @@ nothing below contradicts a pinned date/lookup/person blank-semantics test.
 large-arc flip), `number-star-rating` stars (incl. fractional clipping),
 `announcements` (card colors/icons/layout), `bar-graph` bars/thresholds,
 `to-do` branch logic (overdue red / Today blue / strikethrough / stars),
-`event-tiles` date badges & time composition, `custom-hover-card` flyout
+`event-tiles` date badges & time composition — *except* its all-day branch,
+which takes the timed-event path in ours (`[$fAllDayEvent]=='Yes'` vs a
+boolean cell — the finding-6 display-string nuance), `custom-hover-card` flyout
 content, `multi-line-view` @me logic (AST syntax), `text-conditional-format`
 & `yesno-checkmark-format` apart from the findings above, `faq-accordion`
 row bodies (question pills are group headers — the known groupProps

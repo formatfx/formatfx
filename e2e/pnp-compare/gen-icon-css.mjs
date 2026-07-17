@@ -37,5 +37,6 @@ for (const file of fs.readdirSync(libDir).filter((f) => /^fabric-icons(-\d+)?\.j
     iconCount++;
   }
 }
+fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, css.join('\n'));
 console.log(`${iconCount} icons → ${outFile}`);
