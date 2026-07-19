@@ -56,6 +56,6 @@
     "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^4.1.8"
   },
-  "license": "AGPL-3.0-only",
+  "license": "MIT",
   "repository": "github:formatfx/formatfx"
 }

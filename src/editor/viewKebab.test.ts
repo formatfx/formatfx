@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-only
-// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sam Yost
 
 /**
  * The View kebab panel (happy-dom) — spec §A (2026-07-09-view-chrome-workshop).

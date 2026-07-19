@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-only
-// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sam Yost
 
 /**
  * editor/mapData.ts — "Map data" (issue #217): the visual IF / ELSE-IF /
