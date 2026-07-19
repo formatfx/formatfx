@@ -83,6 +83,5 @@ FormatFX is **dual-licensed**: **AGPL-3.0-only** ([`LICENSE`](LICENSE)) or **com
 | Self-hosting, forking, or modifying the code | **AGPL-3.0** — serving a modified version over a network means offering its source under the same terms. |
 | Embedding in a proprietary product or SaaS | **Commercial license** — also for private in-tenant deployment with SSO. |
 
-**To purchase or ask which track fits**, open an issue or contact the author.
 
 © 2026 Sam Yost.
