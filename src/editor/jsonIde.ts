@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-only
-// Copyright (C) 2026 Sam Yost. FormatFX is dual-licensed: AGPL-3.0-only (see LICENSE) or a commercial license (see LICENSING.md).
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Sam Yost
 
 /**
  * editor/jsonIde.ts — the IDE dressing over the JSON pane's textarea (#244).

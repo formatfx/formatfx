@@ -75,13 +75,9 @@ The preview is an *emulation*, not the real SharePoint renderer. It is built to 
 
 ## License
 
-FormatFX is **dual-licensed**: **AGPL-3.0-only** ([`LICENSE`](LICENSE)) or **commercial**. [`LICENSING.md`](LICENSING.md) has the full guide.
+FormatFX is licensed under the **MIT License** ([`LICENSE`](LICENSE)) — free and open source for everyone. Use it, fork it, modify it, embed it in commercial products; the only requirement is preserving the copyright and license notice.
 
-| You are… | Your track |
-| --- | --- |
-| Using [formatfx.dev](https://formatfx.dev) and exporting JSON | Free. The JSON is your own work product — use it anywhere. |
-| Self-hosting, forking, or modifying the code | **AGPL-3.0** — serving a modified version over a network means offering its source under the same terms. |
-| Embedding in a proprietary product or SaaS | **Commercial license** — also for private in-tenant deployment with SSO. |
+The JSON you export from [formatfx.dev](https://formatfx.dev) is your own work product — it carries no obligations and you can use it anywhere.
 
 
 © 2026 Sam Yost.
