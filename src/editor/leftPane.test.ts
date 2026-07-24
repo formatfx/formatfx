@@ -6,7 +6,7 @@
  * and the view strip are GONE — the canvas tab strip is the one navigation
  * surface; the library is mounted always (no swap mode).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountLeftPane } from './leftPane';
 import { state } from './state';
 
@@ -228,6 +228,31 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
     }
     // …and the shared rail comes back knowing the trio is folded
     expect(host2.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.title).toContain('Show');
+  });
+
+  it('the shared rail still toggles when storage writes fail (private mode) — state derives from the DOM', () => {
+    const host = mount();
+    // paneSections.write() swallows this throw by design — the persisted
+    // flags then keep reporting "all open" no matter what the rail did
+    const blocked = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new DOMException('blocked', 'QuotaExceededError'); });
+    try {
+      const bar = host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!;
+      bar.click();
+      for (const id of ['columns', 'components', 'views']) {
+        expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(true);
+      }
+      expect(bar.title).toContain('Show');
+      // the second click must REOPEN — a store-derived toggle would compute
+      // "fold" forever and strand the trio collapsed
+      bar.click();
+      for (const id of ['columns', 'components', 'views']) {
+        expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(false);
+      }
+      expect(bar.title).toContain('Hide');
+    } finally {
+      blocked.mockRestore();
+    }
   });
 
   it('the tree collapse bar clears a dragged inline height, like the header fold', () => {

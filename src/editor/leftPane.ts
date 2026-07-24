@@ -193,9 +193,14 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   //    loop, once the per-section appliers exist.
   const SHELF_SECTIONS: PaneSectionId[] = ['columns', 'components', 'views'];
   const shelvesBar = host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!;
+  // the group state reads the RENDERED classes, never the persisted flags —
+  // paneSections deliberately swallows blocked-storage write failures, so
+  // after a fold the store can still say "open"; deriving from the DOM keeps
+  // the rail's toggle and tooltip honest exactly like the header toggles
+  const anyShelfOpen = (): boolean => SHELF_SECTIONS.some((sid) =>
+    !host.querySelector(`.wb-lp-sec[data-sec="${sid}"]`)?.classList.contains('wb-collapsed'));
   const refreshShelvesBar = (): void => {
-    const anyOpen = SHELF_SECTIONS.some((sid) => !isSectionCollapsed(sid));
-    shelvesBar.title = anyOpen
+    shelvesBar.title = anyShelfOpen()
       ? 'Hide Columns, Components & Views'
       : 'Show Columns, Components & Views';
   };
@@ -242,7 +247,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   //    Any open → fold all three; all folded → open all three. The persisted
   //    per-section flags are the same ones the headers write.
   shelvesBar.addEventListener('click', () => {
-    const collapse = SHELF_SECTIONS.some((sid) => !isSectionCollapsed(sid));
+    const collapse = anyShelfOpen();
     for (const sid of SHELF_SECTIONS) {
       applySection.get(sid)?.(collapse);
       setSectionCollapsed(sid, collapse);
