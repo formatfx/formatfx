@@ -325,14 +325,30 @@ scroll regions; the Views list's own title row died (the section header
 carries it); `.wb-lp-props` defaults heavier (flex 1.4) and **splitter 2**
 (`#wb-lp-splitter2`) makes the shelves/props boundary draggable
 (double-click resets; folding the inspector or tree clears stale drag
-sizes) — available in ALL THREE lenses since 2026-07-10: only the TREE
-splitter hides in Simple (an over-broad selector used to swallow splitter 2
-with it). Same pass: the structure tree's row hover-actions are
+sizes) — available in BOTH lenses (the 2026-07-10 note about the tree
+splitter hiding in Simple is history: Simple/Pro merged 2026-07-24, below).
+Same pass: the structure tree's row hover-actions are
 display:none at rest now (the always-in-flow invisible buttons reserved
 width and displaced row content; a row min-height keeps hover from
 reflowing). playwright.config gained PW_PORT for this multi-session machine —
 without it, reuseExistingServer attaches tests to whichever session's dev
 server owns 5173 and silently tests THEIR code.
+
+Left-pane lens merge + section fold affordances (2026-07-24 owner brief):
+the **Simple lens is GONE** — the pane has TWO lenses now, **Properties**
+(internally still `'pro'`: the id is FROZEN because it persists in
+`wb-ui-prefs`; main.ts maps a stored `'simple'` to it) and **Code**, so the
+tab swap reads as "Code replaces Properties and vice versa". The Properties
+inspector is the UNION: the old Pro sections plus the Simple-only
+conveniences (Arrange children, Box model, Typography) in one sectioned
+flow. Every collapsible section also leads with a `.wb-lp-collapsebar` — a
+7px bar wearing the exact splitter look but acting as a CLICK target that
+folds the section like its header (aria-hidden; the header button stays the
+accessible control). And **splitter 2 displaces the tree** (issue #292
+round 2): dragging the shelves/props boundary up shrinks the flex shelves
+to their 72px floor first, then the Structure tree down to its 80px floor,
+regrowing the tree (up to where it started) while the same drag returns.
+Contracts: leftPane.test.ts + the workspace.spec.ts left-pane-chrome test.
 
 The workshop seam (2026-07-09 owner brief, same spec §C — supersedes the v1
 "a workshop tab never re-targets the tree" constraint): `state.workshopCtx`

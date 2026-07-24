@@ -128,11 +128,12 @@ test('one unified surface — left pane, canvas tab strip and fx bar all present
   // there is no mode toggle anymore — everything is on screen at once
   await expect(page.locator('#wb-mode')).toHaveCount(0);
 
-  // the Left Edit Pane: lens tabs (Simple/Pro/Code), the structure tree, the
-  // columns shelf, the always-on components library, the views list and the
-  // kebab (⋮) menu button (tools + snapshots) are all visible
+  // the Left Edit Pane: lens tabs (Properties/Code — Simple/Pro merged
+  // 2026-07-24), the structure tree, the columns shelf, the always-on
+  // components library, the views list and the kebab (⋮) menu button
+  // (tools + snapshots) are all visible
   await expect(page.locator('.wb-leftpane')).toBeVisible();
-  await expect(page.locator('.wb-lens-tab')).toHaveCount(3);
+  await expect(page.locator('.wb-lens-tab')).toHaveCount(2);
   await expect(page.locator('#wb-tree-body')).toBeVisible();
   await expect(page.locator('.wb-colshelf-rack')).toBeVisible();
   await expect(page.locator('#wb-lp-library')).toBeVisible();

@@ -66,11 +66,11 @@ export async function openPalette(page: Page): Promise<void> {
 
 // Workshop mode (spec §C, 2026-07-09): the embedded style panel is gone — the
 // REAL inspector styles staged elements. Select the staged ROOT in the
-// workshop preview, flip to the Simple lens, and set its text color through
-// the Typography section (the old `.wb-ce-swatch` gesture's equivalent).
+// workshop preview, flip to the Properties lens, and set its text color
+// through the Typography section (the old `.wb-ce-swatch` gesture's equivalent).
 export async function stageWorkshopColor(page: Page, hex: string): Promise<void> {
   await page.locator('#wb-workshop .wb-ce-preview [data-sp-path]').first().click();
-  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  await page.locator('.wb-lens-tab[data-lens="pro"]').click();
   const color = page.locator('.wb-lp-inspector .wb-inspector-section', { hasText: 'Typography' })
     .locator('.wb-color-control input').first();
   await color.fill(hex);

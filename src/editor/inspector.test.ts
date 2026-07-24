@@ -73,8 +73,9 @@ describe('when the card shows', () => {
     expect(host.querySelector('.wb-inst-card')).toBeNull();
   });
 
-  it('shows in the Simple lens too — provenance is a maker concept', () => {
-    state.setLens('simple');
+  it('shows regardless of which lens was last active — provenance is a maker concept', () => {
+    state.setLens('code');
+    state.setLens('pro');
     viewWithInstance();
     const host = mount();
     expect(host.querySelector('.wb-inst-card')).not.toBeNull();
@@ -470,8 +471,7 @@ describe('the visual Flex layout group (#221)', () => {
     expect(host.querySelectorAll('.wb-flexbtn').length).toBeGreaterThan(0);
   });
 
-  it('renders all three rows with the full visual vocabulary, in the Simple lens too', () => {
-    state.setLens('simple');
+  it('renders all three rows with the full visual vocabulary', () => {
     viewWithBox({ display: 'flex' });
     const host = mount();
     const values = (prop: string) =>

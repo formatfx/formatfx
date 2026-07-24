@@ -91,8 +91,11 @@ export interface WorkshopContext {
   commit(fn: () => void): void;
 }
 
-/** The Left Edit Pane's three interaction lenses (progressive disclosure). */
-export type EditorLens = 'simple' | 'pro' | 'code';
+/** The Left Edit Pane's two lenses: the Properties inspector or the Code
+ *  declarations box. `'pro'` IS the Properties lens — the id predates the
+ *  Simple/Pro merge (2026-07-24) and stays frozen because it's persisted in
+ *  the wb-ui-prefs blob; renaming it would flip returning users' saved lens. */
+export type EditorLens = 'pro' | 'code';
 
 /** One named sheet — a row/tile view document above the floor. */
 export interface SheetDoc {
@@ -362,7 +365,7 @@ export class EditorState {
 
   // ─── Left Edit Pane: lens + Save checkpoint ────────────────────────────────
 
-  /** Switch the Simple/Pro/Code lens. UI-only: off the undo stack, no autosave. */
+  /** Switch the Properties/Code lens. UI-only: off the undo stack, no autosave. */
   setLens(lens: EditorLens): void {
     if (this.activeLens === lens) return;
     this.activeLens = lens;

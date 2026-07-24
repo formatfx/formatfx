@@ -5,7 +5,7 @@
  * editor/leftPane.ts — the Claude-style Left Edit Pane container, rebuilt to
  * COLUMNS-COMPONENTS-VIEWS §3 (Mockup B, approved). Top to bottom:
  *
- *   1. the NAV ROW — minimize (the shell prepends it), the Simple/Pro/Code
+ *   1. the NAV ROW — minimize (the shell prepends it), the Properties/Code
  *      lens tabs, and the ⋮ menu (tools, snapshots, and ← Back — the retrace
  *      button moved under the kebab 2026-07-10). Navigation between surfaces
  *      lives in the CANVAS TAB STRIP; the old formatter tablist and the
@@ -27,8 +27,12 @@
  *      left-to-right mental model. All three are collapsible sections whose
  *      headers stay frozen (sticky) while the shelves region scrolls.
  *   6. splitter 2 (shelves/props boundary — drag to grow the properties
- *      editor, double-click resets), the Simple/Pro/Code lens tabs, and the
- *      lower workspace swapping between the inspector and Code declarations.
+ *      editor, double-click resets), and the lower workspace swapping between
+ *      the Properties inspector and the Code declarations (the two lenses).
+ *
+ * Every collapsible section also leads with a slim COLLAPSE BAR (owner ask
+ * 2026-07-24): it wears the splitter-bar look but is a pure click target that
+ * folds/unfolds the section exactly like its header.
  */
 
 import { state, type EditorLens } from './state';
@@ -69,9 +73,17 @@ function sectionHead(id: PaneSectionId, title: string, controls: string): string
   `;
 }
 
+/** The click-to-fold bar riding above a section header: splitter-bar look,
+ *  header-click behavior. aria-hidden — the header button IS the accessible
+ *  control; this is a redundant pointer affordance. */
+function collapseBar(id: PaneSectionId): string {
+  return `<div class="wb-lp-collapsebar" data-sec-bar="${id}" aria-hidden="true"></div>`;
+}
+
+// 'pro' is the Properties lens — the stored id predates the Simple/Pro merge
+// (2026-07-24) and is frozen in the wb-ui-prefs blob (see state.ts).
 const LENSES: { id: EditorLens; label: string }[] = [
-  { id: 'simple', label: 'Simple' },
-  { id: 'pro', label: 'Pro' },
+  { id: 'pro', label: 'Properties' },
   { id: 'code', label: 'Code' },
 ];
 
@@ -97,6 +109,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     </div>
     <div id="wb-lp-viewcard"></div>
     <div class="wb-lp-tree wb-lp-sec" data-sec="tree" id="wb-lp-tree">
+      ${collapseBar('tree')}
       <div class="wb-lp-sec-headrow">
         ${sectionHead('tree', 'Structure', 'wb-tree-body')}
         <button class="wb-structure-kebab" id="wb-structure-kebab" aria-haspopup="dialog" hidden>${ICONS.kebab}</button>
@@ -106,14 +119,17 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-lp-shelves" id="wb-lp-shelves">
       <section class="wb-lp-sec" data-sec="columns">
+        ${collapseBar('columns')}
         ${sectionHead('columns', 'Columns', 'wb-lp-shelf')}
         <div id="wb-lp-shelf" class="wb-lp-sec-body"></div>
       </section>
       <section class="wb-lp-sec" data-sec="components">
+        ${collapseBar('components')}
         ${sectionHead('components', 'Components', 'wb-lp-library')}
         <div class="wb-complib wb-lp-sec-body" id="wb-lp-library"></div>
       </section>
       <section class="wb-lp-sec" data-sec="views">
+        ${collapseBar('views')}
         ${sectionHead('views', 'Views', 'wb-lp-views')}
         <div class="wb-lp-sec-body" id="wb-lp-views"></div>
       </section>
@@ -121,6 +137,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     <div class="wb-lp-splitter" id="wb-lp-splitter2" title="Drag to give the properties editor more or less height — double-click resets"></div>
     <div class="wb-lp-props" id="wb-lp-props">
       <section class="wb-lp-sec wb-lp-sec-inspector" data-sec="inspector">
+        ${collapseBar('inspector')}
         ${sectionHead('inspector', 'Properties', 'wb-lp-inspector')}
         <div class="wb-lp-inspector wb-lp-sec-body" id="wb-lp-inspector"></div>
       </section>
@@ -138,6 +155,19 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!, { toast });
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
 
+  // ── the structure-tree region + the splitter-2 displacement baseline: when
+  //    the props drag squeezes the tree (#292), treePreDisplace remembers the
+  //    tree's OWN inline height from before the squeeze, so the reset paths
+  //    (splitter-2 double-click, folding the inspector) can hand it back —
+  //    the two pinned sizes are coupled, never reset one-sidedly ─────────────
+  const treeRegion = host.querySelector<HTMLElement>('#wb-lp-tree')!;
+  let treePreDisplace: string | null = null;
+  const restoreDisplacedTree = (): void => {
+    if (treePreDisplace === null) return;
+    treeRegion.style.height = treePreDisplace;
+    treePreDisplace = null;
+  };
+
   // ── collapsible sections (issue #236 + the 2026-07-09 additions): the tree,
   //    Columns, Components, Views and the Inspector all fold from their header.
   //    Folding a REGION with a dragged inline size also clears that size, so a
@@ -146,22 +176,32 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     const sec = host.querySelector<HTMLElement>(`.wb-lp-sec[data-sec="${id}"]`);
     const head = host.querySelector<HTMLButtonElement>(`.wb-lp-sec-head[data-sec-head="${id}"]`);
     if (!sec || !head) continue;
+    const bar = host.querySelector<HTMLElement>(`.wb-lp-collapsebar[data-sec-bar="${id}"]`);
     const apply = (collapsed: boolean): void => {
       sec.classList.toggle('wb-collapsed', collapsed);
       head.setAttribute('aria-expanded', String(!collapsed));
       head.title = collapsed ? `Show ${label}` : `Hide ${label}`;
-      if (collapsed && id === 'tree') sec.style.height = '';
+      if (bar) bar.title = head.title;
+      // folding the tree clears its inline size AND forgets the displacement
+      // baseline — the fold owns the height now, nothing left to hand back
+      if (collapsed && id === 'tree') { sec.style.height = ''; treePreDisplace = null; }
       if (collapsed && id === 'inspector') {
         const props = host.querySelector<HTMLElement>('#wb-lp-props');
         if (props) { props.style.height = ''; props.style.flex = ''; }
+        // the props pin and the tree squeeze travel together (#292): letting
+        // the fold clear one but not the other would strand a shrunken tree
+        restoreDisplacedTree();
       }
     };
     apply(isSectionCollapsed(id));
-    head.addEventListener('click', () => {
+    const toggle = (): void => {
       const next = !sec.classList.contains('wb-collapsed');
       apply(next);
       setSectionCollapsed(id, next);
-    });
+    };
+    head.addEventListener('click', toggle);
+    // the collapse bar above the header folds the section the same way
+    bar?.addEventListener('click', toggle);
   }
 
   // ── kebab menu: unified tools, snapshots and Back (the retrace nav moved
@@ -197,7 +237,6 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   }
   const applyLens = (): void => {
     const lens = state.activeLens;
-    host.classList.toggle('wb-lens-simple', lens === 'simple');
     host.classList.toggle('wb-lens-pro', lens === 'pro');
     host.classList.toggle('wb-lens-code', lens === 'code');
     for (const btn of host.querySelectorAll<HTMLButtonElement>('.wb-lens-tab')) {
@@ -207,11 +246,13 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   };
 
   // ── splitter: resize the tree region height ────────────────────────────────
-  const treeRegion = host.querySelector<HTMLElement>('#wb-lp-tree')!;
   const splitter = host.querySelector<HTMLElement>('#wb-lp-splitter')!;
   splitter.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     splitter.setPointerCapture(e.pointerId);
+    // an intentional tree resize sets a NEW baseline — a later splitter-2
+    // reset must not roll the tree back behind this gesture
+    treePreDisplace = null;
     const startY = e.clientY;
     const startH = treeRegion.getBoundingClientRect().height;
     const move = (ev: PointerEvent) => {
@@ -229,7 +270,13 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   // ── splitter 2: the shelves/props boundary — the answer to "why can't the
   //    properties section take more space" (2026-07-09). Dragging pins the
   //    props region to a height (shelves absorb the rest); double-click
-  //    resets to the default flex split. ─────────────────────────────────────
+  //    resets to the default flex split. Once the shelves hit their floor the
+  //    STRUCTURE TREE above gives way too — dragging up displaces whatever
+  //    sits above, usually the tree (issue #292, round 2) — and regrows up to
+  //    where it started while the same drag moves back down. ─────────────────
+  const SHELVES_MIN = 72; // .wb-lp-shelves min-height (style.css)
+  const TREE_MIN = 80;    // the tree splitter's own floor
+  const shelvesRegion = host.querySelector<HTMLElement>('#wb-lp-shelves')!;
   const propsRegion = host.querySelector<HTMLElement>('#wb-lp-props')!;
   const splitter2 = host.querySelector<HTMLElement>('#wb-lp-splitter2')!;
   splitter2.addEventListener('pointerdown', (e) => {
@@ -237,14 +284,33 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     splitter2.setPointerCapture(e.pointerId);
     const startY = e.clientY;
     const startH = propsRegion.getBoundingClientRect().height;
+    const startTreeH = treeRegion.getBoundingClientRect().height;
+    // a folded tree is just its bar + header — never resize it from here
+    const treeOpen = !treeRegion.classList.contains('wb-collapsed');
+    // remember the tree's pre-squeeze inline height ONCE per displacement
+    // sequence ('' = the CSS default) — the reset paths restore it
+    if (treeOpen && treePreDisplace === null) treePreDisplace = treeRegion.style.height;
+    // the fixed rows (nav, view card, splitters, collapse bars): whatever the
+    // three resizable regions don't account for right now
+    const chrome = host.clientHeight - startTreeH
+      - shelvesRegion.getBoundingClientRect().height - startH;
     const move = (ev: PointerEvent) => {
       // dragging UP grows the props region; on a squeezed pane the ceiling
       // can dip below the 110px floor — the ceiling wins so the region never
-      // overflows the space that actually exists (PR #267)
-      const ceiling = Math.max(56, host.clientHeight - 260);
+      // overflows the space that actually exists (PR #267). The ceiling now
+      // assumes the tree can be squeezed to its floor (#292).
+      const treeFloor = treeOpen ? Math.min(TREE_MIN, startTreeH) : startTreeH;
+      const ceiling = Math.max(56, host.clientHeight - chrome - SHELVES_MIN - treeFloor);
       const next = Math.min(ceiling, Math.max(Math.min(110, ceiling), startH + (startY - ev.clientY)));
       propsRegion.style.height = `${next}px`;
       propsRegion.style.flex = '0 0 auto';
+      if (treeOpen) {
+        // room left for the tree once the shelves are pinned at their floor:
+        // shrink it when the drag needs the space, restore it (up to its
+        // starting height) when the drag gives the space back
+        const room = host.clientHeight - chrome - SHELVES_MIN - next;
+        treeRegion.style.height = `${Math.max(treeFloor, Math.min(startTreeH, room))}px`;
+      }
     };
     const up = () => {
       splitter2.removeEventListener('pointermove', move);
@@ -256,6 +322,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   splitter2.addEventListener('dblclick', () => {
     propsRegion.style.height = '';
     propsRegion.style.flex = '';
+    // reset means BOTH coupled sizes: the props pin and the tree squeeze the
+    // same drags caused — otherwise "reset" strands Structure at its floor
+    restoreDisplacedTree();
   });
 
   // ── subscriptions ──────────────────────────────────────────────────────────

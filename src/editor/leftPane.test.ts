@@ -53,11 +53,12 @@ describe('structure (§3, top to bottom)', () => {
       'wb-lp-nav', 'wb-lp-viewcard', 'wb-lp-tree', 'wb-lp-splitter',
       'wb-lp-shelves', 'wb-lp-splitter2', 'wb-lp-props',
     ]);
-    // the tree region leads with its own frozen section header row (outside
-    // the scrolling body) — 2026-07-09 owner brief; the row also carries the
-    // ⋮ settings kebab (2026-07-10)
+    // the tree region leads with its collapse bar, then its frozen section
+    // header row (outside the scrolling body) — 2026-07-09 owner brief; the
+    // row also carries the ⋮ settings kebab (2026-07-10)
     const tree = host.querySelector('#wb-lp-tree')!;
-    const headrow = tree.firstElementChild as HTMLElement;
+    expect((tree.firstElementChild as HTMLElement).classList.contains('wb-lp-collapsebar')).toBe(true);
+    const headrow = tree.children[1] as HTMLElement;
     expect(headrow.classList.contains('wb-lp-sec-headrow')).toBe(true);
     expect(headrow.querySelector<HTMLElement>('.wb-lp-sec-head')?.dataset.secHead).toBe('tree');
     expect(headrow.querySelector('#wb-structure-kebab')).not.toBeNull();
@@ -156,6 +157,41 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
     expect(h.getAttribute('aria-expanded')).toBe('true');
   });
 
+  it('every section leads with a collapse bar that folds it like the header (owner ask 2026-07-24)', () => {
+    const host = mount();
+    for (const id of ['tree', 'columns', 'components', 'views', 'inspector']) {
+      const bar = host.querySelector<HTMLElement>(`.wb-lp-collapsebar[data-sec-bar="${id}"]`);
+      expect(bar, id).not.toBeNull();
+      // it rides INSIDE the section, above the header, as a redundant pointer
+      // affordance (aria-hidden — the header button stays the accessible control)
+      expect(bar!.closest('.wb-lp-sec'), id).toBe(sec(host, id));
+      expect(bar!.getAttribute('aria-hidden'), id).toBe('true');
+      bar!.click();
+      expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(true);
+      expect(head(host, id).getAttribute('aria-expanded'), id).toBe('false');
+      bar!.click();
+      expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(false);
+      expect(head(host, id).getAttribute('aria-expanded'), id).toBe('true');
+    }
+  });
+
+  it('a collapse-bar fold persists across a remount, same store as the header', () => {
+    const host = mount();
+    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="components"]')!.click();
+    (host as unknown as { _unsub?: () => void })._unsub?.();
+    const host2 = mount();
+    expect(sec(host2, 'components').classList.contains('wb-collapsed')).toBe(true);
+  });
+
+  it('the tree collapse bar clears a dragged inline height, like the header fold', () => {
+    const host = mount();
+    const tree = host.querySelector<HTMLElement>('#wb-lp-tree')!;
+    tree.style.height = '300px';
+    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="tree"]')!.click();
+    expect(tree.classList.contains('wb-collapsed')).toBe(true);
+    expect(tree.style.height).toBe('');
+  });
+
   it('persists the collapsed state across a remount (a reload)', () => {
     const host = mount();
     head(host, 'inspector').click();
@@ -171,10 +207,12 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
 });
 
 describe('the kept workspace (lens tabs · kebab menu · back)', () => {
-  it('lens tabs switch the lens and mark the pane', () => {
+  it('two lens tabs — Properties and Code (Simple/Pro merged 2026-07-24) — switch the lens and mark the pane', () => {
     const host = mount();
-    const codeTab = [...host.querySelectorAll<HTMLButtonElement>('.wb-lens-tab')]
-      .find((b) => b.dataset.lens === 'code')!;
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('.wb-lens-tab')];
+    expect(tabs.map((b) => b.textContent)).toEqual(['Properties', 'Code']);
+    expect(tabs.map((b) => b.dataset.lens)).toEqual(['pro', 'code']);
+    const codeTab = tabs.find((b) => b.dataset.lens === 'code')!;
     codeTab.click();
     expect(state.activeLens).toBe('code');
     expect(host.classList.contains('wb-lens-code')).toBe(true);

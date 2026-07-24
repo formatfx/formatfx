@@ -37,7 +37,7 @@ import { componentById } from './componentLibrary';
 import { rebindInstance, type ComponentDef } from './components';
 
 /** Common-but-unlisted style properties offered as one-click "quick adds" in the
- *  Pro lens, each with a sensible starter value. Filtered to the SP allow-list at
+ *  Properties lens, each with a sensible starter value. Filtered to the SP allow-list at
  *  use so we never offer a property SharePoint would silently drop. */
 const QUICK_ADD: Array<[string, string]> = [
   ['min-width', '0'],
@@ -174,10 +174,11 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       host.appendChild(warn);
     }
 
-    // Lens gating: Simple shows the visual essentials (Text / Alignment / Box
-    // model / Style); Pro adds structure, attributes, and the superpower
-    // sections. (The Code lens replaces this inspector with the declarations box.)
-    const pro = state.activeLens === 'pro';
+    // One Properties lens (the Simple/Pro split merged 2026-07-24): the full
+    // structural + attribute toolkit AND the old Simple visual conveniences,
+    // in one sectioned flow — progressive disclosure lives in the section
+    // folds now. (The Code lens replaces this inspector with the declarations
+    // box.)
 
     // section-level Reset + active-dot: a section is "active" when any property
     // it governs is set; Reset clears them all in one undoable mutation (writes
@@ -201,10 +202,10 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
     // (spec §A, 2026-07-09). The inspector is elements-only now.
 
     // ✨ conditional formatting — click-only; the builder generates the
-    // formulas itself, so a misclick can't corrupt the formatter. A FormatFX
-    // superpower → Pro lens. Surface-only: the overlay reads/writes the app
-    // document by path, which a staged tree doesn't have.
-    if (pro && !activeCtx) {
+    // formulas itself, so a misclick can't corrupt the formatter.
+    // Surface-only: the overlay reads/writes the app document by path, which
+    // a staged tree doesn't have.
+    if (!activeCtx) {
       const condBtn = document.createElement('button');
       condBtn.className = 'wb-inspector-cond';
       condBtn.textContent = 'Conditional formatting…';
@@ -215,7 +216,7 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       host.appendChild(condBtn);
     }
 
-    // Text content — the headline control in both lenses (Simple calls it "Text").
+    // Text content — the headline control (lives in the Element section).
     const txtContentField = (): HTMLElement => {
       const wrap = document.createElement('div');
       wrap.className = 'wb-mapdata-host';
@@ -273,51 +274,37 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
       });
     };
 
-    // ── Simple: the visual essentials (dedicated, targeted-property fields) ──
-    if (!pro) {
-      host.appendChild(section('Text', [txtContentField()]));
-      host.appendChild(section('Theme colors', themeColorsSection(node, toast)));
-      host.appendChild(section('Typography', typographySection(node, commitAll), false, sectionReset(TYPO_PROPS)));
-      // the click-only flex-arrangement chip is retained as a Simple convenience;
-      // Pro replaces the old 3×3 grid with the flex alignment presets (spec §2.B).
-      host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
-      // the visual flexbox alignment controls (#221) — click-only, so Simple keeps them
-      host.appendChild(section('Flex layout', [flexLayoutGroup(node, commitAll)], false, sectionReset(FLEX_ALIGN_PROPS)));
-      host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
-      host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
-      host.appendChild(revealSection());
-    }
+    // ── the merged Properties flow: structure first, then layout, then look ──
+    host.appendChild(section('Element', [
+      labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
+        const t = v.trim();
+        if (t === '') delete n._elmName; else n._elmName = t;
+      }), 'Label shown in the Structure pane — stripped from shipped JSON')),
+      labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
+      txtContentField(),
+      labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
+        if (v === '') delete n.forEach; else n.forEach = v;
+      }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
+    ], true));
+    host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
+    host.appendChild(section('Position', [positionControls(node, commitAll)]));
+    host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
+    // the click-only plain-language 3×3 arrangement picker — kept from the old
+    // Simple lens alongside the flex alignment presets below
+    host.appendChild(section('Arrange children', [alignmentEditor(node, commit)]));
+    // the visual flexbox alignment controls (#221)
+    host.appendChild(section('Flex layout', [flexLayoutGroup(node, commitAll)], false, sectionReset(FLEX_ALIGN_PROPS)));
+    host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
+    host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
+    // Box model (DevTools-style): the intuitive per-side editor, an alternate
+    // door to the same padding/margin the selectors above manage (spec §7)
+    host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
+    host.appendChild(section('Typography', typographySection(node, commitAll), false, sectionReset(TYPO_PROPS)));
+    host.appendChild(section('Theme colors', themeColorsSection(node, toast)));
+    host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
+    host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
+    host.appendChild(revealSection());
 
-    // ── Pro: the mechanical layout engine + full control ──
-    if (pro) {
-      host.appendChild(section('Element', [
-        labeled('name (_elmName)', input(node._elmName ?? '', (v) => commit((n) => {
-          const t = v.trim();
-          if (t === '') delete n._elmName; else n._elmName = t;
-        }), 'Label shown in the Structure pane — stripped from shipped JSON')),
-        labeled('elmType', select(ELM_TYPES, node.elmType, (v) => commit((n) => { n.elmType = v as SPElement['elmType']; }))),
-        txtContentField(),
-        labeled('forEach', input(node.forEach ?? '', (v) => commit((n) => {
-          if (v === '') delete n.forEach; else n.forEach = v;
-        }), '_item in [$MultiField]  or  _t in split([$Tags],\';\')', 'wb-dl-foreach')),
-      ], true));
-      host.appendChild(section('Sizing', [sizingControls(node, commitAll)]));
-      host.appendChild(section('Position', [positionControls(node, commitAll)]));
-      host.appendChild(section('Contents layout', [contentsLayout(node, commitAll)]));
-      host.appendChild(section('Flex layout', [flexLayoutGroup(node, commitAll)], false, sectionReset(FLEX_ALIGN_PROPS)));
-      host.appendChild(section('Padding', [spacingControls(node, commitAll, 'padding')]));
-      host.appendChild(section('Margin', [spacingControls(node, commitAll, 'margin')]));
-      host.appendChild(section('Theme colors', themeColorsSection(node, toast)));
-      host.appendChild(section('Appearance', appearanceSection(node, commitAll), false, sectionReset(APPEARANCE_PROPS)));
-      host.appendChild(section('Border', borderSection(node, commitAll), false, sectionReset(BORDER_PROPS)));
-      host.appendChild(revealSection());
-    }
-
-    // Box model (DevTools-style): Simple's intuitive padding/margin editor; Pro
-    // uses the parameter-count selectors above instead (spec §7).
-    if (!pro) host.appendChild(section('Box model', [boxModelEditor(node, commit)], true));
-
-    if (pro) {
       host.appendChild(section('Style (all properties)', [
         kvEditor(node.style ?? {}, [...ALLOWED_STYLES], STYLE_VALUE_SUGGESTIONS, STYLE_PROP_DOCS, styleFamilyOf, (obj) => {
           const oldStyleKeys = Object.keys(node.style ?? {});
@@ -363,353 +350,350 @@ export function mountInspector(host: HTMLElement, opts: { toast?: (m: string) =>
         }
         host.appendChild(wrap);
       }
-    }
 
-    // ── Pro-only: attributes + the superpower sections ──────────────────────
-    if (pro) {
-      host.appendChild(section('Attributes', [
-        kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => {
-          const oldAttrKeys = Object.keys(node.attributes ?? {});
-          commitAll((n) => {
-            n.attributes = n.attributes ?? {};
-            for (const k of oldAttrKeys) {
-              if (!(k in obj)) delete n.attributes[k];
-            }
-            for (const [k, v] of Object.entries(obj)) {
-              n.attributes[k] = v;
-            }
-            if (Object.keys(n.attributes).length === 0) delete n.attributes;
-          });
-        }),
-      ], true));
-
-    // customRowAction
-    const cra = node.customRowAction;
-    // the trigger model's action door (issue #204): on a candidate division
-    // (children, no card/action inside), generate the robust click surface —
-    // the sp-card-defaultClickButton overlay — instead of letting children
-    // swallow a raw customRowAction click. The FULL fixed vocabulary with its
-    // parameters (TRIGGER-MODEL §3): defaultClick / executeFlow (flow id) /
-    // setValue (column + value) / link (url) — incomplete params refuse
-    // (refuse and teach; the completeness lint rules back it up). One
-    // undoable step; the overlay gets selected so it can be tuned below.
-    const clickSurface: HTMLElement[] = [];
-    // surface-only: the generator writes overlays by app-document path and
-    // re-selects the carrier via state.select
-    if (!activeCtx && !cra && canHostTrigger(node) && state.selection) {
-      const sel = state.selection;
-      // the column this element displays — inline edit's default target (#212)
-      const dispName = (() => {
-        const d = displayedField(node, state.currentFieldName);
-        return d && state.fields.some((f) => f.name === d) ? d : null;
-      })();
-      const dispField = dispName ? state.fields.find((f) => f.name === dispName)! : null;
-      const dispEditable = dispField !== null && inlineEditBlockReason(dispField) === null;
-      const draftCols = (): MockField[] => state.fields.filter((f) => !f.protected && f.type === 'text');
-
-      let kind: TriggerActionKind | 'confirmEdit' = 'defaultClick';
-      let flowId = '', href = '';
-      /** setValue: ORDERED, repeatable `column ← value` rows (issue #212 —
-       *  the actionInput object keeps row order, so multi-writes like
-       *  "promote then clear" emit exactly as authored). */
-      const svRows: Array<{ field: string; value: string }> = [{ field: '', value: '' }];
-      let ieField = dispEditable ? dispName! : '';
-      let ieDiff = false; // 2a: "write to a different column than the one shown"
-      // seed only with a column the picker actually offers — a protected
-      // displayed field must not ride into the recipe via the default
-      let ceReal = dispName && state.fields.some((f) => f.name === dispName && !f.protected)
-        ? dispName : '';
-      let ceDraft = '';
-
-      const form = document.createElement('div');
-      form.className = 'wb-clicksurface';
-      const params = document.createElement('div');
-      params.className = 'wb-clicksurface-params';
-      const gen = document.createElement('button');
-      gen.type = 'button';
-      gen.className = 'wb-kv-add wb-cs-gen';
-
-      const complete = (): boolean => {
-        if (kind === 'defaultClick') return true;
-        if (kind === 'executeFlow') return flowId.trim() !== '';
-        if (kind === 'link') return href.trim() !== '';
-        if (kind === 'setValue') {
-          // each row refuses on blank, and one column can't be written twice
-          return svRows.every((r) => r.field !== '' && r.value.trim() !== '')
-            && new Set(svRows.map((r) => r.field)).size === svRows.length;
-        }
-        if (kind === 'inlineEdit') {
-          const f = state.fields.find((x) => x.name === ieField);
-          return !node.inlineEditField && !!f && inlineEditBlockReason(f) === null;
-        }
-        // confirmEdit: real + draft chosen, different, draft is a scratch Text
-        // column, and the real column is one the picker offers (not protected)
-        return ceReal !== '' && ceDraft !== '' && ceReal !== ceDraft
-          && state.fields.some((f) => f.name === ceReal && !f.protected)
-          && draftCols().some((f) => f.name === ceDraft);
-      };
-      const specFor = (): TriggerSpec => {
-        const base = { cursor: 'pointer' as const, label: 'Open this item' };
-        if (kind === 'executeFlow') return { ...base, action: kind, actionParams: JSON.stringify({ id: flowId.trim() }) };
-        if (kind === 'setValue') {
-          const actionInput: Record<string, unknown> = {};
-          for (const r of svRows) actionInput[r.field] = r.value;
-          return { ...base, action: kind, actionInput };
-        }
-        if (kind === 'link') return { ...base, action: kind, href: href.trim() };
-        if (kind === 'inlineEdit') {
-          return { action: 'inlineEdit', inlineEditField: `[$${ieField}]`, cursor: 'pointer', label: `Edit ${ieField} inline` };
-        }
-        return { ...base, action: 'defaultClick' };
-      };
-      const paramInput = (cls: string, placeholder: string, value: string, on: (v: string) => void): HTMLInputElement => {
-        const el = document.createElement('input');
-        el.type = 'text';
-        el.className = cls;
-        el.placeholder = placeholder;
-        el.value = value;
-        el.addEventListener('input', () => {
-          on(el.value);
-          gen.disabled = !complete();
+    // ── attributes + the superpower sections ────────────────────────────────
+    host.appendChild(section('Attributes', [
+      kvEditor(node.attributes ?? {}, [...ALLOWED_ATTRIBUTES], ATTRIBUTE_VALUE_SUGGESTIONS, ATTRIBUTE_DOCS, null, (obj) => {
+        const oldAttrKeys = Object.keys(node.attributes ?? {});
+        commitAll((n) => {
+          n.attributes = n.attributes ?? {};
+          for (const k of oldAttrKeys) {
+            if (!(k in obj)) delete n.attributes[k];
+          }
+          for (const [k, v] of Object.entries(obj)) {
+            n.attributes[k] = v;
+          }
+          if (Object.keys(n.attributes).length === 0) delete n.attributes;
         });
-        return el;
-      };
-      /** Column picker. `blockReason` GREYS a column with its reason instead of
-       *  hiding it — refuse-and-teach, never silently drop a choice. */
-      const columnSelect = (
-        cls: string,
-        value: string,
-        cols: MockField[],
-        onPick: (v: string) => void,
-        blockReason?: (f: MockField) => string | null,
-      ): HTMLSelectElement => {
-        const el = document.createElement('select');
-        el.className = cls;
-        const ph = document.createElement('option');
-        ph.value = '';
-        ph.textContent = '— pick a column —';
-        ph.disabled = true;
-        el.appendChild(ph);
-        for (const f of cols) {
-          const o = document.createElement('option');
-          o.value = f.name;
-          const reason = blockReason?.(f) ?? null;
-          o.textContent = (f.displayName ?? f.name) + (reason ? ' 🚫' : '');
-          if (reason) {
-            o.disabled = true;
-            o.title = reason;
-          }
-          el.appendChild(o);
-        }
-        el.value = value;
-        el.addEventListener('change', () => {
-          onPick(el.value);
-          gen.disabled = !complete();
-        });
-        return el;
-      };
-      const csNote = (text: string): HTMLElement => {
-        const n = document.createElement('div');
-        n.className = 'wb-inspector-empty wb-cs-note';
-        n.textContent = text;
-        return n;
-      };
-      const refreshParams = (): void => {
-        params.replaceChildren();
-        if (kind === 'executeFlow') {
-          params.appendChild(labeled('flow id', paramInput('wb-cs-flowid', 'the Power Automate flow GUID', flowId, (v) => { flowId = v; })));
-        } else if (kind === 'setValue') {
-          svRows.forEach((row, i) => {
-            const rowEl = document.createElement('div');
-            rowEl.className = 'wb-cs-svrow';
-            rowEl.appendChild(labeled('set column', columnSelect('wb-cs-field', row.field,
-              state.fields.filter((x) => !x.protected), (v) => { row.field = v; })));
-            rowEl.appendChild(labeled('to value', paramInput('wb-cs-value', 'Done', row.value, (v) => { row.value = v; })));
-            if (svRows.length > 1) {
-              const rm = document.createElement('button');
-              rm.type = 'button';
-              rm.className = 'wb-cs-removerow';
-              rm.textContent = '✕ remove';
-              rm.title = 'Drop this column ← value pair';
-              rm.addEventListener('click', () => { svRows.splice(i, 1); refreshParams(); });
-              rowEl.appendChild(rm);
-            }
-            params.appendChild(rowEl);
-          });
-          const add = document.createElement('button');
-          add.type = 'button';
-          add.className = 'wb-kv-add wb-cs-addrow';
-          add.textContent = '+ add another';
-          add.title = 'Write several columns in ONE action (one round-trip) — entries apply in this order';
-          add.addEventListener('click', () => { svRows.push({ field: '', value: '' }); refreshParams(); });
-          params.appendChild(add);
-        } else if (kind === 'link') {
-          params.appendChild(labeled('link url', paramInput('wb-cs-href', 'https://…', href, (v) => { href = v; })));
-        } else if (kind === 'inlineEdit') {
-          if (node.inlineEditField) {
-            params.appendChild(csNote(`Already editable inline (${node.inlineEditField}) — clear inlineEditField under Advanced first.`));
-          } else {
-            const fieldSel = columnSelect('wb-cs-inlinefield', ieField, state.fields,
-              (v) => { ieField = v; }, inlineEditBlockReason);
-            // pinned to the column the element shows until the maker deliberately
-            // opts out (2a) — a misclick can't quietly retarget the write
-            if (dispEditable && !ieDiff) fieldSel.disabled = true;
-            params.appendChild(labeled('column to edit', fieldSel));
-            if (dispEditable) {
-              const cb = document.createElement('input');
-              cb.type = 'checkbox';
-              cb.className = 'wb-cs-difftarget';
-              cb.checked = ieDiff;
-              cb.addEventListener('change', () => {
-                ieDiff = cb.checked;
-                if (!ieDiff) ieField = dispName!;
-                refreshParams();
-              });
-              params.appendChild(labeled('Write to a different column than the one shown', cb));
-            } else if (dispField) {
-              params.appendChild(csNote(inlineEditBlockReason(dispField)!));
-            }
-            params.appendChild(csNote('Rides on this element itself — no overlay, and it composes with hover-reveal and cards (element-level, not a row action). Text & Person columns only (verified SP).'));
-          }
-        } else if (kind === 'confirmEdit') {
-          if (draftCols().length === 0) {
-            // refuse-and-teach: never wire the editor straight to the real column
-            params.appendChild(csNote('No scratch Text column to stage edits in — this recipe refuses to write straight to the real column. Add a single-line text column to the list (e.g. "Draft", hidden from forms), refresh the schema here, and pick it below.'));
-          } else {
-            params.appendChild(labeled('real column (Save writes here)', columnSelect('wb-cs-real', ceReal,
-              state.fields.filter((x) => !x.protected), (v) => { ceReal = v; refreshParams(); })));
-            params.appendChild(labeled('draft column (edits stage here)', columnSelect('wb-cs-draft', ceDraft,
-              draftCols(), (v) => { ceDraft = v; },
-              (f) => (f.name === ceReal ? `${f.name} is the real column — the draft must be a different scratch column.` : null))));
-            params.appendChild(csNote('One gesture: this element becomes the inline editor for the draft column; while the draft is non-empty a "current → pending" row appears with Save (promotes the draft into the real column, then clears it — one setValue, two entries) and Cancel (just clears). setValue has no type limits, so the real column can be any editable type.'));
-          }
-        }
-        // per-kind button copy — value-writing gestures read as what they are
-        if (kind === 'inlineEdit') {
-          gen.textContent = '✏️ Make this editable inline';
-          gen.title = 'Sets inlineEditField on this element — no overlay; one undoable step.';
-        } else if (kind === 'confirmEdit') {
-          gen.textContent = '✏️ Build the draft → confirm editor';
-          gen.title = 'Wraps the current content as the inline-edit surface (staging into the draft column) and adds the Save/Cancel confirm row, visible only while the draft is non-empty. One undoable step.';
-        } else {
-          gen.textContent = '⚡ Make this a click surface';
-          gen.title = 'Adds a full-surface overlay (the robust pattern — child elements can\'t swallow the click) carrying this action, and selects it. One undoable step.';
-        }
-        gen.disabled = !complete();
-      };
-      // flat list (grouped palette deliberately NOT built — #212 owner call 3),
-      // but ordered read-only → writing, with the ✏️ marker making the three
-      // list-data-writing choices unmistakably deliberate (click-only safety)
-      const kindSel = document.createElement('select');
-      kindSel.className = 'wb-cs-kind';
-      for (const [value, text] of [
-        ['defaultClick', 'defaultClick — open the item'],
-        ['link', 'link — go to a URL'],
-        ['executeFlow', 'executeFlow — run a flow'],
-        ['inlineEdit', '✏️ Edit inline — type a new value right here'],
-        ['confirmEdit', '✏️ Editable with confirm — stage in a draft, then Save / Cancel'],
-        ['setValue', '✏️ setValue — write a column'],
-      ] as const) {
-        const o = document.createElement('option');
-        o.value = value;
-        o.textContent = text;
-        kindSel.appendChild(o);
+      }),
+    ], true));
+
+  // customRowAction
+  const cra = node.customRowAction;
+  // the trigger model's action door (issue #204): on a candidate division
+  // (children, no card/action inside), generate the robust click surface —
+  // the sp-card-defaultClickButton overlay — instead of letting children
+  // swallow a raw customRowAction click. The FULL fixed vocabulary with its
+  // parameters (TRIGGER-MODEL §3): defaultClick / executeFlow (flow id) /
+  // setValue (column + value) / link (url) — incomplete params refuse
+  // (refuse and teach; the completeness lint rules back it up). One
+  // undoable step; the overlay gets selected so it can be tuned below.
+  const clickSurface: HTMLElement[] = [];
+  // surface-only: the generator writes overlays by app-document path and
+  // re-selects the carrier via state.select
+  if (!activeCtx && !cra && canHostTrigger(node) && state.selection) {
+    const sel = state.selection;
+    // the column this element displays — inline edit's default target (#212)
+    const dispName = (() => {
+      const d = displayedField(node, state.currentFieldName);
+      return d && state.fields.some((f) => f.name === d) ? d : null;
+    })();
+    const dispField = dispName ? state.fields.find((f) => f.name === dispName)! : null;
+    const dispEditable = dispField !== null && inlineEditBlockReason(dispField) === null;
+    const draftCols = (): MockField[] => state.fields.filter((f) => !f.protected && f.type === 'text');
+
+    let kind: TriggerActionKind | 'confirmEdit' = 'defaultClick';
+    let flowId = '', href = '';
+    /** setValue: ORDERED, repeatable `column ← value` rows (issue #212 —
+     *  the actionInput object keeps row order, so multi-writes like
+     *  "promote then clear" emit exactly as authored). */
+    const svRows: Array<{ field: string; value: string }> = [{ field: '', value: '' }];
+    let ieField = dispEditable ? dispName! : '';
+    let ieDiff = false; // 2a: "write to a different column than the one shown"
+    // seed only with a column the picker actually offers — a protected
+    // displayed field must not ride into the recipe via the default
+    let ceReal = dispName && state.fields.some((f) => f.name === dispName && !f.protected)
+      ? dispName : '';
+    let ceDraft = '';
+
+    const form = document.createElement('div');
+    form.className = 'wb-clicksurface';
+    const params = document.createElement('div');
+    params.className = 'wb-clicksurface-params';
+    const gen = document.createElement('button');
+    gen.type = 'button';
+    gen.className = 'wb-kv-add wb-cs-gen';
+
+    const complete = (): boolean => {
+      if (kind === 'defaultClick') return true;
+      if (kind === 'executeFlow') return flowId.trim() !== '';
+      if (kind === 'link') return href.trim() !== '';
+      if (kind === 'setValue') {
+        // each row refuses on blank, and one column can't be written twice
+        return svRows.every((r) => r.field !== '' && r.value.trim() !== '')
+          && new Set(svRows.map((r) => r.field)).size === svRows.length;
       }
-      kindSel.value = kind;
-      kindSel.addEventListener('change', () => {
-        kind = kindSel.value as TriggerActionKind | 'confirmEdit';
-        refreshParams();
+      if (kind === 'inlineEdit') {
+        const f = state.fields.find((x) => x.name === ieField);
+        return !node.inlineEditField && !!f && inlineEditBlockReason(f) === null;
+      }
+      // confirmEdit: real + draft chosen, different, draft is a scratch Text
+      // column, and the real column is one the picker offers (not protected)
+      return ceReal !== '' && ceDraft !== '' && ceReal !== ceDraft
+        && state.fields.some((f) => f.name === ceReal && !f.protected)
+        && draftCols().some((f) => f.name === ceDraft);
+    };
+    const specFor = (): TriggerSpec => {
+      const base = { cursor: 'pointer' as const, label: 'Open this item' };
+      if (kind === 'executeFlow') return { ...base, action: kind, actionParams: JSON.stringify({ id: flowId.trim() }) };
+      if (kind === 'setValue') {
+        const actionInput: Record<string, unknown> = {};
+        for (const r of svRows) actionInput[r.field] = r.value;
+        return { ...base, action: kind, actionInput };
+      }
+      if (kind === 'link') return { ...base, action: kind, href: href.trim() };
+      if (kind === 'inlineEdit') {
+        return { action: 'inlineEdit', inlineEditField: `[$${ieField}]`, cursor: 'pointer', label: `Edit ${ieField} inline` };
+      }
+      return { ...base, action: 'defaultClick' };
+    };
+    const paramInput = (cls: string, placeholder: string, value: string, on: (v: string) => void): HTMLInputElement => {
+      const el = document.createElement('input');
+      el.type = 'text';
+      el.className = cls;
+      el.placeholder = placeholder;
+      el.value = value;
+      el.addEventListener('input', () => {
+        on(el.value);
+        gen.disabled = !complete();
       });
-      gen.addEventListener('click', () => {
-        if (!complete()) return;
-        let at: NodePath | null = null;
-        state.mutateDocument(() => {
-          at = kind === 'confirmEdit'
-            ? applyConfirmEditAt(state.doc.root, sel, { realField: ceReal, draftField: ceDraft })
-            : applyTriggerAt(state.doc.root, sel, specFor());
-        });
-        if (at) state.select(at);
-      });
-      refreshParams();
-      form.append(labeled('click surface', kindSel), params, gen);
-      clickSurface.push(form);
-    }
-    host.appendChild(section('Row action (customRowAction)', [
-      ...clickSurface,
-      labeled('action', select(['(none)', ...ROW_ACTIONS.filter((a) => a !== '')], cra?.action ?? '(none)', (v) => commit((n) => {
-        if (v === '(none)') delete n.customRowAction;
-        else n.customRowAction = { ...(n.customRowAction ?? {}), action: v as CustomRowAction['action'] };
-      }))),
-      ...(cra ? [
-        labeled('actionInput (JSON)', textarea(
-          cra.actionInput ? JSON.stringify(cra.actionInput, null, 2) : '',
-          (v) => commit((n) => {
-            if (!n.customRowAction) return;
-            if (v.trim() === '') { delete n.customRowAction.actionInput; return; }
-            try { n.customRowAction.actionInput = JSON.parse(v); } catch { n.customRowAction.actionInput = v; }
-          }), 'setValue: {"Status":"Done"}')),
-        labeled('actionParams', input(cra.actionParams ?? '', (v) => commit((n) => {
-          if (!n.customRowAction) return;
-          if (v === '') delete n.customRowAction.actionParams; else n.customRowAction.actionParams = v;
-        }), 'executeFlow: {"id":"flow-guid"}')),
-      ] : []),
-    ], true));
-
-    // customCardProps
-    const card = node.customCardProps;
-    const cardKids: HTMLElement[] = [
-      labeled('enabled', checkbox(!!card, (on) => commit((n) => {
-        if (on) {
-          n.customCardProps = n.customCardProps ?? {
-            openOnEvent: 'click',
-            directionalHint: 'bottomCenter',
-            isBeakVisible: true,
-            formatter: { elmType: 'div', style: { padding: '12px' }, children: [{ elmType: 'span', txtContent: '[$Title]' }] },
-          };
-        } else {
-          delete n.customCardProps;
+      return el;
+    };
+    /** Column picker. `blockReason` GREYS a column with its reason instead of
+     *  hiding it — refuse-and-teach, never silently drop a choice. */
+    const columnSelect = (
+      cls: string,
+      value: string,
+      cols: MockField[],
+      onPick: (v: string) => void,
+      blockReason?: (f: MockField) => string | null,
+    ): HTMLSelectElement => {
+      const el = document.createElement('select');
+      el.className = cls;
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = '— pick a column —';
+      ph.disabled = true;
+      el.appendChild(ph);
+      for (const f of cols) {
+        const o = document.createElement('option');
+        o.value = f.name;
+        const reason = blockReason?.(f) ?? null;
+        o.textContent = (f.displayName ?? f.name) + (reason ? ' 🚫' : '');
+        if (reason) {
+          o.disabled = true;
+          o.title = reason;
         }
-      }))),
-    ];
-    if (card) {
-      const selectCardBtn = document.createElement('button');
-      selectCardBtn.className = 'wb-kv-add';
-      selectCardBtn.textContent = '▣ Edit card content (select card root)';
-      selectCardBtn.title = 'Selects the card formatter root — edit it like any element via the tree, palette and this inspector. It also appears nested in the Structure tree.';
-      selectCardBtn.addEventListener('click', () => {
-        // card content is addressable in both modes — CARD_SEGMENT descends
-        if (activeCtx) activeCtx.select([...activeCtx.selection(), CARD_SEGMENT]);
-        else if (state.selection) state.select([...state.selection, CARD_SEGMENT]);
+        el.appendChild(o);
+      }
+      el.value = value;
+      el.addEventListener('change', () => {
+        onPick(el.value);
+        gen.disabled = !complete();
       });
-      cardKids.push(
-        selectCardBtn,
-        labeled('openOnEvent', select(['click', 'hover'], card.openOnEvent, (v) => commit((n) => {
-          n.customCardProps!.openOnEvent = v as 'click' | 'hover';
-        }))),
-        labeled('directionalHint', select([...DIRECTIONAL_HINTS], card.directionalHint ?? 'bottomCenter', (v) => commit((n) => {
-          n.customCardProps!.directionalHint = v;
-        }))),
-        labeled('card formatter (JSON)', textarea(JSON.stringify(card.formatter, null, 2), (v) => {
-          try {
-            const parsed = JSON.parse(v);
-            commit((n) => { n.customCardProps!.formatter = parsed; });
-          } catch (e) {
-            alert(`Card formatter JSON invalid: ${(e as Error).message}`);
+      return el;
+    };
+    const csNote = (text: string): HTMLElement => {
+      const n = document.createElement('div');
+      n.className = 'wb-inspector-empty wb-cs-note';
+      n.textContent = text;
+      return n;
+    };
+    const refreshParams = (): void => {
+      params.replaceChildren();
+      if (kind === 'executeFlow') {
+        params.appendChild(labeled('flow id', paramInput('wb-cs-flowid', 'the Power Automate flow GUID', flowId, (v) => { flowId = v; })));
+      } else if (kind === 'setValue') {
+        svRows.forEach((row, i) => {
+          const rowEl = document.createElement('div');
+          rowEl.className = 'wb-cs-svrow';
+          rowEl.appendChild(labeled('set column', columnSelect('wb-cs-field', row.field,
+            state.fields.filter((x) => !x.protected), (v) => { row.field = v; })));
+          rowEl.appendChild(labeled('to value', paramInput('wb-cs-value', 'Done', row.value, (v) => { row.value = v; })));
+          if (svRows.length > 1) {
+            const rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'wb-cs-removerow';
+            rm.textContent = '✕ remove';
+            rm.title = 'Drop this column ← value pair';
+            rm.addEventListener('click', () => { svRows.splice(i, 1); refreshParams(); });
+            rowEl.appendChild(rm);
           }
-        }, undefined, 10)),
-      );
+          params.appendChild(rowEl);
+        });
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'wb-kv-add wb-cs-addrow';
+        add.textContent = '+ add another';
+        add.title = 'Write several columns in ONE action (one round-trip) — entries apply in this order';
+        add.addEventListener('click', () => { svRows.push({ field: '', value: '' }); refreshParams(); });
+        params.appendChild(add);
+      } else if (kind === 'link') {
+        params.appendChild(labeled('link url', paramInput('wb-cs-href', 'https://…', href, (v) => { href = v; })));
+      } else if (kind === 'inlineEdit') {
+        if (node.inlineEditField) {
+          params.appendChild(csNote(`Already editable inline (${node.inlineEditField}) — clear inlineEditField under Advanced first.`));
+        } else {
+          const fieldSel = columnSelect('wb-cs-inlinefield', ieField, state.fields,
+            (v) => { ieField = v; }, inlineEditBlockReason);
+          // pinned to the column the element shows until the maker deliberately
+          // opts out (2a) — a misclick can't quietly retarget the write
+          if (dispEditable && !ieDiff) fieldSel.disabled = true;
+          params.appendChild(labeled('column to edit', fieldSel));
+          if (dispEditable) {
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'wb-cs-difftarget';
+            cb.checked = ieDiff;
+            cb.addEventListener('change', () => {
+              ieDiff = cb.checked;
+              if (!ieDiff) ieField = dispName!;
+              refreshParams();
+            });
+            params.appendChild(labeled('Write to a different column than the one shown', cb));
+          } else if (dispField) {
+            params.appendChild(csNote(inlineEditBlockReason(dispField)!));
+          }
+          params.appendChild(csNote('Rides on this element itself — no overlay, and it composes with hover-reveal and cards (element-level, not a row action). Text & Person columns only (verified SP).'));
+        }
+      } else if (kind === 'confirmEdit') {
+        if (draftCols().length === 0) {
+          // refuse-and-teach: never wire the editor straight to the real column
+          params.appendChild(csNote('No scratch Text column to stage edits in — this recipe refuses to write straight to the real column. Add a single-line text column to the list (e.g. "Draft", hidden from forms), refresh the schema here, and pick it below.'));
+        } else {
+          params.appendChild(labeled('real column (Save writes here)', columnSelect('wb-cs-real', ceReal,
+            state.fields.filter((x) => !x.protected), (v) => { ceReal = v; refreshParams(); })));
+          params.appendChild(labeled('draft column (edits stage here)', columnSelect('wb-cs-draft', ceDraft,
+            draftCols(), (v) => { ceDraft = v; },
+            (f) => (f.name === ceReal ? `${f.name} is the real column — the draft must be a different scratch column.` : null))));
+          params.appendChild(csNote('One gesture: this element becomes the inline editor for the draft column; while the draft is non-empty a "current → pending" row appears with Save (promotes the draft into the real column, then clears it — one setValue, two entries) and Cancel (just clears). setValue has no type limits, so the real column can be any editable type.'));
+        }
+      }
+      // per-kind button copy — value-writing gestures read as what they are
+      if (kind === 'inlineEdit') {
+        gen.textContent = '✏️ Make this editable inline';
+        gen.title = 'Sets inlineEditField on this element — no overlay; one undoable step.';
+      } else if (kind === 'confirmEdit') {
+        gen.textContent = '✏️ Build the draft → confirm editor';
+        gen.title = 'Wraps the current content as the inline-edit surface (staging into the draft column) and adds the Save/Cancel confirm row, visible only while the draft is non-empty. One undoable step.';
+      } else {
+        gen.textContent = '⚡ Make this a click surface';
+        gen.title = 'Adds a full-surface overlay (the robust pattern — child elements can\'t swallow the click) carrying this action, and selects it. One undoable step.';
+      }
+      gen.disabled = !complete();
+    };
+    // flat list (grouped palette deliberately NOT built — #212 owner call 3),
+    // but ordered read-only → writing, with the ✏️ marker making the three
+    // list-data-writing choices unmistakably deliberate (click-only safety)
+    const kindSel = document.createElement('select');
+    kindSel.className = 'wb-cs-kind';
+    for (const [value, text] of [
+      ['defaultClick', 'defaultClick — open the item'],
+      ['link', 'link — go to a URL'],
+      ['executeFlow', 'executeFlow — run a flow'],
+      ['inlineEdit', '✏️ Edit inline — type a new value right here'],
+      ['confirmEdit', '✏️ Editable with confirm — stage in a draft, then Save / Cancel'],
+      ['setValue', '✏️ setValue — write a column'],
+    ] as const) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = text;
+      kindSel.appendChild(o);
     }
-    host.appendChild(section('Hover/click card (customCardProps)', cardKids, true));
+    kindSel.value = kind;
+    kindSel.addEventListener('change', () => {
+      kind = kindSel.value as TriggerActionKind | 'confirmEdit';
+      refreshParams();
+    });
+    gen.addEventListener('click', () => {
+      if (!complete()) return;
+      let at: NodePath | null = null;
+      state.mutateDocument(() => {
+        at = kind === 'confirmEdit'
+          ? applyConfirmEditAt(state.doc.root, sel, { realField: ceReal, draftField: ceDraft })
+          : applyTriggerAt(state.doc.root, sel, specFor());
+      });
+      if (at) state.select(at);
+    });
+    refreshParams();
+    form.append(labeled('click surface', kindSel), params, gen);
+    clickSurface.push(form);
+  }
+  host.appendChild(section('Row action (customRowAction)', [
+    ...clickSurface,
+    labeled('action', select(['(none)', ...ROW_ACTIONS.filter((a) => a !== '')], cra?.action ?? '(none)', (v) => commit((n) => {
+      if (v === '(none)') delete n.customRowAction;
+      else n.customRowAction = { ...(n.customRowAction ?? {}), action: v as CustomRowAction['action'] };
+    }))),
+    ...(cra ? [
+      labeled('actionInput (JSON)', textarea(
+        cra.actionInput ? JSON.stringify(cra.actionInput, null, 2) : '',
+        (v) => commit((n) => {
+          if (!n.customRowAction) return;
+          if (v.trim() === '') { delete n.customRowAction.actionInput; return; }
+          try { n.customRowAction.actionInput = JSON.parse(v); } catch { n.customRowAction.actionInput = v; }
+        }), 'setValue: {"Status":"Done"}')),
+      labeled('actionParams', input(cra.actionParams ?? '', (v) => commit((n) => {
+        if (!n.customRowAction) return;
+        if (v === '') delete n.customRowAction.actionParams; else n.customRowAction.actionParams = v;
+      }), 'executeFlow: {"id":"flow-guid"}')),
+    ] : []),
+  ], true));
 
-    host.appendChild(section('Advanced', [
-      labeled('inlineEditField', input(node.inlineEditField ?? '', (v) => commit((n) => {
-        if (v === '') delete n.inlineEditField; else n.inlineEditField = v;
-      }), '[$Title] — Text & Person fields only', 'wb-dl-fieldrefs')),
-      labeled('defaultHoverField', input(node.defaultHoverField ?? '', (v) => commit((n) => {
-        if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
-      }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),
-    ], true));
-    } // end Pro-only sections
+  // customCardProps
+  const card = node.customCardProps;
+  const cardKids: HTMLElement[] = [
+    labeled('enabled', checkbox(!!card, (on) => commit((n) => {
+      if (on) {
+        n.customCardProps = n.customCardProps ?? {
+          openOnEvent: 'click',
+          directionalHint: 'bottomCenter',
+          isBeakVisible: true,
+          formatter: { elmType: 'div', style: { padding: '12px' }, children: [{ elmType: 'span', txtContent: '[$Title]' }] },
+        };
+      } else {
+        delete n.customCardProps;
+      }
+    }))),
+  ];
+  if (card) {
+    const selectCardBtn = document.createElement('button');
+    selectCardBtn.className = 'wb-kv-add';
+    selectCardBtn.textContent = '▣ Edit card content (select card root)';
+    selectCardBtn.title = 'Selects the card formatter root — edit it like any element via the tree, palette and this inspector. It also appears nested in the Structure tree.';
+    selectCardBtn.addEventListener('click', () => {
+      // card content is addressable in both modes — CARD_SEGMENT descends
+      if (activeCtx) activeCtx.select([...activeCtx.selection(), CARD_SEGMENT]);
+      else if (state.selection) state.select([...state.selection, CARD_SEGMENT]);
+    });
+    cardKids.push(
+      selectCardBtn,
+      labeled('openOnEvent', select(['click', 'hover'], card.openOnEvent, (v) => commit((n) => {
+        n.customCardProps!.openOnEvent = v as 'click' | 'hover';
+      }))),
+      labeled('directionalHint', select([...DIRECTIONAL_HINTS], card.directionalHint ?? 'bottomCenter', (v) => commit((n) => {
+        n.customCardProps!.directionalHint = v;
+      }))),
+      labeled('card formatter (JSON)', textarea(JSON.stringify(card.formatter, null, 2), (v) => {
+        try {
+          const parsed = JSON.parse(v);
+          commit((n) => { n.customCardProps!.formatter = parsed; });
+        } catch (e) {
+          alert(`Card formatter JSON invalid: ${(e as Error).message}`);
+        }
+      }, undefined, 10)),
+    );
+  }
+  host.appendChild(section('Hover/click card (customCardProps)', cardKids, true));
+
+  host.appendChild(section('Advanced', [
+    labeled('inlineEditField', input(node.inlineEditField ?? '', (v) => commit((n) => {
+      if (v === '') delete n.inlineEditField; else n.inlineEditField = v;
+    }), '[$Title] — Text & Person fields only', 'wb-dl-fieldrefs')),
+    labeled('defaultHoverField', input(node.defaultHoverField ?? '', (v) => commit((n) => {
+      if (v === '') delete n.defaultHoverField; else n.defaultHoverField = v;
+    }), '[$Owner] — shows the OOTB hover card', 'wb-dl-fieldrefs')),
+  ], true));
   };
 
   if ((host as any)._unsub) {
@@ -1411,7 +1395,7 @@ function spacingControls(node: SPElement, commit: (fn: (n: SPElement) => void) =
   return wrap;
 }
 
-// ─── Simple lens: dedicated visual property fields ───────────────────────────
+// ─── dedicated visual property fields (the visual essentials) ────────────────
 // Targeted single-property patches (safe under multi-select, unlike a whole-
 // object replace) with a blue "active" dot when the property is set.
 

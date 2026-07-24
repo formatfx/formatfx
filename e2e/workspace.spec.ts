@@ -287,9 +287,10 @@ test('wrap-in-parent works on the root (of a view sheet — the grid tree has no
 
 test('box-model editor writes per-side padding to the selected element', async ({ page }) => {
   await loadRowFixture(page);
-  // select the view root in the tree structure, then drop to the Simple lens
+  // select the view root in the tree structure (the Properties lens carries
+  // the box-model editor since the Simple/Pro merge)
   await page.locator('.wb-tree-row .wb-tree-label').first().click();
-  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  await page.locator('.wb-lens-tab[data-lens="pro"]').click();
   const padTop = page.locator('.wb-box.wb-box-padding input.wb-box-top').first();
   await padTop.fill('33');
   await padTop.blur();
@@ -300,7 +301,7 @@ test('alignment editor: summary chip opens picker, position grid writes layout s
   await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row .wb-tree-label').first().click();
-  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  await page.locator('.wb-lens-tab[data-lens="pro"]').click();
   // summary chip shows a plain-language readout and opens the picker
   const summary = page.locator('.wb-align-summary');
   await expect(summary).toContainText('Side by side');
@@ -322,7 +323,7 @@ test('box model: arrow-stepping adjusts padding live without losing focus', asyn
   await loadRowFixture(page);
   const target = page.locator('.wb-mock-viewrow [data-sp-path]').first();
   await page.locator('.wb-tree-row .wb-tree-label').first().click();
-  await page.locator('.wb-lens-tab[data-lens="simple"]').click();
+  await page.locator('.wb-lens-tab[data-lens="pro"]').click();
   const padTop = page.locator('.wb-box.wb-box-padding input.wb-box-top').first();
   await padTop.click();
   await padTop.press('ArrowUp');
@@ -497,6 +498,32 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   await splitter2.dblclick();
   const reset = (await props.boundingBox())!.height;
   expect(Math.abs(reset - before)).toBeLessThan(12);
+
+  // #292 round 2: dragging far up displaces the STRUCTURE TREE too — once the
+  // shelves hit their floor, the tree shrinks so properties keeps growing
+  const tree = page.locator('#wb-lp-tree');
+  const treeBefore = (await tree.boundingBox())!.height;
+  const box2 = (await splitter2.boundingBox())!;
+  await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box2.x + box2.width / 2, 40, { steps: 8 });
+  await page.mouse.up();
+  expect((await tree.boundingBox())!.height).toBeLessThan(treeBefore - 40);
+  // double-click resets BOTH coupled sizes — the tree comes back to where it
+  // was before the displacing drag, not stranded at its floor
+  await splitter2.dblclick();
+  expect(Math.abs((await tree.boundingBox())!.height - treeBefore)).toBeLessThan(12);
+
+  // the collapse bar above a section folds it like its header (2026-07-24):
+  // splitter-bar look, header-click behavior
+  const compBar = page.locator('.wb-lp-collapsebar[data-sec-bar="components"]');
+  await expect(compBar).toBeVisible();
+  await expect(compBar).toHaveCSS('cursor', 'pointer');
+  await compBar.click();
+  await expect(page.locator('.wb-lp-sec[data-sec="components"]')).toHaveClass(/wb-collapsed/);
+  await expect(page.locator('#wb-lp-library')).toBeHidden();
+  await compBar.click();
+  await expect(page.locator('#wb-lp-library')).toBeVisible();
 });
 
 test('Select/Live canvas toggle: Live fires customRowAction, Select selects instead', async ({ page }) => {
