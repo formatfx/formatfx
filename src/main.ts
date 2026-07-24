@@ -619,8 +619,13 @@ mountLeftPane(document.getElementById('wb-leftpane')!, {
 // Below the 900px breakpoint the edit pane becomes a fixed slide-in drawer
 // (style.css owns the geometry + visibility; both controls are display:none
 // on the desktop grid, so they never become grid items there). Pure view
-// state — never persisted, closed on every load.
+// state — never persisted, closed on every load. Keyboard/AT contract
+// (Copilot review, PR #304): while the NARROW drawer is closed the pane is
+// `inert` (off-screen controls leave the tab order and the a11y tree);
+// opening moves focus into the pane, closing hands it back to the ✎ handle,
+// and Escape closes. At desktop widths the pane is never inert.
 {
+  const narrow = window.matchMedia('(max-width: 900px)');
   const drawerBtn = document.createElement('button');
   drawerBtn.id = 'wb-lp-drawerbtn';
   drawerBtn.type = 'button';
@@ -628,17 +633,37 @@ mountLeftPane(document.getElementById('wb-leftpane')!, {
   drawerBtn.setAttribute('aria-controls', 'wb-leftpane');
   const drawerScrim = document.createElement('div');
   drawerScrim.id = 'wb-lp-scrim';
-  const setDrawer = (open: boolean): void => {
+  const drawerOpen = (): boolean => layout.classList.contains('wb-lp-drawer-open');
+  const setDrawer = (open: boolean, moveFocus = true): void => {
     layout.classList.toggle('wb-lp-drawer-open', open);
     drawerBtn.setAttribute('aria-expanded', String(open));
     drawerBtn.title = open
       ? 'Close the edit pane'
       : 'Open the edit pane — it slides over the preview at this width';
+    leftPaneEl.inert = narrow.matches && !open;
+    if (!narrow.matches || !moveFocus) return;
+    if (open) {
+      // first VISIBLE focusable — e.g. #wb-lp-collapse is display:none at
+      // this width and would swallow the focus() silently
+      for (const el of leftPaneEl.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )) {
+        if (el.getClientRects().length) { el.focus(); break; }
+      }
+    } else if (leftPaneEl.contains(document.activeElement) || document.activeElement === drawerScrim) {
+      drawerBtn.focus();
+    }
   };
-  drawerBtn.addEventListener('click', () => setDrawer(!layout.classList.contains('wb-lp-drawer-open')));
+  drawerBtn.addEventListener('click', () => setDrawer(!drawerOpen()));
   drawerScrim.addEventListener('click', () => setDrawer(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && narrow.matches && drawerOpen()) setDrawer(false);
+  });
+  // crossing the breakpoint recomputes inert-ness: the desktop pane is never
+  // inert; a re-narrowed shell starts from the closed state it shows
+  narrow.addEventListener('change', () => setDrawer(narrow.matches && drawerOpen(), false));
   layout.append(drawerBtn, drawerScrim);
-  setDrawer(false);
+  setDrawer(false, false);
 }
 // canvas view prefs (#216/#224): zoom + viewport ride inside wb-ui-prefs
 // (additive fields — the frozen-keys rule)

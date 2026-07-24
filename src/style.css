@@ -684,6 +684,11 @@ body.wb-dark .wb-ce-save { color: #10393b; }
     border-top: none; border-right: 1px solid var(--wb-lp-border);
     transform: translateX(-102%); transition: transform .18s ease;
   }
+  /* a whole region in motion is exactly what reduced-motion opts out of —
+     the drawer still opens/closes, it just snaps */
+  @media (prefers-reduced-motion: reduce) {
+    .wb-layout > .wb-leftpane { transition: none; }
+  }
   .wb-layout.wb-lp-drawer-open > .wb-leftpane {
     transform: none; box-shadow: 0 0 34px rgba(0, 0, 0, .38);
   }

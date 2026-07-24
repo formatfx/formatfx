@@ -199,11 +199,23 @@ test('narrow shell (#127): the edit pane is a drawer — handle opens, scrim clo
   // closed by default: the pane sits off-canvas, the floating ✎ handle shows
   await expect(handle).toBeVisible();
   await expect(pane).not.toBeInViewport();
+  // …and while closed the pane is inert: off-screen controls leave the tab
+  // order and the accessibility tree (Copilot review, PR #304)
+  await expect(pane).toHaveAttribute('inert', '');
   // the data dock also lands OPEN by default now (#87 WA — data on land)
   await expect(page.locator('#wb-data-dock')).not.toHaveClass(/wb-min/);
   await handle.click();
   await expect(pane).toBeInViewport();
   await expect(handle).toHaveAttribute('aria-expanded', 'true');
+  await expect(pane).not.toHaveAttribute('inert', '');
+  // opening moved focus into the pane; Escape closes and hands it back
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelector('.wb-leftpane')!.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(pane).not.toBeInViewport();
+  await expect(handle).toBeFocused();
+  await handle.click();
+  await expect(pane).toBeInViewport();
   // the pane is fully usable as a drawer — fold a section through its rail
   await page.locator('.wb-lp-collapsebar[data-sec-bar="views"]').click();
   await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
@@ -211,8 +223,10 @@ test('narrow shell (#127): the edit pane is a drawer — handle opens, scrim clo
   // tapping the scrim dismisses the drawer
   await page.locator('#wb-lp-scrim').click({ position: { x: 650, y: 450 } });
   await expect(pane).not.toBeInViewport();
-  // back at desktop width the drawer chrome vanishes and the pane is inline
+  // back at desktop width the drawer chrome vanishes, the pane is inline —
+  // and never inert
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(handle).toBeHidden();
   await expect(pane).toBeInViewport();
+  await expect(pane).not.toHaveAttribute('inert', '');
 });
