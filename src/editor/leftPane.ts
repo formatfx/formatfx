@@ -32,11 +32,17 @@
  *      editor, double-click resets), and the lower workspace swapping between
  *      the Properties inspector and the Code declarations (the two lenses).
  *
- * Every collapsible section also carries a vertical COLLAPSE RAIL down its
- * left edge (owner ask 2026-07-24, corrected same day from a horizontal
- * first cut): it wears the splitter-bar look — and subsumes the #280 shelves
- * rail — but is a pure click target that folds/unfolds the section exactly
- * like its header.
+ * The vertical COLLAPSE RAILS (owner ask 2026-07-24, corrected same day from
+ * a horizontal first cut, then re-corrected the same day again): the tree and
+ * the inspector each carry a rail down their left edge, and the three shelves
+ * (Columns/Components/Views) SHARE ONE rail spanning the whole shelves region
+ * — sections plus the slack space down to the props splitter — mirroring how
+ * they already share the resize handle above Columns. A rail wears the
+ * splitter-bar look — and subsumes the #280 shelves rail — but is a pure
+ * click target: a section rail folds/unfolds its section exactly like its
+ * header; the shared shelves rail folds/unfolds the trio as a group (any
+ * open → fold all; all folded → open all), while each header keeps its
+ * per-section toggle.
  */
 
 import { state, type EditorLens } from './state';
@@ -79,7 +85,9 @@ function sectionHead(id: PaneSectionId, title: string, controls: string): string
 
 /** The click-to-fold rail down a section's left edge: splitter-bar look
  *  (vertical), header-click behavior. aria-hidden — the header button IS the
- *  accessible control; this is a redundant pointer affordance. */
+ *  accessible control; this is a redundant pointer affordance. Only the tree
+ *  and the inspector carry one of their own — the three shelves share the
+ *  region-level rail written inline below (data-sec-bar="shelves"). */
 function collapseBar(id: PaneSectionId): string {
   return `<div class="wb-lp-collapsebar" data-sec-bar="${id}" aria-hidden="true"></div>`;
 }
@@ -126,21 +134,21 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-lp-shelves" id="wb-lp-shelves">
-      <section class="wb-lp-sec" data-sec="columns">
-        ${collapseBar('columns')}
-        ${sectionHead('columns', 'Columns', 'wb-lp-shelf')}
-        <div id="wb-lp-shelf" class="wb-lp-sec-body"></div>
-      </section>
-      <section class="wb-lp-sec" data-sec="components">
-        ${collapseBar('components')}
-        ${sectionHead('components', 'Components', 'wb-lp-library')}
-        <div class="wb-complib wb-lp-sec-body" id="wb-lp-library"></div>
-      </section>
-      <section class="wb-lp-sec" data-sec="views">
-        ${collapseBar('views')}
-        ${sectionHead('views', 'Views', 'wb-lp-views')}
-        <div class="wb-lp-sec-body" id="wb-lp-views"></div>
-      </section>
+      <div class="wb-lp-collapsebar" data-sec-bar="shelves" aria-hidden="true"></div>
+      <div class="wb-lp-shelves-scroll" id="wb-lp-shelves-scroll">
+        <section class="wb-lp-sec" data-sec="columns">
+          ${sectionHead('columns', 'Columns', 'wb-lp-shelf')}
+          <div id="wb-lp-shelf" class="wb-lp-sec-body"></div>
+        </section>
+        <section class="wb-lp-sec" data-sec="components">
+          ${sectionHead('components', 'Components', 'wb-lp-library')}
+          <div class="wb-complib wb-lp-sec-body" id="wb-lp-library"></div>
+        </section>
+        <section class="wb-lp-sec" data-sec="views">
+          ${sectionHead('views', 'Views', 'wb-lp-views')}
+          <div class="wb-lp-sec-body" id="wb-lp-views"></div>
+        </section>
+      </div>
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter2" title="Drag to give the properties editor more or less height — double-click resets"></div>
     <div class="wb-lp-props" id="wb-lp-props">
@@ -180,6 +188,23 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   //    Columns, Components, Views and the Inspector all fold from their header.
   //    Folding a REGION with a dragged inline size also clears that size, so a
   //    stale drag never holds the fold open (tree height / props height).
+  //    The three shelves share ONE collapse rail (declared up here so the
+  //    header toggles below can keep its tooltip honest) — wired after the
+  //    loop, once the per-section appliers exist.
+  const SHELF_SECTIONS: PaneSectionId[] = ['columns', 'components', 'views'];
+  const shelvesBar = host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!;
+  // the group state reads the RENDERED classes, never the persisted flags —
+  // paneSections deliberately swallows blocked-storage write failures, so
+  // after a fold the store can still say "open"; deriving from the DOM keeps
+  // the rail's toggle and tooltip honest exactly like the header toggles
+  const anyShelfOpen = (): boolean => SHELF_SECTIONS.some((sid) =>
+    !host.querySelector(`.wb-lp-sec[data-sec="${sid}"]`)?.classList.contains('wb-collapsed'));
+  const refreshShelvesBar = (): void => {
+    shelvesBar.title = anyShelfOpen()
+      ? 'Hide Columns, Components & Views'
+      : 'Show Columns, Components & Views';
+  };
+  const applySection = new Map<PaneSectionId, (collapsed: boolean) => void>();
   for (const { id, label } of COLLAPSIBLE_SECTIONS) {
     const sec = host.querySelector<HTMLElement>(`.wb-lp-sec[data-sec="${id}"]`);
     const head = host.querySelector<HTMLButtonElement>(`.wb-lp-sec-head[data-sec-head="${id}"]`);
@@ -201,16 +226,35 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         restoreDisplacedTree();
       }
     };
+    applySection.set(id, apply);
     apply(isSectionCollapsed(id));
     const toggle = (): void => {
       const next = !sec.classList.contains('wb-collapsed');
       apply(next);
       setSectionCollapsed(id, next);
+      // a per-header fold changes what the SHARED rail would do next —
+      // keep its tooltip in step
+      if (SHELF_SECTIONS.includes(id)) refreshShelvesBar();
     };
     head.addEventListener('click', toggle);
-    // the collapse bar above the header folds the section the same way
+    // a section's own collapse rail folds it the same way (tree, inspector)
     bar?.addEventListener('click', toggle);
   }
+
+  // ── the SHARED shelves rail: Columns, Components and Views fold as a group
+  //    (owner ask 2026-07-24: one rail for the region they're members of —
+  //    slack space included — like the one resize handle they already share).
+  //    Any open → fold all three; all folded → open all three. The persisted
+  //    per-section flags are the same ones the headers write.
+  shelvesBar.addEventListener('click', () => {
+    const collapse = anyShelfOpen();
+    for (const sid of SHELF_SECTIONS) {
+      applySection.get(sid)?.(collapse);
+      setSectionCollapsed(sid, collapse);
+    }
+    refreshShelvesBar();
+  });
+  refreshShelvesBar();
 
   // ── kebab menu: unified tools + snapshots (← Back moved back OUT to the
   //    nav row, issue #145 — it was under this ⋮ 2026-07-10→2026-07-24) ──────

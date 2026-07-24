@@ -6,7 +6,7 @@
  * and the view strip are GONE — the canvas tab strip is the one navigation
  * surface; the library is mounted always (no swap mode).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountLeftPane } from './leftPane';
 import { state } from './state';
 
@@ -65,8 +65,13 @@ describe('structure (§3, top to bottom)', () => {
     expect(headrow.querySelector('#wb-structure-kebab')).not.toBeNull();
     expect(tree.querySelector('#wb-tree-body')).not.toBeNull();
     const shelves = host.querySelector('#wb-lp-shelves')!;
+    // the shelves region leads with the trio's SHARED collapse rail, then the
+    // scroll column holding the three sections (owner ask 2026-07-24: one
+    // rail for the group, like the one resize handle they already share)
+    expect((shelves.firstElementChild as HTMLElement).classList.contains('wb-lp-collapsebar')).toBe(true);
+    const scroll = shelves.querySelector('.wb-lp-shelves-scroll')!;
     // columns + components + views are ALL collapsible sections now
-    expect([...shelves.children].map((el) => (el as HTMLElement).dataset.sec ?? el.id))
+    expect([...scroll.children].map((el) => (el as HTMLElement).dataset.sec ?? el.id))
       .toEqual(['columns', 'components', 'views']);
     expect(shelves.querySelector('.wb-lp-sec[data-sec="columns"] #wb-lp-shelf')).not.toBeNull();
     expect(shelves.querySelector('.wb-lp-sec[data-sec="components"] #wb-lp-library')).not.toBeNull();
@@ -158,9 +163,9 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
     expect(h.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('every section leads with a collapse bar that folds it like the header (owner ask 2026-07-24)', () => {
+  it('the tree and the inspector lead with their own collapse bar that folds them like the header (owner ask 2026-07-24)', () => {
     const host = mount();
-    for (const id of ['tree', 'columns', 'components', 'views', 'inspector']) {
+    for (const id of ['tree', 'inspector']) {
       const bar = host.querySelector<HTMLElement>(`.wb-lp-collapsebar[data-sec-bar="${id}"]`);
       expect(bar, id).not.toBeNull();
       // it rides INSIDE the section, above the header, as a redundant pointer
@@ -176,12 +181,78 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
     }
   });
 
-  it('a collapse-bar fold persists across a remount, same store as the header', () => {
+  it('Columns/Components/Views share ONE rail on the shelves region that folds the trio as a group (owner ask 2026-07-24)', () => {
     const host = mount();
-    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="components"]')!.click();
+    // no per-section rails on the shelf trio — the shared one replaced them
+    for (const id of ['columns', 'components', 'views']) {
+      expect(host.querySelector(`.wb-lp-collapsebar[data-sec-bar="${id}"]`), id).toBeNull();
+    }
+    const bar = host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!;
+    expect(bar).not.toBeNull();
+    // it rides the shelves REGION itself, outside the scroll column and any
+    // one section — so it also spans the slack space below the Views list
+    expect(bar.parentElement).toBe(host.querySelector('#wb-lp-shelves'));
+    expect(bar.closest('.wb-lp-sec')).toBeNull();
+    expect(bar.getAttribute('aria-hidden')).toBe('true');
+    bar.click();
+    for (const id of ['columns', 'components', 'views']) {
+      expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(true);
+      expect(head(host, id).getAttribute('aria-expanded'), id).toBe('false');
+    }
+    bar.click();
+    for (const id of ['columns', 'components', 'views']) {
+      expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(false);
+      expect(head(host, id).getAttribute('aria-expanded'), id).toBe('true');
+    }
+  });
+
+  it('a mixed trio still means "hide": the shared rail folds ALL while any section is open', () => {
+    const host = mount();
+    head(host, 'components').click(); // fold one by hand — trio now mixed
+    const bar = host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!;
+    expect(bar.title).toContain('Hide'); // any open → the rail offers to hide
+    bar.click();
+    for (const id of ['columns', 'components', 'views']) {
+      expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(true);
+    }
+    expect(bar.title).toContain('Show'); // all folded → it offers to show
+  });
+
+  it('a shared-rail fold persists across a remount, same store as the headers', () => {
+    const host = mount();
+    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.click();
     (host as unknown as { _unsub?: () => void })._unsub?.();
     const host2 = mount();
-    expect(sec(host2, 'components').classList.contains('wb-collapsed')).toBe(true);
+    for (const id of ['columns', 'components', 'views']) {
+      expect(sec(host2, id).classList.contains('wb-collapsed'), id).toBe(true);
+    }
+    // …and the shared rail comes back knowing the trio is folded
+    expect(host2.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.title).toContain('Show');
+  });
+
+  it('the shared rail still toggles when storage writes fail (private mode) — state derives from the DOM', () => {
+    const host = mount();
+    // paneSections.write() swallows this throw by design — the persisted
+    // flags then keep reporting "all open" no matter what the rail did
+    const blocked = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new DOMException('blocked', 'QuotaExceededError'); });
+    try {
+      const bar = host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!;
+      bar.click();
+      for (const id of ['columns', 'components', 'views']) {
+        expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(true);
+      }
+      expect(bar.title).toContain('Show');
+      // the second click must REOPEN — a store-derived toggle would compute
+      // "fold" forever and strand the trio collapsed
+      bar.click();
+      for (const id of ['columns', 'components', 'views']) {
+        expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(false);
+      }
+      expect(bar.title).toContain('Hide');
+    } finally {
+      blocked.mockRestore();
+    }
   });
 
   it('the tree collapse bar clears a dragged inline height, like the header fold', () => {

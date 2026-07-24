@@ -3524,15 +3524,24 @@ body.wb-json-editing #wb-canvas::after {
    one scroll region between the splitter and the lens tabs, sharing the
    pane's remaining height with the inspector below. */
 .wb-lp-shelves {
-  flex: 1 1 0; min-height: 72px; overflow-y: auto;
+  flex: 1 1 0; min-height: 72px;
   border-bottom: 1px solid var(--wb-lp-border);
-  /* (the #280 left rail moved onto the sections themselves 2026-07-24: each
-     .wb-lp-sec carries a clickable .wb-lp-collapsebar rail — same 7px,
-     same color — so the container needs no border of its own) */
+  /* the trio SHARES one clickable .wb-lp-collapsebar rail (2026-07-24, third
+     cut — the #280 border-rail's "these move as one" look, now a group fold):
+     it rides this outer region, OUTSIDE the scroll, so it spans the sections
+     AND the slack space down to the props splitter, and never scrolls away */
+  position: relative; padding-left: 7px;
+  display: flex; flex-direction: column;
   /* …and the group's bodies tint off the pane; the sticky section headers
      repaint themselves opaque --wb-lp-bg, so header/body read as two steps */
   background: var(--wb-lp-sec-bg);
 }
+/* the scrolling column of the three shelf sections — the scroll moved here
+   off .wb-lp-shelves so the shared rail can span the whole region */
+.wb-lp-shelves-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* shelf sections carry no rail of their own — the shared one already pads
+   the region's left edge, so the per-section gutter would double it */
+.wb-lp-shelves-scroll > .wb-lp-sec { padding-left: 0; }
 
 /* ── collapsible pane sections (issue #236): Columns · Components · the property
    editor. A section = a header button (caret + title) over a body; the header
@@ -3542,12 +3551,12 @@ body.wb-json-editing #wb-canvas::after {
    section's own mount never re-renders, so the fold survives every body repaint.
    The caret / body-hide rules are generic on .wb-collapsed so the library's own
    fold-groups (below) reuse them. */
-/* every collapsible section wears a VERTICAL left rail — the collapse bar
-   (owner ask 2026-07-24, corrected from the first horizontal cut): same 7px
-   width and color as the splitter bars, running the section's full height,
-   but a CLICK target that folds the section like its header does. It also
-   subsumes the #280 shelves rail: the "these move as one" trio look is now
-   per-section, and clickable, everywhere (tree and inspector included). */
+/* the VERTICAL left rails — the collapse bars (owner ask 2026-07-24,
+   corrected from the first horizontal cut, then again from per-section):
+   same 7px width and color as the splitter bars, but CLICK targets. The
+   tree and the inspector each run their own down their section; the three
+   shelves share ONE on .wb-lp-shelves (see above) that folds the trio as a
+   group — subsuming the #280 border-rail's "these move as one" look. */
 .wb-lp-sec { display: flex; flex-direction: column; min-height: 0; position: relative; padding-left: 7px; }
 .wb-lp-collapsebar {
   position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: pointer;
@@ -3576,18 +3585,18 @@ body.wb-json-editing #wb-canvas::after {
    to DIRECT section heads so the library's own fold-groups (content, inside
    the scrolling body) never stack under them. */
 .wb-lp-tree > .wb-lp-sec-headrow > .wb-lp-sec-head,
-.wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head,
+.wb-lp-shelves-scroll > .wb-lp-sec > .wb-lp-sec-head,
 .wb-lp-props > .wb-lp-sec > .wb-lp-sec-head {
   color: var(--wb-lp-text); background: var(--wb-lp-bg);
   border-radius: 0; border-bottom: 1px solid var(--wb-lp-border);
 }
 .wb-lp-tree > .wb-lp-sec-headrow > .wb-lp-sec-head { border-bottom: none; }
-.wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head,
+.wb-lp-shelves-scroll > .wb-lp-sec > .wb-lp-sec-head,
 .wb-lp-props > .wb-lp-sec > .wb-lp-sec-head {
   position: sticky; top: 0; z-index: 3;
 }
 .wb-lp-tree > .wb-lp-sec-headrow > .wb-lp-sec-head:hover,
-.wb-lp-shelves > .wb-lp-sec > .wb-lp-sec-head:hover,
+.wb-lp-shelves-scroll > .wb-lp-sec > .wb-lp-sec-head:hover,
 .wb-lp-props > .wb-lp-sec > .wb-lp-sec-head:hover { background: var(--wb-lp-seg-track); }
 .wb-lp-sec-head:hover { background: var(--wb-lp-seg-track); color: var(--wb-lp-text); }
 .wb-lp-sec-head:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }

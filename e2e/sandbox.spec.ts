@@ -216,10 +216,11 @@ test('narrow shell (#127): the edit pane is a drawer — handle opens, scrim clo
   await expect(handle).toBeFocused();
   await handle.click();
   await expect(pane).toBeInViewport();
-  // the pane is fully usable as a drawer — fold a section through its rail
-  await page.locator('.wb-lp-collapsebar[data-sec-bar="views"]').click();
+  // the pane is fully usable as a drawer — fold the shelf trio through the
+  // shared rail (one rail for Columns/Components/Views, 2026-07-24)
+  await page.locator('.wb-lp-collapsebar[data-sec-bar="shelves"]').click();
   await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
-  await page.locator('.wb-lp-collapsebar[data-sec-bar="views"]').click();
+  await page.locator('.wb-lp-collapsebar[data-sec-bar="shelves"]').click();
   // tapping the scrim dismisses the drawer
   await page.locator('#wb-lp-scrim').click({ position: { x: 650, y: 450 } });
   await expect(pane).not.toBeInViewport();

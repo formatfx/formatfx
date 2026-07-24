@@ -514,16 +514,26 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   await splitter2.dblclick();
   expect(Math.abs((await tree.boundingBox())!.height - treeBefore)).toBeLessThan(12);
 
-  // the collapse bar above a section folds it like its header (2026-07-24):
-  // splitter-bar look, header-click behavior
-  const compBar = page.locator('.wb-lp-collapsebar[data-sec-bar="components"]');
-  await expect(compBar).toBeVisible();
-  await expect(compBar).toHaveCSS('cursor', 'pointer');
-  await compBar.click();
+  // the SHARED shelves rail (2026-07-24, third cut): splitter-bar look, one
+  // click target for the Columns/Components/Views trio — folds the group
+  const shelvesBar = page.locator('.wb-lp-collapsebar[data-sec-bar="shelves"]');
+  await expect(shelvesBar).toBeVisible();
+  await expect(shelvesBar).toHaveCSS('cursor', 'pointer');
+  // it spans the whole shelves region — sections plus the slack space down
+  // to the props splitter — not any single section
+  const shelvesBox = (await page.locator('#wb-lp-shelves').boundingBox())!;
+  const railBox = (await shelvesBar.boundingBox())!;
+  expect(Math.abs(railBox.height - shelvesBox.height)).toBeLessThan(2);
+  await shelvesBar.click();
+  await expect(page.locator('.wb-lp-sec[data-sec="columns"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('.wb-lp-sec[data-sec="components"]')).toHaveClass(/wb-collapsed/);
+  await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('#wb-lp-library')).toBeHidden();
-  await compBar.click();
+  await shelvesBar.click();
   await expect(page.locator('#wb-lp-library')).toBeVisible();
+  await expect(page.locator('#wb-lp-views')).toBeVisible();
+  // the tree keeps its own per-section rail
+  await expect(page.locator('.wb-lp-collapsebar[data-sec-bar="tree"]')).toBeVisible();
 });
 
 test('Select/Live canvas toggle: Live fires customRowAction, Select selects instead', async ({ page }) => {
