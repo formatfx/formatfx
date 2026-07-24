@@ -524,14 +524,37 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   const shelvesBox = (await page.locator('#wb-lp-shelves').boundingBox())!;
   const railBox = (await shelvesBar.boundingBox())!;
   expect(Math.abs(railBox.height - shelvesBox.height)).toBeLessThan(2);
+  const propsBefore = (await page.locator('#wb-lp-props').boundingBox())!.height;
   await shelvesBar.click();
   await expect(page.locator('.wb-lp-sec[data-sec="columns"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('.wb-lp-sec[data-sec="components"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('#wb-lp-library')).toBeHidden();
-  await shelvesBar.click();
+  // folding the trio SHRINKS the region to its three header bars, and
+  // Properties auto-fills the freed height (owner follow-up on #305)
+  const shelvesFolded = (await page.locator('#wb-lp-shelves').boundingBox())!;
+  expect(shelvesFolded.height).toBeLessThan(shelvesBox.height - 40);
+  const propsFilled = (await page.locator('#wb-lp-props').boundingBox())!.height;
+  expect(propsFilled).toBeGreaterThan(propsBefore + 40);
+  // …and while folded, dragging splitter 2 DOWN is clamped: nothing can
+  // absorb the freed height (shelves pinned, tree never grows past its
+  // start), so Properties must not shrink and strand blank space below
+  const box3 = (await splitter2.boundingBox())!;
+  await page.mouse.move(box3.x + box3.width / 2, box3.y + box3.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box3.x + box3.width / 2, box3.y + 150, { steps: 4 });
+  await page.mouse.up();
+  expect(Math.abs((await page.locator('#wb-lp-props').boundingBox())!.height - propsFilled))
+    .toBeLessThan(4);
+  // the rail is a real button — reopen it from the keyboard
+  await shelvesBar.focus();
+  await page.keyboard.press('Enter');
   await expect(page.locator('#wb-lp-library')).toBeVisible();
   await expect(page.locator('#wb-lp-views')).toBeVisible();
+  // …and reopening discards the folded-era splitter pin (the clamped drag
+  // above wrote one), so the DEFAULT split returns — not squeezed shelves
+  expect(Math.abs((await page.locator('#wb-lp-props').boundingBox())!.height - propsBefore))
+    .toBeLessThan(12);
   // the tree keeps its own per-section rail
   await expect(page.locator('.wb-lp-collapsebar[data-sec-bar="tree"]')).toBeVisible();
 });

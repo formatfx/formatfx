@@ -342,17 +342,25 @@ tab swap reads as "Code replaces Properties and vice versa". The Properties
 inspector is the UNION: the old Pro sections plus the Simple-only
 conveniences (Arrange children, Box model, Typography) in one sectioned
 flow. The `.wb-lp-collapsebar` rails — VERTICAL 7px rails wearing the
-splitter look but acting as CLICK targets (aria-hidden; the header buttons
-stay the accessible controls; the shape was corrected twice on 2026-07-24,
-from a horizontal first cut, then from per-section rails): the tree and the
-inspector each carry their own down their section's left edge, and the
-Columns/Components/Views trio SHARES ONE (`data-sec-bar="shelves"`) riding
-the `.wb-lp-shelves` region outside the new `.wb-lp-shelves-scroll` column
-— so it spans the sections plus the slack space down to the props splitter,
-mirroring the one resize handle the trio already shares. Clicking it folds
-the group (any open → fold all; all folded → open all — the same persisted
-per-section flags the headers write; it subsumes the #280 shelves
-border-rail). And **splitter 2 displaces the tree** (issue #292
+splitter look but acting as CLICK targets (the shape was corrected twice on
+2026-07-24, from a horizontal first cut, then from per-section rails): the
+tree and the inspector each carry their own down their section's left edge
+(aria-hidden divs — their header buttons stay the accessible controls), and
+the Columns/Components/Views trio SHARES ONE (`data-sec-bar="shelves"`)
+riding the `.wb-lp-shelves` region outside the new `.wb-lp-shelves-scroll`
+column — so it spans the sections plus the slack space down to the props
+splitter, mirroring the one resize handle the trio already shares. The
+shared rail is a real `<button>` (aria-label + aria-expanded, keyboard-
+activatable — Copilot a11y catch on #306): its fold-the-trio action has no
+other single control. Clicking it folds the group (any open → fold all;
+all folded → open all — the same persisted per-section flags the headers
+write; it subsumes the #280 shelves border-rail), and the ALL-FOLDED state
+— reached from the rail or the last header — shrinks the region to its
+three header bars (a `:has` rule drops its flex share) and clears the
+splitter-2 pin so **Properties auto-fills the freed height** (owner
+follow-up on #305); reopening returns the default split. Splitter 2's
+drag math treats a folded trio as un-shrinkable (its floor is the measured
+header-bars height, not the 72px flex floor). And **splitter 2 displaces the tree** (issue #292
 round 2): dragging the shelves/props boundary up shrinks the flex shelves
 to their 72px floor first, then the Structure tree down to its 80px floor,
 regrowing the tree (up to where it started) while the same drag returns.

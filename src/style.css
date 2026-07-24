@@ -3560,6 +3560,13 @@ body.wb-json-editing #wb-canvas::after {
 /* the scrolling column of the three shelf sections — the scroll moved here
    off .wb-lp-shelves so the shared rail can span the whole region */
 .wb-lp-shelves-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* fold the whole trio away (shared rail or the last header) → the region
+   gives up its flex share and shrinks to just the three folded header bars,
+   so Properties below auto-fills the freed height (owner follow-up on #305;
+   leftPane.ts clears the splitter-2 pin on the same transition) */
+.wb-lp-shelves:not(:has(> .wb-lp-shelves-scroll > .wb-lp-sec:not(.wb-collapsed))) {
+  flex: 0 0 auto; min-height: 0;
+}
 /* shelf sections carry no rail of their own — the shared one already pads
    the region's left edge, so the per-section gutter would double it */
 .wb-lp-shelves-scroll > .wb-lp-sec { padding-left: 0; }
@@ -3582,9 +3589,14 @@ body.wb-json-editing #wb-canvas::after {
 .wb-lp-collapsebar {
   position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: pointer;
   background: var(--wb-lp-border);
-  border-right: 1px solid var(--wb-surface);
+  /* the shared shelves rail is a <button> (its group action has no other
+     single accessible control — Copilot a11y catch on #306), so flatten the
+     native chrome down to the same splitter-bar look the solo divs wear */
+  appearance: none; margin: 0; padding: 0;
+  border: none; border-right: 1px solid var(--wb-surface);
 }
 .wb-lp-collapsebar:hover, .wb-lp-collapsebar:active { background: var(--wb-accent); opacity: .6; }
+.wb-lp-collapsebar:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
 /* the Structure header's row: the fold button plus the ⋮ settings kebab —
    the kebab is a sibling (a button can't nest a button) */
 .wb-lp-sec-headrow {
