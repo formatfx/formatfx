@@ -267,6 +267,56 @@ describe('navigation is never a mutation', () => {
     expect(s.onFloor).toBe(true);
     expect(s.backTarget).toBeNull(); // dead sheet skipped; the floor is where we stand
   });
+
+  // ── #145: the trail records LENS switches too ──────────────────────────────
+  it('a lens switch is a nav event: Back retraces it and the label names the lens', () => {
+    const s = new EditorState();
+    expect(s.backLabel).toBeNull();
+    s.setLens('code'); // Properties → Code
+    expect(s.backTarget).toBe('pro');
+    expect(s.backLabel).toBe('the Properties lens');
+    expect(s.goBack()).toBe('pro'); // back on Properties
+    expect(s.activeLens).toBe('pro');
+    // the retrace itself pushed nothing — no ping-pong
+    expect(s.backTarget).toBeNull();
+  });
+
+  it('mixed trail: lens and surface entries retrace in reverse order', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc())!; // nav: floor (surface)
+    s.setLens('code');                 // nav: pro (lens)
+    expect(s.backLabel).toBe('the Properties lens');
+    s.goBack();
+    expect(s.activeLens).toBe('pro');
+    expect(s.activeViewId).toBe(a.id); // lens retrace never moves the surface
+    expect(s.backLabel).toBe('the grid');
+    s.goBack();
+    expect(s.onFloor).toBe(true);
+    expect(s.goBack()).toBeNull();
+  });
+
+  it('lens ping-pong retraces cleanly — each goBack consumes one entry, none re-push', () => {
+    const s = new EditorState();
+    s.setLens('code'); // nav: pro
+    s.setLens('pro');  // nav: code — and now the older 'pro' entry is where we stand
+    expect(s.backTarget).toBe('code'); // the live entry
+    s.goBack();
+    expect(s.activeLens).toBe('code');
+    // remaining entry says 'pro'; we're on code, so it's live
+    expect(s.backLabel).toBe('the Properties lens');
+    s.goBack();
+    expect(s.activeLens).toBe('pro');
+    expect(s.backTarget).toBeNull();
+  });
+
+  it('backLabel names surface destinations in plain language', () => {
+    const s = new EditorState();
+    const a = s.createView(rowDoc(), 'Board')!;
+    expect(s.backLabel).toBe('the grid');
+    s.minimizeView();
+    expect(s.backLabel).toBe(`the Board view`);
+    expect(a.name).toBe('Board');
+  });
 });
 
 describe('the canvas doc key is always \'main\' (no drill-in surface)', () => {

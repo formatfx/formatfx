@@ -674,16 +674,45 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   .wb-layout > .wb-pane-canvas {
     order: -1; flex: 0 0 auto; height: fit-content; min-height: 200px; max-height: 60vh;
   }
+  /* #127: the edit pane is a DRAWER at narrow widths — a fixed slide-in over
+     the stacked shell instead of a long inline region the page scrolls past.
+     The ✎ handle (below) opens it; the scrim or the handle closes it. The
+     pane keeps its full internal layout (it's still a flex column). */
   .wb-layout > .wb-leftpane {
-    flex: 0 0 auto; border-right: none; border-top: 1px solid var(--wb-lp-border);
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+    width: min(360px, 88vw);
+    border-top: none; border-right: 1px solid var(--wb-lp-border);
+    transform: translateX(-102%); transition: transform .18s ease;
   }
-  /* flex-basis 0 collapses in a content-sized column — let the inspector take
-     its natural height and the stacked page scroll, like any settings page */
-  .wb-layout > .wb-leftpane .wb-lp-props { flex-basis: auto; }
+  /* a whole region in motion is exactly what reduced-motion opts out of —
+     the drawer still opens/closes, it just snaps */
+  @media (prefers-reduced-motion: reduce) {
+    .wb-layout > .wb-leftpane { transition: none; }
+  }
+  .wb-layout.wb-lp-drawer-open > .wb-leftpane {
+    transform: none; box-shadow: 0 0 34px rgba(0, 0, 0, .38);
+  }
+  /* the drawer travels with its own floating handle + scrim (main.ts adds
+     both; they exist at every width but only the media query shows them) */
+  .wb-layout > #wb-lp-drawerbtn { display: inline-flex; }
+  .wb-layout.wb-lp-drawer-open > #wb-lp-scrim { display: block; }
   .wb-layout > .wb-pane-side {
     flex: 0 0 auto; border-left: none; border-top: 1px solid var(--wb-border);
   }
   .wb-layout > .wb-resizer { display: none !important; } /* col-drag is meaningless stacked */
+}
+/* #127 drawer chrome — hidden outside the narrow breakpoint */
+#wb-lp-drawerbtn {
+  display: none; position: fixed; left: 14px; bottom: 14px; z-index: 61;
+  align-items: center; gap: 6px; padding: 9px 14px; cursor: pointer;
+  border: 1px solid var(--wb-lp-border); border-radius: 999px;
+  background: var(--wb-lp-bg); color: var(--wb-lp-text);
+  font: inherit; font-size: 13px; box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+}
+#wb-lp-drawerbtn:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+#wb-lp-scrim {
+  display: none; position: fixed; inset: 0; z-index: 59;
+  background: rgba(0, 0, 0, .35);
 }
 /* maker view: grid full-bleed, studio panes (palette/structure/side) + their resizers hidden */
 .wb-layout.wb-maker > .wb-pane-palette,
@@ -3497,10 +3526,9 @@ body.wb-json-editing #wb-canvas::after {
 .wb-lp-shelves {
   flex: 1 1 0; min-height: 72px; overflow-y: auto;
   border-bottom: 1px solid var(--wb-lp-border);
-  /* the grouped trio (issue #280): the sections that ride the drag bar
-     together share a left rail — same width and color as the splitter bar
-     above them (7px, --wb-lp-border), so "these move as one" is visible. */
-  border-left: 7px solid var(--wb-lp-border);
+  /* (the #280 left rail moved onto the sections themselves 2026-07-24: each
+     .wb-lp-sec carries a clickable .wb-lp-collapsebar rail — same 7px,
+     same color — so the container needs no border of its own) */
   /* …and the group's bodies tint off the pane; the sticky section headers
      repaint themselves opaque --wb-lp-bg, so header/body read as two steps */
   background: var(--wb-lp-sec-bg);
@@ -3514,14 +3542,17 @@ body.wb-json-editing #wb-canvas::after {
    section's own mount never re-renders, so the fold survives every body repaint.
    The caret / body-hide rules are generic on .wb-collapsed so the library's own
    fold-groups (below) reuse them. */
-.wb-lp-sec { display: flex; flex-direction: column; min-height: 0; }
-/* the click-to-fold bar above every section header (owner ask 2026-07-24):
-   wears the exact splitter-bar look but is a CLICK target — it folds the
-   section like its header does (pointer cursor, not row-resize). */
+/* every collapsible section wears a VERTICAL left rail — the collapse bar
+   (owner ask 2026-07-24, corrected from the first horizontal cut): same 7px
+   width and color as the splitter bars, running the section's full height,
+   but a CLICK target that folds the section like its header does. It also
+   subsumes the #280 shelves rail: the "these move as one" trio look is now
+   per-section, and clickable, everywhere (tree and inspector included). */
+.wb-lp-sec { display: flex; flex-direction: column; min-height: 0; position: relative; padding-left: 7px; }
 .wb-lp-collapsebar {
-  flex: 0 0 auto; height: 7px; cursor: pointer;
+  position: absolute; left: 0; top: 0; bottom: 0; width: 7px; cursor: pointer;
   background: var(--wb-lp-border);
-  border-top: 1px solid var(--wb-surface); border-bottom: 1px solid var(--wb-surface);
+  border-right: 1px solid var(--wb-surface);
 }
 .wb-lp-collapsebar:hover, .wb-lp-collapsebar:active { background: var(--wb-accent); opacity: .6; }
 /* the Structure header's row: the fold button plus the ⋮ settings kebab —
@@ -4362,8 +4393,11 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
    visibility side so the stacked media query below can neutralize the
    modes with CSS alone (the no-JS-breakpoint invariant). */
 .wb-side-actions { display: flex; align-items: center; gap: 4px; }
-/* (.wb-lp-nav-actions retired 2026-07-10 — the ◂ minimize leads the nav row
-   where ← back used to sit, and back lives inside the ⋮ menu.) */
+/* the nav row's right cluster (back from retirement 2026-07-24, issue #145):
+   ← Back and 📷 snapshot moved up out of the ⋮ menu to sit beside it */
+.wb-lp-nav-actions { display: flex; align-items: center; gap: 2px; }
+#wb-nav-back:disabled { opacity: .35; cursor: default; }
+#wb-nav-back:disabled:hover { background: transparent; color: var(--wb-lp-text-2); }
 .wb-side-maxbtn {
   display: inline-flex; align-items: center; padding: 3px 6px; cursor: pointer;
   border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-text);

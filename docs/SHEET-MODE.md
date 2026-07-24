@@ -28,13 +28,21 @@
 > reading as canon-to-build when most of it is canon-already-shipped.
 
 > **Superseded 2026-06-17:** the Sheet/Advanced *mode toggle* was removed
-> at the owner's request — there is now a single unified surface that
-> always shows everything (palette, Structure, ribbon's Formatted-columns
-> button, the fx bar, the Properties/JSON pane, and all the former
-> "advanced" tools). The Sheet *ideas* below (the ribbon, the fx bar, the
-> Format-cells dialog, the transpiler) all live on inside that one surface;
-> only the basic-vs-advanced split and `uiPrefs.mode` are gone. Read the
-> rest of this file as history of how those pieces were designed.
+> at the owner's request — there is one surface, no mode switch, and only
+> the basic-vs-advanced split and `uiPrefs.mode` are gone. The Sheet
+> *ideas* below (the ribbon, the fx bar, the Format-cells dialog, the
+> transpiler) all live on inside that surface.
+>
+> *(Refreshed 2026-07-24, #87 WA: "always shows everything" no longer
+> describes the shipped default. The landing is one unified shell where
+> the Left Edit Pane — or its 28px bar — is always visible, the grid
+> lands with the mock rows showing (the Data dock opens by default since
+> the same date, `dataMode: 'normal'`), and the validated-JSON pane is
+> the one Advanced escape hatch (`jsonOpen` defaults false). The old
+> studio/maker toggle is gone from the shell — only vestigial `wb-maker`
+> CSS remains. Everything still exists on the one surface; the JSON pane
+> just isn't on screen until asked for.)*
+> Read the rest of this file as history of how those pieces were designed.
 
 > Owner decisions from the 2026-06-12 voice brief. This is the destination
 > for the mode currently labeled "Basic". The goal: a formatting experience

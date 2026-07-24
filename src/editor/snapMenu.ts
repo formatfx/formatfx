@@ -53,8 +53,21 @@ const MENU_ICONS = {
   more: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="currentColor" d="M4 7h2v2H4zm3.5 0h2v2h-2zM11 7h2v2h-2z"/></svg>',
   undo: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M6 5H10a3 3 0 0 1 0 6H6m0-6L3.5 5 6 7"/></svg>',
   redo: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M10 5H6a3 3 0 0 0 0 6h4m0-6l2.5 0L10 7"/></svg>',
-  back: '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" style="color: currentColor;"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M13 8H3.5m0 0L7 4.5M3.5 8L7 11.5"/></svg>',
 };
+
+/** One-click whole-workspace snapshot — the TAKE action. Shared by the
+ *  nav-row 📷 button (#145: the control moved up beside the lens tabs) and
+ *  the ⋮ menu's own take button (kept there beside the restore list). */
+export function takeWorkspaceSnapshot(onToast: (m: string) => void): boolean {
+  const snap = state.captureSnapshot({ kind: 'all' });
+  if (!snap) { onToast('Nothing to snapshot yet'); return false; }
+  if (!writeStore(addSnapshot(readStore(), snap))) {
+    onToast('Could not save the snapshot — browser storage is full or blocked');
+    return false;
+  }
+  onToast('Snapshot taken of the whole workspace');
+  return true;
+}
 
 let openPanel: { panel: HTMLElement; cleanup: () => void } | null = null;
 let openPaletteEl: { el: HTMLElement; cleanup: () => void } | null = null;
@@ -126,27 +139,8 @@ export function openKebabMenu(anchor: HTMLElement, onToast: (m: string) => void)
     panel.replaceChildren();
     const store = readStore();
 
-    // ── Back (retrace the last surface switch — navigation, not undo; the
-    //    nav-row button moved under this ⋮, 2026-07-10) ───────────────────
-    const backBtn = document.createElement('button');
-    backBtn.type = 'button';
-    backBtn.className = 'wb-kebab-item wb-tool-back';
-    backBtn.disabled = state.backTarget === null;
-    backBtn.title = state.backTarget === null
-      ? 'Back — retrace where you were (nothing to go back to yet)'
-      : 'Back — retrace your last surface switch';
-    backBtn.innerHTML = `${MENU_ICONS.back}<span>Back — previous surface</span>`;
-    backBtn.addEventListener('click', () => {
-      closeSnapMenu();
-      if (state.goBack() !== null) {
-        onToast(`Back to ${state.onFloor ? 'the grid' : `the ${state.activeViewName} view`}`);
-      }
-    });
-    panel.appendChild(backBtn);
-
-    const sep0 = document.createElement('div');
-    sep0.className = 'wb-kebab-sep';
-    panel.appendChild(sep0);
+    // (← Back moved back OUT to the nav row beside the lens tabs — issue
+    //  #145/#152, 2026-07-24. It sat here 2026-07-10→2026-07-24.)
 
     // ── Undo ───────────────────────────────────────────────────────────
     const undoBtn = document.createElement('button');
@@ -264,14 +258,7 @@ export function openKebabMenu(anchor: HTMLElement, onToast: (m: string) => void)
     take.textContent = 'Take a snapshot';
     take.title = 'Capture the whole workspace — the grid, every named view, and every column formatter — and restore it from this menu any time';
     take.addEventListener('click', () => {
-      const snap = state.captureSnapshot({ kind: 'all' });
-      if (!snap) { onToast('Nothing to snapshot yet'); return; }
-      if (!writeStore(addSnapshot(readStore(), snap))) {
-        onToast('Could not save the snapshot — browser storage is full or blocked');
-        return;
-      }
-      onToast('Snapshot taken of the whole workspace');
-      render();
+      if (takeWorkspaceSnapshot(onToast)) render();
     });
     panel.appendChild(take);
 

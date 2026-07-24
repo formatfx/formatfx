@@ -134,6 +134,9 @@ test('one unified surface — left pane, canvas tab strip and fx bar all present
   // (tools + snapshots) are all visible
   await expect(page.locator('.wb-leftpane')).toBeVisible();
   await expect(page.locator('.wb-lens-tab')).toHaveCount(2);
+  // the nav row's actions cluster: ← Back + 📷 snapshot (#145) beside the ⋮
+  await expect(page.locator('.wb-lp-nav-actions #wb-nav-back')).toBeVisible();
+  await expect(page.locator('.wb-lp-nav-actions #wb-nav-snap')).toBeVisible();
   await expect(page.locator('#wb-tree-body')).toBeVisible();
   await expect(page.locator('.wb-colshelf-rack')).toBeVisible();
   await expect(page.locator('#wb-lp-library')).toBeVisible();
@@ -187,4 +190,43 @@ test('drag from palette to canvas highlights the target and drops there', async 
   const target = page.locator('.wb-grid-cell[data-col="0"] [data-sp-path]').first();
   await (await source()).dragTo(target);
   await expect(page.locator('#wb-toast')).toContainText('Inserted "Icon"');
+});
+
+test('narrow shell (#127): the edit pane is a drawer — handle opens, scrim closes', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  const pane = page.locator('.wb-leftpane');
+  const handle = page.locator('#wb-lp-drawerbtn');
+  // closed by default: the pane sits off-canvas, the floating ✎ handle shows
+  await expect(handle).toBeVisible();
+  await expect(pane).not.toBeInViewport();
+  // …and while closed the pane is inert: off-screen controls leave the tab
+  // order and the accessibility tree (Copilot review, PR #304)
+  await expect(pane).toHaveAttribute('inert', '');
+  // the data dock also lands OPEN by default now (#87 WA — data on land)
+  await expect(page.locator('#wb-data-dock')).not.toHaveClass(/wb-min/);
+  await handle.click();
+  await expect(pane).toBeInViewport();
+  await expect(handle).toHaveAttribute('aria-expanded', 'true');
+  await expect(pane).not.toHaveAttribute('inert', '');
+  // opening moved focus into the pane; Escape closes and hands it back
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelector('.wb-leftpane')!.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(pane).not.toBeInViewport();
+  await expect(handle).toBeFocused();
+  await handle.click();
+  await expect(pane).toBeInViewport();
+  // the pane is fully usable as a drawer — fold a section through its rail
+  await page.locator('.wb-lp-collapsebar[data-sec-bar="views"]').click();
+  await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
+  await page.locator('.wb-lp-collapsebar[data-sec-bar="views"]').click();
+  // tapping the scrim dismisses the drawer
+  await page.locator('#wb-lp-scrim').click({ position: { x: 650, y: 450 } });
+  await expect(pane).not.toBeInViewport();
+  // back at desktop width the drawer chrome vanishes, the pane is inline —
+  // and never inert
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(handle).toBeHidden();
+  await expect(pane).toBeInViewport();
+  await expect(pane).not.toHaveAttribute('inert', '');
 });
