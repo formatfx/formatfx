@@ -509,7 +509,10 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   await page.mouse.move(box2.x + box2.width / 2, 40, { steps: 8 });
   await page.mouse.up();
   expect((await tree.boundingBox())!.height).toBeLessThan(treeBefore - 40);
+  // double-click resets BOTH coupled sizes — the tree comes back to where it
+  // was before the displacing drag, not stranded at its floor
   await splitter2.dblclick();
+  expect(Math.abs((await tree.boundingBox())!.height - treeBefore)).toBeLessThan(12);
 
   // the collapse bar above a section folds it like its header (2026-07-24):
   // splitter-bar look, header-click behavior

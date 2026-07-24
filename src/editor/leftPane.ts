@@ -155,6 +155,19 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   mountInspector(host.querySelector<HTMLElement>('#wb-lp-inspector')!, { toast });
   mountCodeEditor(host.querySelector<HTMLElement>('#wb-lp-code')!);
 
+  // ── the structure-tree region + the splitter-2 displacement baseline: when
+  //    the props drag squeezes the tree (#292), treePreDisplace remembers the
+  //    tree's OWN inline height from before the squeeze, so the reset paths
+  //    (splitter-2 double-click, folding the inspector) can hand it back —
+  //    the two pinned sizes are coupled, never reset one-sidedly ─────────────
+  const treeRegion = host.querySelector<HTMLElement>('#wb-lp-tree')!;
+  let treePreDisplace: string | null = null;
+  const restoreDisplacedTree = (): void => {
+    if (treePreDisplace === null) return;
+    treeRegion.style.height = treePreDisplace;
+    treePreDisplace = null;
+  };
+
   // ── collapsible sections (issue #236 + the 2026-07-09 additions): the tree,
   //    Columns, Components, Views and the Inspector all fold from their header.
   //    Folding a REGION with a dragged inline size also clears that size, so a
@@ -169,10 +182,15 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       head.setAttribute('aria-expanded', String(!collapsed));
       head.title = collapsed ? `Show ${label}` : `Hide ${label}`;
       if (bar) bar.title = head.title;
-      if (collapsed && id === 'tree') sec.style.height = '';
+      // folding the tree clears its inline size AND forgets the displacement
+      // baseline — the fold owns the height now, nothing left to hand back
+      if (collapsed && id === 'tree') { sec.style.height = ''; treePreDisplace = null; }
       if (collapsed && id === 'inspector') {
         const props = host.querySelector<HTMLElement>('#wb-lp-props');
         if (props) { props.style.height = ''; props.style.flex = ''; }
+        // the props pin and the tree squeeze travel together (#292): letting
+        // the fold clear one but not the other would strand a shrunken tree
+        restoreDisplacedTree();
       }
     };
     apply(isSectionCollapsed(id));
@@ -228,11 +246,13 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   };
 
   // ── splitter: resize the tree region height ────────────────────────────────
-  const treeRegion = host.querySelector<HTMLElement>('#wb-lp-tree')!;
   const splitter = host.querySelector<HTMLElement>('#wb-lp-splitter')!;
   splitter.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     splitter.setPointerCapture(e.pointerId);
+    // an intentional tree resize sets a NEW baseline — a later splitter-2
+    // reset must not roll the tree back behind this gesture
+    treePreDisplace = null;
     const startY = e.clientY;
     const startH = treeRegion.getBoundingClientRect().height;
     const move = (ev: PointerEvent) => {
@@ -267,6 +287,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     const startTreeH = treeRegion.getBoundingClientRect().height;
     // a folded tree is just its bar + header — never resize it from here
     const treeOpen = !treeRegion.classList.contains('wb-collapsed');
+    // remember the tree's pre-squeeze inline height ONCE per displacement
+    // sequence ('' = the CSS default) — the reset paths restore it
+    if (treeOpen && treePreDisplace === null) treePreDisplace = treeRegion.style.height;
     // the fixed rows (nav, view card, splitters, collapse bars): whatever the
     // three resizable regions don't account for right now
     const chrome = host.clientHeight - startTreeH
@@ -299,6 +322,9 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   splitter2.addEventListener('dblclick', () => {
     propsRegion.style.height = '';
     propsRegion.style.flex = '';
+    // reset means BOTH coupled sizes: the props pin and the tree squeeze the
+    // same drags caused — otherwise "reset" strands Structure at its floor
+    restoreDisplacedTree();
   });
 
   // ── subscriptions ──────────────────────────────────────────────────────────
