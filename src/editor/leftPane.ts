@@ -87,7 +87,8 @@ function sectionHead(id: PaneSectionId, title: string, controls: string): string
  *  (vertical), header-click behavior. aria-hidden — the header button IS the
  *  accessible control; this is a redundant pointer affordance. Only the tree
  *  and the inspector carry one of their own — the three shelves share the
- *  region-level rail written inline below (data-sec-bar="shelves"). */
+ *  region-level rail written inline below (data-sec-bar="shelves"), which is
+ *  a REAL button: its fold-the-trio action has no other single control. */
 function collapseBar(id: PaneSectionId): string {
   return `<div class="wb-lp-collapsebar" data-sec-bar="${id}" aria-hidden="true"></div>`;
 }
@@ -134,7 +135,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     </div>
     <div class="wb-lp-splitter" id="wb-lp-splitter" title="Drag to resize the structure tree"></div>
     <div class="wb-lp-shelves" id="wb-lp-shelves">
-      <div class="wb-lp-collapsebar" data-sec-bar="shelves" aria-hidden="true"></div>
+      <button type="button" class="wb-lp-collapsebar" data-sec-bar="shelves"
+        aria-controls="wb-lp-shelf wb-lp-library wb-lp-views" aria-expanded="true"></button>
       <div class="wb-lp-shelves-scroll" id="wb-lp-shelves-scroll">
         <section class="wb-lp-sec" data-sec="columns">
           ${sectionHead('columns', 'Columns', 'wb-lp-shelf')}
@@ -200,9 +202,24 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const anyShelfOpen = (): boolean => SHELF_SECTIONS.some((sid) =>
     !host.querySelector(`.wb-lp-sec[data-sec="${sid}"]`)?.classList.contains('wb-collapsed'));
   const refreshShelvesBar = (): void => {
-    shelvesBar.title = anyShelfOpen()
+    const open = anyShelfOpen();
+    shelvesBar.title = open
       ? 'Hide Columns, Components & Views'
       : 'Show Columns, Components & Views';
+    // the group action has no other single control, so the rail is a REAL
+    // button (Copilot a11y catch on #306): keep its name and state honest
+    shelvesBar.setAttribute('aria-label', shelvesBar.title);
+    shelvesBar.setAttribute('aria-expanded', String(open));
+  };
+  // when the trio folds away entirely, the shelves region shrinks to its
+  // three header bars (style.css :has rule) — hand the freed height to
+  // Properties: clear the splitter-2 pin so the props region flex-fills up
+  // to the shrunken shelves (owner follow-up on #305), and — as with the
+  // inspector fold — give a #292-squeezed tree its pre-drag height back
+  const reclaimShelvesSpace = (): void => {
+    const props = host.querySelector<HTMLElement>('#wb-lp-props');
+    if (props) { props.style.height = ''; props.style.flex = ''; }
+    restoreDisplacedTree();
   };
   const applySection = new Map<PaneSectionId, (collapsed: boolean) => void>();
   for (const { id, label } of COLLAPSIBLE_SECTIONS) {
@@ -233,8 +250,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       apply(next);
       setSectionCollapsed(id, next);
       // a per-header fold changes what the SHARED rail would do next —
-      // keep its tooltip in step
-      if (SHELF_SECTIONS.includes(id)) refreshShelvesBar();
+      // keep its tooltip in step; and folding the LAST open shelf by header
+      // reaches the same all-folded state as the rail, so it reclaims too
+      if (SHELF_SECTIONS.includes(id)) {
+        refreshShelvesBar();
+        if (next && !anyShelfOpen()) reclaimShelvesSpace();
+      }
     };
     head.addEventListener('click', toggle);
     // a section's own collapse rail folds it the same way (tree, inspector)
@@ -252,6 +273,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       applySection.get(sid)?.(collapse);
       setSectionCollapsed(sid, collapse);
     }
+    if (collapse) reclaimShelvesSpace();
     refreshShelvesBar();
   });
   refreshShelvesBar();
@@ -357,6 +379,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     const startY = e.clientY;
     const startH = propsRegion.getBoundingClientRect().height;
     const startTreeH = treeRegion.getBoundingClientRect().height;
+    const startShelvesH = shelvesRegion.getBoundingClientRect().height;
+    // with the trio folded the shelves sit at their header-bars height
+    // (flex 0 0 auto — the :has shrink rule) and can't give anything more:
+    // their floor for THIS drag is whatever they measure right now
+    const shelvesFloor = anyShelfOpen() ? SHELVES_MIN : startShelvesH;
     // a folded tree is just its bar + header — never resize it from here
     const treeOpen = !treeRegion.classList.contains('wb-collapsed');
     // remember the tree's pre-squeeze inline height ONCE per displacement
@@ -364,15 +391,14 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     if (treeOpen && treePreDisplace === null) treePreDisplace = treeRegion.style.height;
     // the fixed rows (nav, view card, splitters, collapse bars): whatever the
     // three resizable regions don't account for right now
-    const chrome = host.clientHeight - startTreeH
-      - shelvesRegion.getBoundingClientRect().height - startH;
+    const chrome = host.clientHeight - startTreeH - startShelvesH - startH;
     const move = (ev: PointerEvent) => {
       // dragging UP grows the props region; on a squeezed pane the ceiling
       // can dip below the 110px floor — the ceiling wins so the region never
       // overflows the space that actually exists (PR #267). The ceiling now
       // assumes the tree can be squeezed to its floor (#292).
       const treeFloor = treeOpen ? Math.min(TREE_MIN, startTreeH) : startTreeH;
-      const ceiling = Math.max(56, host.clientHeight - chrome - SHELVES_MIN - treeFloor);
+      const ceiling = Math.max(56, host.clientHeight - chrome - shelvesFloor - treeFloor);
       const next = Math.min(ceiling, Math.max(Math.min(110, ceiling), startH + (startY - ev.clientY)));
       propsRegion.style.height = `${next}px`;
       propsRegion.style.flex = '0 0 auto';
@@ -380,7 +406,7 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
         // room left for the tree once the shelves are pinned at their floor:
         // shrink it when the drag needs the space, restore it (up to its
         // starting height) when the drag gives the space back
-        const room = host.clientHeight - chrome - SHELVES_MIN - next;
+        const room = host.clientHeight - chrome - shelvesFloor - next;
         treeRegion.style.height = `${Math.max(treeFloor, Math.min(startTreeH, room))}px`;
       }
     };

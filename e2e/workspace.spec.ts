@@ -524,12 +524,21 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   const shelvesBox = (await page.locator('#wb-lp-shelves').boundingBox())!;
   const railBox = (await shelvesBar.boundingBox())!;
   expect(Math.abs(railBox.height - shelvesBox.height)).toBeLessThan(2);
+  const propsBefore = (await page.locator('#wb-lp-props').boundingBox())!.height;
   await shelvesBar.click();
   await expect(page.locator('.wb-lp-sec[data-sec="columns"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('.wb-lp-sec[data-sec="components"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('.wb-lp-sec[data-sec="views"]')).toHaveClass(/wb-collapsed/);
   await expect(page.locator('#wb-lp-library')).toBeHidden();
-  await shelvesBar.click();
+  // folding the trio SHRINKS the region to its three header bars, and
+  // Properties auto-fills the freed height (owner follow-up on #305)
+  const shelvesFolded = (await page.locator('#wb-lp-shelves').boundingBox())!;
+  expect(shelvesFolded.height).toBeLessThan(shelvesBox.height - 40);
+  expect((await page.locator('#wb-lp-props').boundingBox())!.height)
+    .toBeGreaterThan(propsBefore + 40);
+  // the rail is a real button — reopen it from the keyboard
+  await shelvesBar.focus();
+  await page.keyboard.press('Enter');
   await expect(page.locator('#wb-lp-library')).toBeVisible();
   await expect(page.locator('#wb-lp-views')).toBeVisible();
   // the tree keeps its own per-section rail

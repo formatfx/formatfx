@@ -193,17 +193,54 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
     // one section — so it also spans the slack space below the Views list
     expect(bar.parentElement).toBe(host.querySelector('#wb-lp-shelves'));
     expect(bar.closest('.wb-lp-sec')).toBeNull();
-    expect(bar.getAttribute('aria-hidden')).toBe('true');
+    // unlike the solo rails (redundant with their headers, aria-hidden), the
+    // group action has no other single control — so the shared rail is a REAL
+    // button with a name and state (Copilot a11y catch on #306)
+    expect(bar.tagName).toBe('BUTTON');
+    expect(bar.getAttribute('aria-hidden')).toBeNull();
+    expect(bar.getAttribute('aria-label')).toContain('Columns, Components & Views');
+    expect(bar.getAttribute('aria-expanded')).toBe('true');
     bar.click();
     for (const id of ['columns', 'components', 'views']) {
       expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(true);
       expect(head(host, id).getAttribute('aria-expanded'), id).toBe('false');
     }
+    expect(bar.getAttribute('aria-expanded')).toBe('false');
+    expect(bar.getAttribute('aria-label')).toContain('Show');
     bar.click();
     for (const id of ['columns', 'components', 'views']) {
       expect(sec(host, id).classList.contains('wb-collapsed'), id).toBe(false);
       expect(head(host, id).getAttribute('aria-expanded'), id).toBe('true');
     }
+    expect(bar.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('folding the trio hands the freed height to Properties: the splitter-2 pin clears (owner follow-up on #305)', () => {
+    const host = mount();
+    const props = host.querySelector<HTMLElement>('#wb-lp-props')!;
+    // as if splitter 2 had pinned the props region to a dragged height
+    props.style.height = '200px';
+    props.style.flex = '0 0 auto';
+    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.click();
+    // pin gone → props flex-fills up to the shrunken shelves (the CSS :has
+    // rule drops the region to its three folded header bars)
+    expect(props.style.height).toBe('');
+    expect(props.style.flex).toBe('');
+    // reopening the trio does NOT re-pin anything — the default split returns
+    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.click();
+    expect(props.style.height).toBe('');
+  });
+
+  it('folding the LAST open shelf by its header reclaims too — same all-folded state as the rail', () => {
+    const host = mount();
+    const props = host.querySelector<HTMLElement>('#wb-lp-props')!;
+    head(host, 'columns').click();
+    head(host, 'components').click();
+    props.style.height = '200px';
+    props.style.flex = '0 0 auto';
+    head(host, 'views').click(); // the trio is now all folded
+    expect(props.style.height).toBe('');
+    expect(props.style.flex).toBe('');
   });
 
   it('a mixed trio still means "hide": the shared rail folds ALL while any section is open', () => {
