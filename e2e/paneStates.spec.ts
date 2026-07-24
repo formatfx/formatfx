@@ -48,6 +48,16 @@ test('stacked (<900px): ⛶ gives the JSON pane everything under the top bar', a
   await page.click('#wb-side-max');
   await expect(canvas).toBeVisible();
   await expect(drawerBtn).toBeVisible();
+
+  // an OPEN drawer must not survive maximize: the scrim blocks mouse clicks
+  // on ⛶, but keyboard activation gets through — the drawer (and its scrim)
+  // would otherwise keep covering the maximized pane (Copilot review)
+  await drawerBtn.click();
+  await expect(page.locator('#wb-layout')).toHaveClass(/wb-lp-drawer-open/);
+  await page.locator('#wb-side-max').press('Enter'); // focus bypasses the scrim, like Tab would
+  await expect(canvas).toBeHidden();
+  await expect(page.locator('#wb-layout')).not.toHaveClass(/wb-lp-drawer-open/);
+  await expect(page.locator('#wb-leftpane')).not.toBeInViewport();
 });
 
 test('the edit pane minimizes to the bar; clicking the bar restores it', async ({ page }) => {

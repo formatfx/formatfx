@@ -378,8 +378,12 @@ pane now GROWS to fill the viewport leftover (flex 1 1 auto — no dead band
 below Problems), and the ⛶ JSON maximize is no longer neutralized when
 stacked: it hides the whole center section plus the drawer's floating ✎
 handle and pins the pane to everything under the top bar (min-height:0 —
-the pane's tabs scroll internally). Contracts: the stacked-⛶ spec in
-paneStates.spec.ts and the narrow-topbar spec in sandbox.spec.ts.
+the pane's tabs scroll internally). Maximizing also CLOSES an open drawer
+through `setDrawer(false)` (the `closeLeftDrawer` hook in main.ts): the
+scrim blocks mouse clicks on ⛶, but keyboard activation gets through and
+the drawer would otherwise keep covering the maximized pane (Copilot
+review, #307). Contracts: the stacked-⛶ spec in paneStates.spec.ts and
+the narrow-topbar spec in sandbox.spec.ts.
 
 The workshop seam (2026-07-09 owner brief, same spec §C — supersedes the v1
 "a workshop tab never re-targets the tree" constraint): `state.workshopCtx`

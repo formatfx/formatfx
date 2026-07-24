@@ -315,8 +315,14 @@ leftBarEl.addEventListener('click', () => {
   applyLayout();
   saveUiPrefs();
 });
+// Stacked (<900px) ⛶: an OPEN drawer would keep covering the maximized pane
+// (the scrim blocks mouse clicks on ⛶, but keyboard activation gets through —
+// Copilot review, PR #307). The narrow drawer block below fills this hook in
+// so maximizing closes the drawer through its own inert/focus handling.
+let closeLeftDrawer: () => void = () => {};
 sideMaxBtn.addEventListener('click', () => {
   uiPrefs.sideMode = uiPrefs.sideMode === 'max' ? 'normal' : 'max';
+  if (uiPrefs.sideMode === 'max') closeLeftDrawer();
   applyLayout();
   saveUiPrefs();
 });
@@ -663,6 +669,8 @@ mountLeftPane(document.getElementById('wb-leftpane')!, {
   // crossing the breakpoint recomputes inert-ness: the desktop pane is never
   // inert; a re-narrowed shell starts from the closed state it shows
   narrow.addEventListener('change', () => setDrawer(narrow.matches && drawerOpen(), false));
+  // ⛶ maximize closes an open drawer (see the hook's comment above)
+  closeLeftDrawer = () => { if (narrow.matches && drawerOpen()) setDrawer(false); };
   layout.append(drawerBtn, drawerScrim);
   setDrawer(false, false);
 }
