@@ -215,7 +215,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   // three header bars (style.css :has rule) — hand the freed height to
   // Properties: clear the splitter-2 pin so the props region flex-fills up
   // to the shrunken shelves (owner follow-up on #305), and — as with the
-  // inspector fold — give a #292-squeezed tree its pre-drag height back
+  // inspector fold — give a #292-squeezed tree its pre-drag height back.
+  // Runs on BOTH crossings of the all-folded boundary (review catch): a
+  // splitter-2 drag made WHILE folded pins props to the folded geometry, so
+  // reopening (rail or a single header) must also reset the coupled sizes
+  // or the reopened shelves come back squeezed instead of the default split.
   const reclaimShelvesSpace = (): void => {
     const props = host.querySelector<HTMLElement>('#wb-lp-props');
     if (props) { props.style.height = ''; props.style.flex = ''; }
@@ -246,15 +250,19 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     applySection.set(id, apply);
     apply(isSectionCollapsed(id));
     const toggle = (): void => {
+      // whether this toggle CROSSES the all-folded boundary is only knowable
+      // by comparing before and after — capture the before side here
+      const wasAllFolded = SHELF_SECTIONS.includes(id) && !anyShelfOpen();
       const next = !sec.classList.contains('wb-collapsed');
       apply(next);
       setSectionCollapsed(id, next);
       // a per-header fold changes what the SHARED rail would do next —
-      // keep its tooltip in step; and folding the LAST open shelf by header
-      // reaches the same all-folded state as the rail, so it reclaims too
+      // keep its tooltip in step; and a header crossing the all-folded
+      // boundary (folding the last open shelf, or reopening the first)
+      // reaches the same states as the rail, so it reclaims too
       if (SHELF_SECTIONS.includes(id)) {
         refreshShelvesBar();
-        if (next && !anyShelfOpen()) reclaimShelvesSpace();
+        if ((next && !anyShelfOpen()) || (!next && wasAllFolded)) reclaimShelvesSpace();
       }
     };
     head.addEventListener('click', toggle);
@@ -273,7 +281,10 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       applySection.get(sid)?.(collapse);
       setSectionCollapsed(sid, collapse);
     }
-    if (collapse) reclaimShelvesSpace();
+    // both directions cross the all-folded boundary: collapsing hands the
+    // freed height to Properties; reopening discards any folded-era pin so
+    // the default flex split returns rather than squeezed shelves
+    reclaimShelvesSpace();
     refreshShelvesBar();
   });
   refreshShelvesBar();

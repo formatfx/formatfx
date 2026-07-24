@@ -551,6 +551,10 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   await page.keyboard.press('Enter');
   await expect(page.locator('#wb-lp-library')).toBeVisible();
   await expect(page.locator('#wb-lp-views')).toBeVisible();
+  // …and reopening discards the folded-era splitter pin (the clamped drag
+  // above wrote one), so the DEFAULT split returns — not squeezed shelves
+  expect(Math.abs((await page.locator('#wb-lp-props').boundingBox())!.height - propsBefore))
+    .toBeLessThan(12);
   // the tree keeps its own per-section rail
   await expect(page.locator('.wb-lp-collapsebar[data-sec-bar="tree"]')).toBeVisible();
 });

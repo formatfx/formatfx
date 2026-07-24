@@ -226,9 +226,31 @@ describe('collapsible sections (issue #236 + 2026-07-09: Columns · Components �
     // rule drops the region to its three folded header bars)
     expect(props.style.height).toBe('');
     expect(props.style.flex).toBe('');
-    // reopening the trio does NOT re-pin anything — the default split returns
+    // a splitter-2 drag made WHILE folded pins props to the folded geometry;
+    // reopening must discard it too (review catch) or the reopened shelves
+    // come back squeezed instead of the default split
+    props.style.height = '600px';
+    props.style.flex = '0 0 auto';
     host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.click();
     expect(props.style.height).toBe('');
+    expect(props.style.flex).toBe('');
+  });
+
+  it('reopening the FIRST shelf by its header after a folded-era pin reclaims too', () => {
+    const host = mount();
+    const props = host.querySelector<HTMLElement>('#wb-lp-props')!;
+    host.querySelector<HTMLElement>('.wb-lp-collapsebar[data-sec-bar="shelves"]')!.click();
+    props.style.height = '600px'; // as if splitter 2 was dragged while folded
+    props.style.flex = '0 0 auto';
+    head(host, 'components').click(); // leaves the all-folded state by header
+    expect(props.style.height).toBe('');
+    expect(props.style.flex).toBe('');
+    // …but a header toggle that does NOT cross the boundary leaves an
+    // open-state pin alone (Columns still open ⇒ no reclaim)
+    props.style.height = '300px';
+    props.style.flex = '0 0 auto';
+    head(host, 'views').click();
+    expect(props.style.height).toBe('300px');
   });
 
   it('folding the LAST open shelf by its header reclaims too — same all-folded state as the rail', () => {
