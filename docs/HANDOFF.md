@@ -341,11 +341,18 @@ the **Simple lens is GONE** — the pane has TWO lenses now, **Properties**
 tab swap reads as "Code replaces Properties and vice versa". The Properties
 inspector is the UNION: the old Pro sections plus the Simple-only
 conveniences (Arrange children, Box model, Typography) in one sectioned
-flow. Every collapsible section also carries a `.wb-lp-collapsebar` — a
-VERTICAL 7px rail down its left edge (corrected 2026-07-24 from a
-horizontal first cut; it subsumes the #280 shelves border-rail) wearing the
-splitter look but acting as a CLICK target that folds the section like its
-header (aria-hidden; the header button stays the accessible control). And **splitter 2 displaces the tree** (issue #292
+flow. The `.wb-lp-collapsebar` rails — VERTICAL 7px rails wearing the
+splitter look but acting as CLICK targets (aria-hidden; the header buttons
+stay the accessible controls; the shape was corrected twice on 2026-07-24,
+from a horizontal first cut, then from per-section rails): the tree and the
+inspector each carry their own down their section's left edge, and the
+Columns/Components/Views trio SHARES ONE (`data-sec-bar="shelves"`) riding
+the `.wb-lp-shelves` region outside the new `.wb-lp-shelves-scroll` column
+— so it spans the sections plus the slack space down to the props splitter,
+mirroring the one resize handle the trio already shares. Clicking it folds
+the group (any open → fold all; all folded → open all — the same persisted
+per-section flags the headers write; it subsumes the #280 shelves
+border-rail). And **splitter 2 displaces the tree** (issue #292
 round 2): dragging the shelves/props boundary up shrinks the flex shelves
 to their 72px floor first, then the Structure tree down to its 80px floor,
 regrowing the tree (up to where it started) while the same drag returns.
