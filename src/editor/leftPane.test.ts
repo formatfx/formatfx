@@ -33,11 +33,12 @@ afterEach(() => {
 });
 
 describe('structure (§3, top to bottom)', () => {
-  it('keeps the nav row (kebab menu; back moved INSIDE it 2026-07-10) and buries the old chrome', () => {
+  it('keeps the nav row (kebab, ← Back and 📷 in the actions cluster — #145) and buries the old chrome', () => {
     const host = mount();
     expect(host.querySelector('#wb-kebab-btn')).not.toBeNull();
-    // the standalone back button is gone — Back is a ⋮ menu item now
-    expect(host.querySelector('#wb-nav-back')).toBeNull();
+    // ← Back and 📷 snapshot moved OUT of the ⋮ menu into the nav row (#145)
+    expect(host.querySelector('.wb-lp-nav-actions #wb-nav-back')).not.toBeNull();
+    expect(host.querySelector('.wb-lp-nav-actions #wb-nav-snap')).not.toBeNull();
     // the dead chrome: no formatter tablist, no document pill, no view strip
     expect(host.querySelector('.wb-fmt-tablist')).toBeNull();
     expect(host.querySelector('.wb-fmt-tab')).toBeNull();
@@ -236,20 +237,37 @@ describe('the kept workspace (lens tabs · kebab menu · back)', () => {
     expect(undoBtn2.disabled).toBe(false);
   });
 
-  it('back retraces surface switches from inside the ⋮ menu (navigation, not undo)', () => {
+  it('← Back rides the nav row (#145): disabled when empty, retraces surfaces AND lens switches', () => {
     const host = mount();
-    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
-    let back = document.body.querySelector<HTMLButtonElement>('.wb-snapmenu .wb-tool-back')!;
+    const back = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
     expect(back.disabled).toBe(true);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     state.createView({ kind: 'row', root: { elmType: 'div', children: [] } });
-    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
-    back = document.body.querySelector<HTMLButtonElement>('.wb-snapmenu .wb-tool-back')!;
     expect(back.disabled).toBe(false);
+    expect(back.title).toBe('Back to the grid'); // the tooltip names the destination
     back.click();
     expect(state.onFloor).toBe(true);
-    // the menu closed itself (an action, like insert)
-    expect(document.body.querySelector('.wb-snapmenu')).toBeNull();
+    // a lens switch is a nav event too (#145) — Back retraces it without
+    // touching the surface or the undo stack
+    state.setLens('code');
+    expect(back.disabled).toBe(false);
+    expect(back.title).toBe('Back to the Properties lens');
+    back.click();
+    expect(state.activeLens).toBe('pro');
+    expect(state.onFloor).toBe(true);
+    expect(back.disabled).toBe(true); // trail fully consumed — no ping-pong
+  });
+
+  it('the ⋮ menu no longer carries Back (it moved to the nav row) and 📷 takes a whole-workspace snapshot', () => {
+    const toasts: string[] = [];
+    const host = mount(toasts);
+    host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!.click();
+    expect(document.body.querySelector('.wb-snapmenu .wb-tool-back')).toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    host.querySelector<HTMLButtonElement>('#wb-nav-snap')!.click();
+    expect(toasts.some((t) => t.includes('Snapshot taken'))).toBe(true);
+    const store = JSON.parse(localStorage.getItem('wb-snapshots.v1') ?? '{}');
+    expect(store.snapshots).toHaveLength(1);
+    expect(store.snapshots[0].scope.kind).toBe('all');
   });
 
   it('the structure-header kebab hides on the grid, shows on a view, and opens the settings panel', () => {

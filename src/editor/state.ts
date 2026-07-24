@@ -220,8 +220,15 @@ function isoDaysFromNow(days: number): string {
 
 function clone<T>(v: T): T { return JSON.parse(JSON.stringify(v)) as T; }
 
-/** One navigation-trail entry: which doc was up, over which surface. */
-interface NavEntry { key: string; view: string | null }
+/** One navigation-trail entry (#145). 'surface' = doc/sheet switches (the v1
+ *  trail); 'lens' = Properties↔Code switches (cheap, pure view state). Kind
+ *  changes (grid↔row/tile on a sheet) are deliberately NOT recorded: they are
+ *  document mutations owned by the undo stack, and Back must never mutate a
+ *  formatter. Overlays (playground, guide, …) keep their own close
+ *  affordances — stacking them into Back would make it unpredictable. */
+type NavEntry =
+  | { kind: 'surface'; key: string; view: string | null }
+  | { kind: 'lens'; lens: EditorLens };
 
 export class EditorState {
   /** The FLOOR — the columns-only grid document. Its kind is always 'grid'. */
@@ -365,9 +372,12 @@ export class EditorState {
 
   // ─── Left Edit Pane: lens + Save checkpoint ────────────────────────────────
 
-  /** Switch the Properties/Code lens. UI-only: off the undo stack, no autosave. */
+  /** Switch the Properties/Code lens. UI-only: off the undo stack, no
+   *  autosave — but it IS a navigation event (#145): the trail records where
+   *  you were so ← Back can retrace it. */
   setLens(lens: EditorLens): void {
     if (this.activeLens === lens) return;
+    if (!this.inGoBack) this.pushNavEntry({ kind: 'lens', lens: this.activeLens });
     this.activeLens = lens;
     this.emit('lens');
   }
@@ -480,29 +490,59 @@ export class EditorState {
   private navStack: NavEntry[] = [];
 
   private pushNav(): void {
+    this.pushNavEntry({ kind: 'surface', key: this.activeDocKey, view: this.activeViewId });
+  }
+
+  private pushNavEntry(e: NavEntry): void {
     const top = this.navStack[this.navStack.length - 1];
-    if (top && top.key === this.activeDocKey && top.view === this.activeViewId) return;
-    this.navStack.push({ key: this.activeDocKey, view: this.activeViewId });
+    if (top && this.navSame(top, e)) return; // dedupe a no-move
+    this.navStack.push(e);
     if (this.navStack.length > 50) this.navStack.shift();
   }
 
+  private navSame(a: NavEntry, b: NavEntry): boolean {
+    if (a.kind === 'surface' && b.kind === 'surface') return a.key === b.key && a.view === b.view;
+    if (a.kind === 'lens' && b.kind === 'lens') return a.lens === b.lens;
+    return false;
+  }
+
   private navEntryValid(e: NavEntry): boolean {
+    if (e.kind === 'lens') return e.lens !== this.activeLens; // dead if already there
     if (e.key === this.activeDocKey && e.view === this.activeViewId) return false;
     if (e.key !== 'main') return false; // no drilled/column surfaces exist this phase
     if (e.view !== null && !this.viewById(e.view)) return false;
     return true;
   }
 
-  /** Where goBack() would land ('main' — the only doc key this phase), or
-   *  null if nowhere. Skips entries whose sheet has since been removed. */
-  get backTarget(): string | null {
+  /** The next live trail entry (dead targets — removed sheets, the lens you
+   *  are already on — are skipped, not consumed). */
+  private nextNavEntry(): NavEntry | null {
     for (let i = this.navStack.length - 1; i >= 0; i--) {
-      if (this.navEntryValid(this.navStack[i])) return this.navStack[i].key;
+      if (this.navEntryValid(this.navStack[i])) return this.navStack[i];
     }
     return null;
   }
 
-  /** Retrace the last doc/surface switch. Returns where it landed, or null. */
+  /** Where goBack() would land — 'main' for a surface entry (the only doc key
+   *  this phase), the lens id for a lens entry — or null if nowhere. */
+  get backTarget(): string | null {
+    const e = this.nextNavEntry();
+    return e === null ? null : e.kind === 'lens' ? e.lens : e.key;
+  }
+
+  /** Plain-language name of where Back would land — feeds the ← tooltip and
+   *  toast ("Back to the Board view", "Back to the Code lens"). Null when the
+   *  trail is empty. */
+  get backLabel(): string | null {
+    const e = this.nextNavEntry();
+    if (e === null) return null;
+    if (e.kind === 'lens') return e.lens === 'code' ? 'the Code lens' : 'the Properties lens';
+    if (e.view === null) return 'the grid';
+    return `the ${this.viewById(e.view)?.name ?? 'removed'} view`;
+  }
+
+  /** Retrace the last recorded navigation. Returns where it landed ('main'
+   *  for a surface, the lens id for a lens switch), or null. */
   goBack(): string | null {
     let entry: NavEntry | null = null;
     for (let i = this.navStack.length - 1; i >= 0; i--) {
@@ -515,15 +555,19 @@ export class EditorState {
     if (!entry) return null;
     this.inGoBack = true;
     try {
+      if (entry.kind === 'lens') {
+        this.setLens(entry.lens);
+        return entry.lens;
+      }
       if (entry.view !== this.activeViewId) {
         if (entry.view) this.openView(entry.view);
         else this.minimizeView();
       }
       if (entry.key !== this.activeDocKey) this.openMain(); // 'main' is the only valid key
+      return entry.key;
     } finally {
       this.inGoBack = false;
     }
-    return entry.key;
   }
 
   private inGoBack = false;

@@ -6,10 +6,12 @@
  * COLUMNS-COMPONENTS-VIEWS §3 (Mockup B, approved). Top to bottom:
  *
  *   1. the NAV ROW — minimize (the shell prepends it), the Properties/Code
- *      lens tabs, and the ⋮ menu (tools, snapshots, and ← Back — the retrace
- *      button moved under the kebab 2026-07-10). Navigation between surfaces
- *      lives in the CANVAS TAB STRIP; the old formatter tablist and the
- *      document pill died with the drill-in model.
+ *      lens tabs, then the actions cluster: ← Back (retrace navigation —
+ *      moved OUT of the ⋮ menu and up here, issue #145/#152), 📷 take a
+ *      snapshot (same move; the snapshot LIST stays under ⋮), and the ⋮ menu
+ *      (tools + snapshots). Navigation between surfaces lives in the CANVAS
+ *      TAB STRIP; the old formatter tablist and the document pill died with
+ *      the drill-in model.
  *   2. the THIS VIEW card (viewCard.ts) — the active view's name/kind and its
  *      view-scoped behaviors & properties; a def card while a component
  *      workshop tab is up; hidden on the grid.
@@ -30,9 +32,11 @@
  *      editor, double-click resets), and the lower workspace swapping between
  *      the Properties inspector and the Code declarations (the two lenses).
  *
- * Every collapsible section also leads with a slim COLLAPSE BAR (owner ask
- * 2026-07-24): it wears the splitter-bar look but is a pure click target that
- * folds/unfolds the section exactly like its header.
+ * Every collapsible section also carries a vertical COLLAPSE RAIL down its
+ * left edge (owner ask 2026-07-24, corrected same day from a horizontal
+ * first cut): it wears the splitter-bar look — and subsumes the #280 shelves
+ * rail — but is a pure click target that folds/unfolds the section exactly
+ * like its header.
  */
 
 import { state, type EditorLens } from './state';
@@ -40,7 +44,7 @@ import { mountTree } from './treeView';
 import { mountInspector } from './inspector';
 import { mountCodeEditor } from './codeEditor';
 import { mountViewsList } from './viewMenu';
-import { openKebabMenu } from './snapMenu';
+import { openKebabMenu, takeWorkspaceSnapshot } from './snapMenu';
 import { openViewKebab, openComponentKebab } from './viewKebab';
 import { mountComponentLibrary } from './componentLibrary';
 import { mountColumnShelf } from './columnShelf';
@@ -73,9 +77,9 @@ function sectionHead(id: PaneSectionId, title: string, controls: string): string
   `;
 }
 
-/** The click-to-fold bar riding above a section header: splitter-bar look,
- *  header-click behavior. aria-hidden — the header button IS the accessible
- *  control; this is a redundant pointer affordance. */
+/** The click-to-fold rail down a section's left edge: splitter-bar look
+ *  (vertical), header-click behavior. aria-hidden — the header button IS the
+ *  accessible control; this is a redundant pointer affordance. */
 function collapseBar(id: PaneSectionId): string {
   return `<div class="wb-lp-collapsebar" data-sec-bar="${id}" aria-hidden="true"></div>`;
 }
@@ -105,7 +109,11 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       <div class="wb-lens-tabs" role="tablist" aria-label="Edit lens">
         ${LENSES.map((l) => `<button class="wb-lens-tab" role="tab" data-lens="${l.id}">${l.label}</button>`).join('')}
       </div>
-      <button class="wb-kebab-btn" id="wb-kebab-btn" aria-haspopup="menu" aria-label="Menu" title="Menu — tools, snapshots and Back">${ICONS.kebab}</button>
+      <div class="wb-lp-nav-actions">
+        <button class="wb-snap-btn" id="wb-nav-back" aria-label="Back" disabled>${ICONS.back}</button>
+        <button class="wb-snap-btn" id="wb-nav-snap" aria-label="Take a snapshot" title="Take a snapshot of the whole workspace — restore it any time from the ⋮ menu">${ICONS.camera}</button>
+        <button class="wb-kebab-btn" id="wb-kebab-btn" aria-haspopup="menu" aria-label="Menu" title="Menu — tools and snapshots">${ICONS.kebab}</button>
+      </div>
     </div>
     <div id="wb-lp-viewcard"></div>
     <div class="wb-lp-tree wb-lp-sec" data-sec="tree" id="wb-lp-tree">
@@ -204,13 +212,33 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     bar?.addEventListener('click', toggle);
   }
 
-  // ── kebab menu: unified tools, snapshots and Back (the retrace nav moved
-  //    under this ⋮, 2026-07-10 — snapMenu renders the item) ─────────────────
+  // ── kebab menu: unified tools + snapshots (← Back moved back OUT to the
+  //    nav row, issue #145 — it was under this ⋮ 2026-07-10→2026-07-24) ──────
   const kebabBtn = host.querySelector<HTMLButtonElement>('#wb-kebab-btn')!;
   kebabBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     openKebabMenu(kebabBtn, toast);
   });
+
+  // ── ← Back: retrace the nav trail (surface switches AND lens switches,
+  //    #145). Navigation, never undo — the tooltip names the destination. ────
+  const navBack = host.querySelector<HTMLButtonElement>('#wb-nav-back')!;
+  navBack.addEventListener('click', () => {
+    const label = state.backLabel;
+    if (state.goBack() !== null) toast(`Back to ${label}`);
+  });
+  const refreshBack = (): void => {
+    const label = state.backLabel;
+    navBack.disabled = label === null;
+    navBack.title = label === null
+      ? 'Back — retrace where you were (nothing to go back to yet)'
+      : `Back to ${label}`;
+  };
+
+  // ── 📷 one-click whole-workspace snapshot (#145: the take action rides the
+  //    nav row; the restore list stays under ⋮) ──────────────────────────────
+  host.querySelector<HTMLButtonElement>('#wb-nav-snap')!
+    .addEventListener('click', () => takeWorkspaceSnapshot(toast));
 
   // ── the structure-header kebab: view settings on a view tab, component
   //    options on a workshop tab, hidden on the grid floor (no settings) ─────
@@ -331,6 +359,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   const unsub = state.subscribe((reason) => {
     if (reason === 'lens') applyLens();
     if (reason === 'load' || reason === 'data' || reason === 'kind') refreshStructKebab();
+    // the trail moves on surface switches (load/data) AND lens switches
+    if (reason === 'lens' || reason === 'load' || reason === 'data' || reason === 'kind') refreshBack();
   });
   hostAny._unsub = () => {
     unsub();
@@ -342,9 +372,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
   };
   applyLens();
   refreshStructKebab();
+  refreshBack();
 }
 
 // Inline SVG glyphs for the toolbar — crisp at any size, theme via currentColor.
 const ICONS = {
   kebab: '<svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>',
+  back: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M13 8H3.5m0 0L7 4.5M3.5 8L7 11.5"/></svg>',
+  camera: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.2" d="M2.5 5.5h2l1-1.5h5l1 1.5h2v7h-11z"/><circle cx="8" cy="8.7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
 };

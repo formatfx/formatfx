@@ -28,13 +28,19 @@
 > reading as canon-to-build when most of it is canon-already-shipped.
 
 > **Superseded 2026-06-17:** the Sheet/Advanced *mode toggle* was removed
-> at the owner's request — there is now a single unified surface that
-> always shows everything (palette, Structure, ribbon's Formatted-columns
-> button, the fx bar, the Properties/JSON pane, and all the former
-> "advanced" tools). The Sheet *ideas* below (the ribbon, the fx bar, the
-> Format-cells dialog, the transpiler) all live on inside that one surface;
-> only the basic-vs-advanced split and `uiPrefs.mode` are gone. Read the
-> rest of this file as history of how those pieces were designed.
+> at the owner's request — there is one surface, no mode switch, and only
+> the basic-vs-advanced split and `uiPrefs.mode` are gone. The Sheet
+> *ideas* below (the ribbon, the fx bar, the Format-cells dialog, the
+> transpiler) all live on inside that surface.
+>
+> *(Refreshed 2026-07-24, #87 WA: "always shows everything" no longer
+> describes the shipped default. The landing is **maker-first** — a
+> full-bleed grid with the mock rows visible (the Data dock opens by
+> default since the same date) and the studio furniture — palette,
+> Structure tree, Properties/JSON — behind the single **Advanced** door
+> (`studioOpen`/`jsonOpen` default false). Everything still exists on the
+> one surface; it just isn't all on screen at once.)*
+> Read the rest of this file as history of how those pieces were designed.
 
 > Owner decisions from the 2026-06-12 voice brief. This is the destination
 > for the mode currently labeled "Basic". The goal: a formatting experience

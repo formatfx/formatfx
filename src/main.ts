@@ -188,7 +188,9 @@ interface UiPrefs {
 const uiPrefs: UiPrefs = {
   cols: { side: 360 },
   dataH: 220,
-  dataMode: 'min',
+  // 'normal' since 2026-07-24 (#87 WA): a fresh maker lands on the grid WITH
+  // their rows visible — the Excel mental model. Saved prefs override below.
+  dataMode: 'normal',
   titleCol: true,
   activeLens: 'pro',
   jsonOpen: false,
@@ -607,12 +609,36 @@ mountLeftPane(document.getElementById('wb-leftpane')!, {
     applyLayout();
     saveUiPrefs();
   });
-  // lead the nav row with it (the old ← back spot — back lives under the ⋮
-  // kebab now), keeping the row's 3 space-between children:
-  // minimize · lens tabs · kebab
+  // lead the nav row with it, keeping the row's 3 space-between children:
+  // minimize · lens tabs · actions (← Back · 📷 snapshot · ⋮ menu — #145)
   const lpNav = leftPaneEl.querySelector('.wb-lp-nav');
   if (lpNav) lpNav.prepend(lpCollapse);
   else leftPaneEl.appendChild(lpCollapse);
+}
+// ─── #127: the narrow-shell DRAWER chrome ───────────────────────────────────
+// Below the 900px breakpoint the edit pane becomes a fixed slide-in drawer
+// (style.css owns the geometry + visibility; both controls are display:none
+// on the desktop grid, so they never become grid items there). Pure view
+// state — never persisted, closed on every load.
+{
+  const drawerBtn = document.createElement('button');
+  drawerBtn.id = 'wb-lp-drawerbtn';
+  drawerBtn.type = 'button';
+  drawerBtn.innerHTML = '<span aria-hidden="true">✎</span><span>Edit</span>';
+  drawerBtn.setAttribute('aria-controls', 'wb-leftpane');
+  const drawerScrim = document.createElement('div');
+  drawerScrim.id = 'wb-lp-scrim';
+  const setDrawer = (open: boolean): void => {
+    layout.classList.toggle('wb-lp-drawer-open', open);
+    drawerBtn.setAttribute('aria-expanded', String(open));
+    drawerBtn.title = open
+      ? 'Close the edit pane'
+      : 'Open the edit pane — it slides over the preview at this width';
+  };
+  drawerBtn.addEventListener('click', () => setDrawer(!layout.classList.contains('wb-lp-drawer-open')));
+  drawerScrim.addEventListener('click', () => setDrawer(false));
+  layout.append(drawerBtn, drawerScrim);
+  setDrawer(false);
 }
 // canvas view prefs (#216/#224): zoom + viewport ride inside wb-ui-prefs
 // (additive fields — the frozen-keys rule)

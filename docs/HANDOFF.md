@@ -341,14 +341,31 @@ the **Simple lens is GONE** — the pane has TWO lenses now, **Properties**
 tab swap reads as "Code replaces Properties and vice versa". The Properties
 inspector is the UNION: the old Pro sections plus the Simple-only
 conveniences (Arrange children, Box model, Typography) in one sectioned
-flow. Every collapsible section also leads with a `.wb-lp-collapsebar` — a
-7px bar wearing the exact splitter look but acting as a CLICK target that
-folds the section like its header (aria-hidden; the header button stays the
-accessible control). And **splitter 2 displaces the tree** (issue #292
+flow. Every collapsible section also carries a `.wb-lp-collapsebar` — a
+VERTICAL 7px rail down its left edge (corrected 2026-07-24 from a
+horizontal first cut; it subsumes the #280 shelves border-rail) wearing the
+splitter look but acting as a CLICK target that folds the section like its
+header (aria-hidden; the header button stays the accessible control). And **splitter 2 displaces the tree** (issue #292
 round 2): dragging the shelves/props boundary up shrinks the flex shelves
 to their 72px floor first, then the Structure tree down to its 80px floor,
 regrowing the tree (up to where it started) while the same drag returns.
 Contracts: leftPane.test.ts + the workspace.spec.ts left-pane-chrome test.
+
+Same-day follow-ups (2026-07-24, second PR): the collapse bar became the
+VERTICAL left rail described above. **Nav trail widened (#145)**: `NavEntry`
+is a union — `{kind:'surface'}` doc/sheet switches plus `{kind:'lens'}`
+Properties↔Code switches; kind changes (grid↔row/tile) are deliberately NOT
+recorded (document mutations belong to the undo stack — Back never mutates),
+and overlays keep their own close affordances. `state.backLabel` names the
+destination for the tooltip/toast. **Placement (#145/#152)**: ← Back and 📷
+take-snapshot moved OUT of the ⋮ menu into the nav row's actions cluster
+(`.wb-lp-nav-actions`; `takeWorkspaceSnapshot` exported from snapMenu.ts —
+the restore list stays under ⋮). **Drawer (#127)**: below the 900px
+breakpoint the edit pane is a fixed slide-in drawer (`#wb-lp-drawerbtn`
+handle + `#wb-lp-scrim`, `wb-lp-drawer-open` on the layout; pure view state,
+closed on load) instead of an inline region in the stacked scroll. **Data on
+land (#87 WA)**: the no-saved-prefs `dataMode` default flipped 'min' →
+'normal' so a fresh maker sees rows immediately; saved `wb-ui-prefs` win.
 
 The workshop seam (2026-07-09 owner brief, same spec §C — supersedes the v1
 "a workshop tab never re-targets the tree" constraint): `state.workshopCtx`
