@@ -13,6 +13,11 @@
 > Components · Views migration (nav row → This-view card → tree → columns
 > shelf → components library → views list) — see
 > [specs/COLUMNS-COMPONENTS-VIEWS.md](specs/COLUMNS-COMPONENTS-VIEWS.md) §3.
+>
+> **2026-07-24:** the Simple/Pro lens split described below MERGED into one
+> **Properties** lens (tabs: Properties · Code); the inspector shows the
+> union of both old lenses' sections. Simple/Pro mentions below are
+> historical — see HANDOFF.md.
 
 ## What's done (verified)
 

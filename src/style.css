@@ -1340,7 +1340,7 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   border-radius: 6px; font-size: 11.5px; line-height: 1.35; color: var(--wb-text);
 }
 .wb-warn-icon { flex: none; color: #b3700f; font-weight: 700; }
-/* quick-add links for common-but-unlisted style properties (Pro lens) */
+/* quick-add links for common-but-unlisted style properties (Properties lens) */
 .wb-quickadd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 12px 4px; }
 .wb-quickadd-lab { font-size: 11px; color: var(--wb-text-2); }
 .wb-quickadd-link {
@@ -3331,7 +3331,7 @@ body.wb-json-editing #wb-canvas::after {
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 
-/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ◂ minimize + Simple/Pro/Code lens + ⋮ menu (Back lives inside the ⋮ now). ── */
+/* ── the NAV ROW (COLUMNS-COMPONENTS-VIEWS §3.1) — ◂ minimize + Properties/Code lens + ⋮ menu (Back lives inside the ⋮ now). ── */
 .wb-lp-nav {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; border-bottom: 1px solid var(--wb-lp-border);
@@ -3515,6 +3515,15 @@ body.wb-json-editing #wb-canvas::after {
    The caret / body-hide rules are generic on .wb-collapsed so the library's own
    fold-groups (below) reuse them. */
 .wb-lp-sec { display: flex; flex-direction: column; min-height: 0; }
+/* the click-to-fold bar above every section header (owner ask 2026-07-24):
+   wears the exact splitter-bar look but is a CLICK target — it folds the
+   section like its header does (pointer cursor, not row-resize). */
+.wb-lp-collapsebar {
+  flex: 0 0 auto; height: 7px; cursor: pointer;
+  background: var(--wb-lp-border);
+  border-top: 1px solid var(--wb-surface); border-bottom: 1px solid var(--wb-surface);
+}
+.wb-lp-collapsebar:hover, .wb-lp-collapsebar:active { background: var(--wb-accent); opacity: .6; }
 /* the Structure header's row: the fold button plus the ⋮ settings kebab —
    the kebab is a sibling (a button can't nest a button) */
 .wb-lp-sec-headrow {
@@ -3636,7 +3645,7 @@ body.wb-json-editing #wb-canvas::after {
 }
 .wb-viewslist-new:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
 
-/* ── lens tabs (Simple · Pro · Code) ───────────────────────────────────────── */
+/* ── lens tabs (Properties · Code) ──────────────────────────────────────────── */
 .wb-lens-tabs {
   flex: 0 0 auto; display: flex; gap: 18px;
 }
@@ -3660,15 +3669,8 @@ body.wb-json-editing #wb-canvas::after {
    and takes the splitter with it; leftPane clears any dragged inline height */
 .wb-lp-tree.wb-collapsed { height: auto; }
 #wb-lp-tree.wb-collapsed + .wb-lp-splitter { display: none; }
-/* Simple hides the tree itself, but keeps the formatter tabs + document
-   dropdown — they're navigation, not structure editing. */
-.wb-leftpane.wb-lens-simple .wb-lp-tree { height: auto; flex: 0 0 auto; }
-/* Simple hides the TREE splitter only — the shelves/props splitter
-   (#wb-lp-splitter2) stays draggable in every lens (the old bare
-   .wb-lp-splitter selector swallowed it by accident, 2026-07-10) */
-.wb-leftpane.wb-lens-simple .wb-lp-tree > .wb-lp-sec-headrow,
-.wb-leftpane.wb-lens-simple .wb-lp-tree .wb-tree-sec-body,
-.wb-leftpane.wb-lens-simple .wb-lp-tree + .wb-lp-splitter { display: none; }
+/* (the Simple lens — which used to hide the tree + its splitter here — merged
+   into the single Properties lens, 2026-07-24) */
 .wb-lp-tree .wb-tree-sec-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 12px 6px; }
 
 /* ── splitter between tree and properties ──────────────────────────────────── */
@@ -3725,7 +3727,7 @@ body.wb-json-editing #wb-canvas::after {
 /* ── Code lens declarations box ──────────────────────────────────────────────
    No `display` here: .wb-lp-code owns visibility (hidden outside the Code
    lens — a same-specificity `display:flex` after it would defeat that and
-   leak the declarations box under the Simple/Pro inspector). */
+   leak the declarations box under the Properties inspector). */
 .wb-codelens { flex-direction: column; gap: 8px; padding: 14px 16px; height: 100%; }
 .wb-code-box {
   flex: 1 1 auto; width: 100%; min-height: 220px; resize: none;
@@ -3928,7 +3930,7 @@ button.wb-tree-fold:hover { color: var(--wb-text); background: var(--wb-bg); }
 .wb-flex-make:hover { border-color: var(--wb-accent); }
 .wb-flex-note { font-size: 11px; }
 
-/* ── Simple lens: dedicated visual fields (color swatch, active dot) ────────── */
+/* ── dedicated visual fields (color swatch, active dot) ─────────────────────── */
 .wb-color-control { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
 .wb-color-control .wb-field-input { flex: 1 1 auto; min-width: 0; }
 .wb-swatch {

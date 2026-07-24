@@ -5,7 +5,7 @@
  * main.ts — FormatFX: the visual sandbox for SharePoint list formatting.
  *
  * App shell. The editing surface is the Claude-style Left Edit Pane (structure
- * tree + draw toolbar + Simple/Pro/Code property lenses), the center canvas
+ * tree + draw toolbar + Properties/Code lenses), the center canvas
  * (Function Bar + preview + Data dock), and a JSON-only right pane.
  */
 
@@ -205,6 +205,9 @@ uiPrefs.sideMode = sanitizeSideMode(uiPrefs.sideMode);
 uiPrefs.leftMode = sanitizeLeftMode(uiPrefs.leftMode);
 uiPrefs.leftW = sanitizeLeftW(uiPrefs.leftW);
 uiPrefs.treeFollowSelection = uiPrefs.treeFollowSelection !== false; // default on; only an explicit false opts out
+// the old 'simple' lens merged into Properties ('pro' — its frozen stored id);
+// anything unrecognized also lands there
+uiPrefs.activeLens = uiPrefs.activeLens === 'code' ? 'code' : 'pro';
 const saveUiPrefs = () => {
   try { localStorage.setItem('wb-ui-prefs', JSON.stringify(uiPrefs)); } catch { /* private mode */ }
 };
@@ -560,10 +563,11 @@ refreshUndoRedo();
 document.addEventListener('keydown', (e) => {
   const inText = (e.target as HTMLElement).matches('input, textarea, select');
   const mod = e.ctrlKey || e.metaKey;
-  // lens switching works even from a focused field
+  // lens switching works even from a focused field — 1 Properties · 2 Code
+  // (3 still lands on Code so fingers trained on the three-lens era don't miss)
   if (mod && (e.key === '1' || e.key === '2' || e.key === '3')) {
     e.preventDefault();
-    state.setLens(e.key === '1' ? 'simple' : e.key === '2' ? 'pro' : 'code');
+    state.setLens(e.key === '1' ? 'pro' : 'code');
     return;
   }
   // universal search — replaces the browser find, and works from a focused field
