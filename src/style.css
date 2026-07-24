@@ -193,15 +193,31 @@ body {
 /* the JSON button's { } glyph — braces read "JSON", </> never did */
 .wb-json-glyph { font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 12px; }
 
+/* the narrow-only icon inside a topbar button (Search's magnifier) — hidden on
+   desktop, where the text label carries the button */
+.wb-topbar-controls .wb-btn-icnarrow { display: none; vertical-align: -2px; }
+/* the ☰ "Send to extension" twin exists for narrow widths only — on desktop
+   the topbar button owns the hand-off, so the twin stays out of the menu */
+.wb-menu-panel #wb-menu-send-ext { display: none; }
+
 /* Narrow widths: drop the redundant tagline and let the controls wrap below
    the brand instead of clipping "Advanced"/☰ off the right edge and out of
    reach. Wrapping (rather than an overflow scroller) is deliberate — an
-   overflow container would also clip the ☰ dropdown that drops beneath it. */
+   overflow container would also clip the ☰ dropdown that drops beneath it.
+   The bar earns a single row at most widths (owner ask 2026-07-24): Search
+   and Share collapse to icons, Send-to-extension moves into ☰, and undo/redo
+   drop their wide-desktop side padding. */
 @media (max-width: 900px) {
-  .wb-topbar { flex-wrap: wrap; gap: 6px 8px; }
+  .wb-topbar { flex-wrap: wrap; gap: 6px 8px; padding: 5px 10px; }
   .wb-brand-sub { display: none; }
-  .wb-topbar-controls { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .wb-topbar-controls { min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
   .wb-topbar-controls > * { flex-shrink: 0; }
+  .wb-topbar-center { gap: 4px; }
+  .wb-topbar-center button { padding: 4px 9px; }
+  .wb-topbar-controls .wb-btn-label { display: none; }
+  .wb-topbar-controls .wb-btn-icnarrow { display: inline-block; }
+  .wb-topbar-controls > #wb-send-ext { display: none; }
+  .wb-menu-panel #wb-menu-send-ext:not([hidden]) { display: flex; }
 }
 
 /* Studio: the relocated "Advanced: formatter type" control */
@@ -696,8 +712,13 @@ body.wb-dark .wb-ce-save { color: #10393b; }
      both; they exist at every width but only the media query shows them) */
   .wb-layout > #wb-lp-drawerbtn { display: inline-flex; }
   .wb-layout.wb-lp-drawer-open > #wb-lp-scrim { display: block; }
+  /* grow-to-fill (owner ask 2026-07-24): the JSON pane takes whatever the
+     capped preview leaves of the viewport instead of sitting on its natural
+     height over a dead band — the editor shell inside is the flex:1 child,
+     so the extra room becomes visible JSON lines. min-height:auto still
+     wins when content is taller: the layout scrolls as before. */
   .wb-layout > .wb-pane-side {
-    flex: 0 0 auto; border-left: none; border-top: 1px solid var(--wb-border);
+    flex: 1 1 auto; border-left: none; border-top: 1px solid var(--wb-border);
   }
   .wb-layout > .wb-resizer { display: none !important; } /* col-drag is meaningless stacked */
 }
@@ -4430,11 +4451,17 @@ body.wb-dark .wb-stress-foot-warn { color: #f1707b; }
   writing-mode: vertical-rl; text-transform: uppercase;
   letter-spacing: .12em; font-size: 10px;
 }
-/* stacked (<900px): the modes are meaningless, so they neutralize here and
-   their controls hide — same contract as the grid neutralization at the top */
+/* stacked (<900px): the edit-pane bar mode is meaningless, so it neutralizes
+   here and its control hides — same contract as the grid neutralization at
+   the top. The JSON maximize STAYS (owner ask 2026-07-24): ⛶ hides the
+   whole stacked center (the desktop display:none rule), pins the pane to
+   exactly the viewport under the top bar (min-height:0 hands scrolling to
+   the pane's tabs), and floats the drawer's ✎ handle out of the way. */
 @media (max-width: 900px) {
   .wb-layout.wb-left-bar > .wb-leftpane { display: flex; }
   .wb-layout > .wb-lp-bar { display: none !important; }
-  .wb-layout.wb-side-maxed > .wb-pane-canvas { display: flex; }
-  #wb-side-max, #wb-lp-collapse { display: none; }
+  #wb-lp-collapse { display: none; }
+  .wb-layout.wb-side-maxed { overflow-y: hidden; }
+  .wb-layout.wb-side-maxed > .wb-pane-side { min-height: 0; border-top: none; }
+  .wb-layout.wb-side-maxed > #wb-lp-drawerbtn { display: none; }
 }

@@ -62,8 +62,8 @@ app.innerHTML = `
       <button id="wb-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><i class="ms-Icon ms-Icon--Redo" aria-hidden="true"></i></button>
     </div>
     <div class="wb-topbar-controls">
-      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything">Search</button>
-      <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere"><i class="ms-Icon ms-Icon--Share"></i> Share</button>
+      <button id="wb-search-open" title="Search everything — elements, formulas, columns, rules, presets, functions (Ctrl+F)" aria-label="Search everything"><svg class="wb-btn-icnarrow" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M11 11a4.4 4.4 0 1 0-6.2-6.2A4.4 4.4 0 0 0 11 11zm0 0 3.4 3.4"/></svg><span class="wb-btn-label">Search</span></button>
+      <button id="wb-share" title="Share this workspace as a link — the whole thing travels inside the URL fragment, nothing is uploaded anywhere" aria-label="Share"><i class="ms-Icon ms-Icon--Share"></i><span class="wb-btn-label"> Share</span></button>
       <button id="wb-json-toggle" title="Show or hide the validated-JSON pane (the escape hatch, with Deploy and Copy). The editing pane and canvas stay put."><span class="wb-json-glyph" aria-hidden="true">{&hairsp;}</span> JSON<span id="wb-lint-badge" hidden aria-label="lint issues"></span></button>
       <button id="wb-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
       <div class="wb-menu" id="wb-menu">
@@ -71,6 +71,7 @@ app.innerHTML = `
         <div class="wb-menu-panel" id="wb-menu-panel" hidden>
           <button id="wb-save" title="Save project file (formatter + schema + mock data) — Ctrl+S"><i class="ms-Icon ms-Icon--Save"></i> Save project</button>
           <button id="wb-open" title="Open a saved project file"><i class="ms-Icon ms-Icon--OpenFolderHorizontal"></i> Open project…</button>
+          <button id="wb-menu-send-ext" hidden title="Send the formatter you're editing to the FormatFX companion extension (no clipboard) — then click the extension on your SharePoint list tab → Apply staged"><i class="ms-Icon ms-Icon--Lightning"></i> Send to extension</button>
           <button id="wb-restore-backup" hidden title="Restore the project that was backed up when you saved a shared workspace over it — the current workspace swaps into the backup slot, so nothing is lost"><i class="ms-Icon ms-Icon--Undo"></i> Restore backed-up work</button>
           <button id="wb-theme" title="Toggle light/dark theme emulation"><i class="ms-Icon" id="wb-theme-icon"></i> <span id="wb-theme-label"></span></button>
           <button id="wb-about" title="Version, build revision and the last merged pull request"><i class="ms-Icon ms-Icon--Info"></i> About</button>
@@ -314,8 +315,14 @@ leftBarEl.addEventListener('click', () => {
   applyLayout();
   saveUiPrefs();
 });
+// Stacked (<900px) ⛶: an OPEN drawer would keep covering the maximized pane
+// (the scrim blocks mouse clicks on ⛶, but keyboard activation gets through —
+// Copilot review, PR #307). The narrow drawer block below fills this hook in
+// so maximizing closes the drawer through its own inert/focus handling.
+let closeLeftDrawer: () => void = () => {};
 sideMaxBtn.addEventListener('click', () => {
   uiPrefs.sideMode = uiPrefs.sideMode === 'max' ? 'normal' : 'max';
+  if (uiPrefs.sideMode === 'max') closeLeftDrawer();
   applyLayout();
   saveUiPrefs();
 });
@@ -662,6 +669,8 @@ mountLeftPane(document.getElementById('wb-leftpane')!, {
   // crossing the breakpoint recomputes inert-ness: the desktop pane is never
   // inert; a re-narrowed shell starts from the closed state it shows
   narrow.addEventListener('change', () => setDrawer(narrow.matches && drawerOpen(), false));
+  // ⛶ maximize closes an open drawer (see the hook's comment above)
+  closeLeftDrawer = () => { if (narrow.matches && drawerOpen()) setDrawer(false); };
   layout.append(drawerBtn, drawerScrim);
   setDrawer(false, false);
 }
@@ -693,10 +702,13 @@ onPushedSnapshot((snapshotJson) => { applyImportedSchema(snapshotJson, toast); }
 onFormatterRequest(() => buildCurrentApplyPayload());
 
 // Top-level "Send to extension": surfaced only when the extension announces
-// itself, so the deploy hand-off no longer hides behind Advanced.
+// itself, so the deploy hand-off no longer hides behind Advanced. At narrow
+// widths the topbar button yields its row space to a ☰ twin (CSS swaps them
+// at the 900px breakpoint — both stay wired, only one is ever visible).
 const sendExtBtn = document.getElementById('wb-send-ext') as HTMLButtonElement;
-onExtensionReady(() => { sendExtBtn.hidden = false; });
-sendExtBtn.addEventListener('click', async () => {
+const menuSendExtBtn = document.getElementById('wb-menu-send-ext') as HTMLButtonElement;
+onExtensionReady(() => { sendExtBtn.hidden = false; menuSendExtBtn.hidden = false; });
+const sendToExtension = async (): Promise<void> => {
   const { payload, error } = buildCurrentApplyPayload();
   if (!payload) { toast(error ?? 'Nothing to send.'); return; }
   try {
@@ -705,7 +717,9 @@ sendExtBtn.addEventListener('click', async () => {
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e));
   }
-});
+};
+sendExtBtn.addEventListener('click', sendToExtension);
+menuSendExtBtn.addEventListener('click', sendToExtension);
 
 // debug outlines
 (document.getElementById('wb-outlines') as HTMLInputElement).addEventListener('change', (e) => {
