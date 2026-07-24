@@ -367,6 +367,20 @@ closed on load) instead of an inline region in the stacked scroll. **Data on
 land (#87 WA)**: the no-saved-prefs `dataMode` default flipped 'min' →
 'normal' so a fresh maker sees rows immediately; saved `wb-ui-prefs` win.
 
+Narrow-shell polish (2026-07-24, owner screenshot review): the <900px
+topbar earns a single row — Search/Share collapse to icons (`.wb-btn-label`
+hides; Search gains an inline-SVG magnifier `.wb-btn-icnarrow`, deliberately
+NOT a new `ms-Icon--` literal so the chromeIcons drift guard stays quiet),
+undo/redo drop their wide-desktop side padding, and "Send to extension"
+swaps for a ☰ twin (`#wb-menu-send-ext`, same handler and extension-ready
+gate; CSS shows exactly one of the pair per breakpoint). The stacked JSON
+pane now GROWS to fill the viewport leftover (flex 1 1 auto — no dead band
+below Problems), and the ⛶ JSON maximize is no longer neutralized when
+stacked: it hides the whole center section plus the drawer's floating ✎
+handle and pins the pane to everything under the top bar (min-height:0 —
+the pane's tabs scroll internally). Contracts: the stacked-⛶ spec in
+paneStates.spec.ts and the narrow-topbar spec in sandbox.spec.ts.
+
 The workshop seam (2026-07-09 owner brief, same spec §C — supersedes the v1
 "a workshop tab never re-targets the tree" constraint): `state.workshopCtx`
 (a `WorkshopContext`) is registered by `mountComponentWorkshop` and cleared

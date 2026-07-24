@@ -28,6 +28,28 @@ test('⛶ maximizes the JSON pane over canvas + data bar, and restores', async (
   expect(Math.abs((await side.boundingBox())!.width - before)).toBeLessThan(2);
 });
 
+test('stacked (<900px): ⛶ gives the JSON pane everything under the top bar', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await openJson(page);
+  const canvas = page.locator('.wb-pane-canvas');
+  const side = page.locator('#wb-pane-side');
+  const drawerBtn = page.locator('#wb-lp-drawerbtn');
+  await expect(canvas).toBeVisible();
+  await expect(drawerBtn).toBeVisible();
+
+  await page.click('#wb-side-max');
+  await expect(canvas).toBeHidden();
+  await expect(drawerBtn).toBeHidden(); // the floating ✎ would sit over the JSON
+  // the pane owns the whole shell below the top bar
+  const layoutBox = (await page.locator('#wb-layout').boundingBox())!;
+  const sideBox = (await side.boundingBox())!;
+  expect(Math.abs(sideBox.height - layoutBox.height)).toBeLessThan(2);
+
+  await page.click('#wb-side-max');
+  await expect(canvas).toBeVisible();
+  await expect(drawerBtn).toBeVisible();
+});
+
 test('the edit pane minimizes to the bar; clicking the bar restores it', async ({ page }) => {
   const pane = page.locator('#wb-leftpane');
   const bar = page.locator('#wb-lp-bar');

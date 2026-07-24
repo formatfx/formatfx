@@ -230,3 +230,38 @@ test('narrow shell (#127): the edit pane is a drawer — handle opens, scrim clo
   await expect(pane).toBeInViewport();
   await expect(pane).not.toHaveAttribute('inert', '');
 });
+
+test('narrow topbar: Search/Share go icon-only, Send-to-extension moves into ☰, one row', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  // the buttons stay, their text labels collapse to icons
+  await expect(page.locator('#wb-search-open')).toBeVisible();
+  await expect(page.locator('#wb-share')).toBeVisible();
+  await expect(page.locator('#wb-search-open .wb-btn-label')).toBeHidden();
+  await expect(page.locator('#wb-share .wb-btn-label')).toBeHidden();
+  await expect(page.locator('#wb-search-open .wb-btn-icnarrow')).toBeVisible();
+  // the extension hand-off: the topbar button yields to its ☰ twin (unhide
+  // both as the extension-ready announcement would — width picks the ONE
+  // that shows)
+  await page.evaluate(() => {
+    (document.getElementById('wb-send-ext') as HTMLButtonElement).hidden = false;
+    (document.getElementById('wb-menu-send-ext') as HTMLButtonElement).hidden = false;
+  });
+  await expect(page.locator('#wb-send-ext')).toBeHidden();
+  await page.click('#wb-menu-btn');
+  await expect(page.locator('#wb-menu-send-ext')).toBeVisible();
+  await page.mouse.click(350, 500); // outside pointerdown closes the menu
+  await expect(page.locator('#wb-menu-panel')).toBeHidden();
+  // slimmed chrome fits one row: brand, undo/redo and ☰ share a baseline
+  const rowY = async (sel: string): Promise<number> => (await page.locator(sel).boundingBox())!.y;
+  const brandY = await rowY('.wb-brand');
+  expect(Math.abs(await rowY('#wb-undo') - brandY)).toBeLessThan(8);
+  expect(Math.abs(await rowY('#wb-menu-btn') - brandY)).toBeLessThan(8);
+  // desktop: labels return, the topbar button owns the hand-off again
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.locator('#wb-search-open .wb-btn-label')).toBeVisible();
+  await expect(page.locator('#wb-share .wb-btn-label')).toBeVisible();
+  await expect(page.locator('#wb-send-ext')).toBeVisible();
+  await page.click('#wb-menu-btn');
+  await expect(page.locator('#wb-save')).toBeVisible(); // the menu really is open…
+  await expect(page.locator('#wb-menu-send-ext')).toBeHidden(); // …without the twin
+});
