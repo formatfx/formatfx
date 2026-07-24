@@ -534,8 +534,18 @@ test('left pane chrome: frozen section headers, a collapsible Views section, the
   // Properties auto-fills the freed height (owner follow-up on #305)
   const shelvesFolded = (await page.locator('#wb-lp-shelves').boundingBox())!;
   expect(shelvesFolded.height).toBeLessThan(shelvesBox.height - 40);
-  expect((await page.locator('#wb-lp-props').boundingBox())!.height)
-    .toBeGreaterThan(propsBefore + 40);
+  const propsFilled = (await page.locator('#wb-lp-props').boundingBox())!.height;
+  expect(propsFilled).toBeGreaterThan(propsBefore + 40);
+  // …and while folded, dragging splitter 2 DOWN is clamped: nothing can
+  // absorb the freed height (shelves pinned, tree never grows past its
+  // start), so Properties must not shrink and strand blank space below
+  const box3 = (await splitter2.boundingBox())!;
+  await page.mouse.move(box3.x + box3.width / 2, box3.y + box3.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box3.x + box3.width / 2, box3.y + 150, { steps: 4 });
+  await page.mouse.up();
+  expect(Math.abs((await page.locator('#wb-lp-props').boundingBox())!.height - propsFilled))
+    .toBeLessThan(4);
   // the rail is a real button — reopen it from the keyboard
   await shelvesBar.focus();
   await page.keyboard.press('Enter');

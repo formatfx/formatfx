@@ -383,7 +383,8 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
     // with the trio folded the shelves sit at their header-bars height
     // (flex 0 0 auto — the :has shrink rule) and can't give anything more:
     // their floor for THIS drag is whatever they measure right now
-    const shelvesFloor = anyShelfOpen() ? SHELVES_MIN : startShelvesH;
+    const shelvesOpen = anyShelfOpen();
+    const shelvesFloor = shelvesOpen ? SHELVES_MIN : startShelvesH;
     // a folded tree is just its bar + header — never resize it from here
     const treeOpen = !treeRegion.classList.contains('wb-collapsed');
     // remember the tree's pre-squeeze inline height ONCE per displacement
@@ -399,7 +400,12 @@ export function mountLeftPane(host: HTMLElement, opts: LeftPaneOptions): void {
       // assumes the tree can be squeezed to its floor (#292).
       const treeFloor = treeOpen ? Math.min(TREE_MIN, startTreeH) : startTreeH;
       const ceiling = Math.max(56, host.clientHeight - chrome - shelvesFloor - treeFloor);
-      const next = Math.min(ceiling, Math.max(Math.min(110, ceiling), startH + (startY - ev.clientY)));
+      // with the trio folded, dragging DOWN has no absorber — the shelves are
+      // pinned at header-bars height and the tree never grows past its start —
+      // so props would strand blank space below; its floor for that drag is
+      // where it started (dragging UP still works: the tree gives way)
+      const dragFloor = shelvesOpen ? Math.min(110, ceiling) : Math.min(startH, ceiling);
+      const next = Math.min(ceiling, Math.max(dragFloor, startH + (startY - ev.clientY)));
       propsRegion.style.height = `${next}px`;
       propsRegion.style.flex = '0 0 auto';
       if (treeOpen) {
