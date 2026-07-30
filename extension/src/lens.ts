@@ -21,12 +21,15 @@ if (kind && !document.getElementById('fxlens-style')) {
   const dimmed: HTMLAnchorElement[] = [];
 
   // ── classify every content link (skip chrome: suite bar, side nav) ──────
+  // Tooltips are stashed on the element, not applied here — Off mode must
+  // leave the page truly untouched, original titles included (setMode swaps).
   const root = document.getElementById('contentBox') ?? document.body;
   for (const a of root.querySelectorAll<HTMLAnchorElement>('a[href]')) {
     const c = classifySettingsLink(a.getAttribute('href') ?? '', location.href);
     if (!c || c.verdict !== 'dim') continue;
     a.classList.add('fxlens-dim');
-    a.title = (a.title ? a.title + ' — ' : '') + 'Classic-only: ' + (c.reason ?? '');
+    if (a.title) a.dataset.fxlensOrig = a.title;
+    a.dataset.fxlensWhy = (a.title ? a.title + ' — ' : '') + 'Classic-only: ' + (c.reason ?? '');
     dimmed.push(a);
   }
 
@@ -60,7 +63,9 @@ if (kind && !document.getElementById('fxlens-style')) {
       #fxlens-pill .fxlens-seg { display: flex; border: 1px solid #c8c6c4; border-radius: 999px; overflow: hidden; }
       #fxlens-pill button { all: unset; cursor: pointer; padding: 3px 10px; font: inherit; color: inherit; }
       #fxlens-pill button:hover { background: #f3f2f1; }
+      #fxlens-pill button:focus-visible { outline: 2px solid #0078d4; outline-offset: -2px; }
       #fxlens-pill button[aria-pressed="true"] { background: #0078d4; color: #fff; }
+      #fxlens-pill button[aria-pressed="true"]:focus-visible { outline-color: #fff; }
       @media print { #fxlens-pill { display: none; } }
     `;
     document.head.appendChild(style);
@@ -80,6 +85,15 @@ if (kind && !document.getElementById('fxlens-style')) {
     const setMode = (mode: LensMode): void => {
       document.body.classList.toggle('fxlens-mode-dim', mode === 'dim');
       document.body.classList.toggle('fxlens-mode-hide', mode === 'hide');
+      for (const a of dimmed) {
+        if (mode === 'off') {
+          const orig = a.dataset.fxlensOrig;
+          if (orig) a.title = orig;
+          else a.removeAttribute('title');
+        } else {
+          a.title = a.dataset.fxlensWhy ?? '';
+        }
+      }
       for (const b of seg.querySelectorAll('button')) {
         b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
       }
