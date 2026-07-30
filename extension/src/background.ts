@@ -32,7 +32,38 @@ async function runMigration(): Promise<void> {
   if (Object.keys(changes).length) await chrome.storage.local.set(changes);
 }
 
-chrome.runtime.onInstalled.addListener(() => { void runMigration(); });
+chrome.runtime.onInstalled.addListener(() => { void runMigration(); void syncLensRegistration(); });
+
+// ── the Modern lens: declutter classic settings pages on connected sites ───
+
+const LENS_SCRIPT_ID = 'fxlens';
+
+/**
+ * (Re)register the lens content script against exactly the granted SharePoint
+ * origins. Like the connected-sites list, registration is DERIVED from
+ * chrome.permissions.getAll() and re-synced on every permission change — so a
+ * revoke (popup or chrome://extensions) instantly stops injection, and
+ * nothing about the lens is stored anywhere.
+ */
+async function syncLensRegistration(): Promise<void> {
+  const granted = await chrome.permissions.getAll();
+  const patterns = (granted.origins ?? []).filter((o) => o.includes('.sharepoint.com'));
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [LENS_SCRIPT_ID] });
+  } catch { /* was not registered — first run or no sites connected */ }
+  if (!patterns.length) return;
+  await chrome.scripting.registerContentScripts([{
+    id: LENS_SCRIPT_ID,
+    matches: patterns,
+    js: ['lens.js'],
+    runAt: 'document_idle',
+    persistAcrossSessions: true,
+  }]);
+}
+
+// Belt and braces for the persisted registration: re-derive after every
+// browser start (covers grants revoked while the browser was closed).
+chrome.runtime.onStartup.addListener(() => { void syncLensRegistration(); });
 
 // ── badge ──────────────────────────────────────────────────────────────────
 
@@ -96,8 +127,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[STAGE_KEY]) void refreshAllBadges();
 });
 
-chrome.permissions.onAdded.addListener(() => { void refreshAllBadges(); void broadcastSpTabs(); });
-chrome.permissions.onRemoved.addListener(() => { void refreshAllBadges(); void broadcastSpTabs(); });
+chrome.permissions.onAdded.addListener(() => { void refreshAllBadges(); void broadcastSpTabs(); void syncLensRegistration(); });
+chrome.permissions.onRemoved.addListener(() => { void refreshAllBadges(); void broadcastSpTabs(); void syncLensRegistration(); });
 
 // ── presence: which connected list tabs are open (for the formatfx.dev app) ─
 

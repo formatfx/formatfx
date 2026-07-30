@@ -7,6 +7,8 @@
  *   - inject.ts     → inject.js     (the page MAIN-world worker, src/bridge runtime)
  *   - web.ts        → web.js        (content script on formatfx.dev)
  *   - background.ts → background.js (MV3 service worker: badge + routing)
+ *   - lens.ts       → lens.js       (Modern lens, dynamically registered on
+ *                                    connected tenants' classic settings pages)
  */
 import { build } from 'esbuild';
 import { cp, mkdir } from 'node:fs/promises';
@@ -15,7 +17,7 @@ const outdir = 'dist';
 await mkdir(outdir, { recursive: true });
 
 await build({
-  entryPoints: ['src/popup.ts', 'src/inject.ts', 'src/web.ts', 'src/background.ts'],
+  entryPoints: ['src/popup.ts', 'src/inject.ts', 'src/web.ts', 'src/background.ts', 'src/lens.ts'],
   outdir,
   bundle: true,
   format: 'esm',

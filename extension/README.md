@@ -54,6 +54,8 @@ and every pure module is unit-tested from the root suite:
 | `src/web.ts` | Content script on **formatfx.dev only** — the extension's half of the page channel (`src/bridge/extChannel.ts`). |
 | `src/background.ts` | MV3 service worker: storage migration, per-tab badge, message routing. Thin — no business logic. |
 | `src/pageKind.ts` | Pure URL classifier: `sharepoint` (list/library view) / `sharepoint-site` / `formatfx` / `other`. |
+| `src/modernLens.ts` | Pure classifier for the Modern lens: classic settings link → keep / dim / unknown, by `_layouts` filename. |
+| `src/lens.ts` | The Modern lens content script — registered dynamically on connected origins only. |
 | `src/connections.ts` | Pure per-site opt-in helpers: URL → origin pattern, granted-origins display. |
 | `src/badge.ts` | Pure badge mapping table (state → text/color/title). |
 | `src/staging.ts` | The versioned `chrome.storage.local` schema (staged applies, pushed snapshots, backups). |
@@ -99,6 +101,34 @@ real tenant. One-time checklist on a list you can edit:
 - [ ] With the site connected and the list open in a tab: the app's Data tab
       shows the live section; "Pull list"/"Rows only" refresh from the tab;
       disconnected → a teaching error names the Connect button.
+- [ ] On a connected site, Site settings / List settings show the Modern lens
+      pill; classic-only links dim with a why-tooltip; Hide/Off stick per
+      tenant; disconnect → next settings visit is untouched, no pill.
+
+## The Modern lens (declutter classic settings pages)
+
+On **connected** sites only, the companion registers a content script
+(`chrome.scripting.registerContentScripts`, derived from the granted origins
+exactly like the connected-sites list — revoke and it's gone) that runs on the
+two classic settings hubs: site **settings.aspx** and list/library
+**listedit.aspx**. It classifies every settings link by its `_layouts`
+filename (never by text, so any UI language works) against a
+Microsoft-Learn-grounded ruleset (`src/modernLens.ts`) and de-emphasizes the
+ones whose *effect* is classic-only, retired, or superseded — retired 2013
+workflows, alerts, classic galleries, publishing caches, pre-Purview
+compliance pages, and friends. Each dimmed link's tooltip says *why* and names
+the modern replacement.
+
+A small pill (bottom right) shows the count and switches modes: **Dim**
+(default — hover restores a link to full strength, so classic settings stay
+one deliberate click away), **Hide**, or **Off**, remembered per tenant in
+`localStorage`. Unknown links are never touched: the ruleset's bias is that
+wrongly dimming a setting modern still depends on is the worst failure — which
+is why `appprincipals.aspx` (modern Entra grants list there too),
+`navoptions.aspx` (its Enable Quick Launch drives the *modern* left nav),
+Query Rules, metadata navigation, and HTML Field Security (modern Embed web
+part) all stay bright. Read-only end to end: classes, tooltips, one `<style>`
+tag, no REST.
 
 ## The page channel (clipboard-free apply)
 
@@ -126,6 +156,12 @@ current view is detected from the page URL (`?viewid=`), falling back to the
 list's default view, and rides along flagged so it loads as the main document.
 
 ## Status
+
+**v0.3** adds the **Modern lens**: connected sites' classic settings pages
+(settings.aspx / listedit.aspx) get their classic-only, retired, or superseded
+links dimmed (or hidden) with grounded why-tooltips — see the section above.
+No new install-time permissions; registration is derived from the same
+per-site grants as everything else.
 
 **v0.2 — the context-aware companion** (CONNECTIVITY §4). On top of v0.1's
 Extract (picker → push or clipboard) and Apply (page channel or clipboard,

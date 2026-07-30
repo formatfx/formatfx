@@ -32,6 +32,9 @@ declare namespace chrome {
     const onInstalled: {
       addListener(cb: (details: { reason: string }) => void): void;
     };
+    const onStartup: {
+      addListener(cb: () => void): void;
+    };
     function sendMessage<R = unknown>(message: unknown): Promise<R>;
     const lastError: { message?: string } | undefined;
   }
@@ -41,6 +44,17 @@ declare namespace chrome {
     function setTitle(details: { title: string; tabId?: number }): Promise<void>;
   }
   namespace scripting {
+    interface RegisteredContentScript {
+      id: string;
+      matches?: string[];
+      js?: string[];
+      css?: string[];
+      runAt?: 'document_start' | 'document_end' | 'document_idle';
+      persistAcrossSessions?: boolean;
+      allFrames?: boolean;
+    }
+    function registerContentScripts(scripts: RegisteredContentScript[]): Promise<void>;
+    function unregisterContentScripts(filter?: { ids?: string[] }): Promise<void>;
     interface InjectionTarget { tabId: number }
     interface ScriptInjection<Args extends unknown[], R> {
       target: InjectionTarget;
