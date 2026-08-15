@@ -355,6 +355,251 @@ describe('linter', () => {
   });
 });
 
+describe('linter — low-contrast (WCAG, core/contrast.ts is the brain)', () => {
+  const textEl = (style: Record<string, string>, extra: Partial<SPElement> = {}): FormatterDocument => ({
+    kind: 'column',
+    root: { elmType: 'div', txtContent: 'hello', style, ...extra },
+  });
+  const hits = (doc: FormatterDocument) => lintDocument(doc).filter((i) => i.rule === 'low-contrast');
+
+  it('flags an unreadable literal pair as a WARNING (below the 3:1 large-text floor)', () => {
+    const issues = hits(textEl({ 'color': '#d13438', 'background-color': '#c50f1f' }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('warning');
+    expect(issues[0].message).toContain("'#d13438' text on the '#c50f1f' fill");
+    expect(issues[0].message).toMatch(/\d\.\d:1/);
+  });
+
+  it('flags a borderline pair as INFO (3:1–4.5:1 — fine for large text, not this)', () => {
+    const issues = hits(textEl({ 'color': '#0078d4', 'background-color': '#deecf9' }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('info');
+  });
+
+  it('stays silent on a passing pair and honors the large-text threshold', () => {
+    expect(hits(textEl({ 'color': '#ffffff', 'background-color': '#107c10' }))).toHaveLength(0);
+    // the same borderline pair passes once the text is WCAG-large (≥24px → 3:1 bar)
+    expect(hits(textEl({ 'color': '#0078d4', 'background-color': '#deecf9', 'font-size': '24px' }))).toHaveLength(0);
+    // bold 20px is large too (≥18.66px bold)
+    expect(hits(textEl({ 'color': '#0078d4', 'background-color': '#deecf9', 'font-size': '20px', 'font-weight': '700' }))).toHaveLength(0);
+  });
+
+  it('checks every branch of a conditional fill under constant text', () => {
+    const issues = hits(textEl({
+      'color': '#ffffff',
+      'background-color': "=if([$Status]=='Done','#107c10','#ffffff')",
+    }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('warning'); // white-on-white branch
+    expect(issues[0].message).toContain('when its conditions pick');
+  });
+
+  it('pairs two chains positionally when their conditions are IDENTICAL', () => {
+    // classic conditional-formatting shape: the same rule drives text and fill
+    const ok = textEl({
+      'color': "=if([$S]=='a','#ffffff','#323130')",
+      'background-color': "=if([$S]=='a','#107c10','#ffffff')",
+    });
+    expect(hits(ok)).toHaveLength(0); // each branch pair is readable
+    const bad = textEl({
+      'color': "=if([$S]=='a','#ffffff','#fefefe')",
+      'background-color': "=if([$S]=='a','#107c10','#ffffff')",
+    });
+    expect(hits(bad)).toHaveLength(1); // near-white on white in the else branch
+  });
+
+  it('NEVER cross-multiplies chains with different conditions (soundness over coverage)', () => {
+    // naive cross-product would scream white-on-white; the branches can't co-occur provably
+    const doc = textEl({
+      'color': "=if([$S]=='a','#ffffff','#323130')",
+      'background-color': "=if([$Other]==1,'#ffffff','#107c10')",
+    });
+    expect(hits(doc)).toHaveLength(0);
+  });
+
+  it('inherits the fill down the tree and resets at the card boundary', () => {
+    const inherited: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#c50f1f' },
+        children: [{ elmType: 'span', txtContent: 'x', style: { 'color': '#d13438' } }],
+      },
+    };
+    const issues = hits(inherited);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual([0]); // the SPAN, not the container
+    // the card renders in its own callout — the host's dark fill doesn't carry in
+    const card: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#c50f1f' },
+        customCardProps: {
+          openOnEvent: 'hover',
+          formatter: { elmType: 'div', txtContent: 'x', style: { 'color': '#d13438' } },
+        },
+      },
+    };
+    expect(hits(card)).toHaveLength(0);
+  });
+
+  it("a 'transparent' fill keeps the inherited backdrop", () => {
+    const doc: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#c50f1f' },
+        children: [{
+          elmType: 'span', txtContent: 'x',
+          style: { 'color': '#d13438', 'background-color': 'transparent' },
+        }],
+      },
+    };
+    expect(hits(doc)).toHaveLength(1);
+  });
+
+  it('one-sided cases flag only when BOTH stock themes fail', () => {
+    // mid-gray text on the bare list surface: ~3.9:1 light AND ~4.2:1 dark → info
+    const bothFail = hits(textEl({ 'color': '#808080' }));
+    expect(bothFail).toHaveLength(1);
+    expect(bothFail[0].severity).toBe('info');
+    expect(bothFail[0].message).toContain('BOTH stock themes');
+    // yellow text is unreadable on light but fine on dark → a tenant theme decides; stay silent
+    expect(hits(textEl({ 'color': '#ffb900' }))).toHaveLength(0);
+    // mid-gray fill under the default text color fails both → info; a dark fill
+    // only fails the light theme's dark text → silent
+    expect(hits(textEl({ 'background-color': '#808080' }))).toHaveLength(1);
+    expect(hits(textEl({ 'background-color': '#605e5c' }))).toHaveLength(0);
+  });
+
+  it('honest silence: theme classes, background-image, unresolvable values, icons', () => {
+    // an sp-css fill class paints something the linter can't resolve
+    expect(hits(textEl({ 'color': '#ffffff' }, { attributes: { class: 'sp-css-backgroundColor-blueBackground37' } }))).toHaveLength(0);
+    // a background-image under gray text: the image decides, not the surface
+    expect(hits(textEl({ 'color': '#808080', 'background-image': 'url(x.png)' }))).toHaveLength(0);
+    // a field-driven color could be anything
+    expect(hits(textEl({ 'color': '=[$BrandColor]', 'background-color': '#ffffff' }))).toHaveLength(0);
+    // no text, no problem (icon dots pair colors without prose)
+    const dot: FormatterDocument = {
+      kind: 'column',
+      root: { elmType: 'div', style: { 'color': '#d13438', 'background-color': '#c50f1f' } },
+    };
+    expect(hits(dot)).toHaveLength(0);
+    // links and buttons carry their own theme ink — no default-text judgment
+    expect(hits({ kind: 'column', root: { elmType: 'button', txtContent: 'Go', style: { 'background-color': '#808080' } } })).toHaveLength(0);
+  });
+
+  it('reads the legacy object syntax too', () => {
+    const doc: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div', txtContent: 'x',
+        style: {
+          'color': '#ffffff',
+          'background-color': { operator: '?', operands: [{ operator: '==', operands: ['@currentField', 'Done'] }, '#107c10', '#ffffff'] },
+        },
+      },
+    };
+    const issues = hits(doc);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('warning');
+  });
+
+  it('review fixes hold (Copilot round, PR #310)', () => {
+    // (1) an image paints OVER a background-color fallback — together they stay unknown
+    expect(hits(textEl({ 'color': '#ffffff', 'background-color': '#ffffff', 'background-image': 'url(x.png)' }))).toHaveLength(0);
+    // (2) a button's theme ink covers text in child spans too…
+    const buttonChild: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'button',
+        style: { 'background-color': '#808080' },
+        children: [{ elmType: 'span', txtContent: 'Go' }],
+      },
+    };
+    expect(hits(buttonChild)).toHaveLength(0);
+    // …but an AUTHORED button ink is judged like any other pair
+    expect(hits({
+      kind: 'column',
+      root: { elmType: 'button', txtContent: 'Go', style: { 'color': '#d13438', 'background-color': '#c50f1f' } },
+    })).toHaveLength(1);
+    // (3) a conditional 'transparent' branch RESOLVES to a known opaque backdrop
+    const condTransparent: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#ffffff' },
+        children: [{
+          elmType: 'span', txtContent: 'x',
+          style: { 'color': '#ffffff', 'background-color': "=if([$Done],'transparent','#000000')" },
+        }],
+      },
+    };
+    const resolved = hits(condTransparent);
+    expect(resolved).toHaveLength(1); // white-on-white through the transparent branch
+    expect(resolved[0].severity).toBe('warning');
+    // (4) the WORST pair leads the message even when traversal finds it last
+    const [ordered] = hits(textEl({
+      'color': '#ffffff',
+      'background-color': "=if([$A]==1,'#909090',if([$A]==2,'#8c8c8c','#ffffff'))",
+    }));
+    expect(ordered.severity).toBe('warning');
+    expect(ordered.message.indexOf("'#ffffff' fill")).toBeLessThan(ordered.message.indexOf("'#909090'"));
+    // (5) 'bolder' is relative, not bold — it must not unlock the 3:1 bar
+    expect(hits(textEl({ 'color': '#0078d4', 'background-color': '#deecf9', 'font-size': '20px', 'font-weight': 'bolder' }))).toHaveLength(1);
+  });
+
+  it('models literal group opacity — deliberately faded text is measured as rendered (Copilot round 2)', () => {
+    // strong green at 0.6 blends below 3:1 on BOTH stock surfaces → warning
+    const faded = hits(textEl({ 'color': '#107c10', 'opacity': '0.6' }));
+    expect(faded).toHaveLength(1);
+    expect(faded[0].severity).toBe('warning');
+    // at 0.75 (the shipped strike fade) it clears 3:1 everywhere → info at worst
+    const gentle = hits(textEl({ 'color': '#107c10', 'opacity': '0.75' }));
+    expect(gentle).toHaveLength(1);
+    expect(gentle[0].severity).toBe('info');
+    // full opacity: green on the light surface is 5.3:1 → silent
+    expect(hits(textEl({ 'color': '#107c10', 'opacity': '1' }))).toHaveLength(0);
+    // a fill inside the translucent group blends with the group base too:
+    // 50% black over white = mid gray; white text stays white (blended with
+    // the same white base) → ~3.9:1 → info, measured exactly as rendered
+    const glassCard: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#ffffff' },
+        children: [{
+          elmType: 'span', txtContent: 'x',
+          style: { 'opacity': '0.5', 'background-color': '#000000', 'color': '#ffffff' },
+        }],
+      },
+    };
+    const glassed = hits(glassCard);
+    expect(glassed).toHaveLength(1);
+    expect(glassed[0].severity).toBe('info');
+    // FORMULA opacity is ignored, not silenced: blending only lowers contrast,
+    // so the underlying red-on-red failure is still a true failure
+    const formulaOp = hits(textEl({
+      'color': '#d13438', 'background-color': '#c50f1f',
+      'opacity': "=if([$Done],'0.5','1')",
+    }));
+    expect(formulaOp).toHaveLength(1);
+    expect(formulaOp[0].severity).toBe('warning');
+    // opacity 0 hides the subtree — invisibility is not a contrast problem
+    expect(hits(textEl({ 'color': '#d13438', 'background-color': '#c50f1f', 'opacity': '0' }))).toHaveLength(0);
+  });
+
+  it('the product palettes practice what the rule preaches (status pill grays pass)', () => {
+    // #605e5c replaced #737a7f under white pill text — pin it above 4.5:1
+    const issues = hits(textEl({
+      'color': '#ffffff', 'font-size': '12px', 'font-weight': '600',
+      'background-color': "=if([$Status]=='Done','#107c10',if([$Status]=='Blocked','#d13438',if([$Status]=='In Progress','#0078d4','#605e5c')))",
+    }));
+    expect(issues).toHaveLength(0);
+  });
+});
+
 describe('linter — function catalog (arg-count + unknown name)', () => {
   const lint = (expr: string) =>
     lintDocument({ kind: 'column', root: { elmType: 'div', txtContent: expr } }).map((i) => i.rule);

@@ -105,7 +105,10 @@ export const PALETTE: PaletteItem[] = [
         'display': 'inline-flex', 'align-items': 'center', 'justify-content': 'center',
         'border-radius': '12px', 'padding': '2px 10px',
         'font-size': '12px', 'font-weight': '600', 'color': '#ffffff',
-        'background-color': "=if([$Status]=='Done','#107c10',if([$Status]=='Blocked','#d13438',if([$Status]=='In Progress','#0078d4','#737a7f')))",
+        // the catch-all gray is Fluent neutralSecondary: the old #737a7f sat at
+        // 4.36:1 under the white pill text, shy of the 4.5:1 WCAG AA minimum
+        // the low-contrast lint rule teaches — practice what the linter preaches
+        'background-color': "=if([$Status]=='Done','#107c10',if([$Status]=='Blocked','#d13438',if([$Status]=='In Progress','#0078d4','#605e5c')))",
       },
     }),
   },

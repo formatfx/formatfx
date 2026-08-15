@@ -31,6 +31,14 @@
  *    sp-card-showOnHoverParent ancestor never appears (the reveal is a
  *    descendant :hover selector — HANDOFF §3); a parent with no child in its
  *    subtree is inert (info)
+ *  - low-contrast: WCAG contrast between authored text and the fill behind it
+ *    (core/contrast.ts is the brain — static color-outcome extraction over
+ *    both expression syntaxes, SOUND pairings only). Below 3:1 = warning
+ *    (fails WCAG even for large text); 3:1–4.5:1 = info (normal-size text
+ *    needs 4.5:1). One-sided cases (authored text on the bare list surface,
+ *    or an authored fill under the default text color) flag only when BOTH
+ *    stock themes fail. Theme classes and unresolvable values mark the
+ *    channel unknown and the check stays silent — teach, never guess.
  *
  * Retracted (owner-verified in production, 2026-06-13 — do not re-add without
  * fresh evidence): "CFR inside customCardProps renders blank" and
@@ -41,6 +49,10 @@ import type { SPElement, NodePath, FormatterDocument } from './types';
 import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES, SP_FUNCTIONS, SP_FUNCTION_DOCS, LIBRARY_ONLY_ROW_ACTIONS } from './schema';
 import { parseExpression, parseForEach, type AstNode } from './expressions';
 import { cfrFieldName } from './refs';
+import {
+  colorChainOf, contrastPairsOf, contrastRatio, compositeOver, formatRatio,
+  parseCssColor, STOCK_THEME, type ColorChain, type ColorOutcome, type RGBA,
+} from './contrast';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -64,6 +76,23 @@ interface WalkState {
   iterators: Set<string>;
   /** A strict ancestor carries sp-card-showOnHoverParent (hover-reveal pairing). */
   underHoverParent?: boolean;
+  /** Nearest authored fill behind this element ('unknown' = a theme class or
+   *  unresolvable value paints here — stay silent; undefined = the bare list
+   *  surface). low-contrast context. */
+  bg?: ColorChain | 'unknown';
+  /** Inherited authored text color (same conventions as bg). */
+  fgInherit?: ColorChain | 'unknown';
+  /** Inherited literal font-size in px / bold-ness, for the WCAG large-text
+   *  threshold (unparseable or formula values leave these undefined). */
+  fontPx?: number;
+  fontBold?: boolean;
+  /** Inside a group with authored literal opacity < 1: the cumulative alpha
+   *  and the backdrop the whole group blends into ('default' = the bare list
+   *  surface). Formula opacity is deliberately NOT tracked: blending toward
+   *  the backdrop can only LOWER contrast, so a failure measured at full
+   *  opacity stays a true failure at any opacity — modeling literals just
+   *  catches the extra ones (deliberately-faded text). */
+  translucent?: { alpha: number; base: RGBA | 'default' };
 }
 
 const HOVER_PARENT_CLASS = 'sp-card-showOnHoverParent';
@@ -299,6 +328,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     state = { ...state, underHoverParent: true };
   }
 
+  // low-contrast (WCAG): fold this element's authored colors into the
+  // inherited context, then judge its own text against the fill behind it
+  state = colorContextFor(el, cls, state);
+  checkContrast(el, state, push);
+
   // style checks
   for (const prop of Object.keys(el.style ?? {})) {
     if (prop === '_comment') continue;
@@ -432,8 +466,13 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       const cardIssues: LintIssue[] = [];
       path.push(-1);
       // the card body renders in a callout, not as a DOM descendant of the
-      // host — a host-side showOnHoverParent can't reveal anything inside it
-      walk(f, path, { ...state, underHoverParent: false }, cardIssues);
+      // host — a host-side showOnHoverParent can't reveal anything inside it,
+      // and the host's colors/fonts don't carry in (fresh card surface)
+      walk(f, path, {
+        ...state, underHoverParent: false,
+        bg: undefined, fgInherit: undefined, fontPx: undefined, fontBold: undefined,
+        translucent: undefined,
+      }, cardIssues);
       path.pop();
       for (const issue of cardIssues) {
         // keep each issue's walk-computed path (host path + -1 CARD_SEGMENT +
@@ -481,4 +520,219 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       path.pop();
     }
   }
+}
+
+// ─── low-contrast helpers (the WCAG rule; math in core/contrast.ts) ─────────
+
+/** Theme-driven paint the linter can't statically resolve: SP/Fabric utility
+ *  classes that set a fill or an ink. Best-effort — a class token anywhere in
+ *  the value (conditional expressions included) silences the channel. */
+const CLASS_SETS_BG = /sp-css-backgroundColor|ms-bgColor|sp-field-/;
+const CLASS_SETS_FG = /sp-css-color|ms-fontColor|sp-field-/;
+
+const STOCK = {
+  lightText: parseCssColor(STOCK_THEME.light.text)!,
+  lightSurface: parseCssColor(STOCK_THEME.light.surface)!,
+  darkText: parseCssColor(STOCK_THEME.dark.text)!,
+  darkSurface: parseCssColor(STOCK_THEME.dark.surface)!,
+};
+
+function isSingleOpaque(c: ColorChain): boolean {
+  return c.complete && c.entries.length === 1 && c.entries[0].rgba.a >= 1;
+}
+
+/** The fill context an authored background-color leaves for this subtree.
+ *  Inside a translucent group (`glass`), every fill blends with the group's
+ *  base at the group's alpha — exactly what a reader's screen composites. */
+function resolveBgChain(
+  raw: NonNullable<SPElement['style']>[string],
+  prior: WalkState['bg'],
+  glass?: WalkState['translucent'],
+): WalkState['bg'] {
+  const chain = colorChainOf(raw);
+  if (!chain.entries.length) return 'unknown';
+  if (glass && glass.base === 'default') return 'unknown'; // blends into a surface we can't pick
+  const glassBase = glass ? (glass.base as RGBA) : undefined;
+  const out: ColorOutcome[] = [];
+  let complete = chain.complete;
+  for (const e of chain.entries) {
+    const a = e.rgba.a * (glass ? glass.alpha : 1);
+    if (a === 0) {
+      // that branch shows what's behind — when the backdrop is a single known
+      // opaque fill, the branch RESOLVES to it (a conditional 'transparent'
+      // over a white parent is a real white outcome, condition and all)
+      const base = glassBase ?? (prior && prior !== 'unknown' && isSingleOpaque(prior) ? prior.entries[0].rgba : undefined);
+      const baseCss = glassBase ? undefined : (prior && prior !== 'unknown' ? prior.entries[0].css : undefined);
+      if (base) {
+        out.push({ cond: e.cond, css: baseCss ?? e.css, rgba: base });
+      } else {
+        complete = false;
+      }
+      continue;
+    }
+    if (a < 1) {
+      // a translucent fill needs a known opaque backdrop to composite over
+      const base = glassBase ?? (prior && prior !== 'unknown' && isSingleOpaque(prior) ? prior.entries[0].rgba : undefined);
+      if (!base) return 'unknown';
+      out.push({ ...e, rgba: compositeOver({ ...e.rgba, a }, base) });
+    } else {
+      out.push(e);
+    }
+  }
+  if (!out.length) return prior; // fully transparent: the inherited fill stays
+  return { entries: out, complete };
+}
+
+/** The text-color context an authored color leaves for this subtree. */
+function resolveFgChain(raw: NonNullable<SPElement['style']>[string]): WalkState['fgInherit'] {
+  const chain = colorChainOf(raw);
+  const entries = chain.entries.filter((e) => e.rgba.a > 0); // invisible text isn't a contrast problem
+  if (!entries.length) return 'unknown';
+  return { entries, complete: chain.complete && entries.length === chain.entries.length };
+}
+
+/** CSS opacity as a literal number ('0.6', .6, '60%'); formulas → undefined. */
+function literalOpacity(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : undefined;
+  if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
+  const t = raw.trim();
+  const pct = t.endsWith('%');
+  const body = pct ? t.slice(0, -1) : t;
+  if (!/^(?:\d+\.?\d*|\.\d+)$/.test(body)) return undefined;
+  const n = parseFloat(body) / (pct ? 100 : 1);
+  return Math.max(0, Math.min(1, n));
+}
+
+function literalPx(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
+  const m = raw.trim().match(/^(\d+(?:\.\d+)?)px$/i);
+  return m ? parseFloat(m[1]) : undefined;
+}
+
+function literalBold(raw: unknown): boolean | undefined {
+  if (typeof raw === 'number') return raw >= 700;
+  if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === 'bold') return true;
+  // 'bolder' is RELATIVE — from a light parent it can resolve to 400, so
+  // treating it as bold could unlock the 3:1 bar and hide a real failure.
+  // Unknown keeps the stricter normal-text threshold (info-tier at worst).
+  if (v === 'bolder') return undefined;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n >= 700 : undefined;
+}
+
+/** Fold the element's own class/style paint into the inherited color context.
+ *  Inline styles beat classes (the CSS rule), so a resolvable style value
+ *  recovers a channel a class made unknown. */
+function colorContextFor(el: SPElement, cls: string, state: WalkState): WalkState {
+  let bg = state.bg, fg = state.fgInherit;
+  let fontPx = state.fontPx, fontBold = state.fontBold;
+  let translucent = state.translucent;
+  if (CLASS_SETS_BG.test(cls)) bg = 'unknown';
+  if (CLASS_SETS_FG.test(cls)) fg = 'unknown';
+  const st = el.style ?? {};
+  // group opacity FIRST — it wraps the element's own fill too. Literal < 1
+  // opens (or deepens) a translucent group anchored to the current backdrop;
+  // formula opacity is ignored on purpose (see the WalkState note: blending
+  // can only lower contrast, so existing failures stay true).
+  let suppressColors = false; // applied LAST — style colors must not recover it
+  if (st['opacity'] !== undefined) {
+    const o = literalOpacity(st['opacity']);
+    if (o !== undefined && o < 1) {
+      if (o === 0) {
+        suppressColors = true; // invisible subtree — not a contrast problem
+      } else if (translucent) {
+        translucent = { alpha: translucent.alpha * o, base: translucent.base };
+      } else if (bg === undefined) {
+        translucent = { alpha: o, base: 'default' };
+      } else if (bg !== 'unknown' && isSingleOpaque(bg)) {
+        translucent = { alpha: o, base: bg.entries[0].rgba };
+      } else {
+        suppressColors = true; // can't model the blend backdrop
+      }
+    }
+  }
+  if (st['background-color'] !== undefined) bg = resolveBgChain(st['background-color'], bg, translucent);
+  // AFTER the color: an image paints OVER any background-color fallback, so
+  // its presence makes the backdrop unknown no matter what color rode along
+  if (st['background-image'] !== undefined) bg = 'unknown';
+  if (st['color'] !== undefined) fg = resolveFgChain(st['color']);
+  // links/buttons paint their own theme ink unless a color is authored — the
+  // body-text assumption is wrong for the element AND for text in its children
+  if ((el.elmType === 'a' || el.elmType === 'button') && st['color'] === undefined) fg = 'unknown';
+  if (st['font-size'] !== undefined) fontPx = literalPx(st['font-size']);
+  if (st['font-weight'] !== undefined) fontBold = literalBold(st['font-weight']);
+  if (suppressColors) { bg = 'unknown'; fg = 'unknown'; }
+  if (bg === state.bg && fg === state.fgInherit && fontPx === state.fontPx
+    && fontBold === state.fontBold && translucent === state.translucent) return state;
+  return { ...state, bg, fgInherit: fg, fontPx, fontBold, translucent };
+}
+
+/**
+ * Judge this element's text against the fill behind it. Two-sided authored
+ * pairs check directly (SOUND pairings only — contrastPairsOf); one-sided
+ * cases check against BOTH stock themes and flag only when both fail, since
+ * the tenant theme decides which one a reader gets. Severity: below 3:1 (the
+ * WCAG floor even for large text) = warning; 3:1–4.5:1 on normal-size text =
+ * info. One issue per element, worst pairs listed.
+ */
+function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: string, m: string) => void): void {
+  if (el.txtContent === undefined) return;
+  if (typeof el.txtContent === 'string' && el.txtContent.trim() === '') return;
+  const fg = state.fgInherit, bg = state.bg;
+  if (fg === 'unknown' || bg === 'unknown') return;
+  if (!fg && !bg) return;
+  const large = state.fontPx !== undefined
+    && (state.fontPx >= 24 || (state.fontPx >= 18.66 && state.fontBold === true));
+  const floor = large ? 3 : 4.5;
+
+  // Inside a translucent group, what a reader sees is the text blended with
+  // the GROUP's base (not the in-group fill) — text pixel = α·color + (1-α)·base.
+  const glass = state.translucent;
+  const fgEff = (rgba: RGBA, surface: RGBA): RGBA =>
+    glass ? compositeOver({ ...rgba, a: rgba.a * glass.alpha }, glass.base === 'default' ? surface : glass.base) : rgba;
+
+  const fails: Array<{ text: string; worst: number }> = [];
+  if (fg && bg) {
+    for (const p of contrastPairsOf(fg, bg)) {
+      const r = contrastRatio(fgEff(p.fg.rgba, p.bg.rgba), p.bg.rgba);
+      if (r < floor) {
+        const cond = p.fg.cond || p.bg.cond ? 'when its conditions pick ' : '';
+        fails.push({ text: `${cond}'${p.fg.css}' text on the '${p.bg.css}' fill (${formatRatio(r)})`, worst: r });
+      }
+    }
+  } else if (fg) {
+    // authored text on the bare list surface
+    for (const f of fg.entries) {
+      const rl = contrastRatio(fgEff(f.rgba, STOCK.lightSurface), STOCK.lightSurface);
+      const rd = contrastRatio(fgEff(f.rgba, STOCK.darkSurface), STOCK.darkSurface);
+      if (rl < floor && rd < floor) {
+        fails.push({ text: `'${f.css}' text on the list's own background — it fails in BOTH stock themes (${formatRatio(rl)} light, ${formatRatio(rd)} dark), so no tenant look saves it. Pick a stronger color or give the element a fill`, worst: Math.max(rl, rd) });
+      }
+    }
+  } else if (bg) {
+    // authored fill under the default text color (links/buttons never reach
+    // here — colorContextFor marks their un-authored ink 'unknown')
+    for (const b of bg.entries) {
+      const rl = contrastRatio(fgEff(STOCK.lightText, b.rgba), b.rgba);
+      const rd = contrastRatio(fgEff(STOCK.darkText, b.rgba), b.rgba);
+      if (rl < floor && rd < floor) {
+        fails.push({ text: `the default text color on the '${b.css}' fill — it fails in BOTH stock themes (${formatRatio(rl)} light, ${formatRatio(rd)} dark). Set style.color to something readable on this fill`, worst: Math.max(rl, rd) });
+      }
+    }
+  }
+  if (!fails.length) return;
+
+  const severity: Severity = fails.some((f) => f.worst < 3) ? 'warning' : 'info';
+  fails.sort((a, b) => a.worst - b.worst); // worst first — the shown pairs must justify the severity
+  const shown = fails.slice(0, 3).map((f) => f.text).join('; ');
+  const more = fails.length > 3 ? ` (+${fails.length - 3} more)` : '';
+  const bar = large
+    ? 'WCAG wants at least 3:1 for text this large'
+    : severity === 'warning'
+      ? 'below even the 3:1 WCAG floor for large text, so many readers simply lose it (normal-size text needs 4.5:1)'
+      : 'readable at WCAG-large sizes (24px+, or bold 18.66px+), but under the 4.5:1 AA minimum for text this size';
+  push(severity, 'low-contrast', `Low contrast: ${shown}${more} — ${bar}. SharePoint renders it anyway; the readers it excludes won't file a bug.`);
 }
