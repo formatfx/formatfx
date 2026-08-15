@@ -550,6 +550,46 @@ describe('linter — low-contrast (WCAG, core/contrast.ts is the brain)', () => 
     expect(hits(textEl({ 'color': '#0078d4', 'background-color': '#deecf9', 'font-size': '20px', 'font-weight': 'bolder' }))).toHaveLength(1);
   });
 
+  it('models literal group opacity — deliberately faded text is measured as rendered (Copilot round 2)', () => {
+    // strong green at 0.6 blends below 3:1 on BOTH stock surfaces → warning
+    const faded = hits(textEl({ 'color': '#107c10', 'opacity': '0.6' }));
+    expect(faded).toHaveLength(1);
+    expect(faded[0].severity).toBe('warning');
+    // at 0.75 (the shipped strike fade) it clears 3:1 everywhere → info at worst
+    const gentle = hits(textEl({ 'color': '#107c10', 'opacity': '0.75' }));
+    expect(gentle).toHaveLength(1);
+    expect(gentle[0].severity).toBe('info');
+    // full opacity: green on the light surface is 5.3:1 → silent
+    expect(hits(textEl({ 'color': '#107c10', 'opacity': '1' }))).toHaveLength(0);
+    // a fill inside the translucent group blends with the group base too:
+    // 50% black over white = mid gray; white text stays white (blended with
+    // the same white base) → ~3.9:1 → info, measured exactly as rendered
+    const glassCard: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#ffffff' },
+        children: [{
+          elmType: 'span', txtContent: 'x',
+          style: { 'opacity': '0.5', 'background-color': '#000000', 'color': '#ffffff' },
+        }],
+      },
+    };
+    const glassed = hits(glassCard);
+    expect(glassed).toHaveLength(1);
+    expect(glassed[0].severity).toBe('info');
+    // FORMULA opacity is ignored, not silenced: blending only lowers contrast,
+    // so the underlying red-on-red failure is still a true failure
+    const formulaOp = hits(textEl({
+      'color': '#d13438', 'background-color': '#c50f1f',
+      'opacity': "=if([$Done],'0.5','1')",
+    }));
+    expect(formulaOp).toHaveLength(1);
+    expect(formulaOp[0].severity).toBe('warning');
+    // opacity 0 hides the subtree — invisibility is not a contrast problem
+    expect(hits(textEl({ 'color': '#d13438', 'background-color': '#c50f1f', 'opacity': '0' }))).toHaveLength(0);
+  });
+
   it('the product palettes practice what the rule preaches (status pill grays pass)', () => {
     // #605e5c replaced #737a7f under white pill text — pin it above 4.5:1
     const issues = hits(textEl({

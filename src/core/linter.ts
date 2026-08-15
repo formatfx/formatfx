@@ -51,7 +51,7 @@ import { parseExpression, parseForEach, type AstNode } from './expressions';
 import { cfrFieldName } from './refs';
 import {
   colorChainOf, contrastPairsOf, contrastRatio, compositeOver, formatRatio,
-  parseCssColor, STOCK_THEME, type ColorChain, type ColorOutcome,
+  parseCssColor, STOCK_THEME, type ColorChain, type ColorOutcome, type RGBA,
 } from './contrast';
 
 export type Severity = 'error' | 'warning' | 'info';
@@ -86,6 +86,13 @@ interface WalkState {
    *  threshold (unparseable or formula values leave these undefined). */
   fontPx?: number;
   fontBold?: boolean;
+  /** Inside a group with authored literal opacity < 1: the cumulative alpha
+   *  and the backdrop the whole group blends into ('default' = the bare list
+   *  surface). Formula opacity is deliberately NOT tracked: blending toward
+   *  the backdrop can only LOWER contrast, so a failure measured at full
+   *  opacity stays a true failure at any opacity — modeling literals just
+   *  catches the extra ones (deliberately-faded text). */
+  translucent?: { alpha: number; base: RGBA | 'default' };
 }
 
 const HOVER_PARENT_CLASS = 'sp-card-showOnHoverParent';
@@ -464,6 +471,7 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       walk(f, path, {
         ...state, underHoverParent: false,
         bg: undefined, fgInherit: undefined, fontPx: undefined, fontBold: undefined,
+        translucent: undefined,
       }, cardIssues);
       path.pop();
       for (const issue of cardIssues) {
@@ -533,28 +541,40 @@ function isSingleOpaque(c: ColorChain): boolean {
   return c.complete && c.entries.length === 1 && c.entries[0].rgba.a >= 1;
 }
 
-/** The fill context an authored background-color leaves for this subtree. */
-function resolveBgChain(raw: NonNullable<SPElement['style']>[string], prior: WalkState['bg']): WalkState['bg'] {
+/** The fill context an authored background-color leaves for this subtree.
+ *  Inside a translucent group (`glass`), every fill blends with the group's
+ *  base at the group's alpha — exactly what a reader's screen composites. */
+function resolveBgChain(
+  raw: NonNullable<SPElement['style']>[string],
+  prior: WalkState['bg'],
+  glass?: WalkState['translucent'],
+): WalkState['bg'] {
   const chain = colorChainOf(raw);
   if (!chain.entries.length) return 'unknown';
+  if (glass && glass.base === 'default') return 'unknown'; // blends into a surface we can't pick
+  const glassBase = glass ? (glass.base as RGBA) : undefined;
   const out: ColorOutcome[] = [];
   let complete = chain.complete;
   for (const e of chain.entries) {
-    if (e.rgba.a === 0) {
+    const a = e.rgba.a * (glass ? glass.alpha : 1);
+    if (a === 0) {
       // that branch shows what's behind — when the backdrop is a single known
       // opaque fill, the branch RESOLVES to it (a conditional 'transparent'
       // over a white parent is a real white outcome, condition and all)
-      if (prior && prior !== 'unknown' && isSingleOpaque(prior)) {
-        out.push({ cond: e.cond, css: prior.entries[0].css, rgba: prior.entries[0].rgba });
+      const base = glassBase ?? (prior && prior !== 'unknown' && isSingleOpaque(prior) ? prior.entries[0].rgba : undefined);
+      const baseCss = glassBase ? undefined : (prior && prior !== 'unknown' ? prior.entries[0].css : undefined);
+      if (base) {
+        out.push({ cond: e.cond, css: baseCss ?? e.css, rgba: base });
       } else {
         complete = false;
       }
       continue;
     }
-    if (e.rgba.a < 1) {
+    if (a < 1) {
       // a translucent fill needs a known opaque backdrop to composite over
-      if (!prior || prior === 'unknown' || !isSingleOpaque(prior)) return 'unknown';
-      out.push({ ...e, rgba: compositeOver(e.rgba, prior.entries[0].rgba) });
+      const base = glassBase ?? (prior && prior !== 'unknown' && isSingleOpaque(prior) ? prior.entries[0].rgba : undefined);
+      if (!base) return 'unknown';
+      out.push({ ...e, rgba: compositeOver({ ...e.rgba, a }, base) });
     } else {
       out.push(e);
     }
@@ -569,6 +589,18 @@ function resolveFgChain(raw: NonNullable<SPElement['style']>[string]): WalkState
   const entries = chain.entries.filter((e) => e.rgba.a > 0); // invisible text isn't a contrast problem
   if (!entries.length) return 'unknown';
   return { entries, complete: chain.complete && entries.length === chain.entries.length };
+}
+
+/** CSS opacity as a literal number ('0.6', .6, '60%'); formulas → undefined. */
+function literalOpacity(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : undefined;
+  if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
+  const t = raw.trim();
+  const pct = t.endsWith('%');
+  const body = pct ? t.slice(0, -1) : t;
+  if (!/^(?:\d+\.?\d*|\.\d+)$/.test(body)) return undefined;
+  const n = parseFloat(body) / (pct ? 100 : 1);
+  return Math.max(0, Math.min(1, n));
 }
 
 function literalPx(raw: unknown): number | undefined {
@@ -597,10 +629,32 @@ function literalBold(raw: unknown): boolean | undefined {
 function colorContextFor(el: SPElement, cls: string, state: WalkState): WalkState {
   let bg = state.bg, fg = state.fgInherit;
   let fontPx = state.fontPx, fontBold = state.fontBold;
+  let translucent = state.translucent;
   if (CLASS_SETS_BG.test(cls)) bg = 'unknown';
   if (CLASS_SETS_FG.test(cls)) fg = 'unknown';
   const st = el.style ?? {};
-  if (st['background-color'] !== undefined) bg = resolveBgChain(st['background-color'], bg);
+  // group opacity FIRST — it wraps the element's own fill too. Literal < 1
+  // opens (or deepens) a translucent group anchored to the current backdrop;
+  // formula opacity is ignored on purpose (see the WalkState note: blending
+  // can only lower contrast, so existing failures stay true).
+  let suppressColors = false; // applied LAST — style colors must not recover it
+  if (st['opacity'] !== undefined) {
+    const o = literalOpacity(st['opacity']);
+    if (o !== undefined && o < 1) {
+      if (o === 0) {
+        suppressColors = true; // invisible subtree — not a contrast problem
+      } else if (translucent) {
+        translucent = { alpha: translucent.alpha * o, base: translucent.base };
+      } else if (bg === undefined) {
+        translucent = { alpha: o, base: 'default' };
+      } else if (bg !== 'unknown' && isSingleOpaque(bg)) {
+        translucent = { alpha: o, base: bg.entries[0].rgba };
+      } else {
+        suppressColors = true; // can't model the blend backdrop
+      }
+    }
+  }
+  if (st['background-color'] !== undefined) bg = resolveBgChain(st['background-color'], bg, translucent);
   // AFTER the color: an image paints OVER any background-color fallback, so
   // its presence makes the backdrop unknown no matter what color rode along
   if (st['background-image'] !== undefined) bg = 'unknown';
@@ -610,8 +664,10 @@ function colorContextFor(el: SPElement, cls: string, state: WalkState): WalkStat
   if ((el.elmType === 'a' || el.elmType === 'button') && st['color'] === undefined) fg = 'unknown';
   if (st['font-size'] !== undefined) fontPx = literalPx(st['font-size']);
   if (st['font-weight'] !== undefined) fontBold = literalBold(st['font-weight']);
-  if (bg === state.bg && fg === state.fgInherit && fontPx === state.fontPx && fontBold === state.fontBold) return state;
-  return { ...state, bg, fgInherit: fg, fontPx, fontBold };
+  if (suppressColors) { bg = 'unknown'; fg = 'unknown'; }
+  if (bg === state.bg && fg === state.fgInherit && fontPx === state.fontPx
+    && fontBold === state.fontBold && translucent === state.translucent) return state;
+  return { ...state, bg, fgInherit: fg, fontPx, fontBold, translucent };
 }
 
 /**
@@ -632,10 +688,16 @@ function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: s
     && (state.fontPx >= 24 || (state.fontPx >= 18.66 && state.fontBold === true));
   const floor = large ? 3 : 4.5;
 
+  // Inside a translucent group, what a reader sees is the text blended with
+  // the GROUP's base (not the in-group fill) — text pixel = α·color + (1-α)·base.
+  const glass = state.translucent;
+  const fgEff = (rgba: RGBA, surface: RGBA): RGBA =>
+    glass ? compositeOver({ ...rgba, a: rgba.a * glass.alpha }, glass.base === 'default' ? surface : glass.base) : rgba;
+
   const fails: Array<{ text: string; worst: number }> = [];
   if (fg && bg) {
     for (const p of contrastPairsOf(fg, bg)) {
-      const r = contrastRatio(p.fg.rgba, p.bg.rgba);
+      const r = contrastRatio(fgEff(p.fg.rgba, p.bg.rgba), p.bg.rgba);
       if (r < floor) {
         const cond = p.fg.cond || p.bg.cond ? 'when its conditions pick ' : '';
         fails.push({ text: `${cond}'${p.fg.css}' text on the '${p.bg.css}' fill (${formatRatio(r)})`, worst: r });
@@ -644,8 +706,8 @@ function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: s
   } else if (fg) {
     // authored text on the bare list surface
     for (const f of fg.entries) {
-      const rl = contrastRatio(f.rgba, STOCK.lightSurface);
-      const rd = contrastRatio(f.rgba, STOCK.darkSurface);
+      const rl = contrastRatio(fgEff(f.rgba, STOCK.lightSurface), STOCK.lightSurface);
+      const rd = contrastRatio(fgEff(f.rgba, STOCK.darkSurface), STOCK.darkSurface);
       if (rl < floor && rd < floor) {
         fails.push({ text: `'${f.css}' text on the list's own background — it fails in BOTH stock themes (${formatRatio(rl)} light, ${formatRatio(rd)} dark), so no tenant look saves it. Pick a stronger color or give the element a fill`, worst: Math.max(rl, rd) });
       }
@@ -654,8 +716,8 @@ function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: s
     // authored fill under the default text color (links/buttons never reach
     // here — colorContextFor marks their un-authored ink 'unknown')
     for (const b of bg.entries) {
-      const rl = contrastRatio(STOCK.lightText, b.rgba);
-      const rd = contrastRatio(STOCK.darkText, b.rgba);
+      const rl = contrastRatio(fgEff(STOCK.lightText, b.rgba), b.rgba);
+      const rd = contrastRatio(fgEff(STOCK.darkText, b.rgba), b.rgba);
       if (rl < floor && rd < floor) {
         fails.push({ text: `the default text color on the '${b.css}' fill — it fails in BOTH stock themes (${formatRatio(rl)} light, ${formatRatio(rd)} dark). Set style.color to something readable on this fill`, worst: Math.max(rl, rd) });
       }

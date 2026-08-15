@@ -71,7 +71,9 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
                color-outcome extraction over both expression syntaxes —
                SOUND pairings only (constant × chain always; two conditional
                chains pair branchwise only on identical condition sequences,
-               mismatches never cross-multiply). paletteContrast.test.ts
+               mismatches never cross-multiply; literal group opacity is
+               modeled into the blend — formula opacity is ignored, never
+               silenced, since blending only lowers contrast). paletteContrast.test.ts
                holds the product's own palettes/presets/components to the
                same bar (that sweep is why #737a7f became #605e5c)
   serializer.ts   JSON ⇄ document (column/row/tile wrapper detection),
@@ -1253,7 +1255,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1721 vitest unit tests across 95 files (engine semantics incl.
+- `npm test` — 1722 vitest unit tests across 95 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the

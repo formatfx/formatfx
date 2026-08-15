@@ -63,7 +63,11 @@ describe('shipped formatting vs the low-contrast rule', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('condRules effects never fall below 3:1; the pastel "fill" band stays info-grade', () => {
+  it('condRules effects never fall below 3:1; only "fill" and "strike" may sit in the info band', () => {
+    // fill = Fluent's own pastel pairs; strike = a deliberate de-emphasis
+    // whose literal opacity the linter now models. Every OTHER effect must be
+    // completely silent — an info on text/pill/stripe is a palette regression.
+    const infoAllowed = new Set(['fill', 'strike']);
     const offenders: string[] = [];
     for (const effect of COND_EFFECTS) {
       for (const color of COND_COLORS) {
@@ -73,7 +77,9 @@ describe('shipped formatting vs the low-contrast rule', () => {
           root: { elmType: 'div', txtContent: 'sample', style },
         });
         for (const i of issues) {
-          if (i.severity !== 'info') offenders.push(`${effect.id}/${color.id} [${i.severity}]: ${i.message}`);
+          if (i.severity !== 'info' || !infoAllowed.has(effect.id)) {
+            offenders.push(`${effect.id}/${color.id} [${i.severity}]: ${i.message}`);
+          }
         }
       }
     }

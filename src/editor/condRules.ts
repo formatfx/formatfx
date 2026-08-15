@@ -277,7 +277,12 @@ export const COND_EFFECTS: CondEffect[] = [
   },
   {
     id: 'strike', label: 'Strike out', hint: 'Cross it off and fade it — done/cancelled items',
-    conditional: (c) => ({ 'text-decoration': 'line-through', 'opacity': '0.6', 'color': c.strong }),
+    // 0.75, not 0.6: the linter's low-contrast rule models literal opacity,
+    // and every palette color at 0.6 blends below the 3:1 WCAG floor on the
+    // stock surfaces (warning tier). 0.75 still reads as a clear fade but
+    // keeps every color at 3:1+ — the deliberate-de-emphasis info band,
+    // pinned by paletteContrast.test.ts.
+    conditional: (c) => ({ 'text-decoration': 'line-through', 'opacity': '0.75', 'color': c.strong }),
   },
 ];
 
