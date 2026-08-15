@@ -62,7 +62,18 @@ src/core/      UI-free engine — reusable headlessly (tests import it in node)
   theme.ts     stock Fluent light/dark palettes + tenant overrides →
                generates real CSS for sp-css-*/ms-*/sp-card-*/sp-field-*
   linter.ts    teaching diagnostics for silent-failure quirks (▶ position
-               markers, plain-language "why")
+               markers, plain-language "why") + the WCAG low-contrast rule
+               (below 3:1 warning, 3–4.5:1 info; one-sided cases flag only
+               when BOTH stock themes fail; theme classes/unresolvables mark
+               the channel unknown → silence)
+  contrast.ts  the color brain behind low-contrast: CSS color parsing
+               (hex/rgb/hsl/named), WCAG luminance/ratio math, and STATIC
+               color-outcome extraction over both expression syntaxes —
+               SOUND pairings only (constant × chain always; two conditional
+               chains pair branchwise only on identical condition sequences,
+               mismatches never cross-multiply). paletteContrast.test.ts
+               holds the product's own palettes/presets/components to the
+               same bar (that sweep is why #737a7f became #605e5c)
   serializer.ts   JSON ⇄ document (column/row/tile wrapper detection),
                whitespace sanitization, CSOM-safe & escaping
   commandBar.ts   the command-bar hide brain (pure, node-tested): the
@@ -1242,7 +1253,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1387 vitest unit tests across 73 files (engine semantics incl.
+- `npm test` — 1719 vitest unit tests across 95 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -1267,7 +1278,12 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   DOM/undo contracts (`viewKebab.test.ts`), and the workshop seam
   (`componentEditor.test.ts` + the treeView/inspector workshop modes:
   staged commits ride modal-undo, app undo untouched, surface tools
-  gated)). Run headlessly anywhere.
+  gated), and, 2026-08-15, the WCAG contrast dimension (`contrast.test.ts`:
+  color parsing/ratio math/outcome extraction/pairing soundness + the
+  STOCK_THEME↔theme.ts sync pin; the `core.test.ts` low-contrast linter
+  block; `paletteContrast.test.ts`: every shipped preset, built-in
+  component, condRules effect and the default workspace held to the
+  rule's own bar)). Run headlessly anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
 - `npm run test:ui` — 142 Playwright tests across 16 spec files

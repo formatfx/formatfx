@@ -710,7 +710,9 @@ export const BUILTIN_COMPONENTS: ComponentDef[] = [
         'display': 'inline-flex', 'align-items': 'center',
         'border-radius': '12px', 'padding': '2px 10px',
         'font-size': '12px', 'font-weight': '600', 'color': '#ffffff',
-        'background-color': "=if(toString([$Due])=='','#737a7f',if([$Due]<@now,'#d13438','#107c10'))",
+        // #605e5c (Fluent neutralSecondary) not #737a7f: the old gray failed the
+        // 4.5:1 WCAG minimum under this chip's white text (low-contrast lint rule)
+        'background-color': "=if(toString([$Due])=='','#605e5c',if([$Due]<@now,'#d13438','#107c10'))",
       },
     },
   },

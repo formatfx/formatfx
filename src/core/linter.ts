@@ -31,6 +31,14 @@
  *    sp-card-showOnHoverParent ancestor never appears (the reveal is a
  *    descendant :hover selector — HANDOFF §3); a parent with no child in its
  *    subtree is inert (info)
+ *  - low-contrast: WCAG contrast between authored text and the fill behind it
+ *    (core/contrast.ts is the brain — static color-outcome extraction over
+ *    both expression syntaxes, SOUND pairings only). Below 3:1 = warning
+ *    (fails WCAG even for large text); 3:1–4.5:1 = info (normal-size text
+ *    needs 4.5:1). One-sided cases (authored text on the bare list surface,
+ *    or an authored fill under the default text color) flag only when BOTH
+ *    stock themes fail. Theme classes and unresolvable values mark the
+ *    channel unknown and the check stays silent — teach, never guess.
  *
  * Retracted (owner-verified in production, 2026-06-13 — do not re-add without
  * fresh evidence): "CFR inside customCardProps renders blank" and
@@ -41,6 +49,10 @@ import type { SPElement, NodePath, FormatterDocument } from './types';
 import { ELM_TYPES, KNOWN_UNSUPPORTED_STYLES, ALLOWED_STYLES, SP_FUNCTIONS, SP_FUNCTION_DOCS, LIBRARY_ONLY_ROW_ACTIONS } from './schema';
 import { parseExpression, parseForEach, type AstNode } from './expressions';
 import { cfrFieldName } from './refs';
+import {
+  colorChainOf, contrastPairsOf, contrastRatio, compositeOver, formatRatio,
+  parseCssColor, STOCK_THEME, type ColorChain, type ColorOutcome,
+} from './contrast';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -64,6 +76,16 @@ interface WalkState {
   iterators: Set<string>;
   /** A strict ancestor carries sp-card-showOnHoverParent (hover-reveal pairing). */
   underHoverParent?: boolean;
+  /** Nearest authored fill behind this element ('unknown' = a theme class or
+   *  unresolvable value paints here — stay silent; undefined = the bare list
+   *  surface). low-contrast context. */
+  bg?: ColorChain | 'unknown';
+  /** Inherited authored text color (same conventions as bg). */
+  fgInherit?: ColorChain | 'unknown';
+  /** Inherited literal font-size in px / bold-ness, for the WCAG large-text
+   *  threshold (unparseable or formula values leave these undefined). */
+  fontPx?: number;
+  fontBold?: boolean;
 }
 
 const HOVER_PARENT_CLASS = 'sp-card-showOnHoverParent';
@@ -299,6 +321,11 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
     state = { ...state, underHoverParent: true };
   }
 
+  // low-contrast (WCAG): fold this element's authored colors into the
+  // inherited context, then judge its own text against the fill behind it
+  state = colorContextFor(el, cls, state);
+  checkContrast(el, state, push);
+
   // style checks
   for (const prop of Object.keys(el.style ?? {})) {
     if (prop === '_comment') continue;
@@ -432,8 +459,12 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       const cardIssues: LintIssue[] = [];
       path.push(-1);
       // the card body renders in a callout, not as a DOM descendant of the
-      // host — a host-side showOnHoverParent can't reveal anything inside it
-      walk(f, path, { ...state, underHoverParent: false }, cardIssues);
+      // host — a host-side showOnHoverParent can't reveal anything inside it,
+      // and the host's colors/fonts don't carry in (fresh card surface)
+      walk(f, path, {
+        ...state, underHoverParent: false,
+        bg: undefined, fgInherit: undefined, fontPx: undefined, fontBold: undefined,
+      }, cardIssues);
       path.pop();
       for (const issue of cardIssues) {
         // keep each issue's walk-computed path (host path + -1 CARD_SEGMENT +
@@ -481,4 +512,146 @@ function walk(el: SPElement, path: NodePath, state: WalkState, issues: LintIssue
       path.pop();
     }
   }
+}
+
+// ─── low-contrast helpers (the WCAG rule; math in core/contrast.ts) ─────────
+
+/** Theme-driven paint the linter can't statically resolve: SP/Fabric utility
+ *  classes that set a fill or an ink. Best-effort — a class token anywhere in
+ *  the value (conditional expressions included) silences the channel. */
+const CLASS_SETS_BG = /sp-css-backgroundColor|ms-bgColor|sp-field-/;
+const CLASS_SETS_FG = /sp-css-color|ms-fontColor|sp-field-/;
+
+const STOCK = {
+  lightText: parseCssColor(STOCK_THEME.light.text)!,
+  lightSurface: parseCssColor(STOCK_THEME.light.surface)!,
+  darkText: parseCssColor(STOCK_THEME.dark.text)!,
+  darkSurface: parseCssColor(STOCK_THEME.dark.surface)!,
+};
+
+function isSingleOpaque(c: ColorChain): boolean {
+  return c.complete && c.entries.length === 1 && c.entries[0].rgba.a >= 1;
+}
+
+/** The fill context an authored background-color leaves for this subtree. */
+function resolveBgChain(raw: NonNullable<SPElement['style']>[string], prior: WalkState['bg']): WalkState['bg'] {
+  const chain = colorChainOf(raw);
+  if (!chain.entries.length) return 'unknown';
+  const out: ColorOutcome[] = [];
+  let complete = chain.complete;
+  for (const e of chain.entries) {
+    if (e.rgba.a === 0) { complete = false; continue; } // that branch shows what's behind
+    if (e.rgba.a < 1) {
+      // a translucent fill needs a known opaque backdrop to composite over
+      if (!prior || prior === 'unknown' || !isSingleOpaque(prior)) return 'unknown';
+      out.push({ ...e, rgba: compositeOver(e.rgba, prior.entries[0].rgba) });
+    } else {
+      out.push(e);
+    }
+  }
+  if (!out.length) return prior; // fully transparent: the inherited fill stays
+  return { entries: out, complete };
+}
+
+/** The text-color context an authored color leaves for this subtree. */
+function resolveFgChain(raw: NonNullable<SPElement['style']>[string]): WalkState['fgInherit'] {
+  const chain = colorChainOf(raw);
+  const entries = chain.entries.filter((e) => e.rgba.a > 0); // invisible text isn't a contrast problem
+  if (!entries.length) return 'unknown';
+  return { entries, complete: chain.complete && entries.length === chain.entries.length };
+}
+
+function literalPx(raw: unknown): number | undefined {
+  if (typeof raw === 'number') return raw;
+  if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
+  const m = raw.trim().match(/^(\d+(?:\.\d+)?)px$/i);
+  return m ? parseFloat(m[1]) : undefined;
+}
+
+function literalBold(raw: unknown): boolean | undefined {
+  if (typeof raw === 'number') return raw >= 700;
+  if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === 'bold' || v === 'bolder') return true;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n >= 700 : undefined;
+}
+
+/** Fold the element's own class/style paint into the inherited color context.
+ *  Inline styles beat classes (the CSS rule), so a resolvable style value
+ *  recovers a channel a class made unknown. */
+function colorContextFor(el: SPElement, cls: string, state: WalkState): WalkState {
+  let bg = state.bg, fg = state.fgInherit;
+  let fontPx = state.fontPx, fontBold = state.fontBold;
+  if (CLASS_SETS_BG.test(cls)) bg = 'unknown';
+  if (CLASS_SETS_FG.test(cls)) fg = 'unknown';
+  const st = el.style ?? {};
+  if (st['background-image'] !== undefined) bg = 'unknown';
+  if (st['background-color'] !== undefined) bg = resolveBgChain(st['background-color'], bg);
+  if (st['color'] !== undefined) fg = resolveFgChain(st['color']);
+  if (st['font-size'] !== undefined) fontPx = literalPx(st['font-size']);
+  if (st['font-weight'] !== undefined) fontBold = literalBold(st['font-weight']);
+  if (bg === state.bg && fg === state.fgInherit && fontPx === state.fontPx && fontBold === state.fontBold) return state;
+  return { ...state, bg, fgInherit: fg, fontPx, fontBold };
+}
+
+/**
+ * Judge this element's text against the fill behind it. Two-sided authored
+ * pairs check directly (SOUND pairings only — contrastPairsOf); one-sided
+ * cases check against BOTH stock themes and flag only when both fail, since
+ * the tenant theme decides which one a reader gets. Severity: below 3:1 (the
+ * WCAG floor even for large text) = warning; 3:1–4.5:1 on normal-size text =
+ * info. One issue per element, worst pairs listed.
+ */
+function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: string, m: string) => void): void {
+  if (el.txtContent === undefined) return;
+  if (typeof el.txtContent === 'string' && el.txtContent.trim() === '') return;
+  const fg = state.fgInherit, bg = state.bg;
+  if (fg === 'unknown' || bg === 'unknown') return;
+  if (!fg && !bg) return;
+  const large = state.fontPx !== undefined
+    && (state.fontPx >= 24 || (state.fontPx >= 18.66 && state.fontBold === true));
+  const floor = large ? 3 : 4.5;
+
+  const fails: Array<{ text: string; worst: number }> = [];
+  if (fg && bg) {
+    for (const p of contrastPairsOf(fg, bg)) {
+      const r = contrastRatio(p.fg.rgba, p.bg.rgba);
+      if (r < floor) {
+        const cond = p.fg.cond || p.bg.cond ? 'when its conditions pick ' : '';
+        fails.push({ text: `${cond}'${p.fg.css}' text on the '${p.bg.css}' fill (${formatRatio(r)})`, worst: r });
+      }
+    }
+  } else if (fg) {
+    // authored text on the bare list surface
+    for (const f of fg.entries) {
+      const rl = contrastRatio(f.rgba, STOCK.lightSurface);
+      const rd = contrastRatio(f.rgba, STOCK.darkSurface);
+      if (rl < floor && rd < floor) {
+        fails.push({ text: `'${f.css}' text on the list's own background — it fails in BOTH stock themes (${formatRatio(rl)} light, ${formatRatio(rd)} dark), so no tenant look saves it. Pick a stronger color or give the element a fill`, worst: Math.max(rl, rd) });
+      }
+    }
+  } else if (bg) {
+    // authored fill under the default text color; links and buttons carry
+    // their own theme ink, so only judge body-text elements
+    if (el.elmType === 'a' || el.elmType === 'button') return;
+    for (const b of bg.entries) {
+      const rl = contrastRatio(STOCK.lightText, b.rgba);
+      const rd = contrastRatio(STOCK.darkText, b.rgba);
+      if (rl < floor && rd < floor) {
+        fails.push({ text: `the default text color on the '${b.css}' fill — it fails in BOTH stock themes (${formatRatio(rl)} light, ${formatRatio(rd)} dark). Set style.color to something readable on this fill`, worst: Math.max(rl, rd) });
+      }
+    }
+  }
+  if (!fails.length) return;
+
+  const severity: Severity = fails.some((f) => f.worst < 3) ? 'warning' : 'info';
+  const shown = fails.slice(0, 3).map((f) => f.text).join('; ');
+  const more = fails.length > 3 ? ` (+${fails.length - 3} more)` : '';
+  const bar = large
+    ? 'WCAG wants at least 3:1 for text this large'
+    : severity === 'warning'
+      ? 'below even the 3:1 WCAG floor for large text, so many readers simply lose it (normal-size text needs 4.5:1)'
+      : 'readable as large or bold text, but under the 4.5:1 WCAG AA minimum for normal-size text like this';
+  push(severity, 'low-contrast', `Low contrast: ${shown}${more} — ${bar}. SharePoint renders it anyway; the readers it excludes won't file a bug.`);
 }

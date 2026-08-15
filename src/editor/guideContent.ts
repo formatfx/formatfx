@@ -1120,6 +1120,17 @@ JSON uses it as the standard wrapper around an embedded column formatter (typica
 sample that goes blank in a list view often has this class riding along — the verified
 invisibility is "this class used outside card markup", not a defect of the content it wraps.</p></div>
 
+<div class="wb-guide-gotcha">${sev('warning')}<h3>Low contrast renders fine — for you</h3>${lintRule('low-contrast')}
+<p>SharePoint applies any color pair you author; the readers it excludes won't file a bug. WCAG
+wants <strong>4.5:1</strong> between text and the fill behind it (3:1 for large or bold text),
+and status-pill palettes drift under that line easily — especially the "text in the accent
+color on a pastel of the same accent" look. This app's linter measures your literal colors
+<em>and</em> every branch of a conditional pair (the classic miss: the <code>if()</code> branch
+that lands red text on a red fill), warns below 3:1, and notes 3:1–4.5:1 as borderline. Colors
+it can't resolve statically — theme classes, field-driven values — it leaves alone rather than
+guess. Text with no authored backdrop is judged against both stock themes and flagged only when
+it fails <em>everywhere</em>, because the tenant theme decides what a reader actually gets.</p></div>
+
 <h2 id="go-platform">Platform &amp; tooling</h2>
 
 <div class="wb-guide-gotcha">${sev('warning')}<h3>Schema export omits calculated and lookup columns</h3>
