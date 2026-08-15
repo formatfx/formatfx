@@ -540,7 +540,17 @@ function resolveBgChain(raw: NonNullable<SPElement['style']>[string], prior: Wal
   const out: ColorOutcome[] = [];
   let complete = chain.complete;
   for (const e of chain.entries) {
-    if (e.rgba.a === 0) { complete = false; continue; } // that branch shows what's behind
+    if (e.rgba.a === 0) {
+      // that branch shows what's behind — when the backdrop is a single known
+      // opaque fill, the branch RESOLVES to it (a conditional 'transparent'
+      // over a white parent is a real white outcome, condition and all)
+      if (prior && prior !== 'unknown' && isSingleOpaque(prior)) {
+        out.push({ cond: e.cond, css: prior.entries[0].css, rgba: prior.entries[0].rgba });
+      } else {
+        complete = false;
+      }
+      continue;
+    }
     if (e.rgba.a < 1) {
       // a translucent fill needs a known opaque backdrop to composite over
       if (!prior || prior === 'unknown' || !isSingleOpaque(prior)) return 'unknown';
@@ -572,7 +582,11 @@ function literalBold(raw: unknown): boolean | undefined {
   if (typeof raw === 'number') return raw >= 700;
   if (typeof raw !== 'string' || raw.startsWith('=')) return undefined;
   const v = raw.trim().toLowerCase();
-  if (v === 'bold' || v === 'bolder') return true;
+  if (v === 'bold') return true;
+  // 'bolder' is RELATIVE — from a light parent it can resolve to 400, so
+  // treating it as bold could unlock the 3:1 bar and hide a real failure.
+  // Unknown keeps the stricter normal-text threshold (info-tier at worst).
+  if (v === 'bolder') return undefined;
   const n = parseFloat(v);
   return Number.isFinite(n) ? n >= 700 : undefined;
 }
@@ -586,9 +600,14 @@ function colorContextFor(el: SPElement, cls: string, state: WalkState): WalkStat
   if (CLASS_SETS_BG.test(cls)) bg = 'unknown';
   if (CLASS_SETS_FG.test(cls)) fg = 'unknown';
   const st = el.style ?? {};
-  if (st['background-image'] !== undefined) bg = 'unknown';
   if (st['background-color'] !== undefined) bg = resolveBgChain(st['background-color'], bg);
+  // AFTER the color: an image paints OVER any background-color fallback, so
+  // its presence makes the backdrop unknown no matter what color rode along
+  if (st['background-image'] !== undefined) bg = 'unknown';
   if (st['color'] !== undefined) fg = resolveFgChain(st['color']);
+  // links/buttons paint their own theme ink unless a color is authored — the
+  // body-text assumption is wrong for the element AND for text in its children
+  if ((el.elmType === 'a' || el.elmType === 'button') && st['color'] === undefined) fg = 'unknown';
   if (st['font-size'] !== undefined) fontPx = literalPx(st['font-size']);
   if (st['font-weight'] !== undefined) fontBold = literalBold(st['font-weight']);
   if (bg === state.bg && fg === state.fgInherit && fontPx === state.fontPx && fontBold === state.fontBold) return state;
@@ -632,9 +651,8 @@ function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: s
       }
     }
   } else if (bg) {
-    // authored fill under the default text color; links and buttons carry
-    // their own theme ink, so only judge body-text elements
-    if (el.elmType === 'a' || el.elmType === 'button') return;
+    // authored fill under the default text color (links/buttons never reach
+    // here — colorContextFor marks their un-authored ink 'unknown')
     for (const b of bg.entries) {
       const rl = contrastRatio(STOCK.lightText, b.rgba);
       const rd = contrastRatio(STOCK.darkText, b.rgba);
@@ -646,12 +664,13 @@ function checkContrast(el: SPElement, state: WalkState, push: (s: Severity, r: s
   if (!fails.length) return;
 
   const severity: Severity = fails.some((f) => f.worst < 3) ? 'warning' : 'info';
+  fails.sort((a, b) => a.worst - b.worst); // worst first — the shown pairs must justify the severity
   const shown = fails.slice(0, 3).map((f) => f.text).join('; ');
   const more = fails.length > 3 ? ` (+${fails.length - 3} more)` : '';
   const bar = large
     ? 'WCAG wants at least 3:1 for text this large'
     : severity === 'warning'
       ? 'below even the 3:1 WCAG floor for large text, so many readers simply lose it (normal-size text needs 4.5:1)'
-      : 'readable as large or bold text, but under the 4.5:1 WCAG AA minimum for normal-size text like this';
+      : 'readable at WCAG-large sizes (24px+, or bold 18.66px+), but under the 4.5:1 AA minimum for text this size';
   push(severity, 'low-contrast', `Low contrast: ${shown}${more} — ${bar}. SharePoint renders it anyway; the readers it excludes won't file a bug.`);
 }

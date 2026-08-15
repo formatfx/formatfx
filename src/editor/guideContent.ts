@@ -1122,7 +1122,8 @@ invisibility is "this class used outside card markup", not a defect of the conte
 
 <div class="wb-guide-gotcha">${sev('warning')}<h3>Low contrast renders fine — for you</h3>${lintRule('low-contrast')}
 <p>SharePoint applies any color pair you author; the readers it excludes won't file a bug. WCAG
-wants <strong>4.5:1</strong> between text and the fill behind it (3:1 for large or bold text),
+wants <strong>4.5:1</strong> between text and the fill behind it — the 3:1 bar applies only to
+genuinely large text (24px+, or bold <em>and</em> 18.66px+; bolding small text buys nothing) —
 and status-pill palettes drift under that line easily — especially the "text in the accent
 color on a pastel of the same accent" look. This app's linter measures your literal colors
 <em>and</em> every branch of a conditional pair (the classic miss: the <code>if()</code> branch

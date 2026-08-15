@@ -88,15 +88,31 @@ function hexToRgba(hex: string): RGBA | null {
 function clamp255(n: number): number { return Math.max(0, Math.min(255, Math.round(n))); }
 function clamp01(n: number): number { return Math.max(0, Math.min(1, n)); }
 
-/** One rgb()/hsl() component: plain number or percentage (of `full`). */
+const NUM_RE = /^-?(?:\d+\.?\d*|\.\d+)$/;
+
+/** One rgb()/hsl() component: plain number or percentage (of `full`).
+ *  Strict — 'A0bogus' is not a number, and a non-color must parse to null
+ *  (an unknown channel silences the check; a wrong color would misjudge it). */
 function comp(raw: string, full: number): number | null {
   const t = raw.trim();
   if (t.endsWith('%')) {
-    const p = parseFloat(t.slice(0, -1));
-    return Number.isFinite(p) ? (p / 100) * full : null;
+    const body = t.slice(0, -1);
+    return NUM_RE.test(body) ? (parseFloat(body) / 100) * full : null;
   }
-  const n = parseFloat(t);
-  return Number.isFinite(n) ? n : null;
+  return NUM_RE.test(t) ? parseFloat(t) : null;
+}
+
+/** An hsl() hue with its CSS angle units (deg/grad/rad/turn), in degrees. */
+function hueDeg(raw: string): number | null {
+  const m = raw.trim().match(/^(-?(?:\d+\.?\d*|\.\d+))(deg|grad|rad|turn)?$/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  switch ((m[2] ?? 'deg').toLowerCase()) {
+    case 'grad': return n * 360 / 400;
+    case 'rad': return n * 180 / Math.PI;
+    case 'turn': return n * 360;
+    default: return n;
+  }
 }
 
 function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
@@ -133,9 +149,9 @@ export function parseCssColor(raw: unknown): RGBA | null {
     if (r === null || g === null || b === null) return null;
     return { r: clamp255(r), g: clamp255(g), b: clamp255(b), a: clamp01(alpha) };
   }
-  const h = parseFloat(parts[0]);
+  const h = hueDeg(parts[0]);
   const s = comp(parts[1], 1), l = comp(parts[2], 1);
-  if (!Number.isFinite(h) || s === null || l === null) return null;
+  if (h === null || s === null || l === null) return null;
   return { ...hslToRgb(h, clamp01(s), clamp01(l)), a: clamp01(alpha) };
 }
 
@@ -168,9 +184,11 @@ export function contrastRatio(fg: RGBA, bg: RGBA): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** '4.5:1' — one decimal, for teaching messages. */
+/** '4.4:1' — one decimal, TRUNCATED, for teaching messages. Truncation keeps
+ *  the display honest at the WCAG boundaries: a failing 4.49 must never read
+ *  "4.5:1" next to a diagnostic that says it's below 4.5:1. */
 export function formatRatio(r: number): string {
-  return `${(Math.round(r * 10) / 10).toFixed(1)}:1`;
+  return `${(Math.floor(r * 10) / 10).toFixed(1)}:1`;
 }
 
 // ─── Static color-outcome extraction ─────────────────────────────────────────

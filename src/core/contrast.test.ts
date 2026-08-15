@@ -47,6 +47,17 @@ describe('parseCssColor', () => {
     expect(parseCssColor('hsla(120, 100%, 25%, 0.4)')).toEqual({ r: 0, g: 128, b: 0, a: 0.4 });
   });
 
+  it('converts hsl() hue angle units and rejects bogus suffixes (Copilot, PR #310)', () => {
+    const cyan = { r: 0, g: 255, b: 255, a: 1 };
+    expect(parseCssColor('hsl(.5turn 100% 50%)')).toEqual(cyan);
+    expect(parseCssColor('hsl(200grad, 100%, 50%)')).toEqual(cyan);
+    expect(parseCssColor('hsl(180deg, 100%, 50%)')).toEqual(cyan);
+    expect(parseCssColor(`hsl(${Math.PI}rad, 100%, 50%)`)).toEqual(cyan);
+    // a misparsed color would MISJUDGE contrast — invalid input must be null
+    expect(parseCssColor('hsl(10bogus, 100%, 50%)')).toBeNull();
+    expect(parseCssColor('rgb(10bogus, 0, 0)')).toBeNull();
+  });
+
   it('parses named colors and transparent', () => {
     expect(parseCssColor('white')).toEqual({ r: 255, g: 255, b: 255, a: 1 });
     expect(parseCssColor('RebeccaPurple')).toEqual({ r: 102, g: 51, b: 153, a: 1 });
@@ -91,10 +102,13 @@ describe('WCAG math', () => {
     expect(r).toBeLessThan(contrastRatio(black, white));
   });
 
-  it('formatRatio renders one decimal', () => {
+  it('formatRatio truncates so a failing ratio never displays across a WCAG boundary', () => {
     expect(formatRatio(4.503)).toBe('4.5:1');
     expect(formatRatio(21)).toBe('21.0:1');
     expect(formatRatio(1.249)).toBe('1.2:1');
+    // 4.49 is flagged as below 4.5:1 — it must not READ as "4.5:1" (Copilot, PR #310)
+    expect(formatRatio(4.49)).toBe('4.4:1');
+    expect(formatRatio(2.999)).toBe('2.9:1');
   });
 });
 

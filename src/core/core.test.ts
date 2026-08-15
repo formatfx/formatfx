@@ -506,6 +506,50 @@ describe('linter — low-contrast (WCAG, core/contrast.ts is the brain)', () => 
     expect(issues[0].severity).toBe('warning');
   });
 
+  it('review fixes hold (Copilot round, PR #310)', () => {
+    // (1) an image paints OVER a background-color fallback — together they stay unknown
+    expect(hits(textEl({ 'color': '#ffffff', 'background-color': '#ffffff', 'background-image': 'url(x.png)' }))).toHaveLength(0);
+    // (2) a button's theme ink covers text in child spans too…
+    const buttonChild: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'button',
+        style: { 'background-color': '#808080' },
+        children: [{ elmType: 'span', txtContent: 'Go' }],
+      },
+    };
+    expect(hits(buttonChild)).toHaveLength(0);
+    // …but an AUTHORED button ink is judged like any other pair
+    expect(hits({
+      kind: 'column',
+      root: { elmType: 'button', txtContent: 'Go', style: { 'color': '#d13438', 'background-color': '#c50f1f' } },
+    })).toHaveLength(1);
+    // (3) a conditional 'transparent' branch RESOLVES to a known opaque backdrop
+    const condTransparent: FormatterDocument = {
+      kind: 'column',
+      root: {
+        elmType: 'div',
+        style: { 'background-color': '#ffffff' },
+        children: [{
+          elmType: 'span', txtContent: 'x',
+          style: { 'color': '#ffffff', 'background-color': "=if([$Done],'transparent','#000000')" },
+        }],
+      },
+    };
+    const resolved = hits(condTransparent);
+    expect(resolved).toHaveLength(1); // white-on-white through the transparent branch
+    expect(resolved[0].severity).toBe('warning');
+    // (4) the WORST pair leads the message even when traversal finds it last
+    const [ordered] = hits(textEl({
+      'color': '#ffffff',
+      'background-color': "=if([$A]==1,'#909090',if([$A]==2,'#8c8c8c','#ffffff'))",
+    }));
+    expect(ordered.severity).toBe('warning');
+    expect(ordered.message.indexOf("'#ffffff' fill")).toBeLessThan(ordered.message.indexOf("'#909090'"));
+    // (5) 'bolder' is relative, not bold — it must not unlock the 3:1 bar
+    expect(hits(textEl({ 'color': '#0078d4', 'background-color': '#deecf9', 'font-size': '20px', 'font-weight': 'bolder' }))).toHaveLength(1);
+  });
+
   it('the product palettes practice what the rule preaches (status pill grays pass)', () => {
     // #605e5c replaced #737a7f under white pill text — pin it above 4.5:1
     const issues = hits(textEl({
