@@ -242,6 +242,7 @@ function layoutRow(wf: Wireframe, ui: ModalUI, api: ModalApi, recent: boolean): 
   if (recent) row.dataset.wireframeRecent = wf.id;
   else row.dataset.wireframe = wf.id;
   row.title = wf.blurb;
+  row.setAttribute('aria-pressed', String(ui.pickSelected === wf.id)); // selection isn't color-only
   if (ui.pickSelected === wf.id) row.classList.add('wb-lay-on');
   const thumb = el('span', 'wb-lay-thumb');
   thumb.appendChild(wireframeThumb(wf));
@@ -270,6 +271,7 @@ export function renderLayoutSide(host: HTMLElement, ui: ModalUI, api: ModalApi):
     head.dataset.laygroup = key;
     const folded = foldedGroups.has(key);
     if (folded) head.classList.add('wb-lay-ghead-closed');
+    head.setAttribute('aria-expanded', String(!folded));
     head.title = folded ? 'Show these layouts' : 'Hide these layouts';
     head.addEventListener('click', () => {
       if (foldedGroups.has(key)) foldedGroups.delete(key);
@@ -295,7 +297,11 @@ export function renderLayoutSide(host: HTMLElement, ui: ModalUI, api: ModalApi):
  *  write — all via the pure summarizer so the pane never over-promises. */
 function renderLayoutDetail(host: HTMLElement, id: WireframeId, api: ModalApi): void {
   const wf = wireframeById(id);
-  const summary = summarizeConfig(defaultConfigFor(id, state.fields), state.fields, api.components());
+  // Next RESUMES a kept config here? Then describe THAT, not the pristine
+  // seed — the pane must never contradict what Next opens
+  const resumed = api.resumeConfig();
+  const config = resumed ?? defaultConfigFor(id, state.fields);
+  const summary = summarizeConfig(config, state.fields, api.components());
   const pane = el('div', 'wb-lay-detail');
   const back = el('button', 'wb-lay-back', '‹ All layouts') as HTMLButtonElement;
   back.type = 'button';
@@ -305,9 +311,13 @@ function renderLayoutDetail(host: HTMLElement, id: WireframeId, api: ModalApi): 
   const title = el('div', 'wb-lay-detail-titlerow');
   title.append(
     el('span', 'wb-lay-detail-name', wf.name),
-    el('span', 'wb-lay-detail-kind', wf.target === 'tile' ? 'Tile' : 'Row'));
+    el('span', 'wb-lay-detail-kind', config.target === 'tile' ? 'Tile' : 'Row'));
   pane.appendChild(title);
   pane.appendChild(el('div', 'wb-lay-detail-blurb', wf.blurb));
+  if (resumed) {
+    pane.appendChild(el('div', 'wb-lay-detail-resume',
+      '● You have this layout open with edits — Next resumes them exactly as left.'));
+  }
 
   const sec = (label: string): HTMLElement => {
     const s = el('div', 'wb-lay-detail-sec');
@@ -360,16 +370,18 @@ export function renderPickPreview(host: HTMLElement, ui: ModalUI, api: ModalApi)
     return;
   }
   const wf = wireframeById(ui.pickSelected);
-  const config = defaultConfigFor(ui.pickSelected, state.fields);
+  // resume context previews the KEPT config (edits, retargets and all) —
+  // the live preview must show exactly what Next opens
+  const config = api.resumeConfig() ?? defaultConfigFor(ui.pickSelected, state.fields);
   const head = el('div', 'wb-lay-preview-titlerow');
   head.append(
     el('span', 'wb-lay-preview-title', wf.name),
-    el('span', 'wb-lay-preview-kind', wf.target === 'tile' ? 'Tile layout' : 'Row layout'));
+    el('span', 'wb-lay-preview-kind', config.target === 'tile' ? 'Tile layout' : 'Row layout'));
   host.appendChild(head);
   const stagebox = el('div', 'wb-lay-preview-stage');
   const { root } = buildTemplateView(
     config, state.fields, state.columnLooks, api.palette(), api.components(), { prune: true });
-  if (wf.target === 'tile') renderLiveTiles(stagebox, root, config, api);
+  if (config.target === 'tile') renderLiveTiles(stagebox, root, config, api);
   else renderLiveRows(stagebox, root, config, api);
   host.appendChild(stagebox);
   host.appendChild(el('div', 'wb-template-note',
@@ -390,7 +402,7 @@ export function renderZoneTree(host: HTMLElement, ui: ModalUI, api: ModalApi): v
   const head = el('div', 'wb-template-tree-headrow');
   const layouts = el('button', 'wb-template-mini wb-template-layouts', '‹') as HTMLButtonElement;
   layouts.type = 'button';
-  layouts.title = 'Back to the layout selector (this layout is kept — Next resumes it)';
+  layouts.title = 'Back to the layout selector — your layout is kept, and Resume/Next returns to it';
   layouts.setAttribute('aria-label', 'Back to layouts');
   layouts.addEventListener('click', () => api.openGallery());
   head.appendChild(layouts);

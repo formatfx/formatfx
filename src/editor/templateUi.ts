@@ -121,6 +121,10 @@ export interface ModalApi {
   confirmPick(): void;
   /** True when Apply CREATES a new named view (vs saving over an open sheet). */
   isCreating(): boolean;
+  /** The kept config Next would RESUME for the current selection, or null when
+   *  Next would seed fresh — the selector's details/preview must render THIS
+   *  when present, or the pane contradicts what Next opens. */
+  resumeConfig(): RowTemplateConfig | null;
   /** Back to the layout selector (the current config is kept until a pick). */
   openGallery(): void;
   setStageWidth(w: number | null): void;

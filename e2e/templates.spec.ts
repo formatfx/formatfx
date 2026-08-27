@@ -214,14 +214,20 @@ test('the selector: select → live preview + details, Back keeps the place, Nex
   await page.locator('.wb-lay-back').click();
   await expect(page.locator('[data-wireframe="lead-detail"]')).toHaveClass(/wb-lay-on/);
   await expect(page.locator('.wb-template-preview .wb-template-prow').first()).toBeVisible();
-  // Next enters the editor; the editor's back arrow returns drilled-in
+  // Next enters the editor; make a REAL edit so resume is distinguishable
   await page.locator('.wb-template-next').click();
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+  await page.locator('.wb-template-field-chip', { hasText: 'DueDate' }).first()
+    .dragTo(page.locator('[data-edit-zone="0"]'));
+  await expect(page.locator('[data-edit-zone="0"] [data-field-name="DueDate"]')).toHaveCount(1);
+  // the editor's back arrow returns drilled-in, flagging the in-progress edits
   await page.locator('.wb-template-layouts').click();
   await expect(page.locator('.wb-lay-detail-name')).toHaveText('Lead + details');
-  // …and Next resumes the same seeded config without a restart
+  await expect(page.locator('.wb-lay-detail-resume')).toBeVisible();
+  // …and Next RESUMES the edited config — the dropped column survives
+  // (a reseed would silently pass the old zone-visible check; this can't)
   await page.locator('.wb-template-next').click();
-  await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+  await expect(page.locator('[data-edit-zone="0"] [data-field-name="DueDate"]')).toHaveCount(1);
 });
 
 test('New view is reachable from the views list on the landing screen', async ({ page }) => {

@@ -107,10 +107,18 @@ export function openTemplateModal(
    *  over untouched seeds shouldn't nag; re-picking over real work (including
    *  a reopened layout) confirms. */
   let dirty = editingExisting;
-  /** The wireframe the CURRENT config was seeded from this open — null until
-   *  a pick (a reopened config has no recoverable wireframe). Next on the
-   *  same layout RESUMES instead of reseeding, so Back drops nothing. */
+  /** The wireframe of the last pick this open — null until one (a reopened
+   *  config has no recoverable wireframe). Next on the same layout RESUMES
+   *  instead of reseeding, so Back drops nothing. Resume identity is checked
+   *  against ui.config.wireframeId (not this) so undo/redo can't desync the
+   *  selector from what Next actually opens. */
   let seededFrom: WireframeId | null = null;
+  /** Is there a config worth returning to untouched? (a reopened sheet, or
+   *  anything seeded this open — the fresh-open placeholder doesn't count). */
+  const keptConfig = (): boolean => editingExisting || seededFrom !== null;
+  /** Would Next hand back ui.config exactly as left (vs reseeding)? */
+  const resumesSelection = (): boolean =>
+    ui.pickSelected !== null && seededFrom !== null && ui.pickSelected === ui.config.wireframeId;
 
   // ── modal-local undo/redo: immutable configs make this a pair of arrays ──
   const past: RowTemplateConfig[] = [];
@@ -151,6 +159,9 @@ export function openTemplateModal(
   // Capture-phase so the app's own undo never sees it; editable surfaces keep
   // their native editing undo (same guard as canvas.ts).
   const undoKeys = (e: KeyboardEvent): void => {
+    // the selector renders no config — an undo there would be INVISIBLE work
+    // loss (and would quietly disarm the past.length close gate). Inert.
+    if (ui.stage === 'pick') return;
     if (!(e.ctrlKey || e.metaKey)) return;
     const key = e.key.toLowerCase();
     if (key !== 'z' && key !== 'y') return;
@@ -207,12 +218,19 @@ export function openTemplateModal(
   function renderFoot(): void {
     foot.innerHTML = '';
     if (ui.stage === 'pick') {
+      // with nothing selected but a kept config (a reopened sheet backed out
+      // to the list), Next becomes RESUME — the discoverable way home
+      const resume = ui.pickSelected === null ? keptConfig() : resumesSelection();
       foot.append(
         mk('wb-template-back', 'Back', 'Back to the layout list (your selection stays previewed)',
           !ui.pickDrilled, () => api.backToList()),
-        mk('wb-template-next', 'Next', ui.pickSelected
-          ? 'Open the builder with this layout — drop columns, tune zones, add behaviors'
-          : 'Pick a layout first', !ui.pickSelected, () => api.confirmPick()),
+        mk('wb-template-next', ui.pickSelected === null && keptConfig() ? 'Resume' : 'Next',
+          resume
+            ? 'Return to the builder — your layout is exactly as you left it'
+            : ui.pickSelected
+              ? 'Open the builder with this layout — drop columns, tune zones, add behaviors'
+              : 'Pick a layout first',
+          !(ui.pickSelected !== null || keptConfig()), () => api.confirmPick()),
       );
       return;
     }
@@ -382,10 +400,15 @@ export function openTemplateModal(
     patchItem: (itemPath, patch) => commit(patchItemAt(ui.config, itemPath, patch)),
     setConfig,
     pickWireframe: (id) => {
-      if (dirty && ui.config.zones.some((z) => z.items.length)
+      // anything at stake = uncommitted edits OR live undo history: a prior
+      // re-pick leaves dirty=false with real states in `past`, and those must
+      // keep both the confirm AND the undoable path — a baseline reset here
+      // would wipe them silently and disarm the close gate
+      const atStake = dirty || past.length > 0;
+      if (atStake && ui.config.zones.some((z) => z.items.length)
         && !confirm('Start over from this layout? Your current zones are replaced (undo inside the builder brings them back).')) return;
       ui.stage = 'edit';
-      if (dirty) {
+      if (atStake) {
         commit(defaultConfigFor(id, state.fields), null); // re-pick over work: undoable
       } else {
         // entering from an untouched selector = the undo BASELINE, not a step
@@ -410,10 +433,17 @@ export function openTemplateModal(
     },
     confirmPick: () => {
       const id = ui.pickSelected;
-      if (!id) return;
-      // same layout the config was seeded from → RESUME it (Back must never
-      // cost work); a different layout goes through pickWireframe's confirm
-      if (id === seededFrom) {
+      if (id === null) {
+        // RESUME with nothing selected: a kept config (reopened sheet backed
+        // out to the list) returns exactly as left
+        if (!keptConfig()) return;
+        ui.stage = 'edit';
+        rerender();
+        return;
+      }
+      // selection matches the CURRENT config's layout → RESUME it (Back must
+      // never cost work); anything else goes through pickWireframe's confirm
+      if (resumesSelection()) {
         ui.stage = 'edit';
         rerender();
         return;
@@ -421,12 +451,14 @@ export function openTemplateModal(
       api.pickWireframe(id);
     },
     isCreating: () => creating,
+    resumeConfig: () => (resumesSelection() ? ui.config : null),
     openGallery: () => {
-      // back out with context: the selector reopens drilled into the layout
-      // being edited (a reopened sheet has no source wireframe → the list)
+      // back out with context: drill into the layout the CURRENT config
+      // carries (config-derived, so undo/redo can't desync it); a reopened
+      // sheet has no source wireframe → the list, with Next reading Resume
       ui.stage = 'pick';
-      ui.pickSelected = seededFrom;
-      ui.pickDrilled = seededFrom !== null;
+      ui.pickSelected = seededFrom !== null ? ui.config.wireframeId : null;
+      ui.pickDrilled = ui.pickSelected !== null;
       rerender();
     },
     setStageWidth: (w) => { ui.stageWidth = w; rerender(); },

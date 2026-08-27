@@ -910,10 +910,19 @@ Key structural invariants:
   Apply uses (buildKebab refusals mirrored), so the pane never promises
   what Apply won't write. Selecting is BROWSING: nothing touches the
   config until **Next** (footer, bottom-right beside Back) runs
-  `confirmPick` — same layout as last seeded → RESUME (no reseed, no
-  confirm; `seededFrom` modal-local since reopened configs stamp
-  'blank'), different layout → `pickWireframe` with its standing dirty
-  confirm. Chrome geometry mirrors the app: top bar = title + CENTERED
+  `confirmPick` — the selection matching `ui.config.wireframeId` (config-
+  derived, so undo/redo can't desync what the pane shows from what Next
+  opens; `seededFrom` only gates "was anything seeded this open") →
+  RESUME, and the resume context renders the KEPT config in the details
+  pane + live preview (`ModalApi.resumeConfig`, with an accent "edits in
+  progress" row); a different layout → `pickWireframe`, whose at-stake
+  gate is `dirty || past.length > 0` — a prior re-pick leaves dirty=false
+  with real states in `past`, and those must keep both the confirm and
+  the undoable-commit path (the adversarial review caught the silent
+  history wipe). A reopened sheet backed out to the list (no source
+  wireframe) gets the footer button as an enabled **Resume**. Ctrl+Z is
+  INERT in the pick stage (nothing renders the config there — an undo
+  would be invisible work loss). Chrome geometry mirrors the app: top bar = title + CENTERED
   undo/redo (edit only), chips on their own bar (edit only), and the
   footer holds the journey buttons in both stages — Back/Next ↔ Cancel +
   **Create** (`creating`) / Save (editing an existing sheet); the zone

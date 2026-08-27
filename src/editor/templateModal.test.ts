@@ -198,6 +198,114 @@ describe('row view builder — the layout selector (stage pick)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('a SECOND re-pick still confirms and keeps the whole undo trail (no silent wipe)', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status')); // past=1
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick 1: confirms, undoable
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="dashboard"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick 2: MUST still confirm
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    // the trail survived: undo is live, and the close gate is still armed
+    expect((document.querySelector('.wb-template-undo') as HTMLButtonElement).disabled).toBe(false);
+    confirmSpy.mockReturnValue(false);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(confirmSpy).toHaveBeenCalledTimes(3); // discard confirm fired
+    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it('an accepted re-pick keeps its promise: one undo brings the replaced zones back', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(3); // Equal columns seeded
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(2); // lead-detail is back…
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // …with the dropped Status
+    vi.unstubAllGlobals();
+  });
+
+  it('Ctrl+Z is inert in the selector — backing out cannot invisibly drain the undo trail', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // must no-op
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // resume
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // Status survived
+    expect((document.querySelector('.wb-template-undo') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('undo across a re-pick re-aims the selector at the config Next actually opens', () => {
+    enterEditor(); // lead-detail (row)
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="tile-stat"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // now a tile
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // back to the edited row
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the drill-in must describe the CURRENT config, not the stale tile pick
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Lead + details');
+    expect(document.querySelector('.wb-lay-preview-kind')?.textContent).toBe('Row layout');
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // edited row resumed
+    vi.unstubAllGlobals();
+  });
+
+  it('a reopened sheet backed out to the list gets a Resume button home (no reseed, no confirm)', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // sheet created
+    openTemplateModal(() => {}); // reopen as zones (editingExisting)
+    (document.querySelector('[data-edit-zone="1"]') as HTMLElement).click();
+    (document.querySelector('[data-zoneflow="stack"]') as HTMLElement).click(); // a real tweak
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // no source wireframe → the list, with the footer offering Resume
+    expect(document.querySelector('.wb-lay-list')).toBeTruthy();
+    const next = document.querySelector('.wb-template-next') as HTMLButtonElement;
+    expect(next.textContent).toBe('Resume');
+    expect(next.disabled).toBe(false);
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirmSpy);
+    next.click();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    expect(document.querySelector('[data-zoneflow="stack"]')?.classList.contains('wb-seg-on')).toBe(true); // tweak kept
+    vi.unstubAllGlobals();
+  });
+
+  it('backing out of an edited layout shows the EDITED config in the details and preview', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status')); // Lead zone now also holds Status
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    const detail = document.querySelector('.wb-lay-detail') as HTMLElement;
+    expect(detail.querySelector('.wb-lay-detail-resume')).toBeTruthy(); // says edits are in progress
+    // …and the preview renders the kept config live
+    expect(document.querySelectorAll('.wb-template-preview .wb-template-prow').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('recents survive closing and reopening the modal within the session', () => {
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+    openTemplateModal(() => {});
+    expect(document.querySelector('[data-laygroup="recent"]')?.textContent).toBe('Recent');
+    expect((document.querySelector('[data-wireframe-recent]') as HTMLElement).dataset.wireframeRecent).toBe('equal');
+  });
+
   it('undoing back to the baseline disarms the close confirm', () => {
     enterEditor();
     zone(0).dispatchEvent(fieldDrop('Status'));
