@@ -112,8 +112,27 @@ describe('row view builder — the layout selector (stage pick)', () => {
     // browsing must never lose the maker's place: preview and Next stay live
     expect(document.querySelectorAll('.wb-template-preview .wb-template-prow').length).toBeGreaterThanOrEqual(1);
     expect((document.querySelector('.wb-template-next') as HTMLButtonElement).disabled).toBe(false);
-    // the footer Back mirrors the pane's back arrow — now un-drilled, it rests
-    expect((document.querySelector('.wb-template-back') as HTMLButtonElement).disabled).toBe(true);
+    // Back's ladder continues: un-drilled with a selection, it CLEARS it
+    (document.querySelector('.wb-template-back') as HTMLElement).click();
+    expect(document.querySelector('.wb-lay-placeholder')).toBeTruthy();
+    expect(document.querySelector('.wb-lay-on')).toBeNull();
+    expect((document.querySelector('.wb-template-next') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('.wb-template-back') as HTMLButtonElement).disabled).toBe(true); // ladder's floor
+  });
+
+  it('browsing over a reopened sheet never strands it: Back clears the selection, Resume returns', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {}); // reopened
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click(); // list + Resume
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click(); // browse
+    expect(document.querySelector('.wb-template-next')?.textContent).toBe('Next'); // now destructive
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();   // un-drill
+    (document.querySelector('.wb-template-back') as HTMLElement).click(); // clear selection
+    const next = document.querySelector('.wb-template-next') as HTMLButtonElement;
+    expect(next.textContent).toBe('Resume'); // the way home is back
+    next.click();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
   });
 
   it('Next enters the editor with the selected layout\'s zones seeded', () => {

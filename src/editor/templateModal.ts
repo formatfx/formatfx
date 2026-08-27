@@ -236,8 +236,10 @@ export function openTemplateModal(
       // to the list), Next becomes RESUME — the discoverable way home
       const resume = ui.pickSelected === null ? keptConfig() : resumesSelection();
       foot.append(
-        mk('wb-template-back', 'Back', 'Back to the layout list (your selection stays previewed)',
-          !ui.pickDrilled, () => api.backToList()),
+        mk('wb-template-back', 'Back',
+          ui.pickDrilled ? 'Back to the layout list (your selection stays previewed)'
+            : 'Clear the selection' + (keptConfig() ? ' — Resume returns to your kept layout' : ''),
+          !(ui.pickDrilled || ui.pickSelected !== null), () => api.backToList()),
         mk('wb-template-next', ui.pickSelected === null && keptConfig() ? 'Resume' : 'Next',
           resume
             ? 'Return to the builder — your layout is exactly as you left it'
@@ -459,17 +461,29 @@ export function openTemplateModal(
       (modal.querySelector('.wb-lay-back') as HTMLElement | null)?.focus();
     },
     backToList: () => {
-      if (!ui.pickDrilled) return;
-      ui.pickDrilled = false;
-      rerender();
-      // …and coming back, land on the row they came from — the Recent copy
-      // counts too (the canonical row may sit in a folded group); with BOTH
-      // groups folded, fall back to a visible header so the keyboard
-      // position never drops to the body
-      const target = modal.querySelector(
-        `[data-wireframe="${ui.pickSelected}"], [data-wireframe-recent="${ui.pickSelected}"]`)
-        ?? modal.querySelector('.wb-lay-ghead');
-      (target as HTMLElement | null)?.focus();
+      // a LADDER: drilled → un-drill (selection + preview kept); un-drilled
+      // with a selection → CLEAR it — that's what restores the no-selection
+      // Resume for a reopened sheet after browsing, so the kept modal-local
+      // edits are never stranded behind a destructive Next
+      if (ui.pickDrilled) {
+        ui.pickDrilled = false;
+        rerender();
+        // …and coming back, land on the row they came from — the Recent copy
+        // counts too (the canonical row may sit in a folded group); with BOTH
+        // groups folded, fall back to a visible header so the keyboard
+        // position never drops to the body
+        const target = modal.querySelector(
+          `[data-wireframe="${ui.pickSelected}"], [data-wireframe-recent="${ui.pickSelected}"]`)
+          ?? modal.querySelector('.wb-lay-ghead');
+        (target as HTMLElement | null)?.focus();
+        return;
+      }
+      if (ui.pickSelected !== null) {
+        ui.pickSelected = null;
+        rerender();
+        (modal.querySelector('.wb-lay-row') as HTMLElement | null
+          ?? modal.querySelector('.wb-lay-ghead') as HTMLElement | null)?.focus();
+      }
     },
     confirmPick: () => {
       const id = ui.pickSelected;

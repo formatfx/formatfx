@@ -920,10 +920,11 @@ Key structural invariants:
   config. On RESUME the context renders the KEPT config in the details
   pane + live preview (`ModalApi.resumeConfig`, with an accent "edits in
   progress" row); a different layout → `pickWireframe`, whose at-stake
-  gate is `dirty || past.length > 0` — a prior re-pick leaves dirty=false
-  with real states in `past`, and those must keep both the confirm and
-  the undoable-commit path (the adversarial review caught the silent
-  history wipe). A reopened sheet backed out to the list (no source
+  gate is `dirty || past.length > 0 || future.length > 0` — a prior
+  re-pick leaves dirty=false with real states in `past`, and an undone
+  re-pick leaves the replaced work in `future` ONLY; all three must keep
+  both the confirm and the undoable-commit path (the adversarial review
+  caught the silent history wipe; Copilot caught the redo-only leg). A reopened sheet backed out to the list (no source
   wireframe) gets the footer button as an enabled **Resume**. Ctrl+Z is
   INERT in the pick stage (nothing renders the config there — an undo
   would be invisible work loss). Chrome geometry mirrors the app: top bar = title + CENTERED
