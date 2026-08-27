@@ -301,6 +301,21 @@ describe('surface machinery stands down', () => {
     expect(state.selection).toEqual(before);
   });
 
+  it('the surface-only output toggles disable — an inert toggle must not be able to discard a draft', () => {
+    const { host } = mountPanel();
+    const sanitize = host.querySelector('#wb-json-sanitize') as HTMLInputElement;
+    const names = host.querySelector('#wb-json-names') as HTMLInputElement;
+    openWorkshop();
+    // Copilot review, PR #312: sanitize's change handler clearDirty+regenerates —
+    // on a dirty component draft that throws the draft away for a setting the
+    // def serialization ignores
+    expect(sanitize.disabled).toBe(true);
+    expect(names.disabled).toBe(true);
+    state.minimizeView();
+    expect(sanitize.disabled).toBe(false);
+    expect(names.disabled).toBe(false);
+  });
+
   it('lint rows hide and the deploy action disables', () => {
     const { host } = mountPanel();
     const deployBtn = document.getElementById('wb-json-deploy') as HTMLButtonElement

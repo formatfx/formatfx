@@ -1167,6 +1167,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // the surface Type select acts on the surface doc — inert under a def
     const kindSel = document.getElementById('wb-kind') as HTMLSelectElement | null;
     if (kindSel) kindSel.disabled = inCompBuffer;
+    // sanitize/names shape SURFACE output only — a def serializes verbatim.
+    // Disabled, so sanitize's clearDirty+regenerate handler can never throw
+    // a component draft away over a setting that doesn't apply to it
+    sanitizeEl.disabled = inCompBuffer;
+    namesEl.disabled = inCompBuffer;
     const compName = (id: string): string => componentById(id)?.name ?? id;
     if (inCompBuffer && activeComp === bufferDefId) {
       compBarEl.hidden = false;

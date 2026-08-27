@@ -183,6 +183,24 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     expect(ctx.root().txtContent).not.toBe('applied');
   });
 
+  it('a no-op Apply after typing leaks NO hidden undo step', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const name = host.querySelector<HTMLInputElement>('input.wb-ce-name')!;
+    name.value = 'Typed';
+    name.dispatchEvent(new Event('input')); // staged mutation, no ↶ step
+    ctx.applyDef(ctx.def()); // content-identical apply
+    // Copilot review, PR #312: committing the rebase BEFORE the no-op check
+    // pushed the typed state as a hidden snapshot a LATER gesture exposes —
+    // land a real gesture and count the undo depth
+    ctx.commit(() => { ctx.root().txtContent = 'gesture'; });
+    const undoBtn = host.querySelector<HTMLButtonElement>('.wb-mu-undo')!;
+    undoBtn.click(); // undoes the gesture…
+    expect(ctx.root().txtContent).not.toBe('gesture');
+    // …and that must land on BASELINE: no hidden extra step in between
+    expect(undoBtn.disabled).toBe(true);
+  });
+
   it('applying an UNCHANGED def stages nothing — no dot, no ↶ step (but the pane still re-canonicalizes)', () => {
     const dirtyLog: boolean[] = [];
     const def = componentById('builtin-deadline-chip')!;
