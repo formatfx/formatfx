@@ -44,7 +44,7 @@ import {
   createVariant, rebindInstance, replaceStampedIn, restampIn, uniqueName,
   flattenComponent, embedRefusal, embedClosure, withEmbed, withoutEmbed,
   transitiveEmbedders, MAX_COMPONENT_DEPTH,
-  type ComponentDef, type ComponentEmbed,
+  type ComponentDef,
 } from './components';
 import { paletteComponents } from './paletteComponents';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
@@ -184,17 +184,31 @@ export function mountComponentWorkshop(
   // still commits ONE app-level step. (muRestore is a function declaration
   // on purpose: it runs only after the render fns below are assigned, but
   // the head's buttons wire up first.)
-  const muBag = (): { root: SPElement; embeds: ComponentEmbed[] } =>
-    ({ root: staged.root, embeds: staged.embeds ?? [] });
-  const mu = createModalUndo(muBag());
-  function muRestore(bag: { root: SPElement; embeds: ComponentEmbed[] } | null): void {
+  // The bag is the WHOLE staged def since the JSON pane's applyDef landed
+  // (Copilot review, PR #312): restoring only root+embeds could leave a
+  // half-applied def — the old tree referencing a new slot list. Name/
+  // description/slot text still never create ↶ steps of their own (typing
+  // commits nothing — the builder rule's no-flood half); they now ride the
+  // surrounding gestures' snapshots instead of standing outside the stack.
+  const muBag = (): ComponentDef => staged; // commit/baseline stringify it
+  const mu = createModalUndo<ComponentDef>(muBag());
+  function muRestore(bag: ComponentDef | null): void {
     if (!bag) return;
     staged.root = bag.root;
-    if (bag.embeds.length) staged.embeds = bag.embeds;
+    staged.name = bag.name;
+    staged.description = bag.description;
+    staged.slots = bag.slots;
+    if (bag.kind !== undefined) staged.kind = bag.kind; else delete staged.kind;
+    if (bag.additionalRowClass !== undefined) staged.additionalRowClass = bag.additionalRowClass;
+    else delete staged.additionalRowClass;
+    if (bag.variantOf !== undefined) staged.variantOf = bag.variantOf; else delete staged.variantOf;
+    if (bag.embeds?.length) staged.embeds = bag.embeds;
     else delete staged.embeds;
     if (!nodeAtStaged(sel)) sel = [];
     renderPreview();
     renderEmbeds();
+    renderIdentity();
+    renderSlots();
     muButtons.refresh();
     state.emit('workshop'); // the tree + inspector ride the staged seam now
   }
@@ -823,8 +837,7 @@ export function mountComponentWorkshop(
       // The JSON pane's Apply: replace the whole staged def in ONE staged
       // gesture. Identity stays the tab's — id/builtin are never taken from
       // the JSON (the pane refuses id mismatches; this is the backstop).
-      // Undo follows the standing text-field rule: ↶ restores the TREE and
-      // embeds; name/description/slots keep their applied values.
+      // ↶ restores the WHOLE previous def — the bag is the full snapshot.
       const d = JSON.parse(JSON.stringify(next)) as ComponentDef;
       staged.name = d.name;
       staged.description = typeof d.description === 'string' ? d.description : '';

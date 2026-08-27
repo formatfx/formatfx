@@ -182,6 +182,25 @@ describe('editing + Apply-into-workshop', () => {
   });
 });
 
+describe('an orphaned component draft (navigated away while dirty)', () => {
+  it('never exports another doc\'s JSON — Copy refuses and the size meter blanks', () => {
+    const toasts: string[] = [];
+    const { host, textEl } = mountPanel((m) => toasts.push(m));
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.name = 'My draft';
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    state.minimizeView(); // the draft survives (never-clobber) but its workshop tab is gone
+    expect(textEl.value).toContain('My draft');
+    (host.querySelector('#wb-json-copy-btn') as HTMLButtonElement).click();
+    // Copilot review, PR #312: this used to fall through and copy the SURFACE
+    // formatter (or a different workshop's def) labeled as the component's
+    expect(toasts.join(' ')).toContain('⬡');
+    expect(toasts.join(' ')).not.toContain('copied');
+    expect((host.querySelector('#wb-json-size') as HTMLElement).textContent).toBe('—');
+  });
+});
+
 describe('surface machinery stands down', () => {
   it('a caret click never drives the surface selection', () => {
     const { textEl } = mountPanel();

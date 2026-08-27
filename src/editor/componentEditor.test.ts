@@ -160,16 +160,29 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     expect(ctx.def().id).toBe('builtin-deadline-chip');
   });
 
-  it('applyDef() is ONE modal-undo step: ↶ restores the previous tree', () => {
+  it('applyDef() is ONE modal-undo step: ↶ restores the WHOLE previous def, never a half-applied mix', () => {
     mountWorkshop();
     const ctx = state.workshopCtx!;
-    const beforeTxt = ctx.root().txtContent;
+    const before = ctx.def();
     const next = ctx.def();
     next.root = { elmType: 'div', txtContent: 'applied-tree' };
+    next.name = 'Applied name';
+    next.slots = [{ key: 'Due', label: 'Applied slot label', types: ['date'] }];
     ctx.applyDef(next);
     const undoBtn = host.querySelector<HTMLButtonElement>('.wb-mu-undo')!;
     expect(undoBtn.disabled).toBe(false);
     undoBtn.click();
-    expect(ctx.root().txtContent).toBe(beforeTxt);
+    // tree AND identity AND slots — an undone Apply must never leave the old
+    // root referencing a new slot list (Copilot review, PR #312)
+    const restored = ctx.def();
+    expect(restored.root).toEqual(before.root);
+    expect(restored.name).toBe(before.name);
+    expect(restored.slots).toEqual(before.slots);
+    // the workshop chrome re-seeded with the restored identity
+    expect(host.querySelector<HTMLInputElement>('input.wb-ce-name')!.value).toBe(before.name);
+    // and ↷ brings the applied def back whole
+    host.querySelector<HTMLButtonElement>('.wb-mu-redo')!.click();
+    expect(ctx.def().name).toBe('Applied name');
+    expect(ctx.root().txtContent).toBe('applied-tree');
   });
 });

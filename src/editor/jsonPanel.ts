@@ -313,9 +313,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
     const wctx = activeWorkshop();
-    // a component tab is active but its workshop hasn't registered yet —
-    // keep the old buffer for this frame; the 'workshop' emit re-runs us
-    if (state.activeComponentTab !== null && !wctx) return;
+    // a component tab is active but its workshop hasn't registered yet — or
+    // the seam still belongs to the OUTGOING workshop mid tab-switch (this
+    // pane subscribes before the strip). Keep the old buffer for the frame;
+    // the incoming workshop's 'workshop' announce re-runs us.
+    if (state.activeComponentTab !== null
+      && (!wctx || wctx.def().id !== state.activeComponentTab)) return;
     if (wctx) {
       // ── component mode: the staged def, verbatim. No offset↔path map and
       // no folds (that machinery is surface-doc-shaped — the PR after this
@@ -371,13 +374,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const sizeEl = host.querySelector('#wb-json-size') as HTMLSpanElement;
   /** What Copy/Download produce — the DOC's truth for the current mode: the
    *  compiled formatter on a surface, the staged def in component mode (a
-   *  dirty buffer moves neither until Apply). csom escapes &/< the way the
-   *  serializer's csomSafe does — safe as a text op because JSON syntax has
-   *  no bare & or < outside strings. */
-  const exportText = (opts: { csom?: boolean } = {}): string => {
-    const wctx = activeWorkshop();
-    if (bufferDefId !== null && wctx) {
-      const def = wctx.def();
+   *  dirty buffer moves neither until Apply). Null when the buffer is an
+   *  ORPHANED component draft — its workshop tab left while dirty — because
+   *  no doc truth is reachable then: exporting the surface (or a DIFFERENT
+   *  workshop's def) labeled as this component's would lie (Copilot review,
+   *  PR #312). csom escapes &/< the way the serializer's csomSafe does —
+   *  safe as a text op because JSON syntax has no bare & or < outside
+   *  strings. */
+  const exportText = (opts: { csom?: boolean } = {}): string | null => {
+    if (bufferDefId !== null) {
+      const wctx = activeWorkshop();
+      const def = wctx?.def();
+      if (!def || def.id !== bufferDefId) return null;
       delete def.builtin; // save-flow bookkeeping, not component content
       const t = JSON.stringify(def, null, 2);
       return opts.csom ? t.replace(/&/g, '\\u0026').replace(/</g, '\\u003c') : t;
@@ -387,8 +395,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ...(opts.csom ? { csomSafe: true } : {}),
     });
   };
+  const orphanExportToast = (): void =>
+    onToast('This draft\'s workshop isn\'t active — open its ⬡ tab to copy or download the component JSON');
+  const sizeTitleDefault = sizeEl.title;
   const refreshSizeMeter = (): void => {
     const out = exportText();
+    if (out === null) { // orphaned component draft — nothing measurable
+      sizeEl.textContent = '—';
+      sizeEl.title = 'Open the component\'s ⬡ tab to measure or copy its JSON';
+      return;
+    }
+    sizeEl.title = sizeTitleDefault;
     const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(out).length : out.length;
     sizeEl.textContent = bytes < 10240
       ? `${bytes.toLocaleString()} B`
@@ -981,8 +998,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   const copyFormatterJson = async (): Promise<void> => {
     const comp = bufferDefId !== null;
+    const text = exportText();
+    if (text === null) { orphanExportToast(); return; }
     try {
-      await navigator.clipboard.writeText(exportText());
+      await navigator.clipboard.writeText(text);
       onToast(comp ? 'Component JSON copied (the staged def)' : 'Formatter JSON copied');
     } catch {
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
@@ -991,15 +1010,19 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', copyFormatterJson);
   host.querySelector('#wb-json-copy-btn')!.addEventListener('click', copyFormatterJson);
   menuHost.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
+    const text = exportText({ csom: true });
+    if (text === null) { orphanExportToast(); return; }
     try {
-      await navigator.clipboard.writeText(exportText({ csom: true }));
+      await navigator.clipboard.writeText(text);
       onToast('CSOM-safe JSON copied (& and < escaped)');
     } catch {
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
   menuHost.querySelector('#wb-json-download')!.addEventListener('click', () => {
-    const blob = new Blob([exportText()], { type: 'application/json' });
+    const text = exportText();
+    if (text === null) { orphanExportToast(); return; }
+    const blob = new Blob([text], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = bufferDefId !== null ? `component-${bufferDefId}.json` : `${state.doc.kind}-formatter.json`;
