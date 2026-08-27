@@ -461,8 +461,13 @@ export function openTemplateModal(
       ui.pickDrilled = false;
       rerender();
       // …and coming back, land on the row they came from — the Recent copy
-      // counts too (the canonical row may sit in a folded group)
-      (modal.querySelector(`[data-wireframe="${ui.pickSelected}"], [data-wireframe-recent="${ui.pickSelected}"]`) as HTMLElement | null)?.focus();
+      // counts too (the canonical row may sit in a folded group); with BOTH
+      // groups folded, fall back to a visible header so the keyboard
+      // position never drops to the body
+      const target = modal.querySelector(
+        `[data-wireframe="${ui.pickSelected}"], [data-wireframe-recent="${ui.pickSelected}"]`)
+        ?? modal.querySelector('.wb-lay-ghead');
+      (target as HTMLElement | null)?.focus();
     },
     confirmPick: () => {
       const id = ui.pickSelected;
@@ -472,6 +477,8 @@ export function openTemplateModal(
         if (!keptConfig()) return;
         ui.stage = 'edit';
         rerender();
+        // same keyboard landing as the selected-layout resume branch
+        (modal.querySelector('.wb-template-layouts') as HTMLElement | null)?.focus();
         return;
       }
       // selection matches the CURRENT config's layout → RESUME it (Back must

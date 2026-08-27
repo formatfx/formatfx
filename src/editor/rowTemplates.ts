@@ -919,7 +919,9 @@ function treeBehaviors(root: SPElement, out: Set<string>): void {
   if (root.inlineEditField) out.add('edits a value inline');
   if (root.defaultHoverField) out.add('shows a hover card');
   if (root.customCardProps) {
-    out.add('shows a card on hover or click');
+    // openOnEvent names exactly one trigger — promise that one, not both
+    out.add((root.customCardProps as { openOnEvent?: string }).openOnEvent === 'hover'
+      ? 'shows a card on hover' : 'shows a card on click');
     const inner = (root.customCardProps as { formatter?: SPElement }).formatter;
     if (inner) treeBehaviors(inner, out);
   }
@@ -976,7 +978,8 @@ export function summarizeConfig(
   if (kebabEl) {
     const kb = new Set<string>();
     treeBehaviors(kebabEl, kb);
-    kb.delete('shows a card on hover or click'); // the menu IS the card — name its actions instead
+    kb.delete('shows a card on click'); // the menu IS the card — name its actions instead
+    kb.delete('shows a card on hover');
     behaviors.add(`Row menu (⋯) — ${[...kb].join(', ')}`);
   }
   if (config.hoverHighlight) {
