@@ -129,6 +129,8 @@ describe('row view builder — the layout selector (stage pick)', () => {
     (document.querySelector('.wb-template-layouts') as HTMLElement).click();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
     expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Lead + details');
+    // untouched seed → no "edits in progress" marker (Next resumes either way)
+    expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
   });
 
   it('Back then Next on the SAME layout resumes the config — browsing costs nothing', () => {

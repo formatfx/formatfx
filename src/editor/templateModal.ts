@@ -465,6 +465,7 @@ export function openTemplateModal(
     },
     isCreating: () => creating,
     resumeConfig: () => (resumesSelection() ? ui.config : null),
+    resumeEdited: () => resumesSelection() && (dirty || past.length > 0),
     openGallery: () => {
       // back out with context: drill into the layout the CURRENT config
       // carries (config-derived, so undo/redo can't desync it); a reopened

@@ -125,6 +125,10 @@ export interface ModalApi {
    *  Next would seed fresh — the selector's details/preview must render THIS
    *  when present, or the pane contradicts what Next opens. */
   resumeConfig(): RowTemplateConfig | null;
+  /** True only when the resumable config actually DIFFERS from its seeded
+   *  baseline — the "edits in progress" marker must not cry edits over an
+   *  untouched seed. */
+  resumeEdited(): boolean;
   /** Back to the layout selector (the current config is kept until a pick). */
   openGallery(): void;
   setStageWidth(w: number | null): void;

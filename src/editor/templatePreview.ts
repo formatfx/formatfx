@@ -316,7 +316,9 @@ function renderLayoutDetail(host: HTMLElement, id: WireframeId, api: ModalApi): 
     el('span', 'wb-lay-detail-kind', config.target === 'tile' ? 'Tile' : 'Row'));
   pane.appendChild(title);
   pane.appendChild(el('div', 'wb-lay-detail-blurb', wf.blurb));
-  if (resumed) {
+  // only real edits earn the marker — an untouched seed resumed via the back
+  // arrow is byte-identical to a fresh one, and "edits" there would be a lie
+  if (resumed && api.resumeEdited()) {
     pane.appendChild(el('div', 'wb-lay-detail-resume',
       '● You have this layout open with edits — Next resumes them exactly as left.'));
   }
