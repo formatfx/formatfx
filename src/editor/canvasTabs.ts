@@ -345,15 +345,9 @@ export function mountCanvasTabs(
       openMenu(addBtn, 'Create new...', [
         {
           icon: 'AlignLeft',
-          label: 'New rowview…',
-          title: 'Start a new row view from a template',
-          fn: () => openTemplateModal(onToast, { target: 'row', createNew: true }),
-        },
-        {
-          icon: 'Tiles',
-          label: 'New tileview…',
-          title: 'Start a new tile view from a template',
-          fn: () => openTemplateModal(onToast, { target: 'tile', createNew: true }),
+          label: 'New view…',
+          title: 'Start a new row or tile view from a pre-built layout',
+          fn: () => openTemplateModal(onToast, { createNew: true }),
         },
         {
           icon: 'CubeShape',

@@ -72,9 +72,16 @@ export interface ModalUI {
    *  (hand-built or hand-edited) — the gallery says so instead of silently
    *  starting fresh. */
   foreignRow: boolean;
-  /** Which wireframe group the gallery leads with ('+ New tileview…' and a
-   *  tile doc lead with tiles; everything else leads with rows). */
+  /** Which wireframe group the layout list leads with (a tile doc leads with
+   *  tiles; everything else leads with rows). */
   galleryFirst: BuilderTarget;
+  /** The layout the selector is PREVIEWING (right pane shows it live); null
+   *  until the maker clicks one. Selecting is not committing — Next is. */
+  pickSelected: WireframeId | null;
+  /** Whether the selector's left pane is drilled into the selected layout's
+   *  details (true right after a selection; Back returns to the list while
+   *  the preview stays put). */
+  pickDrilled: boolean;
 }
 
 /** Everything the region renderers may do — all mutations funnel through the
@@ -103,7 +110,18 @@ export interface ModalApi {
   setConfig(next: RowTemplateConfig): void;
   /** Seed from a wireframe and enter the editor (confirms over placed work). */
   pickWireframe(id: WireframeId): void;
-  /** Back to the gallery (the current config is kept until a pick). */
+  /** Select a layout in the selector: live-preview it on the right and drill
+   *  the left pane into its details. Does NOT touch the config. */
+  previewWireframe(id: WireframeId): void;
+  /** Un-drill the selector's left pane back to the list (selection and
+   *  preview stay — browsing must never lose the maker's place). */
+  backToList(): void;
+  /** Next: enter the editor with the selected layout — resuming the already
+   *  seeded config when it's the same layout, else seeding via pickWireframe. */
+  confirmPick(): void;
+  /** True when Apply CREATES a new named view (vs saving over an open sheet). */
+  isCreating(): boolean;
+  /** Back to the layout selector (the current config is kept until a pick). */
   openGallery(): void;
   setStageWidth(w: number | null): void;
   /** Transient hover state — stamps data-peek on the modal, NO rerender. */

@@ -2,28 +2,35 @@
 // Copyright (c) 2026 Sam Yost
 
 /**
- * editor/templateModal.ts — the ROW VIEW (and TILE) BUILDER shell. Opens on
- * the wireframe GALLERY (pick a pre-built zone layout — row and tile groups)
- * unless the canvas already holds a layout the builder produced — then it
- * REOPENS it as editable zones (configFromView's rebuild-verify gate
- * guarantees losslessness). The config's TARGET decides what Save writes:
- * applyRowTemplate or applyTileTemplate, either way one undoable mutation.
+ * editor/templateModal.ts — the ROW VIEW (and TILE) BUILDER shell, and the
+ * ONE "New view" experience. Opens on the LAYOUT SELECTOR (stage 'pick'):
+ * a narrow left list of every pre-built layout — row AND tile, one door —
+ * that drills into a details pane on selection, beside a wide LIVE preview
+ * rendered with the maker's real sample rows. Next enters the zone editor
+ * (stage 'edit'); Back returns to the selector with the config KEPT — Next
+ * on the same layout resumes it, so browsing never loses work. The modal
+ * skips the selector only when the canvas already holds a layout the builder
+ * produced — then it REOPENS it as editable zones (configFromView's
+ * rebuild-verify gate guarantees losslessness). The config's TARGET decides
+ * what the commit button writes: applyRowTemplate or applyTileTemplate —
+ * or, when creating, state.createView — either way one undoable mutation.
  *
- * The editor resembles the app's Left Edit Pane: a TOP bar with the 2×2
- * action grid (↶ ↷ / Cancel Save) beside the FIELDS/COMPONENTS chips, then a
- * left SIDE column with the zone TREE over the contextual INSPECTOR, and the
- * PREVIEW canvas — the editable row with the always-live rows right below it
- * (no Edit/Preview toggle; both are simply on screen).
+ * CHROME GEOMETRY (deliberate, mirrors the app): the top bar holds the title
+ * with undo/redo CENTERED — the same spot the main topbar keeps them; the
+ * chips bar sits below it (edit only); the footer holds the journey buttons
+ * bottom-right in BOTH stages — Back/Next in the selector, Cancel/Create
+ * (or Save when editing an existing sheet) in the editor.
  *
  * Zones NEST — every selection and drag is a ZonePath, and every gesture
  * funnels through commit(), which feeds the MODAL-LOCAL undo/redo stack
  * (Ctrl/Cmd+Z, Shift for redo) — cheap because configs are immutable. The
- * modal touches the document only on Save (one undoable mutation), so no
- * in-modal gesture can corrupt a formatter — the worst case is Cancel.
+ * modal touches the document only on Create/Save (one undoable mutation), so
+ * no in-modal gesture can corrupt a formatter — the worst case is Cancel,
+ * and even Cancel confirms first once anything was touched.
  *
  * The pure brain (wireframes, zones, style precedence, kebab, path ops, the
- * round-trip parser) lives in rowTemplates.ts; the region painters in
- * templatePreview.ts / templateInspector.ts.
+ * round-trip parser, summarizeConfig) lives in rowTemplates.ts; the region
+ * painters in templatePreview.ts / templateInspector.ts.
  */
 import { state } from './state';
 import { isPureGrid } from './gridScaffold';
@@ -34,14 +41,14 @@ import {
   addZone, insertZone, newZone, zoneAt, nodeAt,
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem,
-  type BuilderTarget, type RowTemplateConfig,
+  type RowTemplateConfig, type WireframeId,
 } from './rowTemplates';
 import {
   BUILTIN_COMPONENTS, loadComponents, bestGuessMapping, componentKind,
   COMPONENTS_KEY, flattenComponent, type ComponentDef,
 } from './components';
 import { paletteComponents } from './paletteComponents';
-import { renderChips, renderPreview, renderZoneTree } from './templatePreview';
+import { renderChips, renderPreview, renderZoneTree, renderLayoutSide } from './templatePreview';
 import { renderInspector } from './templateInspector';
 import { el, type ModalApi, type ModalUI, type Selection } from './templateUi';
 
@@ -61,16 +68,16 @@ function elementComponents(): ComponentDef[] {
 
 export function openTemplateModal(
   onToast: (m: string) => void,
-  opts: { target?: BuilderTarget; createNew?: boolean } = {},
+  opts: { createNew?: boolean } = {},
 ): void {
   const comps = elementComponents(); // cached per open — chips, previews, and Save all agree
   // Save-time routing (FLOOR-AND-SHEETS Stage 1): from the floor — or via an
-  // explicit "+ New rowview/tileview…" — Save CREATES a new named sheet;
+  // explicit "+ New view…" — the commit button CREATES a new named sheet;
   // nothing is ever overwritten. Only with a sheet on the canvas does Save
   // replace that sheet's document.
   const creating = opts.createNew === true || state.activeDocKey !== 'main' || state.onFloor;
   // Reopen, don't restart: a row view OR tile the builder produced parses back
-  // into zones. Anything it can't represent faithfully → the gallery, with an
+  // into zones. Anything it can't represent faithfully → the selector, with an
   // honest note. A create-new ask never reopens — it starts fresh.
   const rawRowClass = state.doc.viewExtras?.additionalRowClass;
   const reopened = creating ? null
@@ -86,23 +93,24 @@ export function openTemplateModal(
     reopened.tileHeight = state.doc.tileHeight ?? reopened.tileHeight;
   }
   const editingExisting = reopened !== null;
-  // An explicit "+ New tileview…" (or rowview) ask that doesn't match what
-  // reopened lands on the GALLERY — the reopened config is kept, so picking a
-  // wireframe over it still confirms (dirty), and Escape abandons nothing.
-  const askedFor = opts.target;
-  const reopensAsAsked = editingExisting && (askedFor === undefined || reopened.target === askedFor);
   const ui: ModalUI = {
-    config: reopened ?? defaultConfigFor(askedFor === 'tile' ? 'tile-headline' : 'lead-detail', state.fields),
-    stage: reopensAsAsked ? 'edit' : 'pick',
+    config: reopened ?? defaultConfigFor('lead-detail', state.fields),
+    stage: editingExisting ? 'edit' : 'pick',
     selected: null,
     stageWidth: null,
     foreignRow: !creating && !editingExisting && (state.doc.kind === 'row' || state.doc.kind === 'tile'),
-    galleryFirst: askedFor ?? reopened?.target ?? (state.doc.kind === 'tile' ? 'tile' : 'row'),
+    galleryFirst: reopened?.target ?? (state.doc.kind === 'tile' ? 'tile' : 'row'),
+    pickSelected: null,
+    pickDrilled: false,
   };
   /** Has the maker changed anything since the last wireframe pick? Re-picking
    *  over untouched seeds shouldn't nag; re-picking over real work (including
    *  a reopened layout) confirms. */
   let dirty = editingExisting;
+  /** The wireframe the CURRENT config was seeded from this open — null until
+   *  a pick (a reopened config has no recoverable wireframe). Next on the
+   *  same layout RESUMES instead of reseeding, so Back drops nothing. */
+  let seededFrom: WireframeId | null = null;
 
   // ── modal-local undo/redo: immutable configs make this a pair of arrays ──
   const past: RowTemplateConfig[] = [];
@@ -112,20 +120,30 @@ export function openTemplateModal(
   handle = createOverlay('wb-template-modal-overlay', () => close());
   const overlay = handle.overlay;
   const modal = el('div', 'wb-template-modal');
-  // TOP bar: the 2×2 action grid (undo/redo over cancel/save) beside the chips
+  // TOP bar mirrors the app topbar's geometry: title left, undo/redo CENTERED
+  // (the spot makers already know them by), a matching spacer right
   const top = el('div', 'wb-template-top');
+  const title = el('div', 'wb-template-title');
   const actions = el('div', 'wb-template-actions');
+  const topright = el('div', 'wb-template-topright');
+  top.append(title, actions, topright);
+  // the chips bar gets its own full-width row (edit stage only)
+  const chipsbar = el('div', 'wb-template-chipsbar');
   const chips = el('div', 'wb-template-fields');
-  top.append(actions, chips);
+  chipsbar.appendChild(chips);
   const main = el('div', 'wb-template-main');
-  // the Left-Edit-Pane shape: tree over inspector, always on the left
+  // the Left-Edit-Pane shape: tree over inspector, always on the left —
+  // in the selector the same side pane holds the layout list / details
   const side = el('div', 'wb-template-side');
   const treeHost = el('div', 'wb-template-treehost');
   const inspector = el('div', 'wb-template-inspector');
   side.append(treeHost, inspector);
   const preview = el('div', 'wb-template-preview');
   main.append(side, preview);
-  modal.append(top, main);
+  // FOOTER: the journey buttons, bottom-right in BOTH stages (Back/Next ↔
+  // Cancel/Create sit in the same spots)
+  const foot = el('div', 'wb-template-foot');
+  modal.append(top, chipsbar, main, foot);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
@@ -144,44 +162,85 @@ export function openTemplateModal(
     else undo();
   };
   document.addEventListener('keydown', undoKeys, true);
-  function close(): void {
+  /** Close, but never silently over touched work: once anything was committed
+   *  (and not undone back to the baseline), Cancel / Escape / a backdrop
+   *  click all confirm first. `force` skips the gate (a successful Apply
+   *  already banked the work). */
+  function close(force = false): void {
+    if (!force && past.length > 0
+      && !confirm('Discard your layout edits? Nothing has been saved to the view yet.')) return;
     document.removeEventListener('keydown', undoKeys, true);
     handle.close();
   }
 
   const palette = (): Record<string, string> => themePalette(state.themeMode);
 
-  function renderActions(): void {
+  const mk = (cls: string, label: string, title: string, disabled: boolean, onClick: () => void, ariaLabel?: string): HTMLButtonElement => {
+    const b = el('button', `wb-template-action ${cls}`, label) as HTMLButtonElement;
+    b.type = 'button';
+    b.title = title;
+    // icon-only buttons need an explicit accessible name — title alone is
+    // not reliably announced (same convention as the leftPane toolbar)
+    if (ariaLabel) b.setAttribute('aria-label', ariaLabel);
+    b.disabled = disabled;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  /** The title bar: what this modal IS on the left, undo/redo centered
+   *  (edit stage only — the selector has nothing to undo). */
+  function renderTop(): void {
+    title.textContent = ui.stage === 'pick'
+      ? (creating ? 'New view — start from a layout' : 'Start from a layout')
+      : ui.config.target === 'tile' ? 'Tile layout' : 'Row layout';
     actions.innerHTML = '';
-    if (ui.stage === 'pick') return; // the gallery has no edit actions
-    const mk = (cls: string, label: string, title: string, disabled: boolean, onClick: () => void, ariaLabel?: string): HTMLButtonElement => {
-      const b = el('button', `wb-template-action ${cls}`, label) as HTMLButtonElement;
-      b.type = 'button';
-      b.title = title;
-      // icon-only buttons need an explicit accessible name — title alone is
-      // not reliably announced (same convention as the leftPane toolbar)
-      if (ariaLabel) b.setAttribute('aria-label', ariaLabel);
-      b.disabled = disabled;
-      b.addEventListener('click', onClick);
-      return b;
-    };
-    const blocker = applyBlocker(ui.config, comps);
+    if (ui.stage === 'pick') return;
     actions.append(
       mk('wb-template-undo', '↶', 'Undo (Ctrl+Z) — inside the builder only', past.length === 0, undo, 'Undo'),
       mk('wb-template-redo', '↷', 'Redo (Ctrl+Shift+Z)', future.length === 0, redo, 'Redo'),
+    );
+  }
+
+  /** The footer: the journey buttons, bottom-right in both stages — Back/Next
+   *  in the selector, Cancel/Create (or Save over an existing sheet) in the
+   *  editor, so commit lives in the same spot throughout. */
+  function renderFoot(): void {
+    foot.innerHTML = '';
+    if (ui.stage === 'pick') {
+      foot.append(
+        mk('wb-template-back', 'Back', 'Back to the layout list (your selection stays previewed)',
+          !ui.pickDrilled, () => api.backToList()),
+        mk('wb-template-next', 'Next', ui.pickSelected
+          ? 'Open the builder with this layout — drop columns, tune zones, add behaviors'
+          : 'Pick a layout first', !ui.pickSelected, () => api.confirmPick()),
+      );
+      return;
+    }
+    const blocker = applyBlocker(ui.config, comps);
+    foot.append(
       mk('wb-template-cancel', 'Cancel', 'Close without touching the view', false, () => close()),
-      mk('wb-template-apply', 'Save', blocker ?? 'Save this layout to the view (one Ctrl+Z on the canvas reverts it)', Boolean(blocker), doApply),
+      mk('wb-template-apply', creating ? 'Create' : 'Save',
+        blocker ?? (creating
+          ? 'Create this view — it becomes its own named view in the list'
+          : 'Save this layout to the view (one Ctrl+Z on the canvas reverts it)'),
+        Boolean(blocker), doApply),
     );
   }
 
   function rerender(): void {
     modal.dataset.stage = ui.stage;
     modal.dataset.peek = modal.dataset.peek ?? '';
-    renderActions();
+    renderTop();
+    renderFoot();
     renderChips(chips, ui, api);
-    renderZoneTree(treeHost, ui, api);
+    if (ui.stage === 'pick') {
+      renderLayoutSide(treeHost, ui, api);
+      inspector.innerHTML = '';
+    } else {
+      renderZoneTree(treeHost, ui, api);
+      renderInspector(inspector, ui, api);
+    }
     renderPreview(preview, ui, api);
-    renderInspector(inspector, ui, api);
   }
 
   /** Drop a selection that no longer points at anything after an undo/redo. */
@@ -253,7 +312,7 @@ export function openTemplateModal(
       }
       onToast(editingExisting ? `${noun} updated` : `${noun} applied`);
     }
-    close();
+    close(true); // the work is banked — no discard gate
   }
 
   const componentItemFor = (componentId: string) => {
@@ -329,7 +388,7 @@ export function openTemplateModal(
       if (dirty) {
         commit(defaultConfigFor(id, state.fields), null); // re-pick over work: undoable
       } else {
-        // entering from an untouched gallery = the undo BASELINE, not a step
+        // entering from an untouched selector = the undo BASELINE, not a step
         ui.config = defaultConfigFor(id, state.fields);
         ui.selected = null;
         past.length = 0;
@@ -337,8 +396,39 @@ export function openTemplateModal(
         rerender();
       }
       dirty = false;
+      seededFrom = id;
     },
-    openGallery: () => { ui.stage = 'pick'; rerender(); },
+    previewWireframe: (id) => {
+      ui.pickSelected = id;
+      ui.pickDrilled = true;
+      rerender();
+    },
+    backToList: () => {
+      if (!ui.pickDrilled) return;
+      ui.pickDrilled = false;
+      rerender();
+    },
+    confirmPick: () => {
+      const id = ui.pickSelected;
+      if (!id) return;
+      // same layout the config was seeded from → RESUME it (Back must never
+      // cost work); a different layout goes through pickWireframe's confirm
+      if (id === seededFrom) {
+        ui.stage = 'edit';
+        rerender();
+        return;
+      }
+      api.pickWireframe(id);
+    },
+    isCreating: () => creating,
+    openGallery: () => {
+      // back out with context: the selector reopens drilled into the layout
+      // being edited (a reopened sheet has no source wireframe → the list)
+      ui.stage = 'pick';
+      ui.pickSelected = seededFrom;
+      ui.pickDrilled = seededFrom !== null;
+      rerender();
+    },
     setStageWidth: (w) => { ui.stageWidth = w; rerender(); },
     // hover-transient: a dataset stamp only — a rerender here would rebuild the
     // control under the pointer and make the peek flicker

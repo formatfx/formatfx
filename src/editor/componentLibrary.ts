@@ -740,14 +740,14 @@ export function renderComponentLibrary(host: HTMLElement, onToast: (m: string) =
   newComp.addEventListener('click', () => createNewComponent(onToast));
   addBody.appendChild(newComp);
 
-  // ── the row-scoped siblings: whole-row components + New rowview ───────────
+  // ── the row-scoped siblings: whole-row components + New view ──────────────
   section('Whole rows', customs.filter((c) => componentKind(c) === 'row'), undefined, addBody);
   const rowCard = document.createElement('button');
   rowCard.type = 'button';
   rowCard.className = 'wb-comp-rowlink';
-  rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New rowview…</span>';
-  rowCard.title = 'Start the whole row from a pre-built layout (the same templates as the View dropdown); save a row you like as a component (right-click its root) to see it here.';
-  rowCard.addEventListener('click', () => openTemplateModal(onToast));
+  rowCard.innerHTML = '<span class="wb-comp-rowlink-name">▤ New view…</span>';
+  rowCard.title = 'Start a new view from a pre-built layout (the same selector as the views list); save a row you like as a component (right-click its root) to see it here.';
+  rowCard.addEventListener('click', () => openTemplateModal(onToast, { createNew: true }));
   addBody.appendChild(rowCard);
 
   // ── the pnp/List-Formatting bridge: paste any formatter JSON ──────────────

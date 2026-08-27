@@ -44,8 +44,7 @@ describe('viewsList', () => {
     expect(host.querySelector('.wb-viewslist-head')).toBeNull();
     expect(host.querySelector('.wb-viewslist-empty')?.textContent).toContain('columns and components');
     expect(host.querySelector('.wb-viewslist-row')).toBeNull();
-    expect(host.querySelector('.wb-viewslist-newrow')).not.toBeNull();
-    expect(host.querySelector('.wb-viewslist-newtile')).not.toBeNull();
+    expect(host.querySelector('.wb-viewslist-newview')).not.toBeNull();
   });
 
   it('lists every sheet by name with its kind tag, marking the ACTIVE TAB\'s row', () => {
@@ -118,20 +117,13 @@ describe('viewsList', () => {
     expect(state.viewById(id)?.name).toBe('Committed on blur');
   });
 
-  it('＋ New rowview opens the template modal', () => {
+  it('＋ New view opens the layout selector — row AND tile layouts behind one door', () => {
     const host = mount();
-    (host.querySelector('.wb-viewslist-newrow') as HTMLElement).dispatchEvent(new Event('click'));
+    (host.querySelector('.wb-viewslist-newview') as HTMLElement).dispatchEvent(new Event('click'));
     expect(document.querySelector('.wb-template-modal')).not.toBeNull();
+    const heads = [...document.querySelectorAll('.wb-template-gallery-head')].map((h) => h.textContent);
+    expect(heads).toEqual(['Row layouts', 'Tile layouts']);
     // close via the real path so createOverlay detaches its document Esc listener
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(document.querySelector('.wb-template-modal')).toBeNull();
-  });
-
-  it('＋ New tileview opens the template modal with the tile layouts leading', () => {
-    const host = mount();
-    (host.querySelector('.wb-viewslist-newtile') as HTMLElement).dispatchEvent(new Event('click'));
-    expect(document.querySelector('.wb-template-modal')).not.toBeNull();
-    expect(document.querySelector('.wb-template-gallery-head')?.textContent).toBe('Tile layouts');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.querySelector('.wb-template-modal')).toBeNull();
   });

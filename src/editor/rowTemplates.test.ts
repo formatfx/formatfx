@@ -5,7 +5,7 @@ import {
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem, wireframeById,
   childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
-  foldRowClassIntoRoot,
+  foldRowClassIntoRoot, summarizeConfig,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem, type WireframeId,
   type ZoneAlign, type ZoneVAlign, type RootVAlign,
 } from './rowTemplates';
@@ -894,5 +894,79 @@ describe('childSlotOrder mirrors buildTemplateView child order (incl. spliced ke
     const c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), kebab: { enabled: true, behavior: 'custom', position: 'right', actions: { ...NATIVE_ACTIONS } } };
     expect(childSlotOrder(c)).toEqual([0, 1, 2]);     // buildKebab → null, not placed
     expect(childSlotOrder(c).length).toBe(len(c));
+  });
+});
+
+describe('summarizeConfig — the selector details pane never over-promises', () => {
+  it('every wireframe seed summarizes: zones in house vocabulary, placed columns, NO behaviors', () => {
+    for (const wf of WIREFRAMES) {
+      const s = summarizeConfig(defaultConfigFor(wf.id, FIELDS), FIELDS, []);
+      expect(s.zones.length).toBe(wf.zones.length);
+      expect(s.zones.map((z) => z.label)).toEqual(wf.zones.map((z) => z.label));
+      // vocabulary comes from ZONE_*_LABEL, never raw enum values
+      for (const z of s.zones) expect(['Hug content', 'Fill', 'Fill 2×', 'Fill 3×']).toContain(z.size);
+      // seeds ship zero behaviors and zero components — the pane must say so
+      expect(s.behaviors).toEqual([]);
+      expect(s.components).toEqual([]);
+    }
+  });
+
+  it('lists placed columns by display name, deduped, in layout order', () => {
+    const withNames: MockField[] = FIELDS.map((f) => f.name === 'Title' ? { ...f, displayName: 'Task name' } : f);
+    const s = summarizeConfig(defaultConfigFor('avatar-card', withNames), withNames, []);
+    expect(s.fields[0]).toBe('Owner');     // the hug Who zone leads
+    expect(s.fields).toContain('Task name'); // display name wins over internal
+  });
+
+  it('an enabled kebab surfaces as one Row menu behavior naming its real actions', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    c.kebab = { enabled: true, behavior: 'custom', position: 'right',
+      actions: { defaultClick: true, editProps: true, share: false, delete: false, executeFlow: true, setValue: false } };
+    // executeFlow has NO flowId → buildKebab refuses it; the summary must too
+    const s = summarizeConfig(c, FIELDS, []);
+    const menu = s.behaviors.find((b) => b.startsWith('Row menu'));
+    expect(menu).toContain('opens the item');
+    expect(menu).toContain('opens the edit form');
+    expect(menu).not.toContain('flow');
+  });
+
+  it('the native kebab reads as SharePoint\'s own menu; tiles never claim a kebab', () => {
+    const row = defaultConfigFor('equal', FIELDS);
+    row.kebab = { enabled: true, behavior: 'native', position: 'right',
+      actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } };
+    expect(summarizeConfig(row, FIELDS, []).behaviors.some((b) => b.includes("SharePoint's item menu"))).toBe(true);
+    const tile = defaultConfigFor('tile-headline', FIELDS);
+    tile.kebab = { ...row.kebab };
+    expect(summarizeConfig(tile, FIELDS, []).behaviors.some((b) => b.startsWith('Row menu'))).toBe(false);
+  });
+
+  it('hover highlight and zebra summarize honestly (zebra never on tiles)', () => {
+    const row = { ...defaultConfigFor('equal', FIELDS), hoverHighlight: true, zebraStriping: true };
+    const rowB = summarizeConfig(row, FIELDS, []).behaviors;
+    expect(rowB).toContain('Highlights the row on hover');
+    expect(rowB).toContain('Stripes alternating rows');
+    const tile = { ...defaultConfigFor('tile-headline', FIELDS), hoverHighlight: true, zebraStriping: true };
+    const tileB = summarizeConfig(tile, FIELDS, []).behaviors;
+    expect(tileB).toContain('Highlights the tile on hover');
+    expect(tileB.some((b) => b.includes('Stripes'))).toBe(false);
+  });
+
+  it('components list by name, and their embedded actions surface as behaviors', () => {
+    const actionChip: ComponentDef = {
+      ...CHIP, id: 'action-chip', name: 'Flow chip',
+      root: { elmType: 'button', txtContent: 'Go',
+        customRowAction: { action: 'executeFlow', actionParams: '{"id":"f1"}' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('action-chip', { Due: 'Due' }));
+    const s = summarizeConfig(c, FIELDS, [actionChip]);
+    expect(s.components).toEqual(['Flow chip']);
+    expect(s.behaviors.some((b) => b.includes('Flow chip') && b.includes('runs a flow'))).toBe(true);
+  });
+
+  it('a lost component def summarizes as (missing) instead of throwing', () => {
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('gone', {}));
+    expect(summarizeConfig(c, FIELDS, []).components).toEqual(['(missing)']);
   });
 });

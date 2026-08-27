@@ -1,9 +1,10 @@
 /**
  * E2E: the row view (and tile) builder. The Templates entry in the
- * structure-header kebab (and "＋ New rowview…" / "＋ New tileview…" in the
- * left pane's views list) opens the builder on a WIREFRAME GALLERY (grouped
- * Row/Tile); picking a layout enters the zone editor with a live preview. A style exclusion is
- * felt (a greyed control with a reason); Apply replaces the layout as ONE
+ * structure-header kebab (and the single "＋ New view…" in the left pane's
+ * views list) opens the builder on the LAYOUT SELECTOR — a narrow left list
+ * (Row + Tile groups) beside a live right-pane preview; selecting drills the
+ * left pane into details, and Next enters the zone editor. A style exclusion
+ * is felt (a greyed control with a reason); Apply replaces the layout as ONE
  * undoable step; fields AND components drag from the chips bar into zones;
  * the width presets squeeze the row preview so wrap behavior is watchable,
  * while tiles preview as a live deck at their configured box.
@@ -31,8 +32,9 @@ async function clickTemplates(page: Page) {
 async function openBuilder(page: Page, wireframe = 'lead-detail') {
   await clickTemplates(page);
   await expect(page.locator('.wb-template-modal')).toBeVisible();
-  await expect(page.locator('.wb-wf-card').first()).toBeVisible(); // the gallery greets first
+  await expect(page.locator('.wb-lay-row').first()).toBeVisible(); // the selector greets first
   await page.locator(`[data-wireframe="${wireframe}"]`).click();
+  await page.locator('.wb-template-next').click();
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
 }
 
@@ -139,10 +141,10 @@ test('reopening the builder edits the applied layout in place (no gallery restar
   await page.locator('.wb-template-apply').click();
   await expect(page.locator('.wb-template-modal')).toHaveCount(0);
 
-  // reopen: straight into the zone editor with the applied zones — no gallery
+  // reopen: straight into the zone editor with the applied zones — no selector
   await clickTemplates(page);
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
-  await expect(page.locator('.wb-wf-card')).toHaveCount(0);
+  await expect(page.locator('.wb-lay-row')).toHaveCount(0);
   await expect(page.locator('.wb-edit-zone-tag').first()).toContainText('Lead');
 
   // tweak one zone (selected via the TREE — the deterministic surface) and re-apply
@@ -198,23 +200,51 @@ test('zones nest: drop a zone onto a zone, and the nest survives Apply → reope
   await expect(page.locator('[data-edit-item="0:1:0"]')).toBeVisible(); // its item came along
 });
 
-test('New rowview is reachable from the views list on the landing screen', async ({ page }) => {
+test('the selector: select → live preview + details, Back keeps the place, Next resumes', async ({ page }) => {
+  await page.locator('.wb-viewslist-newview').click();
+  await expect(page.locator('.wb-template-modal')).toBeVisible();
+  // nothing selected: a quiet prompt on the right, Next waiting
+  await expect(page.locator('.wb-lay-placeholder')).toBeVisible();
+  await expect(page.locator('.wb-template-next')).toBeDisabled();
+  // selecting live-previews with the sample data and drills into details
+  await page.locator('[data-wireframe="lead-detail"]').click();
+  await expect(page.locator('.wb-template-preview .wb-template-prow').first()).toBeVisible();
+  await expect(page.locator('.wb-lay-detail-name')).toHaveText('Lead + details');
+  // Back to the list: the selection stays highlighted, the preview stays up
+  await page.locator('.wb-lay-back').click();
+  await expect(page.locator('[data-wireframe="lead-detail"]')).toHaveClass(/wb-lay-on/);
+  await expect(page.locator('.wb-template-preview .wb-template-prow').first()).toBeVisible();
+  // Next enters the editor; the editor's back arrow returns drilled-in
+  await page.locator('.wb-template-next').click();
+  await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+  await page.locator('.wb-template-layouts').click();
+  await expect(page.locator('.wb-lay-detail-name')).toHaveText('Lead + details');
+  // …and Next resumes the same seeded config without a restart
+  await page.locator('.wb-template-next').click();
+  await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
+});
+
+test('New view is reachable from the views list on the landing screen', async ({ page }) => {
   // straight from the grid landing (freshApp already navigated) — the views
   // list's ＋ is the on-ramp; a second goto would race the beforeEach reload
-  await page.locator('.wb-viewslist-newrow').click();
+  await page.locator('.wb-viewslist-newview').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
-  // pick a layout, apply — the grid graduates into a row view
+  // pick a layout, go Next, create — the workspace gains a named row view
   await page.locator('[data-wireframe="avatar-card"]').click();
+  await page.locator('.wb-template-next').click();
+  await expect(page.locator('.wb-template-apply')).toHaveText('Create');
   await page.locator('.wb-template-apply').click();
   await expect(page.locator('.wb-mock-viewrow')).toHaveCount(3);
 });
 
-test('the builder makes a TILE view: tile gallery → tile editor → Save → the tile deck, then reopen', async ({ page }) => {
-  await page.locator('.wb-viewslist-newtile').click();
+test('the builder makes a TILE view: selector → tile editor → Create → the tile deck, then reopen', async ({ page }) => {
+  await page.locator('.wb-viewslist-newview').click();
   await expect(page.locator('.wb-template-modal')).toBeVisible();
-  // the tile ask leads the gallery with the tile layouts
-  await expect(page.locator('.wb-template-gallery-head').first()).toHaveText('Tile layouts');
+  // both groups share the one selector — the tile group sits below the rows
+  await expect(page.locator('[data-laygroup="tile"]')).toHaveText('Tile layouts');
   await page.locator('[data-wireframe="tile-headline"]').click();
+  await expect(page.locator('.wb-lay-preview-kind')).toHaveText('Tile layout');
+  await page.locator('.wb-template-next').click();
   // the tile editor: Tile inspector, size knobs, a live tile deck, no width scrubber
   await expect(page.locator('.wb-template-insp-title')).toHaveText('Tile');
   await expect(page.locator('.wb-template-tiledeck')).toBeVisible();
@@ -224,10 +254,10 @@ test('the builder makes a TILE view: tile gallery → tile editor → Save → t
   // the canvas is now the gallery deck with the tile toolbar
   await expect(page.locator('.wb-mock-deck')).toBeVisible();
   await expect(page.locator('.wb-rowview-bar-label')).toHaveText('Tile layout');
-  // reopen: straight into the TILE editor with the zones intact — no gallery
+  // reopen: straight into the TILE editor with the zones intact — no selector
   await clickTemplates(page);
   await expect(page.locator('.wb-edit-zone').first()).toBeVisible();
-  await expect(page.locator('.wb-wf-card')).toHaveCount(0);
+  await expect(page.locator('.wb-lay-row')).toHaveCount(0);
   await expect(page.locator('.wb-template-insp-title')).toHaveText('Tile');
   // one undo on the canvas reverts the whole apply
   await page.keyboard.press('Escape');
