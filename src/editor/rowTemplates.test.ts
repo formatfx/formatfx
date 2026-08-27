@@ -964,6 +964,29 @@ describe('summarizeConfig — the selector details pane never over-promises', ()
     expect(s.behaviors.some((b) => b.includes('Flow chip') && b.includes('runs a flow'))).toBe(true);
   });
 
+  it('extended runtime actions phrase in maker language, never as raw internal ids', () => {
+    const copyChip: ComponentDef = {
+      ...CHIP, id: 'copy-chip', name: 'Copy chip',
+      root: { elmType: 'button', txtContent: 'Copy', customRowAction: { action: 'copyLink' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('copy-chip', { Due: 'Due' }));
+    const s = summarizeConfig(c, FIELDS, [copyChip]);
+    expect(s.behaviors.some((b) => b.includes('copies a link to the item'))).toBe(true);
+    expect(s.behaviors.some((b) => /\bcopyLink\b/.test(b))).toBe(false); // no leaked ids
+  });
+
+  it('a hyperlink inside a component counts as a click behavior', () => {
+    const linkChip: ComponentDef = {
+      ...CHIP, id: 'link-chip', name: 'Link chip',
+      root: { elmType: 'a', txtContent: '=[$Title]', attributes: { href: '=[$Link]' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('link-chip', { Due: 'Due' }));
+    const s = summarizeConfig(c, FIELDS, [linkChip]);
+    expect(s.behaviors.some((b) => b.includes('Link chip') && b.includes('opens a link'))).toBe(true);
+  });
+
   it('a lost component def summarizes as (missing) instead of throwing', () => {
     const c = defaultConfigFor('blank', FIELDS);
     c.zones[0].items.push(newComponentItem('gone', {}));

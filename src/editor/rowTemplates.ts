@@ -895,16 +895,26 @@ export interface ConfigSummary {
   zones: { label: string; size: string; flow: string }[];
 }
 
-const ROW_ACTION_PHRASE: Record<string, string> = {
+/** Maker-facing phrase for EVERY CustomRowAction the schema type admits —
+ *  typed exhaustively so a new action is a compile error here, never a raw
+ *  internal id leaking into the details pane. */
+const ROW_ACTION_PHRASE: Record<Exclude<CustomRowAction['action'], ''>, string> = {
   defaultClick: 'opens the item', editProps: 'opens the edit form', share: 'shares the item',
   delete: 'deletes the item', executeFlow: 'runs a flow', setValue: 'sets a column value',
-  openContextMenu: "opens SharePoint's item menu",
+  openContextMenu: "opens SharePoint's item menu", embed: 'opens the embed dialog',
+  copyLink: 'copies a link to the item', comment: 'opens the comments pane',
+  openApprovalDialog: 'opens the approval dialog', executeQuickStep: 'runs a Quick Step',
+  previewFileAction: 'previews the file (libraries only)',
+  copyFile: 'copies the file (libraries only)', moveFile: 'moves the file (libraries only)',
 };
 
 /** Every behavior phrase an element tree would fire on real SP. */
 function treeBehaviors(root: SPElement, out: Set<string>): void {
   const action = root.customRowAction?.action;
-  if (action) out.add(ROW_ACTION_PHRASE[action] ?? action);
+  if (action) out.add(ROW_ACTION_PHRASE[action]);
+  // hyperlinks are click behaviors too — a details pane that misses them
+  // would claim "no behaviors" over a link-bearing component
+  if (root.elmType === 'a' && root.attributes?.href !== undefined) out.add('opens a link');
   if (root.customCardProps) {
     out.add('shows a card on hover or click');
     const inner = (root.customCardProps as { formatter?: SPElement }).formatter;

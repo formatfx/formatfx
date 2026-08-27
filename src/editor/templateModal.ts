@@ -405,7 +405,9 @@ export function openTemplateModal(
       // keep both the confirm AND the undoable path — a baseline reset here
       // would wipe them silently and disarm the close gate
       const atStake = dirty || past.length > 0;
-      if (atStake && ui.config.zones.some((z) => z.items.length)
+      // no item-count clause: atStake alone already spares untouched seeds,
+      // and style/zone edits on a fieldless schema deserve the confirm too
+      if (atStake
         && !confirm('Start over from this layout? Your current zones are replaced (undo inside the builder brings them back).')) return;
       ui.stage = 'edit';
       if (atStake) {
