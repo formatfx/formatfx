@@ -116,16 +116,18 @@ export function openTemplateModal(
   /** Is there a config worth returning to untouched? (a reopened sheet, or
    *  anything seeded this open — the fresh-open placeholder doesn't count). */
   const keptConfig = (): boolean => editingExisting || seededFrom !== null;
-  /** configFromView stamps a reopened config 'blank'/'tile-blank' — a
-   *  placeholder, not a pedigree. Remember it so the selector never drills
-   *  into or resumes-by that identity (e.g. after undoing a re-pick back to
-   *  the reopened config). */
-  const reopenedStamp: WireframeId | null = reopened?.wireframeId ?? null;
+  /** TRUST CHAIN: which wireframe the config at each history position was
+   *  seeded from this open (null = the reopened/placeholder original, whose
+   *  configFromView 'blank' stamp is NOT a pedigree — and 'blank' is also a
+   *  real, pickable layout, so ids alone can't disambiguate). Kept in
+   *  lockstep with past/future, so undo/redo carry trust with the config. */
+  let currentTrust: WireframeId | null = null;
+  const pastTrust: (WireframeId | null)[] = [];
+  const futureTrust: (WireframeId | null)[] = [];
   /** The current config's wireframe identity, when TRUSTWORTHY: the config
    *  (or its edit-chain ancestor) was seeded from that wireframe this open. */
   const trustedWireframe = (): WireframeId | null =>
-    seededFrom !== null && !(editingExisting && ui.config.wireframeId === reopenedStamp)
-      ? ui.config.wireframeId : null;
+    currentTrust !== null && currentTrust === ui.config.wireframeId ? currentTrust : null;
   /** Would Next hand back ui.config exactly as left (vs reseeding)? */
   const resumesSelection = (): boolean =>
     ui.pickSelected !== null && ui.pickSelected === trustedWireframe();
@@ -281,7 +283,9 @@ export function openTemplateModal(
   function commit(next: RowTemplateConfig, sel?: Selection): void {
     if (next === ui.config) return; // guarded no-op from a pure op — no history noise
     past.push(ui.config);
+    pastTrust.push(currentTrust); // edits inherit trust; the pick overwrites it after
     future.length = 0;
+    futureTrust.length = 0;
     ui.config = next;
     if (sel !== undefined) ui.selected = sel;
     dirty = true;
@@ -293,6 +297,8 @@ export function openTemplateModal(
     const prev = past.pop();
     if (!prev) return;
     future.push(ui.config);
+    futureTrust.push(currentTrust);
+    currentTrust = pastTrust.pop() ?? null;
     ui.config = prev;
     sanitizeSelection();
     rerender();
@@ -302,6 +308,8 @@ export function openTemplateModal(
     const next = future.pop();
     if (!next) return;
     past.push(ui.config);
+    pastTrust.push(currentTrust);
+    currentTrust = futureTrust.pop() ?? null;
     ui.config = next;
     sanitizeSelection();
     rerender();
@@ -429,10 +437,13 @@ export function openTemplateModal(
         ui.selected = null;
         past.length = 0;
         future.length = 0;
+        pastTrust.length = 0;
+        futureTrust.length = 0;
         rerender();
       }
       dirty = false;
       seededFrom = id;
+      currentTrust = id; // THIS config (and its coming edit chain) is pedigree'd
       // rerender replaced the focused selector row — same landing spot as resume
       (modal.querySelector('.wb-template-layouts') as HTMLElement | null)?.focus();
     },

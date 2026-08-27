@@ -323,6 +323,29 @@ describe('row view builder — the layout selector (stage pick)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('explicitly re-picking the real Blank over a reopened sheet IS trusted — Back drills in, Next resumes', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {}); // reopened — stamped 'blank', but NOT picked
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="blank"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // a REAL Blank pick (confirms once)
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    zone(0).dispatchEvent(fieldDrop('Status')); // real work on the picked Blank
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the pick gave 'blank' a pedigree: drilled details, not the plain list
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Blank');
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1); // RESUME — no destructive re-pick
+    // Blank's seed fallback placed Title; the dropped Status rode along
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2);
+    expect([...document.querySelectorAll<HTMLElement>('[data-edit-item^="0:"]')]
+      .some((n) => n.dataset.fieldName === 'Status')).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
   it('a re-pick that installed a PRISTINE seed shows no "edits in progress" marker despite undo history', () => {
     enterEditor();
     zone(0).dispatchEvent(fieldDrop('Status'));
