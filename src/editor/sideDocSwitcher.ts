@@ -62,8 +62,8 @@ export function mountSideDocSwitcher(host: HTMLElement, onToast: (m: string) => 
       title: t.kind === 'grid'
         ? 'Back to the columns grid — any open view waits in its tab'
         : t.kind === 'view'
-          ? `Open the “${face.name}” view — this pane follows`
-          : `Open the ${face.name} workshop — this pane shows its staged JSON`,
+          ? `Open the “${face.name}” view`
+          : `Open the ${face.name} workshop — the JSON tab shows its staged JSON`,
       fn: () => {
         if (key === state.activeTabKey) return;
         if (t.kind === 'grid') {
@@ -89,8 +89,10 @@ export function mountSideDocSwitcher(host: HTMLElement, onToast: (m: string) => 
     const face = tabFace(t);
     mark.textContent = face.mark;
     name.textContent = face.name;
-    btn.title = `This pane is showing “${face.name}” — click to switch between the open canvas tabs`;
-    btn.setAttribute('aria-label', `Doc switcher — showing ${face.name}`);
+    // claims the active TAB, never "what this pane shows" — the Explain tab
+    // keeps describing the underlying surface while a workshop is active
+    btn.title = `Active canvas tab: “${face.name}” — click to switch between the open tabs`;
+    btn.setAttribute('aria-label', `Canvas tab switcher — ${face.name} is active`);
   };
 
   const hostAny = host as unknown as { _unsub?: () => void };

@@ -811,9 +811,23 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // parses; tolerant re-indent + the parse error when it doesn't. The dirty
   // flag is deliberately untouched — a formatted hand-edit still needs Apply,
   // and a clean buffer is already canonical so the swap is a no-op. ──
+  /** Component-mode Format: the formatter parser doesn't apply to a def —
+   *  canonical is a plain JSON pretty-print when the buffer parses, and the
+   *  tolerant re-indent tier (with its parse error) when it doesn't. Without
+   *  this, a VALID def hit importJson's "unrecognized formatter shape" error
+   *  (Copilot review, PR #312). */
+  const compFormat = (text: string): ReturnType<typeof formatDocument> => {
+    try {
+      return { text: JSON.stringify(JSON.parse(text), null, 2), tier: 'canonical' };
+    } catch {
+      return formatDocument(text, { sanitizeWhitespace: sanitizeEl.checked });
+    }
+  };
   const formatCmd = (): void => {
     expandAllFolds(); // format is a buffer op on the full text (no-op when clean+canonical)
-    const res = formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
+    const res = bufferDefId !== null
+      ? compFormat(textEl.value)
+      : formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
     if (res.text !== textEl.value) {
       ide.closeMenu(); // a swapped buffer would orphan the menu's offsets
       const selStart = textEl.selectionStart ?? 0;

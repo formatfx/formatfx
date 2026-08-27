@@ -45,6 +45,11 @@ describe('the side doc switcher', () => {
     const host = mount();
     expect(nameOf(host)).toBe('Grid');
     expect(markOf(host)).toBe('▦');
+    // the label claims the active TAB, not what every pane displays —
+    // Explain keeps describing the surface under a workshop (Copilot review)
+    const btn = host.querySelector('.wb-side-doc-btn')!;
+    expect(btn.getAttribute('aria-label')).toContain('is active');
+    expect(btn.getAttribute('title')).toContain('Active canvas tab');
   });
 
   it('follows navigation lockstep: opening a view relabels, minimizing goes back to Grid', () => {

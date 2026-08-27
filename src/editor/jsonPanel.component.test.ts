@@ -221,6 +221,21 @@ describe('an orphaned component draft (navigated away while dirty)', () => {
   });
 });
 
+describe('Format document in component mode', () => {
+  it('pretty-prints a valid def — never the "unrecognized formatter shape" error', () => {
+    const toasts: string[] = [];
+    const { host, textEl, errEl } = mountPanel((m) => toasts.push(m));
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    delete def.builtin;
+    typeInto(textEl, JSON.stringify(def)); // minified but valid def JSON
+    (host.querySelector('#wb-json-format') as HTMLButtonElement).click();
+    expect(errEl.hidden).toBe(true); // Copilot review: importJson's shape error must not fire here
+    expect(toasts.join(' ')).toContain('Formatted');
+    expect(textEl.value).toBe(JSON.stringify(def, null, 2));
+  });
+});
+
 describe('surface machinery stands down', () => {
   it('a caret click never drives the surface selection', () => {
     const { textEl } = mountPanel();
