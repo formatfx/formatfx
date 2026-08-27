@@ -1064,6 +1064,18 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         if (!wctx || wctx.def().id !== bufferDefId) {
           throw new Error('That component\'s workshop tab isn\'t active any more — open its ⬡ tab and Apply again.');
         }
+        // the slot KEY SET is locked, like the workshop's own slot editor:
+        // saved instances carry mappings keyed by it, and the save path
+        // rebinds them with those maps — a renamed key would publish
+        // unresolved refs (Copilot review, PR #312)
+        const oldKeys = wctx.def().slots.map((s) => s.key).sort().join(', ');
+        const newKeys = def.slots.map((s) => s.key).sort().join(', ');
+        if (oldKeys !== newKeys) {
+          throw new Error('The slot keys are this component\'s field references — saved instances\' '
+            + `mappings are bound to them, so Apply can't change the key set (had: ${oldKeys || 'none'}; `
+            + `got: ${newKeys || 'none'}). Edit slot labels, tooltips, types and the tree freely; `
+            + 'a different key set wants a new component (Save as new in the workshop).');
+        }
         if (divergedWhileDirty
           && !confirm('The workshop changed while you were editing this JSON — applying replaces those staged edits (the workshop\'s ↶ brings its tree back).\n\nApply anyway?')) return;
         clearDirty();
@@ -1148,6 +1160,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     applyBtn.title = inCompBuffer
       ? 'Parse the JSON below and stage it into the workshop — Save there publishes'
       : applyBtnTitle;
+    // the visible/accessible name follows the destination, not just the tooltip
+    applyBtn.textContent = inCompBuffer ? '⬅ Apply to workshop' : '⬅ Apply to canvas';
     // the surface Type select acts on the surface doc — inert under a def
     const kindSel = document.getElementById('wb-kind') as HTMLSelectElement | null;
     if (kindSel) kindSel.disabled = inCompBuffer;

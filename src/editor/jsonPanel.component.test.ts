@@ -86,11 +86,14 @@ describe('entering component mode', () => {
   });
 
   it('leaves component mode on surface navigation — the buffer shows the surface again', () => {
-    const { textEl } = mountPanel();
+    const { textEl, applyBtn } = mountPanel();
     openWorkshop();
     expect(textEl.value).not.toContain('$schema');
+    // the primary action NAMES its destination (Copilot review, PR #312)
+    expect(applyBtn.textContent).toBe('⬅ Apply to workshop');
     state.minimizeView();
     expect(textEl.value).toContain('$schema');
+    expect(applyBtn.textContent).toBe('⬅ Apply to canvas');
   });
 
   it('never prunes the SHARED fold set (the Structure tree owns it against the staged tree)', () => {
@@ -137,6 +140,20 @@ describe('editing + Apply-into-workshop', () => {
     expect(errEl.hidden).toBe(false);
     expect(errEl.textContent).toContain('Invalid JSON');
     expect(ctx.def()).toEqual(before);
+  });
+
+  it('refuses a slot-KEY change — saved instances\' mappings are bound to the key set', () => {
+    const { textEl, applyBtn, errEl } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.slots = def.slots.map((s, i) => (i === 0 ? { ...s, key: 'Renamed' } : s));
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    applyBtn.click();
+    // Copilot review, PR #312: a renamed key would publish instances with
+    // unresolved refs and a stale map at save time
+    expect(errEl.hidden).toBe(false);
+    expect(errEl.textContent?.toLowerCase()).toContain('slot key');
+    expect(ctx.def().slots.map((s) => s.key)).not.toContain('Renamed');
   });
 
   it('refuses an id change — the id is the tab\'s identity', () => {
