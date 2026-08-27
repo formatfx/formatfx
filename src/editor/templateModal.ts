@@ -424,7 +424,9 @@ export function openTemplateModal(
       // re-pick leaves dirty=false with real states in `past`, and those must
       // keep both the confirm AND the undoable path — a baseline reset here
       // would wipe them silently and disarm the close gate
-      const atStake = dirty || past.length > 0;
+      // redo counts too: a re-pick undone to the baseline leaves the replaced
+      // work in `future` only — the baseline-reset branch would clear it
+      const atStake = dirty || past.length > 0 || future.length > 0;
       // no item-count clause: atStake alone already spares untouched seeds,
       // and style/zone edits on a fieldless schema deserve the confirm too
       if (atStake
@@ -518,8 +520,12 @@ export function openTemplateModal(
       ui.pickDrilled = ui.pickSelected !== null;
       rerender();
       // keyboard position mirrors the drill state: the details back button,
-      // or the top of the plain list
-      (modal.querySelector(ui.pickDrilled ? '.wb-lay-back' : '.wb-lay-row') as HTMLElement | null)?.focus();
+      // or the top of the plain list (a group header when every group is
+      // folded — fold state survives opens, so rows may not exist)
+      const landing = ui.pickDrilled
+        ? modal.querySelector('.wb-lay-back')
+        : modal.querySelector('.wb-lay-row') ?? modal.querySelector('.wb-lay-ghead');
+      (landing as HTMLElement | null)?.focus();
     },
     setStageWidth: (w) => { ui.stageWidth = w; rerender(); },
     // hover-transient: a dataset stamp only — a rerender here would rebuild the

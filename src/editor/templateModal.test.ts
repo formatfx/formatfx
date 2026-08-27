@@ -370,6 +370,25 @@ describe('row view builder — the layout selector (stage pick)', () => {
     expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
   });
 
+  it('redo-only history still earns the re-pick confirm (undone work lives in future)', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick (confirm 1)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // back to baseline — work now in future only
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="dashboard"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(2); // the redo-able work was at stake
+    vi.unstubAllGlobals();
+  });
+
   it('recents survive closing and reopening the modal within the session', () => {
     openTemplateModal(() => {});
     (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
