@@ -898,17 +898,37 @@ describe('childSlotOrder mirrors buildTemplateView child order (incl. spliced ke
 });
 
 describe('summarizeConfig — the selector details pane never over-promises', () => {
-  it('every wireframe seed summarizes: zones in house vocabulary, placed columns, NO behaviors', () => {
+  it('every wireframe seed summarizes: EMITTED zones in house vocabulary, placed columns, NO behaviors', () => {
     for (const wf of WIREFRAMES) {
-      const s = summarizeConfig(defaultConfigFor(wf.id, FIELDS), FIELDS, []);
-      expect(s.zones.length).toBe(wf.zones.length);
-      expect(s.zones.map((z) => z.label)).toEqual(wf.zones.map((z) => z.label));
+      const config = defaultConfigFor(wf.id, FIELDS);
+      const s = summarizeConfig(config, FIELDS, []);
+      // the pane describes what Apply EMITS — the pruned zone set
+      expect(s.zones.map((z) => z.label)).toEqual(pruneZones(config.zones).map((z) => z.label));
+      expect(s.zones.length).toBeGreaterThan(0);
       // vocabulary comes from ZONE_*_LABEL, never raw enum values
       for (const z of s.zones) expect(['Hug content', 'Fill', 'Fill 2×', 'Fill 3×']).toContain(z.size);
       // seeds ship zero behaviors and zero components — the pane must say so
       expect(s.behaviors).toEqual([]);
       expect(s.components).toEqual([]);
     }
+  });
+
+  it('a sparse schema drops empty zones from the summary, matching the pruned output', () => {
+    const one: MockField[] = [{ name: 'Title', type: 'text' }];
+    const s = summarizeConfig(defaultConfigFor('lead-detail', one), one, []);
+    expect(s.zones.map((z) => z.label)).toEqual(['Lead']); // Details is empty → pruned → unlisted
+  });
+
+  it('a parameter-less flow/setValue/QuickStep action is reported as incomplete, never as working', () => {
+    const brokenChip: ComponentDef = {
+      ...CHIP, id: 'broken-chip', name: 'Broken chip',
+      root: { elmType: 'button', txtContent: 'Go', customRowAction: { action: 'executeFlow' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('broken-chip', { Due: 'Due' }));
+    const b = summarizeConfig(c, FIELDS, [brokenChip]).behaviors;
+    expect(b.some((x) => x.includes('incomplete action'))).toBe(true);
+    expect(b.some((x) => x.includes('runs a flow'))).toBe(false);
   });
 
   it('lists placed columns by display name, deduped, in layout order', () => {

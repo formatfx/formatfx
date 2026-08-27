@@ -391,7 +391,7 @@ export function renderPickPreview(host: HTMLElement, ui: ModalUI, api: ModalApi)
   else renderLiveRows(stagebox, root, config, api);
   host.appendChild(stagebox);
   host.appendChild(el('div', 'wb-template-note',
-    'A live preview with your sample rows — hover and click behaviors are real. Next opens the builder to make it yours.'));
+    'A live preview with your sample rows — menus, cards and links behave like the real list. Next opens the builder to make it yours.'));
 }
 
 // ─── the zone TREE (structure pane, above the inspector) ─────────────────────

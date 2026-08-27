@@ -910,8 +910,21 @@ const ROW_ACTION_PHRASE: Record<Exclude<CustomRowAction['action'], ''>, string> 
 
 /** Every behavior phrase an element tree would fire on real SP. */
 function treeBehaviors(root: SPElement, out: Set<string>): void {
-  const action = root.customRowAction?.action;
-  if (action) out.add(ROW_ACTION_PHRASE[action]);
+  const cra = root.customRowAction;
+  if (cra?.action) {
+    // parameter-dependent actions that are missing their parameter DO NOTHING
+    // on real SP (the linter says so) — never promise them as working
+    const params = typeof cra.actionParams === 'string' ? cra.actionParams : '';
+    const input = cra.actionInput;
+    const inputObj = input && typeof input === 'object' ? input as Record<string, unknown> : null;
+    const incomplete =
+      (cra.action === 'executeFlow' && !/"id"\s*:\s*"[^"]+"/.test(params))
+      || (cra.action === 'setValue' && !(inputObj && Object.keys(inputObj).length))
+      || (cra.action === 'executeQuickStep' && !inputObj?.ruleTemplateId);
+    out.add(incomplete
+      ? 'carries an incomplete action (does nothing on real SharePoint)'
+      : ROW_ACTION_PHRASE[cra.action]);
+  }
   // hyperlinks are click behaviors too — a details pane that misses them
   // would claim "no behaviors" over a link-bearing component
   if (root.elmType === 'a' && root.attributes?.href !== undefined) out.add('opens a link');
@@ -988,7 +1001,9 @@ export function summarizeConfig(
   if (config.zebraStriping && config.target === 'row') behaviors.add('Stripes alternating rows');
   return {
     fields: fieldNames, components: compNames, behaviors: [...behaviors],
-    zones: config.zones.map((z) => ({
+    // describe the layout Apply EMITS: prune drops content-free zones, so a
+    // sparse schema must not list zones the created view won't have
+    zones: pruneZones(config.zones).map((z) => ({
       label: z.label, size: ZONE_SIZE_LABEL[z.size], flow: ZONE_FLOW_LABEL[z.flow],
     })),
   };
