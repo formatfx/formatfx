@@ -167,6 +167,22 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     expect(ctx.root().txtContent).toBe('replaced-by-apply');
   });
 
+  it('↶ after Apply returns to the TRUE pre-Apply state — typed edits made just before survive', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const name = host.querySelector<HTMLInputElement>('input.wb-ce-name')!;
+    name.value = 'Typed before apply';
+    name.dispatchEvent(new Event('input')); // staged mutation, deliberately no ↶ step
+    const next = ctx.def();
+    next.root = { elmType: 'div', txtContent: 'applied' };
+    ctx.applyDef(next);
+    host.querySelector<HTMLButtonElement>('.wb-mu-undo')!.click();
+    // Copilot review, PR #312: without a pre-Apply rebase commit, undo landed
+    // on the older baseline and silently discarded the typed rename
+    expect(ctx.def().name).toBe('Typed before apply');
+    expect(ctx.root().txtContent).not.toBe('applied');
+  });
+
   it('applying an UNCHANGED def stages nothing — no dot, no ↶ step (but the pane still re-canonicalizes)', () => {
     const dirtyLog: boolean[] = [];
     const def = componentById('builtin-deadline-chip')!;

@@ -850,6 +850,11 @@ export function mountComponentWorkshop(
       // the JSON (the pane refuses id mismatches; this is the backstop).
       // ↶ restores the WHOLE previous def — the bag is the full snapshot.
       const d = JSON.parse(JSON.stringify(next)) as ComponentDef;
+      // rebase: typed identity edits mutate `staged` without committing (the
+      // builder rule), so capture the TRUE pre-Apply state first — ↶ must
+      // return here, not to an older snapshot that predates the typing.
+      // commit() dedupes, so this pushes nothing when nothing was typed.
+      mu.commit(muBag());
       const before = JSON.stringify(staged);
       staged.name = d.name;
       staged.description = typeof d.description === 'string' ? d.description : '';

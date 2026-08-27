@@ -1068,12 +1068,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         // saved instances carry mappings keyed by it, and the save path
         // rebinds them with those maps — a renamed key would publish
         // unresolved refs (Copilot review, PR #312)
-        const oldKeys = wctx.def().slots.map((s) => s.key).sort().join(', ');
-        const newKeys = def.slots.map((s) => s.key).sort().join(', ');
-        if (oldKeys !== newKeys) {
+        const oldKeys = wctx.def().slots.map((s) => s.key).sort();
+        const newKeys = def.slots.map((s) => s.key).sort();
+        // element-wise, never joined-string compare — a key containing the
+        // join delimiter must not slip a changed set through
+        if (oldKeys.length !== newKeys.length || oldKeys.some((k, i) => k !== newKeys[i])) {
           throw new Error('The slot keys are this component\'s field references — saved instances\' '
-            + `mappings are bound to them, so Apply can't change the key set (had: ${oldKeys || 'none'}; `
-            + `got: ${newKeys || 'none'}). Edit slot labels, tooltips, types and the tree freely; `
+            + `mappings are bound to them, so Apply can't change the key set (had: ${oldKeys.join(', ') || 'none'}; `
+            + `got: ${newKeys.join(', ') || 'none'}). Edit slot labels, tooltips, types and the tree freely; `
             + 'a different key set wants a new component (Save as new in the workshop).');
         }
         if (divergedWhileDirty

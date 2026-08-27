@@ -156,6 +156,44 @@ describe('editing + Apply-into-workshop', () => {
     expect(ctx.def().slots.map((s) => s.key)).not.toContain('Renamed');
   });
 
+  it('the key-set guard compares element-wise — join-delimiter collisions don\'t slip through', () => {
+    // keys ['A, B', 'C'] and ['A', 'B', 'C'] join to the same string — the
+    // guard must still refuse (Copilot review, PR #312)
+    localStorage.setItem('wb-components.v1', JSON.stringify({
+      version: 1,
+      components: [{
+        id: 'c-collide', name: 'Collide', description: '',
+        slots: [
+          { key: 'A, B', label: 'ab', types: ['text'] },
+          { key: 'C', label: 'c', types: ['text'] },
+        ],
+        root: { elmType: 'div', txtContent: 'x' },
+      }],
+    }));
+    try {
+      const { textEl, applyBtn, errEl } = mountPanel();
+      state.openComponentTab('c-collide');
+      const whost = document.createElement('div');
+      document.body.appendChild(whost);
+      handle = mountComponentWorkshop(whost, componentById('c-collide')!, {
+        onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+      });
+      const ctx = state.workshopCtx!;
+      const def = ctx.def();
+      def.slots = [
+        { key: 'A', label: 'a', types: ['text'] },
+        { key: 'B', label: 'b', types: ['text'] },
+        { key: 'C', label: 'c', types: ['text'] },
+      ];
+      typeInto(textEl, JSON.stringify(def, null, 2));
+      applyBtn.click();
+      expect(errEl.hidden).toBe(false);
+      expect(ctx.def().slots.length).toBe(2); // nothing staged
+    } finally {
+      localStorage.removeItem('wb-components.v1');
+    }
+  });
+
   it('refuses an id change — the id is the tab\'s identity', () => {
     const { textEl, applyBtn, errEl } = mountPanel();
     const ctx = openWorkshop();
