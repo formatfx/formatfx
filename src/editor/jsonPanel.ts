@@ -1172,6 +1172,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // a component draft away over a setting that doesn't apply to it
     sanitizeEl.disabled = inCompBuffer;
     namesEl.disabled = inCompBuffer;
+    // fold commands are inert in the mode (no offset↔path map) — disabled,
+    // never dead buttons
+    (menuHost.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled = inCompBuffer;
+    (menuHost.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled = inCompBuffer;
     const compName = (id: string): string => componentById(id)?.name ?? id;
     if (inCompBuffer && activeComp === bufferDefId) {
       compBarEl.hidden = false;

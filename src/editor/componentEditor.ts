@@ -43,7 +43,7 @@ import {
   bestGuessMapping, bindComponent, componentId, componentKind,
   createVariant, rebindInstance, replaceStampedIn, restampIn, uniqueName,
   flattenComponent, embedRefusal, embedClosure, withEmbed, withoutEmbed,
-  transitiveEmbedders, MAX_COMPONENT_DEPTH,
+  transitiveEmbedders, componentDepth, MAX_COMPONENT_DEPTH,
   type ComponentDef,
 } from './components';
 import { paletteComponents } from './paletteComponents';
@@ -850,6 +850,24 @@ export function mountComponentWorkshop(
       // the JSON (the pane refuses id mismatches; this is the backstop).
       // ↶ restores the WHOLE previous def — the bag is the full snapshot.
       const d = JSON.parse(JSON.stringify(next)) as ComponentDef;
+      // hand-edited embeds get the same author-time gates the ＋ Embed
+      // button has: loops and over-deep chains are refused BEFORE anything
+      // mutates — flattenComponent would only silently drop them at bake
+      // time (Copilot review, PR #312).
+      if (d.embeds?.length) {
+        const candidate: ComponentDef = { ...d, id: staged.id };
+        const world = [...libraryDefs().filter((x) => x.id !== staged.id), candidate];
+        if (embedClosure(candidate, world).has(candidate.id)) {
+          throw new Error(`“${staged.name}” would contain itself through its embeds — a loop would `
+            + 'expand forever. Unwind one side first.');
+        }
+        const depth = componentDepth(candidate, world);
+        if (depth > MAX_COMPONENT_DEPTH) {
+          throw new Error(`These embeds nest components ${depth} levels deep — the cap is `
+            + `${MAX_COMPONENT_DEPTH}, so designs stay readable and bakes stay predictable. `
+            + 'Flatten a level first: save the combined design as its own component, then embed that.');
+        }
+      }
       const before = JSON.stringify(staged);
       staged.name = d.name;
       staged.description = typeof d.description === 'string' ? d.description : '';

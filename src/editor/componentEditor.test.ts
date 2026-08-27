@@ -219,6 +219,38 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     expect(reasons).toContain('workshop'); // the JSON pane still re-syncs its buffer
   });
 
+  it('applyDef refuses a hand-edited SELF-embed — loops must not reach the store', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const next = ctx.def();
+    next.embeds = [{ ns: 'Self', of: 'builtin-deadline-chip', name: 'Self' }];
+    next.root.children = [...(next.root.children ?? []), { elmType: 'div', _embed: 'Self' }];
+    // Copilot review, PR #312: the ＋ Embed button gates through embedRefusal,
+    // but hand-edited JSON bypassed it entirely
+    expect(() => ctx.applyDef(next)).toThrow(/itself|loop/i);
+    expect(ctx.def().embeds).toBeUndefined();
+  });
+
+  it('applyDef refuses hand-edited embeds past the nesting cap', () => {
+    const chain = Array.from({ length: 21 }, (_, i) => ({
+      id: `c-d${i}`, name: `D${i}`, description: '', slots: [],
+      root: { elmType: 'div' },
+      ...(i < 20 ? { embeds: [{ ns: 'N', of: `c-d${i + 1}`, name: 'n' }] } : {}),
+    }));
+    localStorage.setItem('wb-components.v1', JSON.stringify({ version: 1, components: chain }));
+    try {
+      mountWorkshop();
+      const ctx = state.workshopCtx!;
+      const next = ctx.def();
+      next.embeds = [{ ns: 'Chain', of: 'c-d0', name: 'chain' }];
+      next.root.children = [...(next.root.children ?? []), { elmType: 'div', _embed: 'Chain' }];
+      expect(() => ctx.applyDef(next)).toThrow(/deep|cap/i);
+      expect(ctx.def().embeds).toBeUndefined();
+    } finally {
+      localStorage.removeItem('wb-components.v1');
+    }
+  });
+
   it('applyDef() keeps the staged identity — id and builtin are the tab\'s, not the JSON\'s', () => {
     mountWorkshop();
     const ctx = state.workshopCtx!;

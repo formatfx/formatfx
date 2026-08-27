@@ -95,7 +95,9 @@ export interface WorkshopContext {
   /** The JSON pane's Apply: replace the staged def (identity preserved — id
    *  and builtin stay the tab's) as one staged gesture: dirty + ONE
    *  modal-undo step + workshop re-render + the 'workshop' announce. Save
-   *  stays the one app-level publish step. */
+   *  stays the one app-level publish step. THROWS refuse-and-teach errors
+   *  for embed loops / over-deep nesting (the ＋ Embed button's gates) —
+   *  callers surface the message. */
   applyDef(next: ComponentDef): void;
 }
 

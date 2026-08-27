@@ -311,9 +311,14 @@ describe('surface machinery stands down', () => {
     // def serialization ignores
     expect(sanitize.disabled).toBe(true);
     expect(names.disabled).toBe(true);
+    // the fold commands are inert in component mode — disabled, not dead buttons
+    expect((host.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled).toBe(true);
+    expect((host.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled).toBe(true);
     state.minimizeView();
     expect(sanitize.disabled).toBe(false);
     expect(names.disabled).toBe(false);
+    expect((host.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled).toBe(false);
+    expect((host.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('lint rows hide and the deploy action disables', () => {
