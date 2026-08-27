@@ -215,6 +215,19 @@ export function mountComponentWorkshop(
   const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
   const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
 
+  /** Deep snapshot of the staged def — captured BEFORE a gesture mutates. */
+  const snapStaged = (): ComponentDef => JSON.parse(JSON.stringify(staged)) as ComponentDef;
+  /** Push one staged gesture with a REBASE: typed identity edits mutate
+   *  `staged` without committing (the builder rule), so the pre-gesture
+   *  snapshot goes first — ↶ then returns to the typing instead of
+   *  discarding it. commit() dedupes, so the extra entry exists only when
+   *  something was typed since the last gesture. Every gesture path
+   *  (commit, embed add/remove, applyDef) funnels through here. */
+  const commitGesture = (pre: ComponentDef): void => {
+    mu.commit(pre);
+    mu.commit(muBag());
+  };
+
   // usages, scanned once at mount (the active surface doc + the column
   // looks); built-ins can be in use too, but they only ever save-as-new
   const usages: ComponentUsage[] = def.builtin
@@ -359,10 +372,10 @@ export function mountComponentWorkshop(
   embedsHost.className = 'wb-ce-embeds';
   embedsSec.appendChild(embedsHost);
 
-  const afterEmbedChange = (): void => {
+  const afterEmbedChange = (pre: ComponentDef): void => {
     if (!nodeAtStaged(sel)) sel = [];
     setDirty(true);
-    mu.commit(muBag());
+    commitGesture(pre);
     muButtons.refresh();
     renderPreview();
     renderEmbeds();
@@ -391,11 +404,12 @@ export function mountComponentWorkshop(
       rm.title = `Remove the embedded ${em.name} — one ↶ step`;
       rm.setAttribute('aria-label', rm.title);
       rm.addEventListener('click', () => {
+        const pre = snapStaged();
         const next = withoutEmbed(staged, em.ns);
         staged.root = next.root;
         if (next.embeds) staged.embeds = next.embeds;
         else delete staged.embeds;
-        afterEmbedChange();
+        afterEmbedChange(pre);
       });
       row.append(chip, rm);
       embedsHost.appendChild(row);
@@ -429,10 +443,11 @@ export function mountComponentWorkshop(
         onToast(refusal);
         return;
       }
+      const pre = snapStaged();
       const next = withEmbed(staged, child);
       staged.root = next.root;
       staged.embeds = next.embeds;
-      afterEmbedChange();
+      afterEmbedChange(pre);
       onToast(`Embedded “${child.name}” — its slots now surface on this component (↶ undoes)`);
     });
     addRow.append(pick, add);
@@ -588,10 +603,17 @@ export function mountComponentWorkshop(
    *  inside the chain too). Null means go. */
   const savedDepthRefusal = (candidate: ComponentDef): string | null => {
     const world = [...libraryDefs().filter((c) => c.id !== candidate.id), candidate];
-    const depth = componentDepth(candidate, world);
-    return depth > MAX_COMPONENT_DEPTH
-      ? `Saving would nest components ${depth} levels deep — the cap is ${MAX_COMPONENT_DEPTH}, and a component in the chain grew while you edited. Flatten a level first: save a combined design as its own component, then embed that.`
-      : null;
+    // the candidate AND everything that embeds it: growing a child can push
+    // a parent sitting at the cap over it — cascadeToEmbedders would then
+    // flatten that parent with its deepest content silently dropped
+    const over = [candidate, ...transitiveEmbedders(candidate.id, world)]
+      .map((d) => ({ d, depth: componentDepth(d, world) }))
+      .filter((x) => x.depth > MAX_COMPONENT_DEPTH);
+    if (!over.length) return null;
+    const worst = over.reduce((a, b) => (b.depth > a.depth ? b : a));
+    return worst.d.id === candidate.id
+      ? `Saving would nest components ${worst.depth} levels deep — the cap is ${MAX_COMPONENT_DEPTH}, and a component in the chain grew while you edited. Flatten a level first: save a combined design as its own component, then embed that.`
+      : `Saving would push “${worst.d.name}” — which embeds this component — to ${worst.depth} levels deep (the cap is ${MAX_COMPONENT_DEPTH}). Flatten a level somewhere in that chain first.`;
   };
 
   const saveAsNew = (): void => {
@@ -853,10 +875,11 @@ export function mountComponentWorkshop(
       ? ((staged.embeds ?? []).find((em) => em.ns === el._embed)?.name ?? String(el._embed))
       : null,
     commit: (fn: () => void): void => {
+      const pre = snapStaged();
       fn();
       if (!nodeAtStaged(sel)) sel = [];
       setDirty(true);
-      mu.commit(muBag());
+      commitGesture(pre);
       muButtons.refresh();
       renderPreview();
       state.emit('workshop');
@@ -903,15 +926,11 @@ export function mountComponentWorkshop(
         state.emit('workshop');
         return;
       }
-      // rebase with the TRUE pre-Apply state: typed identity edits mutate
-      // `staged` without committing (the builder rule), so ↶ must return to
-      // them, not to an older snapshot. Compare-FIRST (above) keeps a no-op
-      // Apply from leaking the typed state as a hidden extra step; commit()
-      // dedupes, so this pushes nothing when nothing was typed.
-      mu.commit(JSON.parse(before) as ComponentDef);
       if (!nodeAtStaged(sel)) sel = [];
       setDirty(true);
-      mu.commit(muBag());
+      // compare-FIRST (above) keeps a no-op Apply from leaking the typed
+      // state as a hidden extra step; the shared rebase does the rest
+      commitGesture(JSON.parse(before) as ComponentDef);
       muButtons.refresh();
       renderPreview();
       renderEmbeds();
