@@ -143,3 +143,39 @@ describe('element labels (the dirty-buffer breadcrumb rides these)', () => {
     expect(res.labels['0']).toBeUndefined();
   });
 });
+
+describe('component-def buffers (the JSON pane component mode, PR 2)', () => {
+  const DEF_TEXT = JSON.stringify({
+    id: 'c-x', name: 'X', description: '',
+    slots: [{ key: 'Due', label: 'due', types: ['date'] }],
+    root: {
+      elmType: 'div', _elmName: 'Wrap',
+      children: [{ elmType: 'span', txtContent: '[$Due]' }],
+    },
+  }, null, 2);
+
+  it('maps the tree under "root" with TREE-relative paths (what workshop selection speaks)', () => {
+    const { ranges, errors, labels } = parseJsonWithMap(DEF_TEXT);
+    expect(errors).toEqual([]);
+    const rootRange = ranges.find((r) => r.path.length === 0)!;
+    // the root ELEMENT is the "root" member's object, not the def wrapper
+    expect(DEF_TEXT.slice(rootRange.start, rootRange.end)).toContain('"elmType": "div"');
+    expect(DEF_TEXT.slice(rootRange.start, rootRange.end)).not.toContain('"slots"');
+    expect(ranges.some((r) => r.path.join('/') === '0')).toBe(true);
+    expect(labels['']).toBe('Wrap');
+    expect(labels['0']).toBe('span');
+  });
+
+  it('def wrapper chrome (id/name/slots) belongs to no element', () => {
+    const { ranges } = parseJsonWithMap(DEF_TEXT);
+    const slotsOff = DEF_TEXT.indexOf('"slots"') + 2;
+    expect(ranges.some((r) => slotsOff >= r.start && slotsOff < r.end)).toBe(false);
+  });
+
+  it('a top-level elmType object still maps as a column payload (defs never carry elmType)', () => {
+    const text = JSON.stringify({ elmType: 'div', root: { x: 1 }, slots: [] }, null, 2);
+    const { ranges } = parseJsonWithMap(text);
+    const rootRange = ranges.find((r) => r.path.length === 0)!;
+    expect(rootRange.start).toBe(0); // the whole payload — column spread rules
+  });
+});

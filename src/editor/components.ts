@@ -596,6 +596,13 @@ function scrubOptionalDefFields(def: ComponentDef): ComponentDef {
   return def;
 }
 
+/** Slots as pseudo mock-fields — the JSON pane's completion/lint vocabulary
+ *  in component mode ([$SlotKey] refs are the def's field references). The
+ *  first declared type wins; slots always carry at least one (isValidSlot). */
+export function slotMockFields(def: ComponentDef): MockField[] {
+  return def.slots.map((s) => ({ name: s.key, type: s.types[0] ?? 'text' }));
+}
+
 /**
  * Parse hand-edited component-def JSON — the JSON pane's Apply-into-workshop
  * gate. Same tolerance level as importJson (shape-checked, never

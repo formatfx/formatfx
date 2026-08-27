@@ -13,7 +13,7 @@ import {
   bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
   componentInsertTarget, isSingleColumnComponent,
   loadComponents, serializeComponents, addComponent, removeComponent, componentId,
-  parseComponentDefJson,
+  parseComponentDefJson, slotMockFields,
   componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
@@ -818,6 +818,15 @@ describe('built-ins definitely render (the generated-formatter bar)', () => {
       expect(json.replace(/!=/g, '').replace(/\[!/g, '')).not.toContain('!');
     });
   }
+});
+
+describe('slotMockFields — the component mode\'s completion/lint vocabulary', () => {
+  it('turns slots into pseudo mock-fields named by KEY, first declared type winning', () => {
+    expect(slotMockFields(DEF)).toEqual([
+      { name: 'Due', type: 'date' },
+      { name: 'Person', type: 'person' },
+    ]);
+  });
 });
 
 describe('parseComponentDefJson — the JSON pane\'s Apply-into-workshop gate', () => {

@@ -12,10 +12,12 @@
  * Element identification mirrors jsonMap's structural rules exactly (the
  * property test in jsonText.test.ts pins parse(export(doc)) ≡ export(doc)'s
  * own map): a top-level "rowFormatter" object is the root element (view
- * wrapper); else a top-level "formatter" object (tile wrapper); else the
- * top-level object itself (column payload spread). Children descend by array
- * index under "children"; customCardProps.formatter descends as segment -1
- * (jsonMap's CARD_SEGMENT).
+ * wrapper); else a top-level "formatter" object (tile wrapper); else, for a
+ * COMPONENT DEF shape (an object "root" beside an array "slots", no
+ * top-level elmType — the JSON pane's component mode), the "root" member;
+ * else the top-level object itself (column payload spread). Children descend
+ * by array index under "children"; customCardProps.formatter descends as
+ * segment -1 (jsonMap's CARD_SEGMENT).
  *
  * Never throws. Recovery is member-level: a bad member skips to the next
  * ',' or closer at its own depth; unclosed containers at EOF close AT the
@@ -278,8 +280,16 @@ export function parseJsonWithMap(text: string): TextParseResult {
   if (root.kind === 'obj') {
     const rowFormatter = member(root, 'rowFormatter');
     const formatter = member(root, 'formatter');
+    // a COMPONENT DEF buffer (the JSON pane's component mode): the tree
+    // lives under "root", alongside "slots" — and defs never carry a
+    // top-level elmType, so a real column payload can't match this rule
+    const defRoot = member(root, 'root');
+    const defSlots = member(root, 'slots');
+    const isDef = defRoot?.kind === 'obj' && defSlots?.kind === 'arr'
+      && member(root, 'elmType') === undefined;
     const rootEl = rowFormatter?.kind === 'obj' ? rowFormatter
       : formatter?.kind === 'obj' ? formatter
+      : isDef ? defRoot
       : root;
     walkElement(rootEl as ObjNode, [], ranges, text, labels);
     // the wrapper kinds map the ROOT element to the inner object; the column

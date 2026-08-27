@@ -189,7 +189,21 @@ behind `bufferDefId` gates (no caret→canvas sync, folds, lint rows or
 field completions — blank beats wrong; adapting them to defs is the
 follow-up PR), and the shared foldState is never pruned or cleared in the
 mode — it still holds the UNDERLYING SURFACE's folds (workshop tree
-folding is treeView-local), which must survive for the return trip. A dirty
+folding is treeView-local), which must survive for the return trip.
+
+Component-mode IDE (the follow-up PR, 2026-08-27): parseJsonWithMap
+learned the def shape (core/jsonText — an object `root` beside an array
+`slots`, no top-level elmType → the "root" member is the root element,
+paths TREE-relative), so the pane has a real offset↔path map in component
+mode: caret ⇄ WORKSHOP selection (ctx.select, the same echo guard),
+breadcrumbs with staged labels, the scope bar on the workshop selection,
+element folds on a pane-local per-def set (compFolds — the shared
+foldState stays the surface's), and lint against the STAGED def with slot
+keys as the field vocabulary (slotMockFields; no create-column flow, no
+surface runtime issues, jumps select in the workshop). Completions/hovers
+speak slot keys. Still surface-only: the eval chip and completion row
+context (defs have no rows), children-array/wrapper-section folds (doc
+serializer byproducts). A dirty
 surface draft is never clobbered by entering the mode: the banner explains,
 Apply or Discard first. Tests: jsonPanel.component.test.ts,
 sideDocSwitcher.test.ts, the seam in componentEditor.test.ts.
