@@ -896,6 +896,17 @@ export function mountComponentWorkshop(
       // mutates — flattenComponent would only silently drop them at bake
       // time (Copilot review, PR #312).
       if (d.embeds?.length) {
+        // namespaces are unique per parent (they prefix the child's slot keys
+        // and address its graft) — flatten's ns-keyed map would silently
+        // overwrite one duplicate with the other
+        const nsSeen = new Set<string>();
+        for (const e of d.embeds) {
+          if (nsSeen.has(e.ns)) {
+            throw new Error(`Two embeds share the namespace "${e.ns}" — namespaces must be unique `
+              + 'per component (each prefixes its child\'s slot keys and addresses its graft). Rename one.');
+          }
+          nsSeen.add(e.ns);
+        }
         const candidate: ComponentDef = { ...d, id: staged.id };
         const world = [...libraryDefs().filter((x) => x.id !== staged.id), candidate];
         if (embedClosure(candidate, world).has(candidate.id)) {

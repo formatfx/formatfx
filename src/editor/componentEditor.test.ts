@@ -249,6 +249,18 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     expect(ctx.def().embeds).toBeUndefined();
   });
 
+  it('applyDef refuses duplicate embed namespaces — flatten would silently drop a graft', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const next = ctx.def();
+    next.embeds = [
+      { ns: 'Part', of: 'c-x1', name: 'a' },
+      { ns: 'Part', of: 'c-x2', name: 'b' }, // same ns — flatten's map is ns-keyed
+    ];
+    expect(() => ctx.applyDef(next)).toThrow(/namespace/i);
+    expect(ctx.def().embeds).toBeUndefined();
+  });
+
   it('applyDef refuses hand-edited embeds past the nesting cap', () => {
     const chain = Array.from({ length: 21 }, (_, i) => ({
       id: `c-d${i}`, name: `D${i}`, description: '', slots: [],
