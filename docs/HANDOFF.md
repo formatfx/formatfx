@@ -910,10 +910,14 @@ Key structural invariants:
   Apply uses (buildKebab refusals mirrored), so the pane never promises
   what Apply won't write. Selecting is BROWSING: nothing touches the
   config until **Next** (footer, bottom-right beside Back) runs
-  `confirmPick` — the selection matching `ui.config.wireframeId` (config-
-  derived, so undo/redo can't desync what the pane shows from what Next
-  opens; `seededFrom` only gates "was anything seeded this open") →
-  RESUME, and the resume context renders the KEPT config in the details
+  `confirmPick` — RESUME requires BOTH the selection matching
+  `ui.config.wireframeId` AND explicit-pick provenance from the TRUST
+  CHAIN (`currentTrust`/`pastTrust`/`futureTrust`, kept in lockstep with
+  the undo stacks): id equality alone is NOT sufficient, because a
+  reopened sheet's configFromView stamp is the 'blank'/'tile-blank'
+  sentinel and 'blank' is also a real, pickable layout — only a pick this
+  open pedigrees an id, and undo/redo carry that pedigree with the
+  config. On RESUME the context renders the KEPT config in the details
   pane + live preview (`ModalApi.resumeConfig`, with an accent "edits in
   progress" row); a different layout → `pickWireframe`, whose at-stake
   gate is `dirty || past.length > 0` — a prior re-pick leaves dirty=false

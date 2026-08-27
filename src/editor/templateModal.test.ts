@@ -361,6 +361,15 @@ describe('row view builder — the layout selector (stage pick)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('a row→tile→row target round trip leaves no phantom "edits in progress" marker', () => {
+    enterEditor(); // lead-detail, row
+    (document.querySelector('[data-target="tile"]') as HTMLElement).click();
+    (document.querySelector('[data-target="row"]') as HTMLElement).click(); // back — output-equivalent
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the leftover tile box is inert for row output — not an edit
+    expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
+  });
+
   it('recents survive closing and reopening the modal within the session', () => {
     openTemplateModal(() => {});
     (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();

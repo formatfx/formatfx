@@ -41,6 +41,7 @@ import {
   addZone, insertZone, newZone, zoneAt, nodeAt,
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem,
+  TILE_DEFAULT_WIDTH, TILE_DEFAULT_HEIGHT,
   type RowTemplateConfig, type WireframeId,
 } from './rowTemplates';
 import {
@@ -488,9 +489,19 @@ export function openTemplateModal(
     resumeConfig: () => (resumesSelection() ? ui.config : null),
     // history state is the wrong proxy (dirty survives undo-to-baseline;
     // past survives a re-pick that installed a pristine seed) — compare the
-    // config STRUCTURALLY against a fresh seed of its own wireframe
-    resumeEdited: () => resumesSelection()
-      && JSON.stringify(ui.config) !== JSON.stringify(defaultConfigFor(ui.config.wireframeId, state.fields)),
+    // config STRUCTURALLY against a fresh seed of its own wireframe,
+    // normalized so target-inert fields (a row's leftover tile box after a
+    // row→tile→row round trip) can't fake an edit
+    resumeEdited: () => {
+      if (!resumesSelection()) return false;
+      const comparable = (c: RowTemplateConfig): string => {
+        const { tileWidth, tileHeight, ...rest } = c;
+        return JSON.stringify(c.target === 'tile'
+          ? { ...rest, tileWidth: tileWidth ?? TILE_DEFAULT_WIDTH, tileHeight: tileHeight ?? TILE_DEFAULT_HEIGHT }
+          : rest);
+      };
+      return comparable(ui.config) !== comparable(defaultConfigFor(ui.config.wireframeId, state.fields));
+    },
     openGallery: () => {
       // back out with context: drill into the layout the CURRENT config
       // carries (config-derived, so undo/redo can't desync it); a reopened
