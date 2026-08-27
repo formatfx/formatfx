@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountComponentWorkshop } from './componentEditor';
-import { componentById } from './componentLibrary';
+import { componentById, customComponents } from './componentLibrary';
 import { state } from './state';
 
 let host: HTMLElement;
@@ -246,6 +246,39 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
       next.root.children = [...(next.root.children ?? []), { elmType: 'div', _embed: 'Chain' }];
       expect(() => ctx.applyDef(next)).toThrow(/deep|cap/i);
       expect(ctx.def().embeds).toBeUndefined();
+    } finally {
+      localStorage.removeItem('wb-components.v1');
+    }
+  });
+
+  it('Save re-checks DEPTH against the fresh library — a chain grown in another tab refuses', () => {
+    const mkChain = (n: number) => Array.from({ length: n }, (_, i) => ({
+      id: `c-d${i}`, name: `D${i}`, description: '', slots: [],
+      root: { elmType: 'div' },
+      ...(i < n - 1 ? { embeds: [{ ns: 'N', of: `c-d${i + 1}`, name: 'n' }] } : {}),
+    }));
+    localStorage.setItem('wb-components.v1', JSON.stringify({ version: 1, components: mkChain(19) }));
+    try {
+      const toasts: string[] = [];
+      const def = componentById('builtin-deadline-chip')!;
+      host = document.createElement('div');
+      document.body.appendChild(host);
+      handle = mountComponentWorkshop(host, def, {
+        onToast: (m) => toasts.push(m), onSaved: () => {}, onDirtyChange: () => {},
+      });
+      const ctx = state.workshopCtx!;
+      const next = ctx.def();
+      next.embeds = [{ ns: 'Chain', of: 'c-d0', name: 'chain' }];
+      next.root.children = [...(next.root.children ?? []), { elmType: 'div', _embed: 'Chain' }];
+      ctx.applyDef(next); // depth exactly at the cap — allowed
+      // meanwhile "another tab" grows the chain past the cap
+      localStorage.setItem('wb-components.v1', JSON.stringify({ version: 1, components: mkChain(20) }));
+      const before = customComponents().length;
+      host.querySelector<HTMLButtonElement>('.wb-ce-savenew')!.click();
+      // Copilot review, PR #312: the save paths rechecked only cycles —
+      // flattenComponent would silently drop the deepest content
+      expect(toasts.join(' ')).toMatch(/deep|cap/i);
+      expect(customComponents().length).toBe(before); // nothing persisted
     } finally {
       localStorage.removeItem('wb-components.v1');
     }

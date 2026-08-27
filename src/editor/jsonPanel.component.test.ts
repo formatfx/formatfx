@@ -194,6 +194,22 @@ describe('editing + Apply-into-workshop', () => {
     }
   });
 
+  it('a refused Apply keeps the draft dirty — never cleaned first and then clobbered', () => {
+    const { textEl, applyBtn, errEl } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.embeds = [{ ns: 'Self', of: DEF_ID, name: 'Self' }]; // applyDef throws on this
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    applyBtn.click();
+    expect(errEl.hidden).toBe(false);
+    // Copilot review, PR #312: clearDirty ran before applyDef could throw,
+    // stranding visible hand-edits with no dirty/Discard affordance — and the
+    // next workshop event regenerated over them
+    expect(textEl.classList.contains('wb-json-dirty')).toBe(true);
+    ctx.commit(() => { ctx.root().txtContent = 'moved'; });
+    expect(textEl.value).toContain('Self'); // the draft survived the workshop edit
+  });
+
   it('refuses an id change — the id is the tab\'s identity', () => {
     const { textEl, applyBtn, errEl } = mountPanel();
     const ctx = openWorkshop();

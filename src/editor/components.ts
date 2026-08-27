@@ -526,7 +526,10 @@ function isValidSlot(s: unknown): s is ComponentSlot {
   return Boolean(s && typeof s === 'object'
     && typeof (s as ComponentSlot).key === 'string' && (s as ComponentSlot).key.length > 0
     && typeof (s as ComponentSlot).label === 'string'
-    && Array.isArray((s as ComponentSlot).types) && (s as ComponentSlot).types.length > 0);
+    && Array.isArray((s as ComponentSlot).types) && (s as ComponentSlot).types.length > 0
+    // every entry must be a real FieldType — a bogus type would silently
+    // filter EVERY field out of the slot's mapping choices
+    && (s as ComponentSlot).types.every((t) => (ALL_FIELD_TYPES as readonly string[]).includes(t as string)));
 }
 
 function isValidEmbed(e: unknown): e is ComponentEmbed {

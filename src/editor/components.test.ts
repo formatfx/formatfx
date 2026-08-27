@@ -844,6 +844,19 @@ describe('parseComponentDefJson — the JSON pane\'s Apply-into-workshop gate', 
     expect(out.builtin).toBeUndefined();
   });
 
+  it('slot types validate against the real FieldType vocabulary — parser and store loader both', () => {
+    // Copilot review, PR #312: types: ["bogus"] passed, then mapping filtered
+    // every real field for the slot
+    expect(() => parseComponentDefJson(JSON.stringify({
+      ...DEF, slots: [{ key: 'X', label: 'x', types: ['bogus'] }],
+    }))).toThrow(/component/i);
+    const stored = JSON.stringify({
+      version: 1,
+      components: [{ ...DEF, slots: [{ key: 'X', label: 'x', types: [42] }] }],
+    });
+    expect(loadComponents(stored)).toEqual([]);
+  });
+
   it('scrubs corrupt optional fields the way the store loader does', () => {
     const out = parseComponentDefJson(JSON.stringify({
       ...DEF,

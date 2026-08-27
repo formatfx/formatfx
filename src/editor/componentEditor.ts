@@ -581,6 +581,19 @@ export function mountComponentWorkshop(
       : null;
   };
 
+  /** The cycle recheck's DEPTH companion: a child edited and saved in
+   *  another tab can have grown the chain past the cap while this def
+   *  staged — flattenComponent would silently drop the deepest content at
+   *  bake time. Rechecked against the full fresh library (builtins can sit
+   *  inside the chain too). Null means go. */
+  const savedDepthRefusal = (candidate: ComponentDef): string | null => {
+    const world = [...libraryDefs().filter((c) => c.id !== candidate.id), candidate];
+    const depth = componentDepth(candidate, world);
+    return depth > MAX_COMPONENT_DEPTH
+      ? `Saving would nest components ${depth} levels deep — the cap is ${MAX_COMPONENT_DEPTH}, and a component in the chain grew while you edited. Flatten a level first: save a combined design as its own component, then embed that.`
+      : null;
+  };
+
   const saveAsNew = (): void => {
     const list = readCustom();
     const base = stagedPlain();
@@ -590,6 +603,11 @@ export function mountComponentWorkshop(
       name: uniqueName(base.name, list.map((c) => c.name)),
     };
     delete fresh.variantOf; // a fresh save stands on its own, no lineage
+    const depthRefusal = savedDepthRefusal(fresh);
+    if (depthRefusal) {
+      onToast(depthRefusal);
+      return;
+    }
     if (!writeCustom(addComponent(list, fresh))) {
       onToast('Could not save the component — browser storage is full or blocked');
       return;
@@ -706,7 +724,7 @@ export function mountComponentWorkshop(
     const now = new Date();
     const newDef: ComponentDef = { ...stagedPlain(), id: def.id };
     let list = readCustom();
-    const refusal = savedCycleRefusal(newDef, list);
+    const refusal = savedCycleRefusal(newDef, list) ?? savedDepthRefusal(newDef);
     if (refusal) {
       onToast(refusal);
       return;
@@ -755,7 +773,7 @@ export function mountComponentWorkshop(
   const saveReplaceOnly = (): void => {
     const newDef: ComponentDef = { ...stagedPlain(), id: def.id };
     const list = readCustom();
-    const refusal = savedCycleRefusal(newDef, list);
+    const refusal = savedCycleRefusal(newDef, list) ?? savedDepthRefusal(newDef);
     if (refusal) {
       onToast(refusal);
       return;

@@ -1080,9 +1080,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         }
         if (divergedWhileDirty
           && !confirm('The workshop changed while you were editing this JSON — applying replaces those staged edits (the workshop\'s ↶ brings its tree back).\n\nApply anyway?')) return;
+        // applyDef can refuse (embed loops/depth) — the draft must stay
+        // dirty until it SUCCEEDS, or the hand-edits would sit clean-looking
+        // and get regenerated over. Its synchronous 'workshop' announce fires
+        // while we're still dirty (ignored), so regenerate explicitly after.
+        wctx.applyDef(def);
         clearDirty();
         clearImportError();
-        wctx.applyDef(def);
+        regenerate();
         onToast(`Staged into the ${def.name} workshop — Save there publishes it`);
       } catch (e) {
         const msg = `Import failed: ${(e as Error).message}`;

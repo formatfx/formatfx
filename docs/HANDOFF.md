@@ -172,8 +172,10 @@ Apply button, and bare-structure menus open on Ctrl+Space only (auto-pop
 would fight plain typing). acMenu gained an optional caret anchor (additive).
 
 JSON-pane doc switcher + component mode (2026-08-27): the side-pane head
-carries a compact doc switcher (sideDocSwitcher.ts) naming what the pane is
-showing and listing every open canvas tab — picking one rides the strip's
+carries a compact doc switcher (sideDocSwitcher.ts) naming the ACTIVE
+canvas tab and listing every open one (the JSON tab follows the tab;
+Explain keeps describing the underlying surface while a workshop is
+active) — picking one rides the strip's
 own navigation chokepoints (lockstep; both are stateless projections of
 state.openTabs, and it matters most maximized, when the strip is covered).
 With a ⬡ workshop tab active the JSON pane enters COMPONENT MODE: the
