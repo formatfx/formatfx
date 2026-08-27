@@ -1083,7 +1083,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         // the flattened `ns_*` slot names saved instances' maps reference,
         // so even a consistent rename would strand them. Placeholders may
         // move around the tree freely; records change in the workshop.
-        const recKey = (e: { ns: string; of: string }): string => JSON.stringify([e.ns, e.of]);
+        // the map is part of the record's identity: it decides which child
+        // slots stay bound vs surface as ns_* — a map-only change re-keys
+        // the flattened slots exactly like a rename would
+        const recKey = (e: { ns: string; of: string; map?: Record<string, string> }): string =>
+          JSON.stringify([e.ns, e.of, Object.entries(e.map ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))]);
         const oldRecs = (wctx.def().embeds ?? []).map(recKey).sort();
         const newRecs = (def.embeds ?? []).map(recKey).sort();
         if (oldRecs.length !== newRecs.length || oldRecs.some((r, i) => r !== newRecs[i])) {

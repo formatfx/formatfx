@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
 import { mountComponentWorkshop, type WorkshopHandle } from './componentEditor';
-import { componentById } from './componentLibrary';
+import { componentById, rawComponentById } from './componentLibrary';
 import { foldState } from './foldState';
 import { state } from './state';
 
@@ -224,6 +224,44 @@ describe('editing + Apply-into-workshop', () => {
     expect(errEl.hidden).toBe(false);
     expect(errEl.textContent?.toLowerCase()).toContain('workshop');
     expect(ctx.def().embeds).toBeUndefined();
+  });
+
+  it('a map-only embed change is refused too — the map decides which ns_* slots surface', () => {
+    localStorage.setItem('wb-components.v1', JSON.stringify({
+      version: 1,
+      components: [
+        {
+          id: 'c-kid', name: 'Kid', description: '',
+          slots: [{ key: 'X', label: 'x', types: ['text'] }],
+          root: { elmType: 'div', txtContent: '[$X]' },
+        },
+        {
+          id: 'c-par', name: 'Par', description: '', slots: [],
+          root: { elmType: 'div', children: [{ elmType: 'div', _embed: 'Kid' }] },
+          embeds: [{ ns: 'Kid', of: 'c-kid', name: 'Kid', map: { X: '[$Title]' } }],
+        },
+      ],
+    }));
+    try {
+      const { textEl, applyBtn, errEl } = mountPanel();
+      state.openComponentTab('c-par');
+      const whost = document.createElement('div');
+      document.body.appendChild(whost);
+      handle = mountComponentWorkshop(whost, rawComponentById('c-par')!, {
+        onToast: () => {}, onSaved: () => {}, onDirtyChange: () => {},
+      });
+      const ctx = state.workshopCtx!;
+      const def = ctx.def();
+      delete def.embeds![0].map; // unbinds X → the Kid_X slot would now surface
+      typeInto(textEl, JSON.stringify(def, null, 2));
+      applyBtn.click();
+      // Copilot review, PR #312: recKey ignored the map, so a map-only edit
+      // re-keyed the flattened slots under existing instances' mappings
+      expect(errEl.hidden).toBe(false);
+      expect(ctx.def().embeds?.[0].map).toEqual({ X: '[$Title]' });
+    } finally {
+      localStorage.removeItem('wb-components.v1');
+    }
   });
 
   it('refuses an id change — the id is the tab\'s identity', () => {
