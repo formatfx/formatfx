@@ -920,7 +920,8 @@ function treeBehaviors(root: SPElement, out: Set<string>): void {
     const incomplete =
       (cra.action === 'executeFlow' && !/"id"\s*:\s*"[^"]+"/.test(params))
       || (cra.action === 'setValue' && !(inputObj && Object.keys(inputObj).length))
-      || (cra.action === 'executeQuickStep' && !inputObj?.ruleTemplateId);
+      || (cra.action === 'executeQuickStep'
+        && !(typeof inputObj?.ruleTemplateId === 'string' && inputObj.ruleTemplateId.trim()));
     out.add(incomplete
       ? 'carries an incomplete action (does nothing on real SharePoint)'
       : ROW_ACTION_PHRASE[cra.action]);
