@@ -160,6 +160,26 @@ describe('editing + Apply-into-workshop', () => {
     expect(textEl.value).toContain('workshop-edited');
   });
 
+  it('tab-switch churn never fakes divergence — register/unregister emits with no staged change', () => {
+    const { textEl, applyBtn } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.name = 'Mine';
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    // navigate away and back: unregister + 'load' + re-register all fire
+    // while the draft is dirty, but A's staged def never moved
+    handle!.destroy();
+    handle = null;
+    state.minimizeView();
+    const ctx2 = openWorkshop();
+    const confirmSpy = vi.fn().mockReturnValue(false);
+    vi.stubGlobal('confirm', confirmSpy);
+    applyBtn.click();
+    expect(confirmSpy).not.toHaveBeenCalled(); // Copilot review, PR #312: no spurious scare
+    expect(ctx2.def().name).toBe('Mine');      // the apply landed directly
+    vi.unstubAllGlobals();
+  });
+
   it('workshop edits under a dirty buffer mark divergence — Apply confirms first', () => {
     const { textEl, applyBtn } = mountPanel();
     const ctx = openWorkshop();

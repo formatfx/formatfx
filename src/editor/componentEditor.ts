@@ -282,7 +282,13 @@ export function mountComponentWorkshop(
     input.type = 'text';
     input.className = `wb-ce-input ${cls}`;
     input.value = value;
-    input.addEventListener('input', () => { commit(input.value); setDirty(true); });
+    input.addEventListener('input', () => {
+      commit(input.value);
+      setDirty(true);
+      // announce like tree edits do — setDirty only reaches listeners on the
+      // clean→dirty flip, but the JSON pane live-tracks EVERY staged change
+      state.emit('workshop');
+    });
     row.append(lab, input);
     ident.appendChild(row);
   };
@@ -320,7 +326,11 @@ export function mountComponentWorkshop(
       lab.value = slot.label;
       lab.title = 'The question the mapping dialog asks for this slot';
       lab.setAttribute('aria-label', `Label for the ${slot.key} slot`);
-      lab.addEventListener('input', () => { slot.label = lab.value; setDirty(true); });
+      lab.addEventListener('input', () => {
+        slot.label = lab.value;
+        setDirty(true);
+        state.emit('workshop'); // same announce rule as the identity rows
+      });
       const desc = document.createElement('input');
       desc.type = 'text';
       desc.className = 'wb-ce-input wb-ce-slotdesc';
@@ -331,6 +341,7 @@ export function mountComponentWorkshop(
         if (desc.value.trim()) slot.description = desc.value;
         else delete slot.description;
         setDirty(true);
+        state.emit('workshop'); // same announce rule as the identity rows
       });
       row.append(key, lab, desc);
       slotsSec.appendChild(row);
@@ -839,6 +850,7 @@ export function mountComponentWorkshop(
       // the JSON (the pane refuses id mismatches; this is the backstop).
       // ↶ restores the WHOLE previous def — the bag is the full snapshot.
       const d = JSON.parse(JSON.stringify(next)) as ComponentDef;
+      const before = JSON.stringify(staged);
       staged.name = d.name;
       staged.description = typeof d.description === 'string' ? d.description : '';
       staged.slots = d.slots;
@@ -848,6 +860,13 @@ export function mountComponentWorkshop(
       else delete staged.additionalRowClass;
       if (d.variantOf !== undefined) staged.variantOf = d.variantOf; else delete staged.variantOf;
       if (d.embeds !== undefined) staged.embeds = d.embeds; else delete staged.embeds;
+      // a content-identical apply (whitespace-only JSON edit, or one typed
+      // back to the original) stages NOTHING: no dot, no ↶ step — but still
+      // announces, so the pane re-canonicalizes its buffer
+      if (JSON.stringify(staged) === before) {
+        state.emit('workshop');
+        return;
+      }
       if (!nodeAtStaged(sel)) sel = [];
       setDirty(true);
       mu.commit(muBag());

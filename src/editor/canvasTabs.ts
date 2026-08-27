@@ -120,6 +120,12 @@ export function mountCanvasTabs(
     if (mountedDef === active) return;
     unmountWorkshop(true);
     mountedDef = active;
+    // re-seed the shared registry from the keep-alive truth: staged edits are
+    // app-level (the component store spans projects), so a workspace swap
+    // that cleared the registry must not orphan a resumed workshop's dot —
+    // and setWorkshopDirty is change-gated, so steady-state remounts emit
+    // nothing
+    state.setWorkshopDirty(active, staging.get(active)?.dirty ?? false);
     handle = mountComponentWorkshop(workshopHost, def, {
       onToast,
       resume: staging.get(active),

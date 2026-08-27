@@ -108,6 +108,23 @@ describe('the workshop editing context', () => {
 });
 
 describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
+  it('identity edits announce on the staged seam like tree edits do — even when already dirty', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    // already dirty: the announce must not be riding the clean→dirty flip
+    ctx.commit(() => { ctx.root().txtContent = 'x'; });
+    for (const sel of ['input.wb-ce-name', 'input.wb-ce-desc', 'input.wb-ce-slotlabel', 'input.wb-ce-slotdesc']) {
+      const input = host.querySelector<HTMLInputElement>(sel);
+      if (!input) continue; // slot rows exist only when the def has slots
+      const reasons: string[] = [];
+      const unsub = state.subscribe((r) => reasons.push(r));
+      input.value = `${input.value}!`;
+      input.dispatchEvent(new Event('input'));
+      unsub();
+      expect(reasons, `${sel} must emit workshop`).toContain('workshop');
+    }
+  });
+
   it('def() is a detached snapshot of the whole staged def', () => {
     mountWorkshop();
     const ctx = state.workshopCtx!;
@@ -148,6 +165,24 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     // detached: mutating the caller's object after apply changes nothing
     next.root.txtContent = 'later-mutation';
     expect(ctx.root().txtContent).toBe('replaced-by-apply');
+  });
+
+  it('applying an UNCHANGED def stages nothing — no dot, no ↶ step (but the pane still re-canonicalizes)', () => {
+    const dirtyLog: boolean[] = [];
+    const def = componentById('builtin-deadline-chip')!;
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    handle = mountComponentWorkshop(host, def, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: (d) => dirtyLog.push(d),
+    });
+    const ctx = state.workshopCtx!;
+    const reasons: string[] = [];
+    const unsub = state.subscribe((r) => reasons.push(r));
+    ctx.applyDef(ctx.def()); // verbatim round-trip (a whitespace-only JSON edit)
+    unsub();
+    expect(dirtyLog).toEqual([]); // no unsaved dot, nothing to Save
+    expect(host.querySelector<HTMLButtonElement>('.wb-mu-undo')!.disabled).toBe(true);
+    expect(reasons).toContain('workshop'); // the JSON pane still re-syncs its buffer
   });
 
   it('applyDef() keeps the staged identity — id and builtin are the tab\'s, not the JSON\'s', () => {

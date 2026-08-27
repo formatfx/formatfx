@@ -162,6 +162,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // tab, so a dirty surface draft keeps its surface tools — and is never
   // clobbered — until Apply or Discard. ──
   let bufferDefId: string | null = null;
+  /** The serialized staged def this component buffer forked from — the
+   *  divergence check compares against THIS, so register/unregister churn
+   *  (tab switches) can never fake a "workshop changed" confirm. */
+  let bufferBaseline = '';
   const compBarEl = host.querySelector('#wb-json-compbar') as HTMLDivElement;
   /** The workshop seam while a component tab is up — null for the frame
    *  between the tab activating and its workshop registering ('workshop'
@@ -326,8 +330,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       // Structure tree resolves it against the staged tree right now, so
       // pruning against our empty map would wipe the workshop's folds.
       const def = wctx.def();
-      delete def.builtin; // save-flow bookkeeping, not component content
       bufferDefId = def.id;
+      delete def.builtin; // save-flow bookkeeping, not component content
       mapRanges = [];
       mapSections = [];
       mapChildren = [];
@@ -337,6 +341,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       foldView = null;
       activeFoldKeys = [];
       const text = JSON.stringify(def, null, 2);
+      bufferBaseline = text; // the staged snapshot this buffer forks from
       const selStart = preserveCaret(fullText, text, textEl.selectionStart ?? 0);
       const selEnd = preserveCaret(fullText, text, textEl.selectionEnd ?? textEl.selectionStart ?? 0);
       fullText = text;
@@ -1538,10 +1543,20 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // Document-moving emits mark the fork instead: Apply confirms before
     // overwriting the moved canvas, ↩ Discard edits is the other way out.
     if (dirty) {
-      // a component-mode buffer forks from the STAGED def — workshop edits
-      // are its divergence signal, exactly as doc emits are the surface's
-      if (reason === 'document' || reason === 'load' || reason === 'kind'
-        || (bufferDefId !== null && reason === 'workshop')) divergedWhileDirty = true;
+      if (bufferDefId === null) {
+        // a surface draft forks from the DOC — doc-moving emits diverge it
+        if (reason === 'document' || reason === 'load' || reason === 'kind') divergedWhileDirty = true;
+      } else if (reason === 'workshop' && !divergedWhileDirty) {
+        // a component draft forks from the STAGED def — only a REAL staged
+        // change diverges it. Register/unregister churn (tab switches) emits
+        // 'workshop' too, so compare against the forked-from snapshot
+        // instead of trusting the reason alone (Copilot review, PR #312).
+        const d = activeWorkshop()?.def();
+        if (d && d.id === bufferDefId) {
+          delete d.builtin;
+          if (JSON.stringify(d, null, 2) !== bufferBaseline) divergedWhileDirty = true;
+        }
+      }
       refreshSizeMeter(); // the meter reads the DOC (Copy output), not the buffer
       refreshDeployPanel();
       refreshComponentChrome(); // tab switches under a dirty draft re-word the banner
