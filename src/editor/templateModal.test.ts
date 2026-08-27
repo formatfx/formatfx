@@ -302,6 +302,42 @@ describe('row view builder — the layout selector (stage pick)', () => {
     expect(document.querySelectorAll('.wb-template-preview .wb-template-prow').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('undoing a re-pick back to a REOPENED config never labels it "Blank" — the list + Resume instead', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // sheet created
+    openTemplateModal(() => {}); // reopen as zones (configFromView stamps 'blank')
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick over the reopened sheet
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // back to the reopened config
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the 'blank' stamp is a placeholder, not a pedigree: no drilled "Blank"
+    expect(document.querySelector('.wb-lay-detail')).toBeNull();
+    const next = document.querySelector('.wb-template-next') as HTMLButtonElement;
+    expect(next.textContent).toBe('Resume');
+    next.click();
+    // Resume returns the reopened config, zones intact
+    const tags = [...document.querySelectorAll('.wb-edit-zone-tag')].map((t) => t.textContent);
+    expect(tags.some((t) => t?.startsWith('Lead'))).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('a re-pick that installed a PRISTINE seed shows no "edits in progress" marker despite undo history', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // undoable re-pick → past > 0
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the current config IS a fresh 'equal' seed — history alone must not cry edits
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Equal columns');
+    expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it('recents survive closing and reopening the modal within the session', () => {
     openTemplateModal(() => {});
     (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();

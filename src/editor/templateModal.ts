@@ -116,9 +116,19 @@ export function openTemplateModal(
   /** Is there a config worth returning to untouched? (a reopened sheet, or
    *  anything seeded this open — the fresh-open placeholder doesn't count). */
   const keptConfig = (): boolean => editingExisting || seededFrom !== null;
+  /** configFromView stamps a reopened config 'blank'/'tile-blank' — a
+   *  placeholder, not a pedigree. Remember it so the selector never drills
+   *  into or resumes-by that identity (e.g. after undoing a re-pick back to
+   *  the reopened config). */
+  const reopenedStamp: WireframeId | null = reopened?.wireframeId ?? null;
+  /** The current config's wireframe identity, when TRUSTWORTHY: the config
+   *  (or its edit-chain ancestor) was seeded from that wireframe this open. */
+  const trustedWireframe = (): WireframeId | null =>
+    seededFrom !== null && !(editingExisting && ui.config.wireframeId === reopenedStamp)
+      ? ui.config.wireframeId : null;
   /** Would Next hand back ui.config exactly as left (vs reseeding)? */
   const resumesSelection = (): boolean =>
-    ui.pickSelected !== null && seededFrom !== null && ui.pickSelected === ui.config.wireframeId;
+    ui.pickSelected !== null && ui.pickSelected === trustedWireframe();
 
   // ── modal-local undo/redo: immutable configs make this a pair of arrays ──
   const past: RowTemplateConfig[] = [];
@@ -465,13 +475,17 @@ export function openTemplateModal(
     },
     isCreating: () => creating,
     resumeConfig: () => (resumesSelection() ? ui.config : null),
-    resumeEdited: () => resumesSelection() && (dirty || past.length > 0),
+    // history state is the wrong proxy (dirty survives undo-to-baseline;
+    // past survives a re-pick that installed a pristine seed) — compare the
+    // config STRUCTURALLY against a fresh seed of its own wireframe
+    resumeEdited: () => resumesSelection()
+      && JSON.stringify(ui.config) !== JSON.stringify(defaultConfigFor(ui.config.wireframeId, state.fields)),
     openGallery: () => {
       // back out with context: drill into the layout the CURRENT config
       // carries (config-derived, so undo/redo can't desync it); a reopened
       // sheet has no source wireframe → the list, with Next reading Resume
       ui.stage = 'pick';
-      ui.pickSelected = seededFrom !== null ? ui.config.wireframeId : null;
+      ui.pickSelected = trustedWireframe();
       ui.pickDrilled = ui.pickSelected !== null;
       rerender();
       // keyboard position mirrors the drill state: the details back button,
