@@ -526,7 +526,10 @@ function isValidSlot(s: unknown): s is ComponentSlot {
   return Boolean(s && typeof s === 'object'
     && typeof (s as ComponentSlot).key === 'string' && (s as ComponentSlot).key.length > 0
     && typeof (s as ComponentSlot).label === 'string'
-    && Array.isArray((s as ComponentSlot).types) && (s as ComponentSlot).types.length > 0);
+    && Array.isArray((s as ComponentSlot).types) && (s as ComponentSlot).types.length > 0
+    // every entry must be a real FieldType — a bogus type would silently
+    // filter EVERY field out of the slot's mapping choices
+    && (s as ComponentSlot).types.every((t) => (ALL_FIELD_TYPES as readonly string[]).includes(t as string)));
 }
 
 function isValidEmbed(e: unknown): e is ComponentEmbed {
@@ -559,34 +562,68 @@ export function loadComponents(raw: string | null): ComponentDef[] {
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.version !== 1 || !Array.isArray(parsed.components)) return [];
-    return (parsed.components as unknown[]).filter(isValidDef).map((c) => {
-      const def: ComponentDef = { ...c, builtin: false };
-      if (def.additionalRowClass !== undefined
-        && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
-        delete def.additionalRowClass;
-      }
-      // variantOf is optional lineage — strip a corrupt (non-string) value
-      // rather than sinking the entry; pre-variant stores simply lack it
-      if (def.variantOf !== undefined && typeof def.variantOf !== 'string') {
-        delete def.variantOf;
-      }
-      // embeds (#225) is optional nesting — ADDITIVE like variantOf. Corrupt
-      // records drop one by one (an orphaned placeholder just falls out at
-      // flatten time); a non-array field strips whole. Pre-nesting stores
-      // simply lack it and load exactly as before.
-      if (def.embeds !== undefined) {
-        if (Array.isArray(def.embeds)) {
-          def.embeds = (def.embeds as unknown[]).filter(isValidEmbed);
-          if (!def.embeds.length) delete def.embeds;
-        } else {
-          delete def.embeds;
-        }
-      }
-      return def;
-    });
+    return (parsed.components as unknown[]).filter(isValidDef)
+      .map((c) => scrubOptionalDefFields({ ...c, builtin: false }));
   } catch {
     return [];
   }
+}
+
+/** Scrub a def's OPTIONAL fields in place: a corrupt optional drops rather
+ *  than sinking the whole def. additionalRowClass only rides row components;
+ *  variantOf is string lineage; embeds (#225) filter entry-by-entry (an
+ *  orphaned placeholder just falls out at flatten time). Shared by the store
+ *  loader above and parseComponentDefJson below. */
+function scrubOptionalDefFields(def: ComponentDef): ComponentDef {
+  // description is required by the ComponentDef contract (consumers call
+  // .trim()) but tolerated missing in old stores/hand-typed JSON — normalize
+  if (typeof def.description !== 'string') def.description = '';
+  if (def.additionalRowClass !== undefined
+    && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
+    delete def.additionalRowClass;
+  }
+  if (def.variantOf !== undefined && typeof def.variantOf !== 'string') {
+    delete def.variantOf;
+  }
+  if (def.embeds !== undefined) {
+    if (Array.isArray(def.embeds)) {
+      def.embeds = (def.embeds as unknown[]).filter(isValidEmbed);
+      if (!def.embeds.length) delete def.embeds;
+    } else {
+      delete def.embeds;
+    }
+  }
+  return def;
+}
+
+/**
+ * Parse hand-edited component-def JSON — the JSON pane's Apply-into-workshop
+ * gate. Same tolerance level as importJson (shape-checked, never
+ * deep-validated: lint gates deploys, not imports) plus the store loader's
+ * optional-field scrubbing. Throws refuse-and-teach messages; the returned
+ * def is a detached clone and never a built-in (hand-typed JSON can't mint
+ * one — the workshop's save flow owns that distinction).
+ */
+export function parseComponentDefJson(text: string): ComponentDef {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`Invalid JSON: ${(e as Error).message}`);
+  }
+  if (parsed && typeof parsed === 'object'
+    && ('elmType' in parsed || 'rowFormatter' in parsed || 'tileProps' in parsed || 'formatter' in parsed)) {
+    throw new Error('This is formatter JSON, not a component def — a def is '
+      + '{ id, name, description, slots, root }. Open a view tab to apply a formatter, '
+      + 'or use "Save as component" to turn a formatter into a component.');
+  }
+  if (!isValidDef(parsed)) {
+    throw new Error('Not a valid component def — required: id and a non-empty name (strings), '
+      + 'slots (an array of { key, label, types }), and root (an element with elmType).');
+  }
+  const def = JSON.parse(JSON.stringify(parsed)) as ComponentDef;
+  delete def.builtin;
+  return scrubOptionalDefFields(def);
 }
 
 export function serializeComponents(components: ComponentDef[]): string {

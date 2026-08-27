@@ -43,8 +43,8 @@ import {
   bestGuessMapping, bindComponent, componentId, componentKind,
   createVariant, rebindInstance, replaceStampedIn, restampIn, uniqueName,
   flattenComponent, embedRefusal, embedClosure, withEmbed, withoutEmbed,
-  transitiveEmbedders, MAX_COMPONENT_DEPTH,
-  type ComponentDef, type ComponentEmbed,
+  transitiveEmbedders, componentDepth, MAX_COMPONENT_DEPTH,
+  type ComponentDef,
 } from './components';
 import { paletteComponents } from './paletteComponents';
 import { scanComponentUsages, mainUsageLabel, type ComponentUsage } from './componentUsage';
@@ -184,22 +184,49 @@ export function mountComponentWorkshop(
   // still commits ONE app-level step. (muRestore is a function declaration
   // on purpose: it runs only after the render fns below are assigned, but
   // the head's buttons wire up first.)
-  const muBag = (): { root: SPElement; embeds: ComponentEmbed[] } =>
-    ({ root: staged.root, embeds: staged.embeds ?? [] });
-  const mu = createModalUndo(muBag());
-  function muRestore(bag: { root: SPElement; embeds: ComponentEmbed[] } | null): void {
+  // The bag is the WHOLE staged def since the JSON pane's applyDef landed
+  // (Copilot review, PR #312): restoring only root+embeds could leave a
+  // half-applied def — the old tree referencing a new slot list. Name/
+  // description/slot text still never create ↶ steps of their own (typing
+  // commits nothing — the builder rule's no-flood half); they now ride the
+  // surrounding gestures' snapshots instead of standing outside the stack.
+  const muBag = (): ComponentDef => staged; // commit/baseline stringify it
+  const mu = createModalUndo<ComponentDef>(muBag());
+  function muRestore(bag: ComponentDef | null): void {
     if (!bag) return;
     staged.root = bag.root;
-    if (bag.embeds.length) staged.embeds = bag.embeds;
+    staged.name = bag.name;
+    staged.description = bag.description;
+    staged.slots = bag.slots;
+    if (bag.kind !== undefined) staged.kind = bag.kind; else delete staged.kind;
+    if (bag.additionalRowClass !== undefined) staged.additionalRowClass = bag.additionalRowClass;
+    else delete staged.additionalRowClass;
+    if (bag.variantOf !== undefined) staged.variantOf = bag.variantOf; else delete staged.variantOf;
+    if (bag.embeds?.length) staged.embeds = bag.embeds;
     else delete staged.embeds;
     if (!nodeAtStaged(sel)) sel = [];
     renderPreview();
     renderEmbeds();
+    renderIdentity();
+    renderSlots();
     muButtons.refresh();
     state.emit('workshop'); // the tree + inspector ride the staged seam now
   }
   const muButtons = modalUndoButtons(mu, () => muRestore(mu.undo()), () => muRestore(mu.redo()));
   const detachMuKeys = wireModalUndoKeys(() => muRestore(mu.undo()), () => muRestore(mu.redo()));
+
+  /** Deep snapshot of the staged def — captured BEFORE a gesture mutates. */
+  const snapStaged = (): ComponentDef => JSON.parse(JSON.stringify(staged)) as ComponentDef;
+  /** Push one staged gesture with a REBASE: typed identity edits mutate
+   *  `staged` without committing (the builder rule), so the pre-gesture
+   *  snapshot goes first — ↶ then returns to the typing instead of
+   *  discarding it. commit() dedupes, so the extra entry exists only when
+   *  something was typed since the last gesture. Every gesture path
+   *  (commit, embed add/remove, applyDef) funnels through here. */
+  const commitGesture = (pre: ComponentDef): void => {
+    mu.commit(pre);
+    mu.commit(muBag());
+  };
 
   // usages, scanned once at mount (the active surface doc + the column
   // looks); built-ins can be in use too, but they only ever save-as-new
@@ -268,49 +295,72 @@ export function mountComponentWorkshop(
     input.type = 'text';
     input.className = `wb-ce-input ${cls}`;
     input.value = value;
-    input.addEventListener('input', () => { commit(input.value); setDirty(true); });
+    input.addEventListener('input', () => {
+      commit(input.value);
+      setDirty(true);
+      // announce like tree edits do — setDirty only reaches listeners on the
+      // clean→dirty flip, but the JSON pane live-tracks EVERY staged change
+      state.emit('workshop');
+    });
     row.append(lab, input);
     ident.appendChild(row);
   };
-  textRow('Name', staged.name, (v) => { staged.name = v; }, 'wb-ce-name');
-  textRow('Description', staged.description, (v) => { staged.description = v; }, 'wb-ce-desc');
+  // re-runnable: applyDef (the JSON pane's Apply) replaces name/description
+  // wholesale, so the inputs re-seed from the staged def on demand
+  const renderIdentity = (): void => {
+    ident.replaceChildren();
+    textRow('Name', staged.name, (v) => { staged.name = v; }, 'wb-ce-name');
+    textRow('Description', staged.description, (v) => { staged.description = v; }, 'wb-ce-desc');
+  };
+  renderIdentity();
 
   // ── slots: labels/tooltips are editable, KEYS are not (they're field refs) ──
   const slotsSec = section(left, 'Slots — what the mapping dialog asks for');
-  if (!staged.slots.length) {
-    const none = document.createElement('div');
-    none.className = 'wb-ce-note';
-    none.textContent = 'No slots — this component references no columns and drops in as-is.';
-    slotsSec.appendChild(none);
-  }
-  for (const slot of staged.slots) {
-    const row = document.createElement('div');
-    row.className = 'wb-ce-slot';
-    const key = document.createElement('span');
-    key.className = 'wb-ce-slotkey';
-    key.textContent = `[$${slot.key}]`;
-    key.title = 'The slot key is the tree\'s field reference — it can\'t change here';
-    const lab = document.createElement('input');
-    lab.type = 'text';
-    lab.className = 'wb-ce-input wb-ce-slotlabel';
-    lab.value = slot.label;
-    lab.title = 'The question the mapping dialog asks for this slot';
-    lab.setAttribute('aria-label', `Label for the ${slot.key} slot`);
-    lab.addEventListener('input', () => { slot.label = lab.value; setDirty(true); });
-    const desc = document.createElement('input');
-    desc.type = 'text';
-    desc.className = 'wb-ce-input wb-ce-slotdesc';
-    desc.value = slot.description ?? '';
-    desc.placeholder = 'tooltip (optional)';
-    desc.setAttribute('aria-label', `Tooltip for the ${slot.key} slot`);
-    desc.addEventListener('input', () => {
-      if (desc.value.trim()) slot.description = desc.value;
-      else delete slot.description;
-      setDirty(true);
-    });
-    row.append(key, lab, desc);
-    slotsSec.appendChild(row);
-  }
+  // re-runnable for the same reason as renderIdentity — applyDef can swap the
+  // whole slot list
+  const renderSlots = (): void => {
+    slotsSec.replaceChildren();
+    if (!staged.slots.length) {
+      const none = document.createElement('div');
+      none.className = 'wb-ce-note';
+      none.textContent = 'No slots — this component references no columns and drops in as-is.';
+      slotsSec.appendChild(none);
+    }
+    for (const slot of staged.slots) {
+      const row = document.createElement('div');
+      row.className = 'wb-ce-slot';
+      const key = document.createElement('span');
+      key.className = 'wb-ce-slotkey';
+      key.textContent = `[$${slot.key}]`;
+      key.title = 'The slot key is the tree\'s field reference — it can\'t change here';
+      const lab = document.createElement('input');
+      lab.type = 'text';
+      lab.className = 'wb-ce-input wb-ce-slotlabel';
+      lab.value = slot.label;
+      lab.title = 'The question the mapping dialog asks for this slot';
+      lab.setAttribute('aria-label', `Label for the ${slot.key} slot`);
+      lab.addEventListener('input', () => {
+        slot.label = lab.value;
+        setDirty(true);
+        state.emit('workshop'); // same announce rule as the identity rows
+      });
+      const desc = document.createElement('input');
+      desc.type = 'text';
+      desc.className = 'wb-ce-input wb-ce-slotdesc';
+      desc.value = slot.description ?? '';
+      desc.placeholder = 'tooltip (optional)';
+      desc.setAttribute('aria-label', `Tooltip for the ${slot.key} slot`);
+      desc.addEventListener('input', () => {
+        if (desc.value.trim()) slot.description = desc.value;
+        else delete slot.description;
+        setDirty(true);
+        state.emit('workshop'); // same announce rule as the identity rows
+      });
+      row.append(key, lab, desc);
+      slotsSec.appendChild(row);
+    }
+  };
+  renderSlots();
 
   // ── embedded components (#225): reuse another component inside this one ──
   // Composition at the definition layer. Embedding is ONE gesture = one ↶
@@ -322,10 +372,10 @@ export function mountComponentWorkshop(
   embedsHost.className = 'wb-ce-embeds';
   embedsSec.appendChild(embedsHost);
 
-  const afterEmbedChange = (): void => {
+  const afterEmbedChange = (pre: ComponentDef): void => {
     if (!nodeAtStaged(sel)) sel = [];
     setDirty(true);
-    mu.commit(muBag());
+    commitGesture(pre);
     muButtons.refresh();
     renderPreview();
     renderEmbeds();
@@ -354,11 +404,12 @@ export function mountComponentWorkshop(
       rm.title = `Remove the embedded ${em.name} — one ↶ step`;
       rm.setAttribute('aria-label', rm.title);
       rm.addEventListener('click', () => {
+        const pre = snapStaged();
         const next = withoutEmbed(staged, em.ns);
         staged.root = next.root;
         if (next.embeds) staged.embeds = next.embeds;
         else delete staged.embeds;
-        afterEmbedChange();
+        afterEmbedChange(pre);
       });
       row.append(chip, rm);
       embedsHost.appendChild(row);
@@ -392,10 +443,11 @@ export function mountComponentWorkshop(
         onToast(refusal);
         return;
       }
+      const pre = snapStaged();
       const next = withEmbed(staged, child);
       staged.root = next.root;
       staged.embeds = next.embeds;
-      afterEmbedChange();
+      afterEmbedChange(pre);
       onToast(`Embedded “${child.name}” — its slots now surface on this component (↶ undoes)`);
     });
     addRow.append(pick, add);
@@ -544,6 +596,26 @@ export function mountComponentWorkshop(
       : null;
   };
 
+  /** The cycle recheck's DEPTH companion: a child edited and saved in
+   *  another tab can have grown the chain past the cap while this def
+   *  staged — flattenComponent would silently drop the deepest content at
+   *  bake time. Rechecked against the full fresh library (builtins can sit
+   *  inside the chain too). Null means go. */
+  const savedDepthRefusal = (candidate: ComponentDef): string | null => {
+    const world = [...libraryDefs().filter((c) => c.id !== candidate.id), candidate];
+    // the candidate AND everything that embeds it: growing a child can push
+    // a parent sitting at the cap over it — cascadeToEmbedders would then
+    // flatten that parent with its deepest content silently dropped
+    const over = [candidate, ...transitiveEmbedders(candidate.id, world)]
+      .map((d) => ({ d, depth: componentDepth(d, world) }))
+      .filter((x) => x.depth > MAX_COMPONENT_DEPTH);
+    if (!over.length) return null;
+    const worst = over.reduce((a, b) => (b.depth > a.depth ? b : a));
+    return worst.d.id === candidate.id
+      ? `Saving would nest components ${worst.depth} levels deep — the cap is ${MAX_COMPONENT_DEPTH}, and a component in the chain grew while you edited. Flatten a level first: save a combined design as its own component, then embed that.`
+      : `Saving would push “${worst.d.name}” — which embeds this component — to ${worst.depth} levels deep (the cap is ${MAX_COMPONENT_DEPTH}). Flatten a level somewhere in that chain first.`;
+  };
+
   const saveAsNew = (): void => {
     const list = readCustom();
     const base = stagedPlain();
@@ -553,6 +625,11 @@ export function mountComponentWorkshop(
       name: uniqueName(base.name, list.map((c) => c.name)),
     };
     delete fresh.variantOf; // a fresh save stands on its own, no lineage
+    const depthRefusal = savedDepthRefusal(fresh);
+    if (depthRefusal) {
+      onToast(depthRefusal);
+      return;
+    }
     if (!writeCustom(addComponent(list, fresh))) {
       onToast('Could not save the component — browser storage is full or blocked');
       return;
@@ -669,7 +746,7 @@ export function mountComponentWorkshop(
     const now = new Date();
     const newDef: ComponentDef = { ...stagedPlain(), id: def.id };
     let list = readCustom();
-    const refusal = savedCycleRefusal(newDef, list);
+    const refusal = savedCycleRefusal(newDef, list) ?? savedDepthRefusal(newDef);
     if (refusal) {
       onToast(refusal);
       return;
@@ -718,7 +795,7 @@ export function mountComponentWorkshop(
   const saveReplaceOnly = (): void => {
     const newDef: ComponentDef = { ...stagedPlain(), id: def.id };
     const list = readCustom();
-    const refusal = savedCycleRefusal(newDef, list);
+    const refusal = savedCycleRefusal(newDef, list) ?? savedDepthRefusal(newDef);
     if (refusal) {
       onToast(refusal);
       return;
@@ -798,12 +875,109 @@ export function mountComponentWorkshop(
       ? ((staged.embeds ?? []).find((em) => em.ns === el._embed)?.name ?? String(el._embed))
       : null,
     commit: (fn: () => void): void => {
+      const pre = snapStaged();
       fn();
       if (!nodeAtStaged(sel)) sel = [];
       setDirty(true);
-      mu.commit(muBag());
+      commitGesture(pre);
       muButtons.refresh();
       renderPreview();
+      state.emit('workshop');
+    },
+    def: (): ComponentDef => JSON.parse(JSON.stringify(staged)) as ComponentDef,
+    applyDef: (next: ComponentDef): void => {
+      // The JSON pane's Apply: replace the whole staged def in ONE staged
+      // gesture. Identity stays the tab's — id/builtin are never taken from
+      // the JSON (the pane refuses id mismatches; this is the backstop).
+      // ↶ restores the WHOLE previous def — the bag is the full snapshot.
+      const d = JSON.parse(JSON.stringify(next)) as ComponentDef;
+      // hand-edited embeds get the same author-time gates the ＋ Embed
+      // button has: loops and over-deep chains are refused BEFORE anything
+      // mutates — flattenComponent would only silently drop them at bake
+      // time (Copilot review, PR #312).
+      // ── embed integrity: records ↔ placeholders must be one-to-one, or
+      // flatten silently drops content / leaves dead nodes at bake ──
+      const phCounts = new Map<string, number>();
+      const countPh = (el: SPElement): void => {
+        if (el._embed !== undefined) {
+          const ns = String(el._embed);
+          phCounts.set(ns, (phCounts.get(ns) ?? 0) + 1);
+        }
+        for (const c of el.children ?? []) countPh(c);
+        if (el.customCardProps?.formatter) countPh(el.customCardProps.formatter);
+      };
+      countPh(d.root);
+      const recNs = (d.embeds ?? []).map((e) => e.ns);
+      const recSet = new Set<string>(recNs);
+      const orphanPh = [...phCounts.keys()].find((ns) => !recSet.has(ns));
+      if (orphanPh !== undefined) {
+        throw new Error(`The tree carries an _embed placeholder "${orphanPh}" with no matching `
+          + 'embeds record — flatten can\'t graft it, leaving a dead node. Remove the placeholder '
+          + 'or add its record.');
+      }
+      if (d.embeds?.length) {
+        // namespaces are unique per parent (they prefix the child's slot keys
+        // and address its graft) — flatten's ns-keyed map would silently
+        // overwrite one duplicate with the other
+        const nsSeen = new Set<string>();
+        for (const e of d.embeds) {
+          if (nsSeen.has(e.ns)) {
+            throw new Error(`Two embeds share the namespace "${e.ns}" — namespaces must be unique `
+              + 'per component (each prefixes its child\'s slot keys and addresses its graft). Rename one.');
+          }
+          nsSeen.add(e.ns);
+        }
+        const missingPh = recNs.find((ns) => !(phCounts.get(ns) ?? 0));
+        if (missingPh !== undefined) {
+          throw new Error(`The embed record "${missingPh}" has no _embed placeholder in the tree — `
+            + 'its content would silently vanish at bake. Add an element with '
+            + `"_embed": "${missingPh}" where it should graft, or remove the record.`);
+        }
+        const dupPh = recNs.find((ns) => (phCounts.get(ns) ?? 0) > 1);
+        if (dupPh !== undefined) {
+          throw new Error(`The tree carries ${phCounts.get(dupPh)} _embed placeholders for `
+            + `"${dupPh}" — each embed grafts exactly once. Keep one.`);
+        }
+        const candidate: ComponentDef = { ...d, id: staged.id };
+        const world = [...libraryDefs().filter((x) => x.id !== staged.id), candidate];
+        if (embedClosure(candidate, world).has(candidate.id)) {
+          throw new Error(`“${staged.name}” would contain itself through its embeds — a loop would `
+            + 'expand forever. Unwind one side first.');
+        }
+        const depth = componentDepth(candidate, world);
+        if (depth > MAX_COMPONENT_DEPTH) {
+          throw new Error(`These embeds nest components ${depth} levels deep — the cap is `
+            + `${MAX_COMPONENT_DEPTH}, so designs stay readable and bakes stay predictable. `
+            + 'Flatten a level first: save the combined design as its own component, then embed that.');
+        }
+      }
+      const before = JSON.stringify(staged);
+      staged.name = d.name;
+      staged.description = typeof d.description === 'string' ? d.description : '';
+      staged.slots = d.slots;
+      staged.root = d.root;
+      if (d.kind !== undefined) staged.kind = d.kind; else delete staged.kind;
+      if (d.additionalRowClass !== undefined) staged.additionalRowClass = d.additionalRowClass;
+      else delete staged.additionalRowClass;
+      if (d.variantOf !== undefined) staged.variantOf = d.variantOf; else delete staged.variantOf;
+      if (d.embeds !== undefined) staged.embeds = d.embeds; else delete staged.embeds;
+      // a content-identical apply (whitespace-only JSON edit, or one typed
+      // back to the original) stages NOTHING: no dot, no ↶ step — but still
+      // announces, so the pane re-canonicalizes its buffer
+      if (JSON.stringify(staged) === before) {
+        state.emit('workshop');
+        return;
+      }
+      if (!nodeAtStaged(sel)) sel = [];
+      setDirty(true);
+      // compare-FIRST (above) keeps a no-op Apply from leaking the typed
+      // state as a hidden extra step; the shared rebase does the rest
+      commitGesture(JSON.parse(before) as ComponentDef);
+      muButtons.refresh();
+      renderPreview();
+      renderEmbeds();
+      renderIdentity();
+      renderSlots();
       state.emit('workshop');
     },
   };

@@ -14,8 +14,10 @@
  *   · Clicking a grid/view tab is NAVIGATION (minimizeView/openView — never a
  *     mutation); clicking a component tab activates the workshop, which
  *     COVERS the canvas region (#wb-canvas hides, the workshop host shows).
- *     The fx bar / JSON pane / Explain keep following the active SURFACE in
- *     v1 — they read state.doc, which never aliases a staged def.
+ *     The fx bar / Explain keep following the active SURFACE — they read
+ *     state.doc, which never aliases a staged def. The JSON pane follows
+ *     the TAB: a component tab puts it in component mode (the staged def's
+ *     JSON, Apply-into-workshop — see jsonPanel.ts).
  *   · Tabs drag to REARRANGE (insert-before semantics → state.moveTab), and
  *     view tabs are SPRING-LOADED during component/field drags: hover one
  *     ~600ms and it opens under the drag (navigation only, §5).
@@ -55,14 +57,14 @@ export function mountCanvasTabs(
   stripHost.setAttribute('role', 'navigation');
   stripHost.setAttribute('aria-label', 'Canvas tabs');
 
-  // ── workshop keep-alive: per-def staging + dirty dots ──────────────────────
+  // ── workshop keep-alive: per-def staging; the dirty DOTS live in the
+  // shared state.workshopDirty registry (the side pane's doc switcher reads
+  // the same source — one truth, two renderers) ──────────────────────────────
   const staging = new Map<string, WorkshopStaging>();
-  const dirtyByDef = new Map<string, boolean>();
   let handle: WorkshopHandle | null = null;
   let mountedDef: string | null = null;
 
-  const isDirty = (defId: string): boolean =>
-    dirtyByDef.get(defId) ?? staging.get(defId)?.dirty ?? false;
+  const isDirty = (defId: string): boolean => state.workshopDirty(defId);
 
   /** Stash the live workshop's staging (capped) and tear its DOM down. */
   const unmountWorkshop = (stash: boolean): void => {
@@ -86,8 +88,8 @@ export function mountCanvasTabs(
   const onWorkshopSaved = (oldId: string, newId: string): void => {
     staging.delete(oldId);
     staging.delete(newId);
-    dirtyByDef.delete(oldId);
-    dirtyByDef.set(newId, false);
+    state.setWorkshopDirty(oldId, false);
+    state.setWorkshopDirty(newId, false);
     unmountWorkshop(false); // never stash pre-save staging — the def IS it now
     if (newId !== oldId) {
       const at = state.openTabs.findIndex((t) => tabKey(t) === `component:${oldId}`);
@@ -118,14 +120,18 @@ export function mountCanvasTabs(
     if (mountedDef === active) return;
     unmountWorkshop(true);
     mountedDef = active;
-    dirtyByDef.set(active, staging.get(active)?.dirty ?? false);
+    // re-seed the shared registry from the keep-alive truth: staged edits are
+    // app-level (the component store spans projects), so a workspace swap
+    // that cleared the registry must not orphan a resumed workshop's dot —
+    // and setWorkshopDirty is change-gated, so steady-state remounts emit
+    // nothing
+    state.setWorkshopDirty(active, staging.get(active)?.dirty ?? false);
     handle = mountComponentWorkshop(workshopHost, def, {
       onToast,
       resume: staging.get(active),
-      onDirtyChange: (d) => {
-        dirtyByDef.set(active, d);
-        renderStrip(); // the dirty dot toggles
-      },
+      // the registry's 'data' announce re-renders the strip (and the side
+      // switcher) — no direct renderStrip call needed
+      onDirtyChange: (d) => state.setWorkshopDirty(active, d),
       onSaved: (newDefId) => onWorkshopSaved(active, newDefId),
     });
   };
@@ -139,7 +145,7 @@ export function mountCanvasTabs(
       }
       // close means discard — drop the keep-alive too
       staging.delete(t.defId);
-      dirtyByDef.delete(t.defId);
+      state.setWorkshopDirty(t.defId, false);
       if (mountedDef === t.defId) unmountWorkshop(false);
     }
     state.closeTab(tabKey(t)); // emits 'data' → the strip re-renders
@@ -371,7 +377,7 @@ export function mountCanvasTabs(
       for (const t of stale) {
         if (mountedDef === t.defId) unmountWorkshop(false);
         staging.delete(t.defId);
-        dirtyByDef.delete(t.defId);
+        state.setWorkshopDirty(t.defId, false);
         state.closeTab(tabKey(t));
       }
       return;

@@ -34,6 +34,29 @@ describe('canvasTabs add new button and dropdown', () => {
     });
   });
 
+  it('the dirty dot reads the SHARED registry — strip and side switcher can never disagree', () => {
+    mountCanvasTabs(stripHost, workshopHost, onToast);
+    state.openComponentTab('builtin-deadline-chip');
+    expect(stripHost.querySelector('.wb-canvastab-dot')).toBeNull();
+    state.setWorkshopDirty('builtin-deadline-chip', true);
+    expect(stripHost.querySelector('.wb-canvastab-dot')).not.toBeNull();
+    state.setWorkshopDirty('builtin-deadline-chip', false);
+    expect(stripHost.querySelector('.wb-canvastab-dot')).toBeNull();
+  });
+
+  it('remounting a workshop re-seeds the registry from keep-alive staging — drift heals', () => {
+    mountCanvasTabs(stripHost, workshopHost, onToast);
+    state.openComponentTab('builtin-deadline-chip');
+    const ctx = state.workshopCtx!;
+    ctx.commit(() => { ctx.root().txtContent = 'edited'; });
+    expect(state.workshopDirty('builtin-deadline-chip')).toBe(true);
+    state.minimizeView(); // stash to keep-alive
+    // the registry drifts (a workspace swap cleared it; the staged edits survive)
+    state.setWorkshopDirty('builtin-deadline-chip', false);
+    state.openComponentTab('builtin-deadline-chip'); // resume from staging
+    expect(state.workshopDirty('builtin-deadline-chip')).toBe(true);
+  });
+
   it('renders the subtle add button at the end of the tabs', () => {
     mountCanvasTabs(stripHost, workshopHost, onToast);
     const addBtn = stripHost.querySelector('.wb-canvastabs-add') as HTMLButtonElement;

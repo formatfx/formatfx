@@ -38,6 +38,8 @@
  */
 
 import { state, samePath, CARD_SEGMENT } from './state';
+import { parseComponentDefJson } from './components';
+import { componentById } from './componentLibrary';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import {
   exportJsonWithMap, pathAtOffset, rangeForPath, childrenRangeForPath,
@@ -85,6 +87,7 @@ export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void):
         <button id="wb-json-revert" hidden title="Throw away the hand-edits in this pane and re-sync it from the canvas — the canvas document is untouched">↩ Discard edits</button>
       </div>
     </div>
+    <div id="wb-json-compbar" class="wb-json-compbar" hidden></div>
     <div id="wb-deploy-panel" class="wb-deploy" hidden>
       <div id="wb-deploy-target" class="wb-deploy-target"></div>
       <input id="wb-deploy-view" placeholder="View title, exactly as on the list" value="All Items" title="The (shared) view that receives this row formatting">
@@ -151,6 +154,23 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // canvas dims behind a body-level class (non-blocking: browsing/selecting
   // stay free), and Apply confirms before overwriting the diverged canvas.
   let divergedWhileDirty = false;
+
+  // ── COMPONENT MODE (the doc-switcher feature): while a ⬡ workshop tab is
+  // active the pane shows/edits the STAGED def instead of the surface doc.
+  // `bufferDefId` is the def the CURRENT BUFFER was generated from (null =
+  // surface); every mode gate keys off the BUFFER's origin, not the active
+  // tab, so a dirty surface draft keeps its surface tools — and is never
+  // clobbered — until Apply or Discard. ──
+  let bufferDefId: string | null = null;
+  /** The serialized staged def this component buffer forked from — the
+   *  divergence check compares against THIS, so register/unregister churn
+   *  (tab switches) can never fake a "workshop changed" confirm. */
+  let bufferBaseline = '';
+  const compBarEl = host.querySelector('#wb-json-compbar') as HTMLDivElement;
+  /** The workshop seam while a component tab is up — null for the frame
+   *  between the tab activating and its workshop registering ('workshop'
+   *  announces the registration and re-runs regenerate). */
+  const activeWorkshop = () => (state.activeComponentTab !== null ? state.workshopCtx : null);
 
   const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
   const setDirty = () => {
@@ -296,6 +316,43 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   const regenerate = () => {
     if (dirty) return; // don't clobber a paste in progress
+    const wctx = activeWorkshop();
+    // a component tab is active but its workshop hasn't registered yet — or
+    // the seam still belongs to the OUTGOING workshop mid tab-switch (this
+    // pane subscribes before the strip). Keep the old buffer for the frame;
+    // the incoming workshop's 'workshop' announce re-runs us.
+    if (state.activeComponentTab !== null
+      && (!wctx || wctx.def().id !== state.activeComponentTab)) return;
+    if (wctx) {
+      // ── component mode: the staged def, verbatim. No offset↔path map and
+      // no folds (that machinery is surface-doc-shaped — the PR after this
+      // one adapts it), and the SHARED fold set stays untouched: it still
+      // holds the UNDERLYING SURFACE's folds (workshop tree folding is
+      // treeView-local), so pruning against our empty map would wipe what
+      // the surface needs back on return.
+      const def = wctx.def();
+      bufferDefId = def.id;
+      delete def.builtin; // save-flow bookkeeping, not component content
+      mapRanges = [];
+      mapSections = [];
+      mapChildren = [];
+      liveRanges = null;
+      liveErrors = [];
+      liveLabels = {};
+      foldView = null;
+      activeFoldKeys = [];
+      const text = JSON.stringify(def, null, 2);
+      bufferBaseline = text; // the staged snapshot this buffer forks from
+      const selStart = preserveCaret(fullText, text, textEl.selectionStart ?? 0);
+      const selEnd = preserveCaret(fullText, text, textEl.selectionEnd ?? textEl.selectionStart ?? 0);
+      fullText = text;
+      syncFoldDisplay(selStart, selEnd);
+      clearImportError();
+      refreshSizeMeter();
+      refreshComponentChrome();
+      return;
+    }
+    bufferDefId = null;
     // the editor view keeps _elmName so "Apply to canvas" never loses names
     const { text, ranges, sections, childrenRanges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: true });
     mapRanges = ranges;
@@ -313,6 +370,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     syncFoldDisplay(selStart, selEnd);
     clearImportError(); // stale error no longer matches what's in the textarea
     refreshSizeMeter(); // the doc changed — so did what Copy would produce
+    refreshComponentChrome();
   };
 
   // ── #PR-E size meter: the byte count of what COPY produces with the
@@ -320,8 +378,40 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // doesn't move it until Apply. No threshold judgment: the SP formatting
   // docs document no JSON size cap (checked 2026-07-10, per spec §6). ──
   const sizeEl = host.querySelector('#wb-json-size') as HTMLSpanElement;
+  /** What Copy/Download produce — the DOC's truth for the current mode: the
+   *  compiled formatter on a surface, the staged def in component mode (a
+   *  dirty buffer moves neither until Apply). Null when the buffer is an
+   *  ORPHANED component draft — its workshop tab left while dirty — because
+   *  no doc truth is reachable then: exporting the surface (or a DIFFERENT
+   *  workshop's def) labeled as this component's would lie (Copilot review,
+   *  PR #312). csom escapes &/< the way the serializer's csomSafe does —
+   *  safe as a text op because JSON syntax has no bare & or < outside
+   *  strings. */
+  const exportText = (opts: { csom?: boolean } = {}): string | null => {
+    if (bufferDefId !== null) {
+      const wctx = activeWorkshop();
+      const def = wctx?.def();
+      if (!def || def.id !== bufferDefId) return null;
+      delete def.builtin; // save-flow bookkeeping, not component content
+      const t = JSON.stringify(def, null, 2);
+      return opts.csom ? t.replace(/&/g, '\\u0026').replace(/</g, '\\u003c') : t;
+    }
+    return exportJson(state.doc, {
+      sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked,
+      ...(opts.csom ? { csomSafe: true } : {}),
+    });
+  };
+  const orphanExportToast = (): void =>
+    onToast('This draft\'s workshop isn\'t active — open its ⬡ tab to copy or download the component JSON');
+  const sizeTitleDefault = sizeEl.title;
   const refreshSizeMeter = (): void => {
-    const out = exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked });
+    const out = exportText();
+    if (out === null) { // orphaned component draft — nothing measurable
+      sizeEl.textContent = '—';
+      sizeEl.title = 'Open the component\'s ⬡ tab to measure or copy its JSON';
+      return;
+    }
+    sizeEl.title = sizeTitleDefault;
     const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(out).length : out.length;
     sizeEl.textContent = bytes < 10240
       ? `${bytes.toLocaleString()} B`
@@ -334,6 +424,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // before keyup fires, so hand-edits (stale offsets) never mis-select.
   const syncSelectionFromCaret = (): void => {
     if (dirty) return; // hand-edited text: offsets are stale until Apply
+    if (bufferDefId !== null) return; // component mode: def offsets aren't surface paths (PR 2 adapts this)
     const path = pathAtOffset(mapRanges, displayedToFull(textEl.selectionStart ?? 0));
     if (!path) return; // wrapper chrome ($schema line) selects nothing
     if (state.selection && samePath(state.selection, path)) return; // already there — no churn
@@ -499,6 +590,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const revealSelection = (): void => {
     clearFlash();
     if (dirty) return; // don't fight a hand-edit in progress
+    if (bufferDefId !== null) return; // surface selections have no lines in a def buffer
     const path = state.selection;
     if (!path) return;
     const range = rangeForPath(mapRanges, path);
@@ -527,7 +619,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     clearDirty();
     clearImportError();
     regenerate();
-    onToast('Hand-edits discarded — the pane shows the canvas again.');
+    onToast(bufferDefId !== null
+      ? 'Hand-edits discarded — the pane shows the staged component again.'
+      : 'Hand-edits discarded — the pane shows the canvas again.');
   });
 
   // ── #244 the IDE dressing: highlight overlay, gutter, completions ──
@@ -535,12 +629,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // is marked dirty first, then the overlay repaints — the scope bar never
   // paints one frame of stale offsets.
   const ide = mountJsonIde(shellEl, textEl, {
-    fields: () => state.fields,
-    completionOpts: () => ({
+    // component mode gates: field completions, row-context hovers/eval and
+    // the surface selection's scope bar are all surface-schema affordances —
+    // PR 2 re-points them at slot keys; until then blank beats wrong
+    fields: () => (bufferDefId !== null ? [] : state.fields),
+    completionOpts: () => (bufferDefId !== null ? {} : {
       current: state.fields.find((f) => f.name === state.currentFieldName),
       ctx: state.rows.length ? ctxForRow(0) : undefined,
     }),
     selectionRange: () => {
+      if (bufferDefId !== null) return null;
       if (!state.selection) return null;
       // #PR-D: while dirty the LIVE map takes over — hidden only for the
       // frame before the first parse lands (stale offsets must never paint)
@@ -551,19 +649,21 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // #PR-D squiggles + hovers: decisions live in jsonDecorations/jsonHover;
     // the panel just hands them its decoration list and field/row context
     decorations: () => decorations,
-    hoverAt: (off) => hoverInfoAt(textEl.value, off, decorations, state.fields,
-      { ctx: state.rows.length ? ctxForRow(0) : undefined }),
+    hoverAt: (off) => (bufferDefId !== null ? null
+      : hoverInfoAt(textEl.value, off, decorations, state.fields,
+        { ctx: state.rows.length ? ctxForRow(0) : undefined })),
     // #PR-E the eval chip: the caret's live string through the REAL engine
     // against the sample row (same ctx source as completions — row 0; swap in
     // the canvas's active row here when that notion exists)
-    evalChip: (off) => evalChipAt(textEl.value, off, state.rows.length ? ctxForRow(0) : undefined),
+    evalChip: (off) => (bufferDefId !== null ? null
+      : evalChipAt(textEl.value, off, state.rows.length ? ctxForRow(0) : undefined)),
     // #PR-C: the fold bridge — chevrons, gapped numbers, edit guards
     folds: {
-      usable: () => !dirty,
+      usable: () => !dirty && bufferDefId === null,
       active: () => !!foldView,
       expandAll: () => expandAllFolds(),
       foldableFoldedLines: () => {
-        if (dirty) return [];
+        if (dirty || bufferDefId !== null) return [];
         const out: Array<{ line: number; folded: boolean; label: string }> = [];
         const add = (range: { start: number; end: number }, key: string, label: string): void => {
           const cut = cutForRange(fullText, range);
@@ -593,7 +693,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         return out;
       },
       toggleAtFoldedLine: (line: number) => {
-        if (dirty) return;
+        if (dirty || bufferDefId !== null) return;
         const toggle = (range: { start: number; end: number }, key: string): boolean => {
           if (!cutForRange(fullText, range)) return false;
           const foldedHere = activeFoldKeys.includes(key);
@@ -676,6 +776,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     return last === CARD_SEGMENT ? 'card' : `#${last ?? 0}`;
   };
   const refreshCrumbs = (): void => {
+    if (bufferDefId !== null) { crumbsEl.hidden = true; return; } // def paths aren't element paths (PR 2)
     if (dirty && !liveRanges) { crumbsEl.hidden = true; return; } // pre-parse frame
     const path = pathAtOffset(rangesNow(), displayedToFull(textEl.selectionStart ?? 0));
     if (!path) { crumbsEl.hidden = true; return; } // wrapper chrome — no element here
@@ -711,9 +812,23 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // parses; tolerant re-indent + the parse error when it doesn't. The dirty
   // flag is deliberately untouched — a formatted hand-edit still needs Apply,
   // and a clean buffer is already canonical so the swap is a no-op. ──
+  /** Component-mode Format: the formatter parser doesn't apply to a def —
+   *  canonical is a plain JSON pretty-print when the buffer parses, and the
+   *  tolerant re-indent tier (with its parse error) when it doesn't. Without
+   *  this, a VALID def hit importJson's "unrecognized formatter shape" error
+   *  (Copilot review, PR #312). */
+  const compFormat = (text: string): ReturnType<typeof formatDocument> => {
+    try {
+      return { text: JSON.stringify(JSON.parse(text), null, 2), tier: 'canonical' };
+    } catch {
+      return formatDocument(text, { sanitizeWhitespace: sanitizeEl.checked });
+    }
+  };
   const formatCmd = (): void => {
     expandAllFolds(); // format is a buffer op on the full text (no-op when clean+canonical)
-    const res = formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
+    const res = bufferDefId !== null
+      ? compFormat(textEl.value)
+      : formatDocument(textEl.value, { sanitizeWhitespace: sanitizeEl.checked });
     if (res.text !== textEl.value) {
       ide.closeMenu(); // a swapped buffer would orphan the menu's offsets
       const selStart = textEl.selectionStart ?? 0;
@@ -748,7 +863,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // at the caret; Ctrl+Shift+] unfolds the fold containing it
     if (e.ctrlKey && e.shiftKey && (e.key === '{' || e.key === '[')) {
       e.preventDefault();
-      if (dirty) return;
+      if (dirty || bufferDefId !== null) return;
       const off = displayedToFull(textEl.selectionStart ?? 0);
       const path = pathAtOffset(mapRanges, off);
       if (path && path.length > 0) { // the root never folds — it IS the document
@@ -785,7 +900,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // #PR-C kebab commands: focus the selection / show everything
   const isPrefix = (p: number[], q: number[]): boolean => p.length <= q.length && p.every((v, i) => q[i] === v);
   menuHost.querySelector('#wb-json-fold-others')!.addEventListener('click', () => {
-    if (dirty) return;
+    if (dirty || bufferDefId !== null) return;
     const sel = state.selection;
     foldState.update('json', (set) => {
       for (const r of mapRanges) {
@@ -802,6 +917,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     applyFolds();
   });
   menuHost.querySelector('#wb-json-expand-all')!.addEventListener('click', () => {
+    if (bufferDefId !== null) return; // the shared set is the workshop tree's right now
     foldState.clear('json'); // shared: the Structure tree expands with it
     expandAllFolds();
   });
@@ -901,9 +1017,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   });
 
   const copyFormatterJson = async (): Promise<void> => {
+    const comp = bufferDefId !== null;
+    const text = exportText();
+    if (text === null) { orphanExportToast(); return; }
     try {
-      await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked }));
-      onToast('Formatter JSON copied');
+      await navigator.clipboard.writeText(text);
+      onToast(comp ? 'Component JSON copied (the staged def)' : 'Formatter JSON copied');
     } catch {
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
@@ -911,22 +1030,91 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   menuHost.querySelector('#wb-json-copy')!.addEventListener('click', copyFormatterJson);
   host.querySelector('#wb-json-copy-btn')!.addEventListener('click', copyFormatterJson);
   menuHost.querySelector('#wb-json-copy-csom')!.addEventListener('click', async () => {
+    const text = exportText({ csom: true });
+    if (text === null) { orphanExportToast(); return; }
     try {
-      await navigator.clipboard.writeText(exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked, csomSafe: true }));
+      await navigator.clipboard.writeText(text);
       onToast('CSOM-safe JSON copied (& and < escaped)');
     } catch {
       onToast('Copy failed — clipboard access blocked (select the text and use Ctrl/Cmd+C)');
     }
   });
   menuHost.querySelector('#wb-json-download')!.addEventListener('click', () => {
-    const blob = new Blob([exportJson(state.doc, { sanitizeWhitespace: sanitizeEl.checked, keepMeta: namesEl.checked })], { type: 'application/json' });
+    const text = exportText();
+    if (text === null) { orphanExportToast(); return; }
+    const blob = new Blob([text], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${state.doc.kind}-formatter.json`;
+    a.download = bufferDefId !== null ? `component-${bufferDefId}.json` : `${state.doc.kind}-formatter.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   });
   host.querySelector('#wb-json-apply')!.addEventListener('click', () => {
+    // ── component mode: Apply STAGES into the workshop (one modal-undo
+    // step); Save in the workshop stays the one publish step. Routed by the
+    // BUFFER's origin, so a surface draft still applies to the surface even
+    // while a workshop tab is up.
+    if (bufferDefId !== null) {
+      try {
+        const def = parseComponentDefJson(textEl.value); // folds never coexist with component mode
+        if (def.id !== bufferDefId) {
+          throw new Error(`This def's id ("${def.id}") doesn't match the open workshop tab's `
+            + `("${bufferDefId}") — the id is the tab's identity. Change anything but that.`);
+        }
+        const wctx = activeWorkshop();
+        if (!wctx || wctx.def().id !== bufferDefId) {
+          throw new Error('That component\'s workshop tab isn\'t active any more — open its ⬡ tab and Apply again.');
+        }
+        // the slot KEY SET is locked, like the workshop's own slot editor:
+        // saved instances carry mappings keyed by it, and the save path
+        // rebinds them with those maps — a renamed key would publish
+        // unresolved refs (Copilot review, PR #312)
+        const oldKeys = wctx.def().slots.map((s) => s.key).sort();
+        const newKeys = def.slots.map((s) => s.key).sort();
+        // element-wise, never joined-string compare — a key containing the
+        // join delimiter must not slip a changed set through
+        if (oldKeys.length !== newKeys.length || oldKeys.some((k, i) => k !== newKeys[i])) {
+          throw new Error('The slot keys are this component\'s field references — saved instances\' '
+            + `mappings are bound to them, so Apply can't change the key set (had: ${oldKeys.join(', ') || 'none'}; `
+            + `got: ${newKeys.join(', ') || 'none'}). Edit slot labels, tooltips, types and the tree freely; `
+            + 'a different key set wants a new component (Save as new in the workshop).');
+        }
+        // the embed RECORD LIST is locked for the same reason: each ns keys
+        // the flattened `ns_*` slot names saved instances' maps reference,
+        // so even a consistent rename would strand them. Placeholders may
+        // move around the tree freely; records change in the workshop.
+        // the map is part of the record's identity: it decides which child
+        // slots stay bound vs surface as ns_* — a map-only change re-keys
+        // the flattened slots exactly like a rename would
+        const recKey = (e: { ns: string; of: string; map?: Record<string, string> }): string =>
+          JSON.stringify([e.ns, e.of, Object.entries(e.map ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))]);
+        const oldRecs = (wctx.def().embeds ?? []).map(recKey).sort();
+        const newRecs = (def.embeds ?? []).map(recKey).sort();
+        if (oldRecs.length !== newRecs.length || oldRecs.some((r, i) => r !== newRecs[i])) {
+          throw new Error('The embeds list is managed in the workshop (＋ Embed / ✕ there) — each '
+            + 'namespace keys the flattened slot names that saved instances\' mappings reference, '
+            + 'so Apply can\'t add, remove or rename embed records. The _embed placeholders may '
+            + 'move around the tree freely.');
+        }
+        if (divergedWhileDirty
+          && !confirm('The workshop changed while you were editing this JSON — applying replaces those staged edits (the workshop\'s ↶ brings its tree back).\n\nApply anyway?')) return;
+        // applyDef can refuse (embed loops/depth) — the draft must stay
+        // dirty until it SUCCEEDS, or the hand-edits would sit clean-looking
+        // and get regenerated over. Its synchronous 'workshop' announce fires
+        // while we're still dirty (ignored), so regenerate explicitly after.
+        wctx.applyDef(def);
+        clearDirty();
+        clearImportError();
+        regenerate();
+        onToast(`Staged into the ${def.name} workshop — Save there publishes it`);
+      } catch (e) {
+        const msg = `Import failed: ${(e as Error).message}`;
+        onToast(msg);
+        importErrorEl.textContent = msg;
+        importErrorEl.hidden = false;
+      }
+      return;
+    }
     try {
       // #PR-C: folds are a view — Apply always parses the FULL text
       const doc = importJson(foldView ? fullText : textEl.value);
@@ -977,6 +1165,57 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (deployPanel.hidden) return;
     deployTargetEl.textContent = `Deploys ${deployTarget().label}`;
     deployViewEl.hidden = false;
+  };
+
+  // ── component-mode chrome: the banner + standing the surface tools down.
+  // Everything keys off the BUFFER's origin (bufferDefId), so a dirty
+  // surface draft keeps its lint/deploy until Apply or Discard. ──
+  const deployBtnEl = menuHost.querySelector('#wb-json-deploy') as HTMLButtonElement;
+  const deployBtnTitle = deployBtnEl.title;
+  const applyBtnTitle = applyBtn.title;
+  const refreshComponentChrome = (): void => {
+    const activeComp = state.activeComponentTab;
+    const inCompBuffer = bufferDefId !== null;
+    lintEl.hidden = inCompBuffer;
+    deployBtnEl.disabled = inCompBuffer;
+    deployBtnEl.title = inCompBuffer
+      ? 'Deploy ships view formatting — a component ships by being used in a view'
+      : deployBtnTitle;
+    if (inCompBuffer) deployPanel.hidden = true;
+    applyBtn.title = inCompBuffer
+      ? 'Parse the JSON below and stage it into the workshop — Save there publishes'
+      : applyBtnTitle;
+    // the visible/accessible name follows the destination, not just the tooltip
+    applyBtn.textContent = inCompBuffer ? '⬅ Apply to workshop' : '⬅ Apply to canvas';
+    // the surface Type select acts on the surface doc — inert under a def
+    const kindSel = document.getElementById('wb-kind') as HTMLSelectElement | null;
+    if (kindSel) kindSel.disabled = inCompBuffer;
+    // sanitize/names shape SURFACE output only — a def serializes verbatim.
+    // Disabled, so sanitize's clearDirty+regenerate handler can never throw
+    // a component draft away over a setting that doesn't apply to it
+    sanitizeEl.disabled = inCompBuffer;
+    namesEl.disabled = inCompBuffer;
+    // fold commands are inert in the mode (no offset↔path map) — disabled,
+    // never dead buttons
+    (menuHost.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled = inCompBuffer;
+    (menuHost.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled = inCompBuffer;
+    const compName = (id: string): string => componentById(id)?.name ?? id;
+    if (inCompBuffer && activeComp === bufferDefId) {
+      compBarEl.hidden = false;
+      compBarEl.textContent = `⬡ ${compName(bufferDefId!)} — the workshop's staged JSON. `
+        + 'Apply stages your edits; Save in the workshop publishes.';
+    } else if (inCompBuffer) {
+      compBarEl.hidden = false;
+      compBarEl.textContent = `Editing ⬡ ${compName(bufferDefId!)}'s JSON, but its workshop tab `
+        + 'isn\'t active — reopen the ⬡ tab to Apply (or ↩ Discard).';
+    } else if (activeComp !== null && dirty) {
+      compBarEl.hidden = false;
+      compBarEl.textContent = `⬡ ${compName(activeComp)} is open, but this pane still holds your `
+        + 'unapplied surface edits — Apply or ↩ Discard them to see the component\'s JSON.';
+    } else {
+      compBarEl.hidden = true;
+      compBarEl.textContent = '';
+    }
   };
 
   // The head kebab (⋮ beside the JSON ⇄ Explain tabs, markup owned by the app
@@ -1217,6 +1456,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number; runtime: number } => {
     lastRuntime = runtime;
+    if (bufferDefId !== null) {
+      // component mode: the lint pipeline reads the SURFACE doc — its rows
+      // would judge a document the pane isn't showing. Apply's shape check
+      // is the def gate; deep def linting is PR-2 territory.
+      lintEl.hidden = true;
+      lintEl.replaceChildren();
+      lintIssues = [];
+      return { errors: 0, warnings: 0, runtime: 0 };
+    }
+    lintEl.hidden = false;
     const issues = lintDocument(
       state.doc,
       state.fields.map((f) => f.name),
@@ -1329,7 +1578,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // gesture, and a dirty buffer waits for its next regenerate to re-read
   // the set (folds are clean-buffer-only — spec §3).
   const foldUnsub = foldState.subscribe((origin) => {
-    if (origin === 'json' || dirty) return;
+    // component mode: the shared set still holds the SURFACE's folds (the
+    // workshop tree folds locally) — applyFolds would prune every key
+    // against our empty map
+    if (origin === 'json' || dirty || bufferDefId !== null) return;
     applyFolds();
   });
   const stateUnsub = state.subscribe((reason) => {
@@ -1354,9 +1606,23 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // Document-moving emits mark the fork instead: Apply confirms before
     // overwriting the moved canvas, ↩ Discard edits is the other way out.
     if (dirty) {
-      if (reason === 'document' || reason === 'load' || reason === 'kind') divergedWhileDirty = true;
+      if (bufferDefId === null) {
+        // a surface draft forks from the DOC — doc-moving emits diverge it
+        if (reason === 'document' || reason === 'load' || reason === 'kind') divergedWhileDirty = true;
+      } else if (reason === 'workshop' && !divergedWhileDirty) {
+        // a component draft forks from the STAGED def — only a REAL staged
+        // change diverges it. Register/unregister churn (tab switches) emits
+        // 'workshop' too, so compare against the forked-from snapshot
+        // instead of trusting the reason alone (Copilot review, PR #312).
+        const d = activeWorkshop()?.def();
+        if (d && d.id === bufferDefId) {
+          delete d.builtin;
+          if (JSON.stringify(d, null, 2) !== bufferBaseline) divergedWhileDirty = true;
+        }
+      }
       refreshSizeMeter(); // the meter reads the DOC (Copy output), not the buffer
       refreshDeployPanel();
+      refreshComponentChrome(); // tab switches under a dirty draft re-word the banner
       return;
     }
     clearDirty(); regenerate(); refreshDeployPanel();

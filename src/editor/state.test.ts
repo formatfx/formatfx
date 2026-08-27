@@ -1565,3 +1565,27 @@ describe('per-surface fold memory (PR #290 review)', () => {
     foldState.clear();
   });
 });
+
+describe('workshop dirty registry (presentational — feeds the tab strip + side switcher)', () => {
+  it('tracks per-def dirt and announces changes as \'data\'', () => {
+    const s = new EditorState();
+    const reasons: string[] = [];
+    s.subscribe((r) => reasons.push(r));
+    expect(s.workshopDirty('c-1')).toBe(false);
+    s.setWorkshopDirty('c-1', true);
+    expect(s.workshopDirty('c-1')).toBe(true);
+    expect(reasons).toContain('data');
+    reasons.length = 0;
+    s.setWorkshopDirty('c-1', true); // unchanged — no announce churn
+    expect(reasons).toEqual([]);
+    s.setWorkshopDirty('c-1', false);
+    expect(s.workshopDirty('c-1')).toBe(false);
+  });
+
+  it('resetAll forgets every dot', () => {
+    const s = new EditorState();
+    s.setWorkshopDirty('c-2', true);
+    s.resetAll();
+    expect(s.workshopDirty('c-2')).toBe(false);
+  });
+});
