@@ -839,6 +839,16 @@ describe('parseComponentDefJson — the JSON pane\'s Apply-into-workshop gate', 
     expect(() => parseComponentDefJson(JSON.stringify({ id: 'x', name: 'X' }))).toThrow(/component/i);
   });
 
+  it('normalizes a missing description — the returned def honors the ComponentDef contract', () => {
+    const { description, ...noDesc } = DEF;
+    void description;
+    const out = parseComponentDefJson(JSON.stringify(noDesc));
+    expect(out.description).toBe(''); // consumers call description.trim()
+    // the store loader normalizes the same way instead of dropping the def
+    const stored = JSON.stringify({ version: 1, components: [noDesc] });
+    expect(loadComponents(stored)[0]?.description).toBe('');
+  });
+
   it('strips a builtin flag — hand-typed JSON can never mint a built-in', () => {
     const out = parseComponentDefJson(JSON.stringify({ ...DEF, builtin: true }));
     expect(out.builtin).toBeUndefined();

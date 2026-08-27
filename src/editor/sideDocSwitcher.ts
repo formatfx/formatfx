@@ -25,7 +25,9 @@ export function mountSideDocSwitcher(host: HTMLElement, onToast: (m: string) => 
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'wb-side-doc-btn';
-  btn.setAttribute('aria-haspopup', 'menu');
+  // deliberately NO aria-haspopup="menu": openMenu is a plain popup (no menu
+  // roles, focus transfer or arrow keys) — the app-wide convention for its
+  // triggers is to promise nothing rather than a false APG menu contract
   const mark = document.createElement('span');
   mark.className = 'wb-side-doc-mark';
   mark.setAttribute('aria-hidden', 'true');

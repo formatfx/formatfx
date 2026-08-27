@@ -6,8 +6,8 @@
  *     (the workshop's Save stays the one publish step);
  *   · refusals teach: bad JSON, non-def shapes, id changes;
  *   · the surface machinery stands down: no caret→canvas selection, no lint
- *     rows, deploy disabled — and the SHARED fold set is never pruned (the
- *     Structure tree resolves it against the staged tree in workshop mode);
+ *     rows, deploy disabled — and the SHARED fold set is never pruned (it
+ *     still holds the underlying surface's folds for the return trip);
  *   · a dirty surface buffer is never clobbered by entering the mode.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -96,7 +96,7 @@ describe('entering component mode', () => {
     expect(applyBtn.textContent).toBe('⬅ Apply to canvas');
   });
 
-  it('never prunes the SHARED fold set (the Structure tree owns it against the staged tree)', () => {
+  it('never prunes the SHARED fold set (it still holds the surface\'s folds for the return trip)', () => {
     mountPanel();
     foldState.update('tree', (set) => set.add('0'));
     openWorkshop();

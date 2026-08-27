@@ -326,9 +326,10 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (wctx) {
       // ── component mode: the staged def, verbatim. No offset↔path map and
       // no folds (that machinery is surface-doc-shaped — the PR after this
-      // one adapts it), and the SHARED fold set stays untouched: the
-      // Structure tree resolves it against the staged tree right now, so
-      // pruning against our empty map would wipe the workshop's folds.
+      // one adapts it), and the SHARED fold set stays untouched: it still
+      // holds the UNDERLYING SURFACE's folds (workshop tree folding is
+      // treeView-local), so pruning against our empty map would wipe what
+      // the surface needs back on return.
       const def = wctx.def();
       bufferDefId = def.id;
       delete def.builtin; // save-flow bookkeeping, not component content
@@ -1560,8 +1561,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // gesture, and a dirty buffer waits for its next regenerate to re-read
   // the set (folds are clean-buffer-only — spec §3).
   const foldUnsub = foldState.subscribe((origin) => {
-    // component mode: the shared set belongs to the Structure tree's staged
-    // paths — applyFolds would prune every key against our empty map
+    // component mode: the shared set still holds the SURFACE's folds (the
+    // workshop tree folds locally) — applyFolds would prune every key
+    // against our empty map
     if (origin === 'json' || dirty || bufferDefId !== null) return;
     applyFolds();
   });

@@ -188,7 +188,8 @@ the workshop stays the one publish step. The surface machinery stands down
 behind `bufferDefId` gates (no caret→canvas sync, folds, lint rows or
 field completions — blank beats wrong; adapting them to defs is the
 follow-up PR), and the shared foldState is never pruned or cleared in the
-mode — the Structure tree resolves it against the STAGED tree. A dirty
+mode — it still holds the UNDERLYING SURFACE's folds (workshop tree
+folding is treeView-local), which must survive for the return trip. A dirty
 surface draft is never clobbered by entering the mode: the banner explains,
 Apply or Discard first. Tests: jsonPanel.component.test.ts,
 sideDocSwitcher.test.ts, the seam in componentEditor.test.ts.

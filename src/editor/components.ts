@@ -575,6 +575,9 @@ export function loadComponents(raw: string | null): ComponentDef[] {
  *  orphaned placeholder just falls out at flatten time). Shared by the store
  *  loader above and parseComponentDefJson below. */
 function scrubOptionalDefFields(def: ComponentDef): ComponentDef {
+  // description is required by the ComponentDef contract (consumers call
+  // .trim()) but tolerated missing in old stores/hand-typed JSON — normalize
+  if (typeof def.description !== 'string') def.description = '';
   if (def.additionalRowClass !== undefined
     && (typeof def.additionalRowClass !== 'string' || componentKind(def) !== 'row')) {
     delete def.additionalRowClass;

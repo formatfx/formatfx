@@ -50,6 +50,10 @@ describe('the side doc switcher', () => {
     const btn = host.querySelector('.wb-side-doc-btn')!;
     expect(btn.getAttribute('aria-label')).toContain('is active');
     expect(btn.getAttribute('title')).toContain('Active canvas tab');
+    // no aria-haspopup="menu": openMenu is a plain popup, not an APG menu
+    // (no roles/focus transfer/arrow keys) — promising menu semantics would
+    // misdirect assistive tech (Copilot review; app-wide openMenu convention)
+    expect(btn.hasAttribute('aria-haspopup')).toBe(false);
   });
 
   it('follows navigation lockstep: opening a view relabels, minimizing goes back to Grid', () => {
