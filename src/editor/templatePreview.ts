@@ -301,7 +301,7 @@ function renderLayoutDetail(host: HTMLElement, id: WireframeId, api: ModalApi): 
   // seed — the pane must never contradict what Next opens
   const resumed = api.resumeConfig();
   const config = resumed ?? defaultConfigFor(id, state.fields);
-  const summary = summarizeConfig(config, state.fields, api.components());
+  const summary = summarizeConfig(config, state.fields, api.components(), state.columnLooks);
   const pane = el('div', 'wb-lay-detail');
   const back = el('button', 'wb-lay-back', '‹ All layouts') as HTMLButtonElement;
   back.type = 'button';

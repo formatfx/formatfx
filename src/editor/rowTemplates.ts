@@ -930,6 +930,7 @@ function treeBehaviors(root: SPElement, out: Set<string>): void {
  */
 export function summarizeConfig(
   config: RowTemplateConfig, fields: MockField[], components: ComponentDef[],
+  columnLooks: Record<string, SPElement> = {},
 ): ConfigSummary {
   const fieldNames: string[] = [];
   const compNames: string[] = [];
@@ -941,6 +942,14 @@ export function summarizeConfig(
         const f = fields.find((x) => x.name === it.fieldName);
         const label = f?.displayName ?? it.fieldName;
         if (label && !fieldNames.includes(label)) fieldNames.push(label);
+        // a column LOOK can carry actions/links/hover cards — the built cell
+        // embeds it (gridCellForField), so the pane must scan the same cell
+        // the preview and Apply render, or it under-reports
+        if (f) {
+          const contributed = new Set<string>();
+          treeBehaviors(gridCellForField(f, columnLooks), contributed);
+          for (const b of contributed) behaviors.add(`“${label}” ${b}`);
+        }
         continue;
       }
       const def = components.find((c) => c.id === it.componentId);

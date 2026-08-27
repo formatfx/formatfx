@@ -159,9 +159,6 @@ export function openTemplateModal(
   // Capture-phase so the app's own undo never sees it; editable surfaces keep
   // their native editing undo (same guard as canvas.ts).
   const undoKeys = (e: KeyboardEvent): void => {
-    // the selector renders no config — an undo there would be INVISIBLE work
-    // loss (and would quietly disarm the past.length close gate). Inert.
-    if (ui.stage === 'pick') return;
     if (!(e.ctrlKey || e.metaKey)) return;
     const key = e.key.toLowerCase();
     if (key !== 'z' && key !== 'y') return;
@@ -169,6 +166,10 @@ export function openTemplateModal(
     if (t?.closest?.('input, textarea, select, [contenteditable], dialog')) return;
     e.preventDefault();
     e.stopPropagation();
+    // the selector renders no config — a modal undo there would be INVISIBLE
+    // work loss, and letting the event through would fire the APP's undo and
+    // mutate the document behind the modal. Consume the shortcut, do nothing.
+    if (ui.stage === 'pick') return;
     if (key === 'y' || e.shiftKey) redo();
     else undo();
   };
@@ -422,16 +423,23 @@ export function openTemplateModal(
       }
       dirty = false;
       seededFrom = id;
+      // rerender replaced the focused selector row — same landing spot as resume
+      (modal.querySelector('.wb-template-layouts') as HTMLElement | null)?.focus();
     },
     previewWireframe: (id) => {
       ui.pickSelected = id;
       ui.pickDrilled = true;
       rerender();
+      // rerender replaced the focused list row — hand keyboard users the
+      // details pane's back button so they keep a position
+      (modal.querySelector('.wb-lay-back') as HTMLElement | null)?.focus();
     },
     backToList: () => {
       if (!ui.pickDrilled) return;
       ui.pickDrilled = false;
       rerender();
+      // …and coming back, land on the row they came from
+      (modal.querySelector(`[data-wireframe="${ui.pickSelected}"]`) as HTMLElement | null)?.focus();
     },
     confirmPick: () => {
       const id = ui.pickSelected;
@@ -448,6 +456,8 @@ export function openTemplateModal(
       if (resumesSelection()) {
         ui.stage = 'edit';
         rerender();
+        // keyboard position on entering the editor: its own back arrow
+        (modal.querySelector('.wb-template-layouts') as HTMLElement | null)?.focus();
         return;
       }
       api.pickWireframe(id);
@@ -462,6 +472,9 @@ export function openTemplateModal(
       ui.pickSelected = seededFrom !== null ? ui.config.wireframeId : null;
       ui.pickDrilled = ui.pickSelected !== null;
       rerender();
+      // keyboard position mirrors the drill state: the details back button,
+      // or the top of the plain list
+      (modal.querySelector(ui.pickDrilled ? '.wb-lay-back' : '.wb-lay-row') as HTMLElement | null)?.focus();
     },
     setStageWidth: (w) => { ui.stageWidth = w; rerender(); },
     // hover-transient: a dataset stamp only — a rerender here would rebuild the

@@ -237,11 +237,15 @@ describe('row view builder — the layout selector (stage pick)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('Ctrl+Z is inert in the selector — backing out cannot invisibly drain the undo trail', () => {
+  it('Ctrl+Z is CONSUMED but inert in the selector — no modal drain, no app undo behind it', () => {
     enterEditor();
     zone(0).dispatchEvent(fieldDrop('Status'));
     (document.querySelector('.wb-template-layouts') as HTMLElement).click();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // must no-op
+    const ev = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true });
+    const unconsumed = document.dispatchEvent(ev);
+    // consumed (preventDefault) so the APP's own Ctrl+Z handler can't mutate
+    // the document behind the modal — but the modal stack must not move either
+    expect(unconsumed).toBe(false);
     (document.querySelector('.wb-template-next') as HTMLElement).click(); // resume
     expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // Status survived
     expect((document.querySelector('.wb-template-undo') as HTMLButtonElement).disabled).toBe(false);

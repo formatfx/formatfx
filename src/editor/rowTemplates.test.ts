@@ -992,4 +992,16 @@ describe('summarizeConfig — the selector details pane never over-promises', ()
     c.zones[0].items.push(newComponentItem('gone', {}));
     expect(summarizeConfig(c, FIELDS, []).components).toEqual(['(missing)']);
   });
+
+  it('behaviors carried by a COLUMN LOOK surface — the pane scans the same cell Apply embeds', () => {
+    const looks = {
+      Status: { elmType: 'button', txtContent: '=[$Status]',
+        customRowAction: { action: 'defaultClick' } } as import('../core/types').SPElement,
+    };
+    const c = defaultConfigFor('lead-detail', FIELDS); // seeds Title + Status/Due details
+    const s = summarizeConfig(c, FIELDS, [], looks);
+    expect(s.behaviors.some((b) => b.includes('“Status”') && b.includes('opens the item'))).toBe(true);
+    // no looks → no phantom behaviors (the existing every-wireframe test pins [])
+    expect(summarizeConfig(c, FIELDS, []).behaviors).toEqual([]);
+  });
 });
