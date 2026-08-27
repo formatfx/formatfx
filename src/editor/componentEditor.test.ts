@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountComponentWorkshop } from './componentEditor';
-import { componentById, customComponents } from './componentLibrary';
+import { componentById, rawComponentById, customComponents } from './componentLibrary';
 import { state } from './state';
 
 let host: HTMLElement;
@@ -249,6 +249,21 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
     expect(ctx.def().embeds).toBeUndefined();
   });
 
+  it('applyDef refuses record/placeholder namespace mismatches — flatten would drop content', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    // an embeds record with NO _embed placeholder: its content would
+    // silently vanish at bake (Copilot review, PR #312)
+    const missing = ctx.def();
+    missing.embeds = [{ ns: 'Part', of: 'c-x', name: 'p' }];
+    expect(() => ctx.applyDef(missing)).toThrow(/placeholder/i);
+    // an _embed placeholder with NO record: a dead node flatten can't graft
+    const orphan = ctx.def();
+    orphan.root.children = [...(orphan.root.children ?? []), { elmType: 'div', _embed: 'Ghost' }];
+    expect(() => ctx.applyDef(orphan)).toThrow(/placeholder|record/i);
+    expect(ctx.def().embeds).toBeUndefined();
+  });
+
   it('applyDef refuses duplicate embed namespaces — flatten would silently drop a graft', () => {
     mountWorkshop();
     const ctx = state.workshopCtx!;
@@ -342,7 +357,8 @@ describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
       const toasts: string[] = [];
       host = document.createElement('div');
       document.body.appendChild(host);
-      handle = mountComponentWorkshop(host, componentById('c-c')!, {
+      // the strip mounts the STORED shape (embeds stay references there)
+      handle = mountComponentWorkshop(host, rawComponentById('c-c')!, {
         onToast: (m) => toasts.push(m), onSaved: () => {}, onDirtyChange: () => {},
       });
       const ctx = state.workshopCtx!;

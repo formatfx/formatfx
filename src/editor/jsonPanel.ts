@@ -1079,6 +1079,19 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
             + `got: ${newKeys.join(', ') || 'none'}). Edit slot labels, tooltips, types and the tree freely; `
             + 'a different key set wants a new component (Save as new in the workshop).');
         }
+        // the embed RECORD LIST is locked for the same reason: each ns keys
+        // the flattened `ns_*` slot names saved instances' maps reference,
+        // so even a consistent rename would strand them. Placeholders may
+        // move around the tree freely; records change in the workshop.
+        const recKey = (e: { ns: string; of: string }): string => JSON.stringify([e.ns, e.of]);
+        const oldRecs = (wctx.def().embeds ?? []).map(recKey).sort();
+        const newRecs = (def.embeds ?? []).map(recKey).sort();
+        if (oldRecs.length !== newRecs.length || oldRecs.some((r, i) => r !== newRecs[i])) {
+          throw new Error('The embeds list is managed in the workshop (＋ Embed / ✕ there) — each '
+            + 'namespace keys the flattened slot names that saved instances\' mappings reference, '
+            + 'so Apply can\'t add, remove or rename embed records. The _embed placeholders may '
+            + 'move around the tree freely.');
+        }
         if (divergedWhileDirty
           && !confirm('The workshop changed while you were editing this JSON — applying replaces those staged edits (the workshop\'s ↶ brings its tree back).\n\nApply anyway?')) return;
         // applyDef can refuse (embed loops/depth) — the draft must stay

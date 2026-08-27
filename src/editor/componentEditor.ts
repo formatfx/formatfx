@@ -895,6 +895,26 @@ export function mountComponentWorkshop(
       // button has: loops and over-deep chains are refused BEFORE anything
       // mutates — flattenComponent would only silently drop them at bake
       // time (Copilot review, PR #312).
+      // ── embed integrity: records ↔ placeholders must be one-to-one, or
+      // flatten silently drops content / leaves dead nodes at bake ──
+      const phCounts = new Map<string, number>();
+      const countPh = (el: SPElement): void => {
+        if (el._embed !== undefined) {
+          const ns = String(el._embed);
+          phCounts.set(ns, (phCounts.get(ns) ?? 0) + 1);
+        }
+        for (const c of el.children ?? []) countPh(c);
+        if (el.customCardProps?.formatter) countPh(el.customCardProps.formatter);
+      };
+      countPh(d.root);
+      const recNs = (d.embeds ?? []).map((e) => e.ns);
+      const recSet = new Set<string>(recNs);
+      const orphanPh = [...phCounts.keys()].find((ns) => !recSet.has(ns));
+      if (orphanPh !== undefined) {
+        throw new Error(`The tree carries an _embed placeholder "${orphanPh}" with no matching `
+          + 'embeds record — flatten can\'t graft it, leaving a dead node. Remove the placeholder '
+          + 'or add its record.');
+      }
       if (d.embeds?.length) {
         // namespaces are unique per parent (they prefix the child's slot keys
         // and address its graft) — flatten's ns-keyed map would silently
@@ -906,6 +926,17 @@ export function mountComponentWorkshop(
               + 'per component (each prefixes its child\'s slot keys and addresses its graft). Rename one.');
           }
           nsSeen.add(e.ns);
+        }
+        const missingPh = recNs.find((ns) => !(phCounts.get(ns) ?? 0));
+        if (missingPh !== undefined) {
+          throw new Error(`The embed record "${missingPh}" has no _embed placeholder in the tree — `
+            + 'its content would silently vanish at bake. Add an element with '
+            + `"_embed": "${missingPh}" where it should graft, or remove the record.`);
+        }
+        const dupPh = recNs.find((ns) => (phCounts.get(ns) ?? 0) > 1);
+        if (dupPh !== undefined) {
+          throw new Error(`The tree carries ${phCounts.get(dupPh)} _embed placeholders for `
+            + `"${dupPh}" — each embed grafts exactly once. Keep one.`);
         }
         const candidate: ComponentDef = { ...d, id: staged.id };
         const world = [...libraryDefs().filter((x) => x.id !== staged.id), candidate];

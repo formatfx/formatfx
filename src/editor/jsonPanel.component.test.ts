@@ -210,6 +210,22 @@ describe('editing + Apply-into-workshop', () => {
     expect(textEl.value).toContain('Self'); // the draft survived the workshop edit
   });
 
+  it('refuses embed-record changes — namespaces key the flattened slot names instance maps use', () => {
+    const { textEl, applyBtn, errEl } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.embeds = [{ ns: 'Part', of: 'c-any', name: 'p' }];
+    def.root.children = [...(def.root.children ?? []), { elmType: 'div', _embed: 'Part' }];
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    applyBtn.click();
+    // Copilot review, PR #312: even a consistent ns rename would re-key the
+    // flattened Part_* slots that saved instances' maps reference — embeds
+    // are managed in the workshop, where the mapping flows live
+    expect(errEl.hidden).toBe(false);
+    expect(errEl.textContent?.toLowerCase()).toContain('workshop');
+    expect(ctx.def().embeds).toBeUndefined();
+  });
+
   it('refuses an id change — the id is the tab\'s identity', () => {
     const { textEl, applyBtn, errEl } = mountPanel();
     const ctx = openWorkshop();
