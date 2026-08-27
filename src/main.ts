@@ -34,6 +34,7 @@ import { openSearch } from './editor/searchUi';
 import { openAbout } from './editor/about';
 import { openStressTest } from './editor/stressTestUi';
 import { mountExplainPanel } from './editor/explainPanel';
+import { mountSideDocSwitcher } from './editor/sideDocSwitcher';
 import { openShareDialog, openSharedWorkspaceFromHash, wireRestoreBackup } from './editor/shareUi';
 import { parseShareHash } from './core/share';
 import { themeToggleView } from './editor/themeToggle';
@@ -131,6 +132,7 @@ app.innerHTML = `
           <button class="wb-side-tab active" id="wb-side-tab-json" role="tab" aria-selected="true" data-tab="wb-tab-json">JSON</button>
           <button class="wb-side-tab" id="wb-side-tab-explain" role="tab" aria-selected="false" data-tab="wb-tab-explain" title="Read this formatter back in plain English — what shows, what turns which color when, what clicking does">Explain</button>
         </div>
+        <div id="wb-side-doc"></div>
         <div class="wb-side-actions">
         <button id="wb-side-max" class="wb-side-maxbtn" aria-pressed="false" aria-label="Toggle JSON pane maximize" title="Maximize the JSON pane over the canvas and data bar — the edit pane stays">⛶</button>
         <div class="wb-menu wb-side-more">
@@ -683,6 +685,7 @@ const canvas = mountCanvas(document.getElementById('wb-canvas')!, toast, {
 mountFxBar(document.getElementById('wb-fxbar')!, { accessory: document.getElementById('wb-titlecol-label')! });
 const jsonPanel = mountJsonPanel(document.getElementById('wb-tab-json')!, toast);
 mountExplainPanel(document.getElementById('wb-tab-explain')!);
+mountSideDocSwitcher(document.getElementById('wb-side-doc')!, toast);
 mountDataPanel(document.getElementById('wb-tab-data')!, toast);
 // the canvas tab strip mounts LAST: its first render may swap the workshop
 // over #wb-canvas (a component tab restored active), so the canvas must exist

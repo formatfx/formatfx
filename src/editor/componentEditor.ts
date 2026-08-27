@@ -272,45 +272,57 @@ export function mountComponentWorkshop(
     row.append(lab, input);
     ident.appendChild(row);
   };
-  textRow('Name', staged.name, (v) => { staged.name = v; }, 'wb-ce-name');
-  textRow('Description', staged.description, (v) => { staged.description = v; }, 'wb-ce-desc');
+  // re-runnable: applyDef (the JSON pane's Apply) replaces name/description
+  // wholesale, so the inputs re-seed from the staged def on demand
+  const renderIdentity = (): void => {
+    ident.replaceChildren();
+    textRow('Name', staged.name, (v) => { staged.name = v; }, 'wb-ce-name');
+    textRow('Description', staged.description, (v) => { staged.description = v; }, 'wb-ce-desc');
+  };
+  renderIdentity();
 
   // ── slots: labels/tooltips are editable, KEYS are not (they're field refs) ──
   const slotsSec = section(left, 'Slots — what the mapping dialog asks for');
-  if (!staged.slots.length) {
-    const none = document.createElement('div');
-    none.className = 'wb-ce-note';
-    none.textContent = 'No slots — this component references no columns and drops in as-is.';
-    slotsSec.appendChild(none);
-  }
-  for (const slot of staged.slots) {
-    const row = document.createElement('div');
-    row.className = 'wb-ce-slot';
-    const key = document.createElement('span');
-    key.className = 'wb-ce-slotkey';
-    key.textContent = `[$${slot.key}]`;
-    key.title = 'The slot key is the tree\'s field reference — it can\'t change here';
-    const lab = document.createElement('input');
-    lab.type = 'text';
-    lab.className = 'wb-ce-input wb-ce-slotlabel';
-    lab.value = slot.label;
-    lab.title = 'The question the mapping dialog asks for this slot';
-    lab.setAttribute('aria-label', `Label for the ${slot.key} slot`);
-    lab.addEventListener('input', () => { slot.label = lab.value; setDirty(true); });
-    const desc = document.createElement('input');
-    desc.type = 'text';
-    desc.className = 'wb-ce-input wb-ce-slotdesc';
-    desc.value = slot.description ?? '';
-    desc.placeholder = 'tooltip (optional)';
-    desc.setAttribute('aria-label', `Tooltip for the ${slot.key} slot`);
-    desc.addEventListener('input', () => {
-      if (desc.value.trim()) slot.description = desc.value;
-      else delete slot.description;
-      setDirty(true);
-    });
-    row.append(key, lab, desc);
-    slotsSec.appendChild(row);
-  }
+  // re-runnable for the same reason as renderIdentity — applyDef can swap the
+  // whole slot list
+  const renderSlots = (): void => {
+    slotsSec.replaceChildren();
+    if (!staged.slots.length) {
+      const none = document.createElement('div');
+      none.className = 'wb-ce-note';
+      none.textContent = 'No slots — this component references no columns and drops in as-is.';
+      slotsSec.appendChild(none);
+    }
+    for (const slot of staged.slots) {
+      const row = document.createElement('div');
+      row.className = 'wb-ce-slot';
+      const key = document.createElement('span');
+      key.className = 'wb-ce-slotkey';
+      key.textContent = `[$${slot.key}]`;
+      key.title = 'The slot key is the tree\'s field reference — it can\'t change here';
+      const lab = document.createElement('input');
+      lab.type = 'text';
+      lab.className = 'wb-ce-input wb-ce-slotlabel';
+      lab.value = slot.label;
+      lab.title = 'The question the mapping dialog asks for this slot';
+      lab.setAttribute('aria-label', `Label for the ${slot.key} slot`);
+      lab.addEventListener('input', () => { slot.label = lab.value; setDirty(true); });
+      const desc = document.createElement('input');
+      desc.type = 'text';
+      desc.className = 'wb-ce-input wb-ce-slotdesc';
+      desc.value = slot.description ?? '';
+      desc.placeholder = 'tooltip (optional)';
+      desc.setAttribute('aria-label', `Tooltip for the ${slot.key} slot`);
+      desc.addEventListener('input', () => {
+        if (desc.value.trim()) slot.description = desc.value;
+        else delete slot.description;
+        setDirty(true);
+      });
+      row.append(key, lab, desc);
+      slotsSec.appendChild(row);
+    }
+  };
+  renderSlots();
 
   // ── embedded components (#225): reuse another component inside this one ──
   // Composition at the definition layer. Embedding is ONE gesture = one ↶
@@ -804,6 +816,33 @@ export function mountComponentWorkshop(
       mu.commit(muBag());
       muButtons.refresh();
       renderPreview();
+      state.emit('workshop');
+    },
+    def: (): ComponentDef => JSON.parse(JSON.stringify(staged)) as ComponentDef,
+    applyDef: (next: ComponentDef): void => {
+      // The JSON pane's Apply: replace the whole staged def in ONE staged
+      // gesture. Identity stays the tab's — id/builtin are never taken from
+      // the JSON (the pane refuses id mismatches; this is the backstop).
+      // Undo follows the standing text-field rule: ↶ restores the TREE and
+      // embeds; name/description/slots keep their applied values.
+      const d = JSON.parse(JSON.stringify(next)) as ComponentDef;
+      staged.name = d.name;
+      staged.description = typeof d.description === 'string' ? d.description : '';
+      staged.slots = d.slots;
+      staged.root = d.root;
+      if (d.kind !== undefined) staged.kind = d.kind; else delete staged.kind;
+      if (d.additionalRowClass !== undefined) staged.additionalRowClass = d.additionalRowClass;
+      else delete staged.additionalRowClass;
+      if (d.variantOf !== undefined) staged.variantOf = d.variantOf; else delete staged.variantOf;
+      if (d.embeds !== undefined) staged.embeds = d.embeds; else delete staged.embeds;
+      if (!nodeAtStaged(sel)) sel = [];
+      setDirty(true);
+      mu.commit(muBag());
+      muButtons.refresh();
+      renderPreview();
+      renderEmbeds();
+      renderIdentity();
+      renderSlots();
       state.emit('workshop');
     },
   };

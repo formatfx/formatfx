@@ -127,8 +127,11 @@ src/editor/    the shell: state.ts (workspace store), presets.ts (palette +
                column JSON as a look, @currentField→[$Field]; toColumnFormatter
                compiles a look back to a real per-column formatter,
                [$Field]→@currentField), canvasTabs.ts (the canvas TAB STRIP —
-               ▦ Grid + view tabs + ⬡ workshop tabs; workshop keep-alive +
-               dirty dots), leftPane.ts + viewCard/columnShelf/
+               ▦ Grid + view tabs + ⬡ workshop tabs; workshop keep-alive;
+               dirty dots read the shared state.workshopDirty registry),
+               sideDocSwitcher.ts (the side pane's doc switcher — the same
+               open tabs as a head dropdown; pure lockstep navigation
+               through the strip's chokepoints), leftPane.ts + viewCard/columnShelf/
                componentLibrary/viewMenu (the Mockup-B left pane sections —
                COLUMNS-COMPONENTS-VIEWS §3), viewKebab.ts (the ⋮ settings
                panel off the STRUCTURE section header since 2026-07-10 —
@@ -167,6 +170,26 @@ layer riding fxSuggest's engine-grounded items + SP_FUNCTION_DOCS — never a
 standalone `!`). All of it is BUFFER work: the one document write stays the
 Apply button, and bare-structure menus open on Ctrl+Space only (auto-pop
 would fight plain typing). acMenu gained an optional caret anchor (additive).
+
+JSON-pane doc switcher + component mode (2026-08-27): the side-pane head
+carries a compact doc switcher (sideDocSwitcher.ts) naming what the pane is
+showing and listing every open canvas tab — picking one rides the strip's
+own navigation chokepoints (lockstep; both are stateless projections of
+state.openTabs, and it matters most maximized, when the strip is covered).
+With a ⬡ workshop tab active the JSON pane enters COMPONENT MODE: the
+buffer is the staged def's JSON (`builtin` stripped — save-flow
+bookkeeping, not content), fully editable; Apply parses via
+components.parseComponentDefJson (importJson-level tolerance + the store
+loader's optional-field scrub), refuses id changes (the id is the tab's
+identity) and STAGES through ctx.applyDef — ONE modal-undo step, Save in
+the workshop stays the one publish step. The surface machinery stands down
+behind `bufferDefId` gates (no caret→canvas sync, folds, lint rows or
+field completions — blank beats wrong; adapting them to defs is the
+follow-up PR), and the shared foldState is never pruned or cleared in the
+mode — the Structure tree resolves it against the STAGED tree. A dirty
+surface draft is never clobbered by entering the mode: the banner explains,
+Apply or Discard first. Tests: jsonPanel.component.test.ts,
+sideDocSwitcher.test.ts, the seam in componentEditor.test.ts.
 Prior art: thechriskent/jsonify's HorseScript IntelliSense — the feature
 shape (completions + signature help + expression highlighting inside JSON),
 not the code.

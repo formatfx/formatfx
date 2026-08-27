@@ -13,6 +13,7 @@ import {
   bestGuessMapping, mappingComplete, bindComponent, bindComponentInstance,
   componentInsertTarget, isSingleColumnComponent,
   loadComponents, serializeComponents, addComponent, removeComponent, componentId,
+  parseComponentDefJson,
   componentKind, componentFromFormatterDoc, ALL_FIELD_TYPES,
   BUILTIN_COMPONENTS, COMPONENT_CAP,
   uniqueName, variantName, createVariant, rebindInstance, replaceStampedIn, restampIn,
@@ -817,4 +818,41 @@ describe('built-ins definitely render (the generated-formatter bar)', () => {
       expect(json.replace(/!=/g, '').replace(/\[!/g, '')).not.toContain('!');
     });
   }
+});
+
+describe('parseComponentDefJson — the JSON pane\'s Apply-into-workshop gate', () => {
+  it('round-trips a valid component def', () => {
+    const out = parseComponentDefJson(JSON.stringify(DEF, null, 2));
+    expect(out).toEqual(DEF);
+  });
+
+  it('refuses malformed JSON with the parse error', () => {
+    expect(() => parseComponentDefJson('{ nope')).toThrow(/Invalid JSON/);
+  });
+
+  it('refuses formatter JSON (an elmType root) and teaches the component shape', () => {
+    const formatter = JSON.stringify({ elmType: 'div', txtContent: 'hi' });
+    expect(() => parseComponentDefJson(formatter)).toThrow(/component/i);
+  });
+
+  it('refuses a def missing its required fields', () => {
+    expect(() => parseComponentDefJson(JSON.stringify({ id: 'x', name: 'X' }))).toThrow(/component/i);
+  });
+
+  it('strips a builtin flag — hand-typed JSON can never mint a built-in', () => {
+    const out = parseComponentDefJson(JSON.stringify({ ...DEF, builtin: true }));
+    expect(out.builtin).toBeUndefined();
+  });
+
+  it('scrubs corrupt optional fields the way the store loader does', () => {
+    const out = parseComponentDefJson(JSON.stringify({
+      ...DEF,
+      additionalRowClass: 'zebra', // only valid on kind:'row'
+      variantOf: 42,               // non-string lineage
+      embeds: 'nope',              // non-array
+    }));
+    expect(out.additionalRowClass).toBeUndefined();
+    expect(out.variantOf).toBeUndefined();
+    expect(out.embeds).toBeUndefined();
+  });
 });

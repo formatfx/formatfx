@@ -15,6 +15,9 @@ export interface MenuItem {
   title?: string;
   /** Optional trailing chip, e.g. "Built-in" / "Yours" on the subtype catalog. */
   badge?: string;
+  /** Marks the row as the currently-active choice (aria-current + styling) —
+   *  for menus that switch between states rather than fire actions. */
+  current?: boolean;
   /** Optional trailing affordance (e.g. ⋯ "Refine") — its own click, distinct
    *  from the row's primary `fn`. */
   action?: { icon: string; title: string; fn: () => void };
@@ -142,6 +145,10 @@ export function openMenu(anchor: MenuAnchor, title: string | HTMLElement, items:
       b.appendChild(chip);
     }
     if (item.title) b.title = item.title;
+    if (item.current) {
+      row.classList.add('wb-menu-currentrow');
+      b.setAttribute('aria-current', 'true');
+    }
     b.addEventListener('click', () => {
       closeMenu();
       item.fn();

@@ -89,6 +89,14 @@ export interface WorkshopContext {
   /** Run one staged mutation: fn(), then dirty + mu.commit + preview
    *  refresh + a 'workshop' emit. */
   commit(fn: () => void): void;
+  /** Deep snapshot of the WHOLE staged def (id, name, slots, root, …) —
+   *  what the JSON pane renders in component mode. */
+  def(): ComponentDef;
+  /** The JSON pane's Apply: replace the staged def (identity preserved — id
+   *  and builtin stay the tab's) as one staged gesture: dirty + ONE
+   *  modal-undo step + workshop re-render + the 'workshop' announce. Save
+   *  stays the one app-level publish step. */
+  applyDef(next: ComponentDef): void;
 }
 
 /** The Left Edit Pane's two lenses: the Properties inspector or the Code
@@ -276,6 +284,11 @@ export class EditorState {
   /** The mounted workshop's staged-editing seam (see WorkshopContext).
    *  Null whenever no workshop DOM is mounted. */
   workshopCtx: WorkshopContext | null = null;
+  /** Per-def unsaved-staged-edits dirt — the tab strip's dot AND the side
+   *  pane's doc switcher read it (one source, two renderers). Presentational
+   *  like the tabs themselves: never persisted, never an undo step. The
+   *  strip's keep-alive machinery owns the writes. */
+  private workshopDirtyByDef = new Map<string, boolean>();
   /** The sheet last on the canvas — session-local memory for the VIEWS tab's
    *  return target (the grid lives on the COLUMNS tab since Stage 2, so the
    *  VIEWS tab needs to know which sheet to come back to). Never persisted. */
@@ -730,6 +743,20 @@ export class EditorState {
     }
   }
 
+  /** A workshop tab's unsaved-staged-edits dot. */
+  workshopDirty(defId: string): boolean {
+    return this.workshopDirtyByDef.get(defId) ?? false;
+  }
+
+  /** Flip a workshop tab's dot. 'data' announce (both dot renderers listen
+   *  there); silent when nothing changes. */
+  setWorkshopDirty(defId: string, dirty: boolean): void {
+    if (this.workshopDirty(defId) === dirty) return;
+    if (dirty) this.workshopDirtyByDef.set(defId, true);
+    else this.workshopDirtyByDef.delete(defId);
+    this.emit('data');
+  }
+
   /** Open (or focus) a component's WORKSHOP tab. The workshop covers the
    *  canvas; the surface — and `doc` — waits untouched underneath. */
   openComponentTab(defId: string): void {
@@ -998,6 +1025,7 @@ export class EditorState {
     this.floorGroups = [];
     this.openTabs = [{ kind: 'grid' }];
     this.activeComponentTab = null;
+    this.workshopDirtyByDef.clear();
     this.activeDocKey = 'main';
     this.lastOpenViewId = null;
     this.customTheme = null;

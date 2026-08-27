@@ -34,6 +34,16 @@ describe('canvasTabs add new button and dropdown', () => {
     });
   });
 
+  it('the dirty dot reads the SHARED registry — strip and side switcher can never disagree', () => {
+    mountCanvasTabs(stripHost, workshopHost, onToast);
+    state.openComponentTab('builtin-deadline-chip');
+    expect(stripHost.querySelector('.wb-canvastab-dot')).toBeNull();
+    state.setWorkshopDirty('builtin-deadline-chip', true);
+    expect(stripHost.querySelector('.wb-canvastab-dot')).not.toBeNull();
+    state.setWorkshopDirty('builtin-deadline-chip', false);
+    expect(stripHost.querySelector('.wb-canvastab-dot')).toBeNull();
+  });
+
   it('renders the subtle add button at the end of the tabs', () => {
     mountCanvasTabs(stripHost, workshopHost, onToast);
     const addBtn = stripHost.querySelector('.wb-canvastabs-add') as HTMLButtonElement;

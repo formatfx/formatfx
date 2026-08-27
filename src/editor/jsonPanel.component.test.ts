@@ -1,0 +1,206 @@
+/**
+ * JSON pane COMPONENT MODE — while a ⬡ workshop tab is active the pane shows
+ * (and edits) the workshop's STAGED def JSON instead of the surface doc:
+ *   · the buffer is the staged def, live-refreshed on workshop edits;
+ *   · Apply parses + validates and STAGES via ctx.applyDef — never a save
+ *     (the workshop's Save stays the one publish step);
+ *   · refusals teach: bad JSON, non-def shapes, id changes;
+ *   · the surface machinery stands down: no caret→canvas selection, no lint
+ *     rows, deploy disabled — and the SHARED fold set is never pruned (the
+ *     Structure tree resolves it against the staged tree in workshop mode);
+ *   · a dirty surface buffer is never clobbered by entering the mode.
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mountJsonPanel } from './jsonPanel';
+import { mountComponentWorkshop, type WorkshopHandle } from './componentEditor';
+import { componentById } from './componentLibrary';
+import { foldState } from './foldState';
+import { state } from './state';
+
+const DEF_ID = 'builtin-deadline-chip';
+
+let handle: WorkshopHandle | null = null;
+
+afterEach(() => {
+  handle?.destroy();
+  handle = null;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  document.querySelectorAll<HTMLElement>('body > *').forEach((el) => {
+    (el as unknown as { _unsub?: () => void })._unsub?.();
+    el.remove();
+  });
+  foldState.clear();
+  state.resetAll();
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  state.resetAll();
+});
+
+function mountPanel(onToast: (m: string) => void = () => {}) {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  mountJsonPanel(host, onToast);
+  return {
+    host,
+    textEl: host.querySelector('#wb-json-text') as HTMLTextAreaElement,
+    applyBtn: host.querySelector('#wb-json-apply') as HTMLButtonElement,
+    errEl: host.querySelector('#wb-json-import-error') as HTMLDivElement,
+    compBar: host.querySelector('#wb-json-compbar') as HTMLDivElement,
+  };
+}
+
+/** Activate the workshop tab AND mount its workshop (what the canvas strip
+ *  does) — the pane needs both the active tab and the registered seam. */
+function openWorkshop() {
+  state.openComponentTab(DEF_ID);
+  const whost = document.createElement('div');
+  document.body.appendChild(whost);
+  handle = mountComponentWorkshop(whost, componentById(DEF_ID)!, {
+    onToast: () => {},
+    onSaved: () => {},
+    onDirtyChange: (d) => state.setWorkshopDirty(DEF_ID, d),
+  });
+  return state.workshopCtx!;
+}
+
+const typeInto = (textEl: HTMLTextAreaElement, value: string): void => {
+  textEl.value = value;
+  textEl.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
+describe('entering component mode', () => {
+  it('shows the staged def JSON (minus workshop bookkeeping) and the component banner', () => {
+    const { textEl, compBar } = mountPanel();
+    expect(textEl.value).toContain('$schema'); // surface first
+    const ctx = openWorkshop();
+    const { builtin, ...content } = ctx.def();
+    void builtin;
+    expect(JSON.parse(textEl.value)).toEqual(content);
+    // builtin is the save flow's bookkeeping, not component content — never
+    // shown (and parseComponentDefJson strips it on the way back in anyway)
+    expect(textEl.value).not.toContain('"builtin"');
+    expect(compBar.hidden).toBe(false);
+    expect(compBar.textContent).toContain('Deadline chip');
+  });
+
+  it('leaves component mode on surface navigation — the buffer shows the surface again', () => {
+    const { textEl } = mountPanel();
+    openWorkshop();
+    expect(textEl.value).not.toContain('$schema');
+    state.minimizeView();
+    expect(textEl.value).toContain('$schema');
+  });
+
+  it('never prunes the SHARED fold set (the Structure tree owns it against the staged tree)', () => {
+    mountPanel();
+    foldState.update('tree', (set) => set.add('0'));
+    openWorkshop();
+    expect(foldState.keys()).toContain('0');
+  });
+
+  it('a dirty surface buffer is never clobbered — the banner explains instead', () => {
+    const { textEl, compBar } = mountPanel();
+    typeInto(textEl, '{"hand": "edит"}');
+    const before = textEl.value;
+    openWorkshop();
+    expect(textEl.value).toBe(before); // the draft survives
+    expect(compBar.hidden).toBe(false);
+    expect(compBar.textContent?.toLowerCase()).toContain('unapplied');
+  });
+});
+
+describe('editing + Apply-into-workshop', () => {
+  it('Apply stages the hand-edited def via applyDef and cleans the buffer', () => {
+    const toasts: string[] = [];
+    const { textEl, applyBtn } = mountPanel((m) => toasts.push(m));
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.name = 'Hand-edited name';
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    expect(textEl.classList.contains('wb-json-dirty')).toBe(true);
+    applyBtn.click();
+    expect(ctx.def().name).toBe('Hand-edited name');
+    expect(textEl.classList.contains('wb-json-dirty')).toBe(false);
+    expect(toasts.join(' ')).toContain('Save');
+    // Apply staged — it did NOT publish: the workshop tab is dirty now
+    expect(state.workshopDirty(DEF_ID)).toBe(true);
+  });
+
+  it('refuses invalid JSON with the parse error, staging nothing', () => {
+    const { textEl, applyBtn, errEl } = mountPanel();
+    const ctx = openWorkshop();
+    const before = ctx.def();
+    typeInto(textEl, '{ broken');
+    applyBtn.click();
+    expect(errEl.hidden).toBe(false);
+    expect(errEl.textContent).toContain('Invalid JSON');
+    expect(ctx.def()).toEqual(before);
+  });
+
+  it('refuses an id change — the id is the tab\'s identity', () => {
+    const { textEl, applyBtn, errEl } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.id = 'someone-else';
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    applyBtn.click();
+    expect(errEl.hidden).toBe(false);
+    expect(errEl.textContent).toContain('id');
+    expect(ctx.def().id).toBe(DEF_ID);
+  });
+
+  it('a clean buffer live-refreshes as the workshop edits', () => {
+    const { textEl } = mountPanel();
+    const ctx = openWorkshop();
+    ctx.commit(() => {
+      ctx.root().txtContent = 'workshop-edited';
+    });
+    expect(textEl.value).toContain('workshop-edited');
+  });
+
+  it('workshop edits under a dirty buffer mark divergence — Apply confirms first', () => {
+    const { textEl, applyBtn } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.name = 'Mine';
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    ctx.commit(() => {
+      ctx.root().txtContent = 'theirs';
+    });
+    const confirmSpy = vi.fn().mockReturnValue(false);
+    vi.stubGlobal('confirm', confirmSpy);
+    applyBtn.click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0]).toContain('workshop changed');
+    expect(ctx.def().name).not.toBe('Mine'); // declined — nothing staged
+    confirmSpy.mockReturnValue(true);
+    applyBtn.click();
+    expect(ctx.def().name).toBe('Mine');
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('surface machinery stands down', () => {
+  it('a caret click never drives the surface selection', () => {
+    const { textEl } = mountPanel();
+    openWorkshop();
+    const before = state.selection;
+    textEl.setSelectionRange(5, 5);
+    textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.selection).toEqual(before);
+  });
+
+  it('lint rows hide and the deploy action disables', () => {
+    const { host } = mountPanel();
+    const deployBtn = document.getElementById('wb-json-deploy') as HTMLButtonElement
+      ?? host.querySelector('#wb-json-deploy') as HTMLButtonElement;
+    openWorkshop();
+    expect((host.querySelector('#wb-lint') as HTMLElement).hidden).toBe(true);
+    expect(deployBtn.disabled).toBe(true);
+    state.minimizeView();
+    expect((host.querySelector('#wb-lint') as HTMLElement).hidden).toBe(false);
+    expect(deployBtn.disabled).toBe(false);
+  });
+});

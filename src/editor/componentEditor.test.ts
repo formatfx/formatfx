@@ -106,3 +106,70 @@ describe('the workshop editing context', () => {
     expect(host.textContent).toContain('Properties');
   });
 });
+
+describe('the JSON pane seam: ctx.def() + ctx.applyDef()', () => {
+  it('def() is a detached snapshot of the whole staged def', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const snap = ctx.def();
+    expect(snap.id).toBe('builtin-deadline-chip');
+    expect(snap.root).toEqual(ctx.root());
+    snap.name = 'mutated';
+    snap.root.txtContent = 'mutated';
+    expect(ctx.def().name).not.toBe('mutated');
+    expect(ctx.root().txtContent).not.toBe('mutated');
+  });
+
+  it('applyDef() stages the replacement — tree, identity fields, slots — and re-renders the workshop', () => {
+    const dirtyLog: boolean[] = [];
+    const def = componentById('builtin-deadline-chip')!;
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    handle = mountComponentWorkshop(host, def, {
+      onToast: () => {}, onSaved: () => {}, onDirtyChange: (d) => dirtyLog.push(d),
+    });
+    const ctx = state.workshopCtx!;
+    const reasons: string[] = [];
+    const unsub = state.subscribe((r) => reasons.push(r));
+    const next = ctx.def();
+    next.name = 'Renamed chip';
+    next.root = { elmType: 'div', txtContent: 'replaced-by-apply' };
+    next.slots = [{ key: 'Due', label: 'A fresh slot label', types: ['date'] }];
+    ctx.applyDef(next);
+    unsub();
+    expect(ctx.def().name).toBe('Renamed chip');
+    expect(ctx.root().txtContent).toBe('replaced-by-apply');
+    expect(dirtyLog).toContain(true);
+    expect(reasons).toContain('workshop');
+    // the identity inputs, slots list and preview all show the applied def
+    expect(host.querySelector<HTMLInputElement>('input.wb-ce-name')!.value).toBe('Renamed chip');
+    expect(host.querySelector<HTMLInputElement>('input.wb-ce-slotlabel')!.value).toBe('A fresh slot label');
+    expect(host.querySelector('.wb-ce-preview')!.textContent).toContain('replaced-by-apply');
+    // detached: mutating the caller's object after apply changes nothing
+    next.root.txtContent = 'later-mutation';
+    expect(ctx.root().txtContent).toBe('replaced-by-apply');
+  });
+
+  it('applyDef() keeps the staged identity — id and builtin are the tab\'s, not the JSON\'s', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const next = ctx.def();
+    next.id = 'evil-id';
+    delete next.builtin;
+    ctx.applyDef(next);
+    expect(ctx.def().id).toBe('builtin-deadline-chip');
+  });
+
+  it('applyDef() is ONE modal-undo step: ↶ restores the previous tree', () => {
+    mountWorkshop();
+    const ctx = state.workshopCtx!;
+    const beforeTxt = ctx.root().txtContent;
+    const next = ctx.def();
+    next.root = { elmType: 'div', txtContent: 'applied-tree' };
+    ctx.applyDef(next);
+    const undoBtn = host.querySelector<HTMLButtonElement>('.wb-mu-undo')!;
+    expect(undoBtn.disabled).toBe(false);
+    undoBtn.click();
+    expect(ctx.root().txtContent).toBe(beforeTxt);
+  });
+});
