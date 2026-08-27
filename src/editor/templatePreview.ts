@@ -3,7 +3,10 @@
 
 /**
  * editor/templatePreview.ts — the CHIPS bar (fields + components, the drag
- * sources), the WIREFRAME GALLERY (stage 'pick', grouped Row/Tile), the
+ * sources), the LAYOUT SELECTOR (stage 'pick': a narrow list of layouts on
+ * the left — Recent + Row + Tile groups, foldable — that drills into a
+ * details pane on selection, beside a wide LIVE preview of the selected
+ * layout on the right, rendered with the maker's real sample rows), the
  * recursive ZONE TREE, and the PREVIEW canvas. The canvas renders the row (or
  * tile) with the REAL renderer (same path as the live grid), then decorates
  * the EDIT exemplar (zones select zone-first; items drill in on the second
@@ -23,8 +26,10 @@ import { renderElement, type RenderOptions } from '../core/renderer';
 import { ctxForRow } from './previewCtx';
 import {
   buildTemplateView, childSlotOrder, WIREFRAMES,
+  wireframeById, defaultConfigFor, summarizeConfig,
   ZONE_SIZE_LABEL, ZONE_FLOW_LABEL, ZONE_VALIGN_LABEL,
-  type Wireframe, type ZoneConfig, type ZoneItem, type ZonePath,
+  type RowTemplateConfig, type Wireframe, type WireframeId,
+  type ZoneConfig, type ZoneItem, type ZonePath,
 } from './rowTemplates';
 import { WEIGHT_FLEX } from './areas';
 import type { SPElement } from '../core/types';
@@ -152,6 +157,7 @@ function wireItemTarget(node: HTMLElement, itemPath: ZonePath, horizontal: boole
 
 export function renderChips(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.innerHTML = '';
+  if (ui.stage === 'pick') return; // the selector has no drag sources
   const placedFields = new Set<string>();
   const collect = (z: ZoneConfig): void => z.items.forEach((it) => {
     if (it.kind === 'field') placedFields.add(it.fieldName);
@@ -191,7 +197,7 @@ export function renderChips(host: HTMLElement, ui: ModalUI, api: ModalApi): void
   }
 }
 
-// ─── the wireframe gallery (stage 'pick') ────────────────────────────────────
+// ─── the layout selector (stage 'pick') ──────────────────────────────────────
 
 /** A CSS-drawn thumbnail of a wireframe: zone boxes at their flex proportions,
  *  item marks laid out by the zone's flow — the layout IS the picker. Tile
@@ -208,34 +214,184 @@ function wireframeThumb(wf: Wireframe): HTMLElement {
   return t;
 }
 
-function renderGallery(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
-  host.appendChild(el('div', 'wb-template-gallery-title', 'Start from a layout'));
-  host.appendChild(el('div', 'wb-template-gallery-sub',
-    'Each layout is a set of zones. Drop fields and components into them — or whole zones into zones — then tune how every zone shares space and wraps. '
-    + 'Row layouts fill the list row; tile layouts stack their zones inside a gallery tile.'));
+/** SESSION memory for the selector — recently previewed layouts (newest
+ *  first, capped) and which groups are folded. Module-level on purpose: it
+ *  survives reopening the modal within the session, nothing more. */
+const layoutRecents: WireframeId[] = [];
+const foldedGroups = new Set<string>();
+
+function recordLayoutRecent(id: WireframeId): void {
+  const i = layoutRecents.indexOf(id);
+  if (i >= 0) layoutRecents.splice(i, 1);
+  layoutRecents.unshift(id);
+  if (layoutRecents.length > 5) layoutRecents.length = 5;
+}
+
+/** Test hook: wipe the selector's session memory. */
+export function resetPickMemory(): void {
+  layoutRecents.length = 0;
+  foldedGroups.clear();
+}
+
+/** One list row: mini thumbnail + name — the details live in the drill-in,
+ *  so the list stays scannable. Recent-group copies carry a DIFFERENT data
+ *  attribute so `[data-wireframe=…]` stays a unique selector for e2e. */
+function layoutRow(wf: Wireframe, ui: ModalUI, api: ModalApi, recent: boolean): HTMLButtonElement {
+  const row = el('button', 'wb-lay-row') as HTMLButtonElement;
+  row.type = 'button';
+  if (recent) row.dataset.wireframeRecent = wf.id;
+  else row.dataset.wireframe = wf.id;
+  row.title = wf.blurb;
+  row.setAttribute('aria-pressed', String(ui.pickSelected === wf.id)); // selection isn't color-only
+  if (ui.pickSelected === wf.id) row.classList.add('wb-lay-on');
+  const thumb = el('span', 'wb-lay-thumb');
+  thumb.appendChild(wireframeThumb(wf));
+  row.append(thumb, el('span', 'wb-lay-name', wf.name));
+  row.addEventListener('click', () => {
+    recordLayoutRecent(wf.id);
+    api.previewWireframe(wf.id);
+  });
+  return row;
+}
+
+/** The selector's LEFT pane: the grouped layout list, or — once a layout is
+ *  selected — a drilled-in details pane for it (Back returns to the list
+ *  while the right-pane preview stays put). */
+export function renderLayoutSide(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
+  host.innerHTML = '';
+  if (ui.pickDrilled && ui.pickSelected) {
+    renderLayoutDetail(host, ui.pickSelected, api);
+    return;
+  }
+  const list = el('div', 'wb-lay-list');
+  const group = (key: string, label: string, wfs: Wireframe[], recent = false): void => {
+    if (!wfs.length) return;
+    const head = el('button', 'wb-template-gallery-head wb-lay-ghead', label) as HTMLButtonElement;
+    head.type = 'button';
+    head.dataset.laygroup = key;
+    const folded = foldedGroups.has(key);
+    if (folded) head.classList.add('wb-lay-ghead-closed');
+    head.setAttribute('aria-expanded', String(!folded));
+    head.title = folded ? 'Show these layouts' : 'Hide these layouts';
+    head.addEventListener('click', () => {
+      if (foldedGroups.has(key)) foldedGroups.delete(key);
+      else foldedGroups.add(key);
+      renderLayoutSide(host, ui, api);
+      // the rerender replaced the focused header — keep keyboard users on it
+      (host.querySelector(`[data-laygroup="${key}"]`) as HTMLElement | null)?.focus();
+    });
+    list.appendChild(head);
+    if (!folded) for (const wf of wfs) list.appendChild(layoutRow(wf, ui, api, recent));
+  };
+  const recents = layoutRecents
+    .map((id) => WIREFRAMES.find((w) => w.id === id))
+    .filter((w): w is Wireframe => Boolean(w));
+  group('recent', 'Recent', recents, true);
+  const order: readonly (readonly ['row' | 'tile', string])[] = ui.galleryFirst === 'tile'
+    ? [['tile', 'Tile layouts'], ['row', 'Row layouts']]
+    : [['row', 'Row layouts'], ['tile', 'Tile layouts']];
+  for (const [target, label] of order) group(target, label, WIREFRAMES.filter((w) => w.target === target));
+  host.appendChild(list);
+}
+
+/** The drilled-in details pane: what the layout is, the zones it ships, the
+ *  columns it would seed from THIS list, and every behavior Apply would
+ *  write — all via the pure summarizer so the pane never over-promises. */
+function renderLayoutDetail(host: HTMLElement, id: WireframeId, api: ModalApi): void {
+  const wf = wireframeById(id);
+  // Next RESUMES a kept config here? Then describe THAT, not the pristine
+  // seed — the pane must never contradict what Next opens
+  const resumed = api.resumeConfig();
+  const config = resumed ?? defaultConfigFor(id, state.fields);
+  const summary = summarizeConfig(config, state.fields, api.components(), state.columnLooks);
+  const pane = el('div', 'wb-lay-detail');
+  const back = el('button', 'wb-lay-back', '‹ All layouts') as HTMLButtonElement;
+  back.type = 'button';
+  back.title = 'Back to the layout list — this layout stays previewed';
+  back.addEventListener('click', () => api.backToList());
+  pane.appendChild(back);
+  const title = el('div', 'wb-lay-detail-titlerow');
+  title.append(
+    el('span', 'wb-lay-detail-name', wf.name),
+    el('span', 'wb-lay-detail-kind', config.target === 'tile' ? 'Tile' : 'Row'));
+  pane.appendChild(title);
+  pane.appendChild(el('div', 'wb-lay-detail-blurb', wf.blurb));
+  // only real edits earn the marker — an untouched seed resumed via the back
+  // arrow is byte-identical to a fresh one, and "edits" there would be a lie
+  if (resumed && api.resumeEdited()) {
+    pane.appendChild(el('div', 'wb-lay-detail-resume',
+      '● You have this layout open with edits — Next resumes them exactly as left.'));
+  }
+
+  const sec = (label: string): HTMLElement => {
+    const s = el('div', 'wb-lay-detail-sec');
+    s.appendChild(el('div', 'wb-lay-detail-head', label));
+    pane.appendChild(s);
+    return s;
+  };
+  const zones = sec('Zones');
+  for (const z of summary.zones) {
+    zones.appendChild(el('div', 'wb-lay-detail-row', `${z.label} — ${z.size} · ${z.flow}`));
+  }
+  const cols = sec('Starts with your columns');
+  if (summary.fields.length) for (const f of summary.fields) cols.appendChild(el('div', 'wb-lay-detail-row', f));
+  else cols.appendChild(el('div', 'wb-lay-detail-row wb-lay-detail-none', 'None yet — drop columns into the zones in the next step'));
+  if (summary.components.length) {
+    const comps = sec('Components');
+    for (const c of summary.components) comps.appendChild(el('div', 'wb-lay-detail-row', `⬡ ${c}`));
+  }
+  const beh = sec('Behaviors');
+  if (summary.behaviors.length) for (const b of summary.behaviors) beh.appendChild(el('div', 'wb-lay-detail-row', b));
+  else {
+    // branch on the CONFIG's target — a resumed layout may be retargeted
+    // (Applies-as), and tile output refuses kebabs
+    beh.appendChild(el('div', 'wb-lay-detail-row wb-lay-detail-none', config.target === 'tile'
+      ? 'None yet — the next step adds hover highlight and components with actions'
+      : 'None yet — the next step adds a row menu (⋯), hover highlight and more'));
+  }
+  pane.appendChild(el('div', 'wb-lay-detail-note', api.isCreating()
+    ? 'Next opens the builder; Create then adds this as its own named view — nothing is overwritten.'
+    : 'Next opens the builder; Save then replaces this view\'s layout (one Ctrl+Z reverts it).'));
+  host.appendChild(pane);
+}
+
+/** The selector's RIGHT pane: a quiet prompt until a layout is selected, then
+ *  a LIVE preview of it — up to 3 real rows (or a tile deck) rendered from
+ *  the maker's own sample data, the exact path the builder's Live section
+ *  uses. Selecting is browsing; nothing touches the working config. */
+export function renderPickPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
+  host.innerHTML = '';
   if (ui.foreignRow) {
     host.appendChild(el('div', 'wb-template-foreign-note',
       'The current view layout was built or edited outside this builder, so it can\'t be reopened as zones. '
-      + 'Picking a layout starts fresh — Apply replaces it (one Ctrl+Z brings it back).'));
+      + 'Selecting here only previews; after Next, Save replaces it (one Ctrl+Z on the canvas brings it back).'));
   }
-  const groups: readonly (readonly ['row' | 'tile', string])[] = ui.galleryFirst === 'tile'
-    ? [['tile', 'Tile layouts'], ['row', 'Row layouts']]
-    : [['row', 'Row layouts'], ['tile', 'Tile layouts']];
-  for (const [target, label] of groups) {
-    host.appendChild(el('div', 'wb-template-gallery-head', label));
-    const grid = el('div', 'wb-template-gallery');
-    for (const wf of WIREFRAMES.filter((w) => w.target === target)) {
-      const card = el('button', 'wb-wf-card') as HTMLButtonElement;
-      card.type = 'button';
-      card.dataset.wireframe = wf.id;
-      card.appendChild(wireframeThumb(wf));
-      card.appendChild(el('span', 'wb-wf-name', wf.name));
-      card.appendChild(el('span', 'wb-wf-blurb', wf.blurb));
-      card.addEventListener('click', () => api.pickWireframe(wf.id));
-      grid.appendChild(card);
-    }
-    host.appendChild(grid);
+  if (!ui.pickSelected) {
+    const ph = el('div', 'wb-lay-placeholder');
+    ph.append(
+      el('div', 'wb-lay-placeholder-main', 'Pick a layout on the left to preview it with your list\'s data.'),
+      el('div', 'wb-lay-placeholder-sub',
+        'Each layout is a set of zones. The next step lets you drop columns and components into them and tune how everything shares space.'));
+    host.appendChild(ph);
+    return;
   }
+  const wf = wireframeById(ui.pickSelected);
+  // resume context previews the KEPT config (edits, retargets and all) —
+  // the live preview must show exactly what Next opens
+  const config = api.resumeConfig() ?? defaultConfigFor(ui.pickSelected, state.fields);
+  const head = el('div', 'wb-lay-preview-titlerow');
+  head.append(
+    el('span', 'wb-lay-preview-title', wf.name),
+    el('span', 'wb-lay-preview-kind', config.target === 'tile' ? 'Tile layout' : 'Row layout'));
+  host.appendChild(head);
+  const stagebox = el('div', 'wb-lay-preview-stage');
+  const { root } = buildTemplateView(
+    config, state.fields, state.columnLooks, api.palette(), api.components(), { prune: true });
+  if (config.target === 'tile') renderLiveTiles(stagebox, root, config, api);
+  else renderLiveRows(stagebox, root, config, api);
+  host.appendChild(stagebox);
+  host.appendChild(el('div', 'wb-template-note',
+    'A live preview with your sample rows — menus, cards and links behave like the real list. Next opens the builder to make it yours.'));
 }
 
 // ─── the zone TREE (structure pane, above the inspector) ─────────────────────
@@ -246,13 +402,17 @@ function renderGallery(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
 export function renderZoneTree(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.innerHTML = '';
   if (ui.stage === 'pick') return; // the side column is CSS-hidden in the gallery
+  // the back arrow leads (top-left, the "step out of this context" spot) —
+  // it returns to the layout selector, dropping nothing: the config is kept
+  // and re-entering the same layout resumes it
   const head = el('div', 'wb-template-tree-headrow');
-  head.appendChild(el('span', 'wb-template-tree-head', 'Zones'));
-  const layouts = el('button', 'wb-template-mini wb-template-layouts', '▤ Layouts') as HTMLButtonElement;
+  const layouts = el('button', 'wb-template-mini wb-template-layouts', '‹') as HTMLButtonElement;
   layouts.type = 'button';
-  layouts.title = 'Start from a different pre-built layout';
+  layouts.title = 'Back to the layout selector — your layout is kept, and Resume/Next returns to it';
+  layouts.setAttribute('aria-label', 'Back to layouts');
   layouts.addEventListener('click', () => api.openGallery());
   head.appendChild(layouts);
+  head.appendChild(el('span', 'wb-template-tree-head', 'Zones'));
   host.appendChild(head);
 
   const rows = el('div', 'wb-template-tree-rows');
@@ -369,7 +529,7 @@ function treeZoneRows(
 
 export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): void {
   host.innerHTML = '';
-  if (ui.stage === 'pick') { renderGallery(host, ui, api); return; }
+  if (ui.stage === 'pick') { renderPickPreview(host, ui, api); return; }
   const tile = ui.config.target === 'tile';
 
   const head = el('div', 'wb-template-prev-head');
@@ -395,8 +555,8 @@ export function renderPreview(host: HTMLElement, ui: ModalUI, api: ModalApi): vo
   stage.appendChild(el('div', 'wb-template-livehead', 'Live'));
   const pruned = buildTemplateView(
     ui.config, state.fields, state.columnLooks, api.palette(), api.components(), { prune: true });
-  if (tile) renderLiveTiles(stage, pruned.root, ui, api);
-  else renderLiveRows(stage, pruned.root, ui, api);
+  if (tile) renderLiveTiles(stage, pruned.root, ui.config, api);
+  else renderLiveRows(stage, pruned.root, ui.config, api);
 
   host.appendChild(el('div', 'wb-template-note',
     'Click selects the zone; click again drills into what\'s inside. Drag anything anywhere — edges drop beside, the middle drops inside. '
@@ -662,7 +822,7 @@ function makeDivider(leftZoneIdx: number, ui: ModalUI, api: ModalApi): HTMLEleme
 }
 
 function renderLiveRows(
-  body: HTMLElement, root: SPElement, ui: ModalUI, api: ModalApi,
+  body: HTMLElement, root: SPElement, config: RowTemplateConfig, api: ModalApi,
 ): void {
   const rowCount = Math.min(3, Math.max(1, state.rows.length));
   const onAction = (elx: SPElement, summary: string): void => api.notify(stubMessage(elx, summary));
@@ -670,7 +830,7 @@ function renderLiveRows(
     const ctx = ctxForRow(i);
     const opts: RenderOptions = { tagPaths: true, issues: [], onAction };
     const prow = el('div', 'wb-template-prow');
-    if (ui.config.hoverHighlight) prow.classList.add('wb-prow-hoverable');
+    if (config.hoverHighlight) prow.classList.add('wb-prow-hoverable');
     try {
       prow.appendChild(renderElement(root, ctx, opts));
     } catch (e) {
@@ -682,15 +842,15 @@ function renderLiveRows(
 
 /** The live TILE deck: up to 3 tiles at the exact configured box, side by
  *  side like the real gallery — hover behaviors and stubs are real. */
-function renderLiveTiles(body: HTMLElement, root: SPElement, ui: ModalUI, api: ModalApi): void {
+function renderLiveTiles(body: HTMLElement, root: SPElement, config: RowTemplateConfig, api: ModalApi): void {
   const deck = el('div', 'wb-template-tiledeck');
   const tileCount = Math.min(3, Math.max(1, state.rows.length));
   const onAction = (elx: SPElement, summary: string): void => api.notify(stubMessage(elx, summary));
   for (let i = 0; i < tileCount; i++) {
     const box = el('div', 'wb-template-ptile');
-    box.style.width = `${ui.config.tileWidth ?? 254}px`;
-    box.style.height = `${ui.config.tileHeight ?? 220}px`;
-    if (ui.config.hoverHighlight) box.classList.add('wb-prow-hoverable');
+    box.style.width = `${config.tileWidth ?? 254}px`;
+    box.style.height = `${config.tileHeight ?? 220}px`;
+    if (config.hoverHighlight) box.classList.add('wb-prow-hoverable');
     try {
       box.appendChild(renderElement(root, ctxForRow(i), { tagPaths: true, issues: [], onAction }));
     } catch (e) {

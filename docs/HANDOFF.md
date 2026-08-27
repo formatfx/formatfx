@@ -895,6 +895,52 @@ Key structural invariants:
   hovers it — and the empty-zone min-width floor is !important because a
   fill zone's inline min-width:0 collapsed an empty nested zone inside a
   stack to an invisible 0px drop target.
+  **The layout SELECTOR + one "New view" door (2026-08-26, owner brief —
+  supersedes the wireframe-card gallery and the rowview/tileview split)**:
+  stage `'pick'` is a two-pane SELECTOR now — a narrow left list of every
+  layout (compact thumb + name; foldable **Recent / Row layouts / Tile
+  layouts** groups, recents session-scoped module memory à la searchUi,
+  `resetPickMemory()` for tests) beside a wide LIVE right-pane preview
+  (pruned `buildTemplateView` + `ctxForRow`, the exact Live-section path,
+  real sample rows; a quiet prompt until a selection). Selecting DRILLS the
+  left pane into a details card (`.wb-lay-detail`, one elevation step up,
+  back arrow leading): blurb, zones in the house vocabulary, the columns
+  the seed would place, and behaviors via the new pure
+  **`summarizeConfig`** (rowTemplates.ts) — derived from the SAME rules
+  Apply uses (buildKebab refusals mirrored), so the pane never promises
+  what Apply won't write. Selecting is BROWSING: nothing touches the
+  config until **Next** (footer, bottom-right beside Back) runs
+  `confirmPick` — RESUME requires BOTH the selection matching
+  `ui.config.wireframeId` AND explicit-pick provenance from the TRUST
+  CHAIN (`currentTrust`/`pastTrust`/`futureTrust`, kept in lockstep with
+  the undo stacks): id equality alone is NOT sufficient, because a
+  reopened sheet's configFromView stamp is the 'blank'/'tile-blank'
+  sentinel and 'blank' is also a real, pickable layout — only a pick this
+  open pedigrees an id, and undo/redo carry that pedigree with the
+  config. On RESUME the context renders the KEPT config in the details
+  pane + live preview (`ModalApi.resumeConfig`, with an accent "edits in
+  progress" row); a different layout → `pickWireframe`, whose at-stake
+  gate is `dirty || past.length > 0 || future.length > 0` — a prior
+  re-pick leaves dirty=false with real states in `past`, and an undone
+  re-pick leaves the replaced work in `future` ONLY; all three must keep
+  both the confirm and the undoable-commit path (the adversarial review
+  caught the silent history wipe; Copilot caught the redo-only leg). A reopened sheet backed out to the list (no source
+  wireframe) gets the footer button as an enabled **Resume**. Ctrl+Z is
+  INERT in the pick stage (nothing renders the config there — an undo
+  would be invisible work loss). Chrome geometry mirrors the app: top bar = title + CENTERED
+  undo/redo (edit only), chips on their own bar (edit only), and the
+  footer holds the journey buttons in both stages — Back/Next ↔ Cancel +
+  **Create** (`creating`) / Save (editing an existing sheet); the zone
+  tree's headrow leads with a '‹' back arrow (class `.wb-template-layouts`
+  kept) that reopens the selector drilled into the current layout.
+  `close()` gates on `past.length > 0` (touched work confirms on Cancel /
+  Escape / backdrop; undo-to-baseline disarms; Apply closes force).
+  Entry points collapsed to ONE **"＋ New view…"** (views list
+  `.wb-viewslist-newview`, canvas-tab ＋ menu, component library — the
+  library card also gained the `createNew: true` its "New" label always
+  implied); the kebab's "Templates…" stays the edit-existing door, and
+  `openTemplateModal` dropped `opts.target` (galleryFirst now derives
+  from the reopened/doc kind alone).
 
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 

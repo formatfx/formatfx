@@ -882,6 +882,134 @@ export const ZONE_VALIGN_LABEL: Record<RootVAlign, string> = {
   top: 'Top', middle: 'Middle', bottom: 'Bottom', baseline: 'Text baseline', stretch: 'Fill height',
 };
 
+// ─── config summary (the layout selector's details pane) ────────────────────
+
+export interface ConfigSummary {
+  /** Display names of the columns the config places, in layout order. */
+  fields: string[];
+  /** Names of the components the config places ('(missing)' for lost defs). */
+  components: string[];
+  /** Human sentences for every click/hover behavior Apply would write. */
+  behaviors: string[];
+  /** Top-level zones with the house vocabulary (ZONE_*_LABEL). */
+  zones: { label: string; size: string; flow: string }[];
+}
+
+/** Maker-facing phrase for EVERY CustomRowAction the schema type admits —
+ *  typed exhaustively so a new action is a compile error here, never a raw
+ *  internal id leaking into the details pane. */
+const ROW_ACTION_PHRASE: Record<Exclude<CustomRowAction['action'], ''>, string> = {
+  defaultClick: 'opens the item', editProps: 'opens the edit form', share: 'shares the item',
+  delete: 'deletes the item', executeFlow: 'runs a flow', setValue: 'sets a column value',
+  openContextMenu: "opens SharePoint's item menu", embed: 'opens the embed dialog',
+  copyLink: 'copies a link to the item', comment: 'opens the comments pane',
+  openApprovalDialog: 'opens the approval dialog', executeQuickStep: 'runs a Quick Step',
+  previewFileAction: 'previews the file (libraries only)',
+  copyFile: 'copies the file (libraries only)', moveFile: 'moves the file (libraries only)',
+};
+
+/** Every behavior phrase an element tree would fire on real SP. */
+function treeBehaviors(root: SPElement, out: Set<string>): void {
+  const cra = root.customRowAction;
+  if (cra?.action) {
+    // parameter-dependent actions that are missing their parameter DO NOTHING
+    // on real SP (the linter says so) — never promise them as working
+    const params = typeof cra.actionParams === 'string' ? cra.actionParams : '';
+    const input = cra.actionInput;
+    const inputObj = input && typeof input === 'object' ? input as Record<string, unknown> : null;
+    const incomplete =
+      (cra.action === 'executeFlow' && !/"id"\s*:\s*"[^"]+"/.test(params))
+      || (cra.action === 'setValue' && !(inputObj && Object.keys(inputObj).length))
+      || (cra.action === 'executeQuickStep'
+        && !(typeof inputObj?.ruleTemplateId === 'string' && inputObj.ruleTemplateId.trim()));
+    out.add(incomplete
+      ? 'carries an incomplete action (does nothing on real SharePoint)'
+      : ROW_ACTION_PHRASE[cra.action]);
+  }
+  // hyperlinks are click behaviors too — a details pane that misses them
+  // would claim "no behaviors" over a link-bearing component
+  if (root.elmType === 'a' && root.attributes?.href !== undefined) out.add('opens a link');
+  // …as are the two field-level interactivity props Apply preserves
+  if (root.inlineEditField) out.add('edits a value inline');
+  if (root.defaultHoverField) out.add('shows a hover card');
+  if (root.customCardProps) {
+    // openOnEvent names exactly one trigger — promise that one, not both
+    out.add((root.customCardProps as { openOnEvent?: string }).openOnEvent === 'hover'
+      ? 'shows a card on hover' : 'shows a card on click');
+    const inner = (root.customCardProps as { formatter?: SPElement }).formatter;
+    if (inner) treeBehaviors(inner, out);
+  }
+  for (const child of root.children ?? []) treeBehaviors(child, out);
+}
+
+/**
+ * What a config amounts to, in maker words — the pure source for the layout
+ * selector's details pane. Derived from the SAME rules Apply uses (kebab
+ * refusals, component defs), so the pane never promises what Apply won't write.
+ */
+export function summarizeConfig(
+  config: RowTemplateConfig, fields: MockField[], components: ComponentDef[],
+  columnLooks: Record<string, SPElement> = {},
+): ConfigSummary {
+  const fieldNames: string[] = [];
+  // dedupe by INTERNAL name — distinct columns may legally share a display
+  // name on SP, and neither may hide the other from the summary
+  const seenFields = new Set<string>();
+  const compNames: string[] = [];
+  const behaviors = new Set<string>();
+  const walk = (z: ZoneConfig): void => {
+    for (const it of z.items) {
+      if (it.kind === 'zone') { walk(it.zone); continue; }
+      if (it.kind === 'field') {
+        const f = fields.find((x) => x.name === it.fieldName);
+        const label = f?.displayName ?? it.fieldName;
+        const fresh = it.fieldName !== '' && !seenFields.has(it.fieldName);
+        if (fresh) seenFields.add(it.fieldName);
+        if (fresh && label) fieldNames.push(label);
+        // a column LOOK can carry actions/links/hover cards — the built cell
+        // embeds it (gridCellForField), so the pane must scan the same cell
+        // the preview and Apply render, or it under-reports
+        if (f) {
+          const contributed = new Set<string>();
+          treeBehaviors(gridCellForField(f, columnLooks), contributed);
+          for (const b of contributed) behaviors.add(`“${label}” ${b}`);
+        }
+        continue;
+      }
+      const def = components.find((c) => c.id === it.componentId);
+      if (!compNames.includes(def?.name ?? '(missing)')) compNames.push(def?.name ?? '(missing)');
+      if (def) {
+        const contributed = new Set<string>();
+        treeBehaviors(def.root, contributed);
+        for (const b of contributed) behaviors.add(`“${def.name}” ${b}`);
+      }
+    }
+  };
+  config.zones.forEach(walk);
+  // the kebab exists on rows only (buildTemplateView refuses it on tiles), and
+  // an all-blank custom kebab is refused too — mirror buildKebab exactly
+  const kebabEl = config.target === 'row' ? buildKebab(config.kebab) : null;
+  if (kebabEl) {
+    const kb = new Set<string>();
+    treeBehaviors(kebabEl, kb);
+    kb.delete('shows a card on click'); // the menu IS the card — name its actions instead
+    kb.delete('shows a card on hover');
+    behaviors.add(`Row menu (⋯) — ${[...kb].join(', ')}`);
+  }
+  if (config.hoverHighlight) {
+    behaviors.add(config.target === 'tile' ? 'Highlights the tile on hover' : 'Highlights the row on hover');
+  }
+  if (config.zebraStriping && config.target === 'row') behaviors.add('Stripes alternating rows');
+  return {
+    fields: fieldNames, components: compNames, behaviors: [...behaviors],
+    // describe the layout Apply EMITS: prune drops content-free zones, so a
+    // sparse schema must not list zones the created view won't have
+    zones: pruneZones(config.zones).map((z) => ({
+      label: z.label, size: ZONE_SIZE_LABEL[z.size], flow: ZONE_FLOW_LABEL[z.flow],
+    })),
+  };
+}
+
 /** Why Apply is blocked, or null when it may proceed (refuse-and-teach: an
  *  unmapped component slot would silently render blank on real SP). */
 export function applyBlocker(config: RowTemplateConfig, components: ComponentDef[]): string | null {

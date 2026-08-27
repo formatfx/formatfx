@@ -466,6 +466,21 @@ describe('component nesting (#225): library resolution, delete guard, workshop c
   });
 });
 
+describe('the "▤ New view…" card — the library door into the layout selector', () => {
+  it('always CREATES: with a builder sheet open it lands on the selector, not an in-place edit', () => {
+    // a builder-made sheet on the canvas (the reopen-in-place trap this pins)
+    state.createView({ kind: 'row', root: { elmType: 'div', style: { 'display': 'flex' }, children: [] } });
+    const host = mountLibrary();
+    const card = [...host.querySelectorAll<HTMLButtonElement>('.wb-comp-rowlink')]
+      .find((b) => b.textContent?.includes('New view…'))!;
+    expect(card).toBeTruthy();
+    card.click();
+    // createNew semantics: the selector greets (an opts-less call would have
+    // reopened the sheet's zones at stage 'edit' instead)
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+  });
+});
+
 describe('the library folds its own groups (In this project / Add components)', () => {
   const foldHead = (host: HTMLElement, title: string): HTMLButtonElement =>
     [...host.querySelectorAll<HTMLButtonElement>('.wb-complib-foldhead')]

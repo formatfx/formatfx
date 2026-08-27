@@ -123,26 +123,18 @@ export function mountViewsList(host: HTMLElement, onToast: (m: string) => void):
     if (!state.views.length) {
       const none = document.createElement('div');
       none.className = 'wb-viewslist-empty';
-      none.textContent = 'No views yet — a view is a whole-row layout built from your columns and components. Start one from a template below.';
+      none.textContent = 'No views yet — a view is a whole-row layout built from your columns and components. Start one from a layout below.';
       host.appendChild(none);
     }
 
-    // ＋ on-ramps: both open the SAME builder; tileview leads with the tiles
-    const newRow = document.createElement('button');
-    newRow.type = 'button';
-    newRow.className = 'wb-viewslist-new wb-viewslist-newrow';
-    newRow.textContent = '＋ New rowview…';
-    newRow.title = 'Start a new row view from a pre-built template — it becomes its own named view';
-    newRow.addEventListener('click', () => openTemplateModal(onToast, { target: 'row', createNew: true }));
-    host.appendChild(newRow);
-
-    const newTile = document.createElement('button');
-    newTile.type = 'button';
-    newTile.className = 'wb-viewslist-new wb-viewslist-newtile';
-    newTile.textContent = '＋ New tileview…';
-    newTile.title = 'Start a tile (gallery) layout from a pre-built template — it becomes its own named view';
-    newTile.addEventListener('click', () => openTemplateModal(onToast, { target: 'tile', createNew: true }));
-    host.appendChild(newTile);
+    // the ONE ＋ on-ramp: row and tile layouts share the selector inside
+    const newView = document.createElement('button');
+    newView.type = 'button';
+    newView.className = 'wb-viewslist-new wb-viewslist-newview';
+    newView.textContent = '＋ New view…';
+    newView.title = 'Start a new view from a pre-built layout — row or tile, it becomes its own named view';
+    newView.addEventListener('click', () => openTemplateModal(onToast, { createNew: true }));
+    host.appendChild(newView);
   };
 
   const hostAny = host as unknown as { _unsub?: () => void };

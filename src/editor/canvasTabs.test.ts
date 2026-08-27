@@ -50,44 +50,28 @@ describe('canvasTabs add new button and dropdown', () => {
     expect(menu).not.toBeNull();
 
     const items = [...menu.querySelectorAll('.wb-menu-main')].map(b => b.textContent?.trim());
-    expect(items).toContain('New rowview…');
-    expect(items).toContain('New tileview…');
+    expect(items).toContain('New view…');
     expect(items).toContain('New component…');
+    expect(items).toHaveLength(2); // ONE view door — row and tile share the selector
   });
 
-  it('clicking "New rowview…" opens the template modal with Row layouts first', () => {
+  it('clicking "New view…" opens the layout selector with both groups', () => {
     mountCanvasTabs(stripHost, workshopHost, onToast);
     const addBtn = stripHost.querySelector('.wb-canvastabs-add') as HTMLButtonElement;
     addBtn.dispatchEvent(new Event('click'));
 
     const menu = document.querySelector('.wb-grid-menu') as HTMLElement;
-    const rowBtn = [...menu.querySelectorAll('.wb-menu-main')].find(b => b.textContent?.includes('New rowview…')) as HTMLElement;
-    rowBtn.dispatchEvent(new Event('click'));
+    const viewBtn = [...menu.querySelectorAll('.wb-menu-main')].find(b => b.textContent?.includes('New view…')) as HTMLElement;
+    viewBtn.dispatchEvent(new Event('click'));
 
     // Check menu is closed
     expect(document.querySelector('.wb-grid-menu')).toBeNull();
 
-    // Check template modal is open with row target first
+    // Check the selector is open with row layouts leading and tiles right behind
     const modal = document.querySelector('.wb-template-modal') as HTMLElement;
     expect(modal).not.toBeNull();
-    const firstHead = modal.querySelector('.wb-template-gallery-head');
-    expect(firstHead?.textContent).toBe('Row layouts');
-  });
-
-  it('clicking "New tileview…" opens the template modal with Tile layouts first', () => {
-    mountCanvasTabs(stripHost, workshopHost, onToast);
-    const addBtn = stripHost.querySelector('.wb-canvastabs-add') as HTMLButtonElement;
-    addBtn.dispatchEvent(new Event('click'));
-
-    const menu = document.querySelector('.wb-grid-menu') as HTMLElement;
-    const tileBtn = [...menu.querySelectorAll('.wb-menu-main')].find(b => b.textContent?.includes('New tileview…')) as HTMLElement;
-    tileBtn.dispatchEvent(new Event('click'));
-
-    // Check template modal is open with tile target first
-    const modal = document.querySelector('.wb-template-modal') as HTMLElement;
-    expect(modal).not.toBeNull();
-    const firstHead = modal.querySelector('.wb-template-gallery-head');
-    expect(firstHead?.textContent).toBe('Tile layouts');
+    const heads = [...modal.querySelectorAll('.wb-template-gallery-head')].map((h) => h.textContent);
+    expect(heads).toEqual(['Row layouts', 'Tile layouts']);
   });
 
   it('clicking "New component…" creates a new blank component, opens its workshop tab, and toasts', () => {

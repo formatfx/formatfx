@@ -94,7 +94,7 @@ describe('structure (§3, top to bottom)', () => {
     expect(host.querySelectorAll('#wb-lp-shelf .wb-colchip').length).toBeGreaterThan(0);
     expect(host.querySelector('#wb-lp-views .wb-viewslist-head')).toBeNull();
     expect(host.querySelector('.wb-lp-sec-head[data-sec-head="views"] .wb-lp-sec-title')?.textContent).toBe('Views');
-    expect(host.querySelectorAll('#wb-lp-views .wb-viewslist-new').length).toBe(2);
+    expect(host.querySelectorAll('#wb-lp-views .wb-viewslist-new').length).toBe(1);
   });
 
   it('the this-view card hides on the grid and shows on a view', () => {

@@ -1,14 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { state } from './state';
 import { openTemplateModal } from './templateModal';
+import { resetPickMemory } from './templatePreview';
 import { dropPos } from './templateUi';
 
 beforeEach(() => {
   document.body.innerHTML = '';
   localStorage.clear();
+  resetPickMemory(); // recents/fold memory is session-scoped — isolate tests
   state.resetAll(); // every test starts standing on the FLOOR
   state.fields = [{ name: 'Title', type: 'text' }, { name: 'Status', type: 'choice' }, { name: 'Due', type: 'date' }];
   state.loadDocument({ kind: 'grid', root: { elmType: 'div', children: [] } });
+});
+
+afterEach(() => {
+  // force-close any modal a test left open (accepting the discard confirm) so
+  // its document-level key handlers never leak into the next test
+  vi.unstubAllGlobals();
+  vi.stubGlobal('confirm', vi.fn(() => true));
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  vi.unstubAllGlobals();
 });
 
 /** Build a synthetic chip/item drop carrying one of the builder MIMEs. */
@@ -24,10 +35,12 @@ const fieldDrop = (name: string): Event => drop('application/x-wb-field', name);
 const componentDrop = (id: string): Event => drop('application/x-wb-component', id);
 const nodeDrop = (path: number[]): Event => drop('application/x-wb-node', JSON.stringify(path));
 
-/** Open the builder and pick a wireframe (default: Lead + details → 2 zones). */
+/** Open the builder, select a layout in the list and go Next (default:
+ *  Lead + details → 2 zones). */
 function enterEditor(id = 'lead-detail'): void {
   openTemplateModal(() => {});
   (document.querySelector(`[data-wireframe="${id}"]`) as HTMLElement).click();
+  (document.querySelector('.wb-template-next') as HTMLElement).click();
 }
 
 const zone = (zi: number): HTMLElement => document.querySelector(`[data-edit-zone="${zi}"]`) as HTMLElement;
@@ -50,16 +63,79 @@ describe('dropPos — the one positional-drop rule (edges = between, body = into
   });
 });
 
-describe('row view builder — gallery + shell', () => {
-  it('opens on the wireframe gallery (visual cards, no dropdowns)', () => {
+describe('row view builder — the layout selector (stage pick)', () => {
+  it('opens on the selector: a stacked layout list left, a quiet prompt right, Next waiting', () => {
     openTemplateModal(() => {});
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
-    expect(document.querySelectorAll('.wb-wf-card').length).toBeGreaterThanOrEqual(5);
-    expect(document.querySelector('.wb-wf-thumb')).toBeTruthy(); // drawn thumbnails, not names alone
+    expect(document.querySelectorAll('.wb-lay-row').length).toBeGreaterThanOrEqual(5);
+    expect(document.querySelector('.wb-lay-row .wb-wf-thumb')).toBeTruthy(); // drawn thumbnails, not names alone
     expect(document.querySelector('select')).toBeNull();
+    // nothing selected yet: the right pane prompts, the journey buttons wait
+    expect(document.querySelector('.wb-lay-placeholder')).toBeTruthy();
+    expect((document.querySelector('.wb-template-next') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('.wb-template-back') as HTMLButtonElement).disabled).toBe(true);
+    // no drag chips and no undo/redo in the selector — nothing to edit yet
+    expect(document.querySelector('.wb-template-field-chip')).toBeNull();
+    expect(document.querySelector('.wb-template-undo')).toBeNull();
   });
 
-  it('picking a wireframe enters the editor with its zones seeded', () => {
+  it('selecting a layout live-previews it with real data and drills the left pane into details', () => {
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="lead-detail"]') as HTMLElement).click();
+    // right pane: LIVE rows rendered from the maker's sample data
+    expect(document.querySelector('.wb-lay-placeholder')).toBeNull();
+    expect(document.querySelectorAll('.wb-template-preview .wb-template-prow').length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector('.wb-lay-preview-title')?.textContent).toBe('Lead + details');
+    // left pane: the drilled-in details with a back affordance
+    const detail = document.querySelector('.wb-lay-detail') as HTMLElement;
+    expect(detail).toBeTruthy();
+    expect(detail.querySelector('.wb-lay-back')).toBeTruthy();
+    expect(detail.querySelector('.wb-lay-detail-name')?.textContent).toBe('Lead + details');
+    expect(detail.textContent).toContain('Title'); // the columns it seeds, by name
+    expect(detail.textContent).toContain('Zones');
+    expect((document.querySelector('.wb-template-next') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('a tile selection previews a live tile deck', () => {
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="tile-headline"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-preview .wb-template-tiledeck')).toBeTruthy();
+    expect(document.querySelector('.wb-lay-preview-kind')?.textContent).toBe('Tile layout');
+  });
+
+  it('Back un-drills to the list, keeping the selection highlighted and the preview up', () => {
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    expect(document.querySelector('.wb-lay-detail')).toBeNull();
+    expect((document.querySelector('[data-wireframe="equal"]') as HTMLElement).classList.contains('wb-lay-on')).toBe(true);
+    // browsing must never lose the maker's place: preview and Next stay live
+    expect(document.querySelectorAll('.wb-template-preview .wb-template-prow').length).toBeGreaterThanOrEqual(1);
+    expect((document.querySelector('.wb-template-next') as HTMLButtonElement).disabled).toBe(false);
+    // Back's ladder continues: un-drilled with a selection, it CLEARS it
+    (document.querySelector('.wb-template-back') as HTMLElement).click();
+    expect(document.querySelector('.wb-lay-placeholder')).toBeTruthy();
+    expect(document.querySelector('.wb-lay-on')).toBeNull();
+    expect((document.querySelector('.wb-template-next') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.querySelector('.wb-template-back') as HTMLButtonElement).disabled).toBe(true); // ladder's floor
+  });
+
+  it('browsing over a reopened sheet never strands it: Back clears the selection, Resume returns', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {}); // reopened
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click(); // list + Resume
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click(); // browse
+    expect(document.querySelector('.wb-template-next')?.textContent).toBe('Next'); // now destructive
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();   // un-drill
+    (document.querySelector('.wb-template-back') as HTMLElement).click(); // clear selection
+    const next = document.querySelector('.wb-template-next') as HTMLButtonElement;
+    expect(next.textContent).toBe('Resume'); // the way home is back
+    next.click();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+  });
+
+  it('Next enters the editor with the selected layout\'s zones seeded', () => {
     enterEditor();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
     expect(document.querySelectorAll('.wb-edit-zone').length).toBe(2); // Lead + Details
@@ -67,16 +143,291 @@ describe('row view builder — gallery + shell', () => {
     expect((document.querySelector('[data-edit-item="0:0"]') as HTMLElement).dataset.fieldName).toBe('Title');
   });
 
-  it('the Layouts button returns to the gallery', () => {
+  it('the editor\'s back arrow returns to the selector, drilled into the current layout', () => {
     enterEditor();
     (document.querySelector('.wb-template-layouts') as HTMLElement).click();
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Lead + details');
+    // untouched seed → no "edits in progress" marker (Next resumes either way)
+    expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
+  });
+
+  it('Back then Next on the SAME layout resumes the config — browsing costs nothing', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status')); // real work
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    // the dropped Status is still there — nothing was reseeded
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2);
+    vi.unstubAllGlobals();
+  });
+
+  it('selected layouts collect under a Recent group (newest first) for re-finding', () => {
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="dashboard"]') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    const recents = [...document.querySelectorAll<HTMLElement>('[data-wireframe-recent]')]
+      .map((r) => r.dataset.wireframeRecent);
+    expect(recents).toEqual(['dashboard', 'equal']);
+    expect(document.querySelector('[data-laygroup="recent"]')?.textContent).toBe('Recent');
+  });
+
+  it('group heads fold and unfold their layouts', () => {
+    openTemplateModal(() => {});
+    const rowCount = (): number => document.querySelectorAll('.wb-lay-row').length;
+    const all = rowCount();
+    (document.querySelector('[data-laygroup="row"]') as HTMLElement).click();
+    expect(rowCount()).toBeLessThan(all);
+    (document.querySelector('[data-laygroup="row"]') as HTMLElement).click();
+    expect(rowCount()).toBe(all);
   });
 
   it('Escape closes the modal (shared overlay teardown)', () => {
     openTemplateModal(() => {});
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(document.querySelector('.wb-template-modal')).toBeNull();
+  });
+
+  it('closing over touched work confirms first — refused keeps the builder open', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirmSpy);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+    // accepted → it closes
+    confirmSpy.mockReturnValue(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('an untouched editor closes without nagging (seeding is not touching)', () => {
+    enterEditor();
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirmSpy);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('a SECOND re-pick still confirms and keeps the whole undo trail (no silent wipe)', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status')); // past=1
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick 1: confirms, undoable
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="dashboard"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick 2: MUST still confirm
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    // the trail survived: undo is live, and the close gate is still armed
+    expect((document.querySelector('.wb-template-undo') as HTMLButtonElement).disabled).toBe(false);
+    confirmSpy.mockReturnValue(false);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(confirmSpy).toHaveBeenCalledTimes(3); // discard confirm fired
+    expect(document.querySelector('.wb-template-modal')).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it('an accepted re-pick keeps its promise: one undo brings the replaced zones back', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(3); // Equal columns seeded
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    expect(document.querySelectorAll('.wb-edit-zone').length).toBe(2); // lead-detail is back…
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // …with the dropped Status
+    vi.unstubAllGlobals();
+  });
+
+  it('Ctrl+Z is CONSUMED but inert in the selector — no modal drain, no app undo behind it', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    const ev = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true });
+    const unconsumed = document.dispatchEvent(ev);
+    // consumed (preventDefault) so the APP's own Ctrl+Z handler can't mutate
+    // the document behind the modal — but the modal stack must not move either
+    expect(unconsumed).toBe(false);
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // resume
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // Status survived
+    expect((document.querySelector('.wb-template-undo') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('undo across a re-pick re-aims the selector at the config Next actually opens', () => {
+    enterEditor(); // lead-detail (row)
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="tile-stat"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // now a tile
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // back to the edited row
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the drill-in must describe the CURRENT config, not the stale tile pick
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Lead + details');
+    expect(document.querySelector('.wb-lay-preview-kind')?.textContent).toBe('Row layout');
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2); // edited row resumed
+    vi.unstubAllGlobals();
+  });
+
+  it('a reopened sheet backed out to the list gets a Resume button home (no reseed, no confirm)', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // sheet created
+    openTemplateModal(() => {}); // reopen as zones (editingExisting)
+    (document.querySelector('[data-edit-zone="1"]') as HTMLElement).click();
+    (document.querySelector('[data-zoneflow="stack"]') as HTMLElement).click(); // a real tweak
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // no source wireframe → the list, with the footer offering Resume
+    expect(document.querySelector('.wb-lay-list')).toBeTruthy();
+    const next = document.querySelector('.wb-template-next') as HTMLButtonElement;
+    expect(next.textContent).toBe('Resume');
+    expect(next.disabled).toBe(false);
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirmSpy);
+    next.click();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('edit');
+    expect(document.querySelector('[data-zoneflow="stack"]')?.classList.contains('wb-seg-on')).toBe(true); // tweak kept
+    vi.unstubAllGlobals();
+  });
+
+  it('backing out of an edited layout shows the EDITED config in the details and preview', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status')); // Lead zone now also holds Status
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    const detail = document.querySelector('.wb-lay-detail') as HTMLElement;
+    expect(detail.querySelector('.wb-lay-detail-resume')).toBeTruthy(); // says edits are in progress
+    // …and the preview renders the kept config live
+    expect(document.querySelectorAll('.wb-template-preview .wb-template-prow').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('undoing a re-pick back to a REOPENED config never labels it "Blank" — the list + Resume instead', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // sheet created
+    openTemplateModal(() => {}); // reopen as zones (configFromView stamps 'blank')
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick over the reopened sheet
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // back to the reopened config
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the 'blank' stamp is a placeholder, not a pedigree: no drilled "Blank"
+    expect(document.querySelector('.wb-lay-detail')).toBeNull();
+    const next = document.querySelector('.wb-template-next') as HTMLButtonElement;
+    expect(next.textContent).toBe('Resume');
+    next.click();
+    // Resume returns the reopened config, zones intact
+    const tags = [...document.querySelectorAll('.wb-edit-zone-tag')].map((t) => t.textContent);
+    expect(tags.some((t) => t?.startsWith('Lead'))).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('explicitly re-picking the real Blank over a reopened sheet IS trusted — Back drills in, Next resumes', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    openTemplateModal(() => {}); // reopened — stamped 'blank', but NOT picked
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="blank"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // a REAL Blank pick (confirms once)
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    zone(0).dispatchEvent(fieldDrop('Status')); // real work on the picked Blank
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the pick gave 'blank' a pedigree: drilled details, not the plain list
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Blank');
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(1); // RESUME — no destructive re-pick
+    // Blank's seed fallback placed Title; the dropped Status rode along
+    expect(document.querySelectorAll('[data-edit-item^="0:"]').length).toBe(2);
+    expect([...document.querySelectorAll<HTMLElement>('[data-edit-item^="0:"]')]
+      .some((n) => n.dataset.fieldName === 'Status')).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('a re-pick that installed a PRISTINE seed shows no "edits in progress" marker despite undo history', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // undoable re-pick → past > 0
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the current config IS a fresh 'equal' seed — history alone must not cry edits
+    expect(document.querySelector('.wb-lay-detail-name')?.textContent).toBe('Equal columns');
+    expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('a row→tile→row target round trip leaves no phantom "edits in progress" marker', () => {
+    enterEditor(); // lead-detail, row
+    (document.querySelector('[data-target="tile"]') as HTMLElement).click();
+    (document.querySelector('[data-target="row"]') as HTMLElement).click(); // back — output-equivalent
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // the leftover tile box is inert for row output — not an edit
+    expect(document.querySelector('.wb-lay-detail-resume')).toBeNull();
+  });
+
+  it('redo-only history still earns the re-pick confirm (undone work lives in future)', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    const confirmSpy = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmSpy);
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click(); // re-pick (confirm 1)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true })); // back to baseline — work now in future only
+    (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    (document.querySelector('.wb-lay-back') as HTMLElement).click();
+    (document.querySelector('[data-wireframe="dashboard"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(confirmSpy).toHaveBeenCalledTimes(2); // the redo-able work was at stake
+    vi.unstubAllGlobals();
+  });
+
+  it('recents survive closing and reopening the modal within the session', () => {
+    openTemplateModal(() => {});
+    (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+    openTemplateModal(() => {});
+    expect(document.querySelector('[data-laygroup="recent"]')?.textContent).toBe('Recent');
+    expect((document.querySelector('[data-wireframe-recent]') as HTMLElement).dataset.wireframeRecent).toBe('equal');
+  });
+
+  it('undoing back to the baseline disarms the close confirm', () => {
+    enterEditor();
+    zone(0).dispatchEvent(fieldDrop('Status'));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    const confirmSpy = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirmSpy);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.wb-template-modal')).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
 
@@ -342,13 +693,25 @@ describe('row view builder — always-live preview, squeeze & save', () => {
     expect(document.querySelectorAll('.wb-template-prow:not(.wb-template-prow--edit)').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('the 2×2 action grid sits top-left: undo, redo, cancel, Save', () => {
+  it('undo/redo sit centered in the top bar; Cancel/Create in the footer, bottom-right', () => {
     enterEditor();
+    // the topbar-center spot makers already know from the canvas
     const actions = document.querySelector('.wb-template-top .wb-template-actions') as HTMLElement;
     expect(actions.querySelector('.wb-template-undo')).toBeTruthy();
     expect(actions.querySelector('.wb-template-redo')).toBeTruthy();
-    expect(actions.querySelector('.wb-template-cancel')).toBeTruthy();
-    expect(actions.querySelector('.wb-template-apply')?.textContent).toBe('Save');
+    expect(actions.querySelector('.wb-template-cancel')).toBeNull();
+    // the journey buttons live in the footer — the same spots Back/Next held
+    const foot = document.querySelector('.wb-template-foot') as HTMLElement;
+    expect(foot.querySelector('.wb-template-cancel')).toBeTruthy();
+    // from the floor the commit button CREATES a new named view — say so
+    expect(foot.querySelector('.wb-template-apply')?.textContent).toBe('Create');
+  });
+
+  it('editing an existing builder-made view keeps the commit button as Save', () => {
+    enterEditor();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // view created
+    openTemplateModal(() => {}); // reopens the sheet as zones — an edit, not a create
+    expect(document.querySelector('.wb-template-apply')?.textContent).toBe('Save');
   });
 
   it('an empty zone\'s hint is a zero-footprint overlay, and the live rows never show it', () => {
@@ -436,6 +799,7 @@ describe('row view builder — reopen as zones (the round trip)', () => {
     state.minimizeView(); // "Back to grid" is navigation — the view waits intact
     openTemplateModal(() => {});
     (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
     const confirmSpy = vi.fn(() => false);
     vi.stubGlobal('confirm', confirmSpy);
     (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
@@ -468,14 +832,18 @@ describe('row view builder — reopen as zones (the round trip)', () => {
     expect(document.querySelector('[data-zoneflow="stack"]')?.classList.contains('wb-seg-on')).toBe(true);
   });
 
-  it('picking a wireframe over a reopened layout confirms first (real work is at stake)', () => {
+  it('Next onto a different layout over a reopened one confirms first (real work is at stake)', () => {
     const confirmSpy = vi.fn(() => false); // maker says no
     vi.stubGlobal('confirm', confirmSpy);
     reopenAfterApply();
     (document.querySelector('.wb-template-layouts') as HTMLElement).click();
+    // a reopened layout has no source wireframe → the selector opens on the list
+    expect(document.querySelector('.wb-lay-list')).toBeTruthy();
     (document.querySelector('[data-wireframe="equal"]') as HTMLElement).click();
+    expect(confirmSpy).not.toHaveBeenCalled(); // selecting is browsing, not committing
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    // refused → still on the gallery, reopened config untouched
+    // refused → still on the selector, reopened config untouched
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
     vi.unstubAllGlobals();
   });
@@ -544,10 +912,12 @@ describe('tile target — the builder works for tiles too', () => {
     expect(document.querySelector('[data-wireframe="tile-headline"]')).toBeTruthy();
   });
 
-  it('an explicit tile ask leads the gallery with the tile layouts', () => {
-    openTemplateModal(() => {}, { target: 'tile' });
-    const heads = [...document.querySelectorAll('.wb-template-gallery-head')].map((h) => h.textContent);
-    expect(heads).toEqual(['Tile layouts', 'Row layouts']);
+  it('both targets share the one selector — a tile picks through the same list', () => {
+    openTemplateModal(() => {}, { createNew: true });
+    (document.querySelector('[data-wireframe="tile-headline"]') as HTMLElement).click();
+    expect(document.querySelector('.wb-lay-detail-kind')?.textContent).toBe('Tile');
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    expect(document.querySelector('.wb-template-insp-title')?.textContent).toBe('Tile');
   });
 
   it('picking a tile wireframe enters the TILE editor: Tile inspector, size knobs, no width scrubber', () => {
@@ -640,18 +1010,17 @@ describe('tile target — the builder works for tiles too', () => {
     expect(document.querySelector('.wb-template-gallery-head')?.textContent).toBe('Tile layouts');
   });
 
-  it('“+ New tileview” over a builder-made ROW keeps it but opens the gallery (pick confirms)', () => {
+  it('“＋ New view” over an open builder-made sheet opens the selector and CREATES a second view', () => {
     enterEditor();
-    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // now a builder row
-    openTemplateModal(() => {}, { target: 'tile' });
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click(); // sheet 1
+    openTemplateModal(() => {}, { createNew: true });
     expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
-    expect(document.querySelector('.wb-template-foreign-note')).toBeNull(); // the row is NOT foreign
-    const confirmSpy = vi.fn(() => false); // maker says no — the reopened row survives
-    vi.stubGlobal('confirm', confirmSpy);
+    expect(document.querySelector('.wb-template-foreign-note')).toBeNull(); // creating: the sheet is not at stake
     (document.querySelector('[data-wireframe="tile-headline"]') as HTMLElement).click();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('.wb-template-modal')?.getAttribute('data-stage')).toBe('pick');
-    vi.unstubAllGlobals();
+    (document.querySelector('.wb-template-next') as HTMLElement).click();
+    (document.querySelector('.wb-template-apply') as HTMLButtonElement).click();
+    expect(state.views).toHaveLength(2);
+    expect(state.doc.kind).toBe('tile');
   });
 });
 

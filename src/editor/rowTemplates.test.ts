@@ -5,7 +5,7 @@ import {
   addItemAt, removeNode, moveNode, patchZoneAt, patchItemAt,
   newFieldItem, newComponentItem, wireframeById,
   childSlotOrder, applyBlocker, configFromView, WIREFRAMES, ZEBRA_ROW_CLASS,
-  foldRowClassIntoRoot,
+  foldRowClassIntoRoot, summarizeConfig,
   type RowTemplateConfig, type KebabConfig, type ZoneConfig, type ZoneItem, type WireframeId,
   type ZoneAlign, type ZoneVAlign, type RootVAlign,
 } from './rowTemplates';
@@ -894,5 +894,158 @@ describe('childSlotOrder mirrors buildTemplateView child order (incl. spliced ke
     const c: RowTemplateConfig = { ...defaultConfigFor('avatar-card', FIELDS), kebab: { enabled: true, behavior: 'custom', position: 'right', actions: { ...NATIVE_ACTIONS } } };
     expect(childSlotOrder(c)).toEqual([0, 1, 2]);     // buildKebab → null, not placed
     expect(childSlotOrder(c).length).toBe(len(c));
+  });
+});
+
+describe('summarizeConfig — the selector details pane never over-promises', () => {
+  it('every wireframe seed summarizes: EMITTED zones in house vocabulary, placed columns, NO behaviors', () => {
+    for (const wf of WIREFRAMES) {
+      const config = defaultConfigFor(wf.id, FIELDS);
+      const s = summarizeConfig(config, FIELDS, []);
+      // the pane describes what Apply EMITS — the pruned zone set
+      expect(s.zones.map((z) => z.label)).toEqual(pruneZones(config.zones).map((z) => z.label));
+      expect(s.zones.length).toBeGreaterThan(0);
+      // vocabulary comes from ZONE_*_LABEL, never raw enum values
+      for (const z of s.zones) expect(['Hug content', 'Fill', 'Fill 2×', 'Fill 3×']).toContain(z.size);
+      // seeds ship zero behaviors and zero components — the pane must say so
+      expect(s.behaviors).toEqual([]);
+      expect(s.components).toEqual([]);
+    }
+  });
+
+  it('a sparse schema drops empty zones from the summary, matching the pruned output', () => {
+    const one: MockField[] = [{ name: 'Title', type: 'text' }];
+    const s = summarizeConfig(defaultConfigFor('lead-detail', one), one, []);
+    expect(s.zones.map((z) => z.label)).toEqual(['Lead']); // Details is empty → pruned → unlisted
+  });
+
+  it('a parameter-less flow/setValue/QuickStep action is reported as incomplete, never as working', () => {
+    const brokenChip: ComponentDef = {
+      ...CHIP, id: 'broken-chip', name: 'Broken chip',
+      root: { elmType: 'button', txtContent: 'Go', customRowAction: { action: 'executeFlow' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('broken-chip', { Due: 'Due' }));
+    const b = summarizeConfig(c, FIELDS, [brokenChip]).behaviors;
+    expect(b.some((x) => x.includes('incomplete action'))).toBe(true);
+    expect(b.some((x) => x.includes('runs a flow'))).toBe(false);
+  });
+
+  it('lists placed columns by display name, deduped, in layout order', () => {
+    const withNames: MockField[] = FIELDS.map((f) => f.name === 'Title' ? { ...f, displayName: 'Task name' } : f);
+    const s = summarizeConfig(defaultConfigFor('avatar-card', withNames), withNames, []);
+    expect(s.fields[0]).toBe('Owner');     // the hug Who zone leads
+    expect(s.fields).toContain('Task name'); // display name wins over internal
+  });
+
+  it('an enabled kebab surfaces as one Row menu behavior naming its real actions', () => {
+    const c = defaultConfigFor('equal', FIELDS);
+    c.kebab = { enabled: true, behavior: 'custom', position: 'right',
+      actions: { defaultClick: true, editProps: true, share: false, delete: false, executeFlow: true, setValue: false } };
+    // executeFlow has NO flowId → buildKebab refuses it; the summary must too
+    const s = summarizeConfig(c, FIELDS, []);
+    const menu = s.behaviors.find((b) => b.startsWith('Row menu'));
+    expect(menu).toContain('opens the item');
+    expect(menu).toContain('opens the edit form');
+    expect(menu).not.toContain('flow');
+  });
+
+  it('the native kebab reads as SharePoint\'s own menu; tiles never claim a kebab', () => {
+    const row = defaultConfigFor('equal', FIELDS);
+    row.kebab = { enabled: true, behavior: 'native', position: 'right',
+      actions: { defaultClick: false, editProps: false, share: false, delete: false, executeFlow: false, setValue: false } };
+    expect(summarizeConfig(row, FIELDS, []).behaviors.some((b) => b.includes("SharePoint's item menu"))).toBe(true);
+    const tile = defaultConfigFor('tile-headline', FIELDS);
+    tile.kebab = { ...row.kebab };
+    expect(summarizeConfig(tile, FIELDS, []).behaviors.some((b) => b.startsWith('Row menu'))).toBe(false);
+  });
+
+  it('hover highlight and zebra summarize honestly (zebra never on tiles)', () => {
+    const row = { ...defaultConfigFor('equal', FIELDS), hoverHighlight: true, zebraStriping: true };
+    const rowB = summarizeConfig(row, FIELDS, []).behaviors;
+    expect(rowB).toContain('Highlights the row on hover');
+    expect(rowB).toContain('Stripes alternating rows');
+    const tile = { ...defaultConfigFor('tile-headline', FIELDS), hoverHighlight: true, zebraStriping: true };
+    const tileB = summarizeConfig(tile, FIELDS, []).behaviors;
+    expect(tileB).toContain('Highlights the tile on hover');
+    expect(tileB.some((b) => b.includes('Stripes'))).toBe(false);
+  });
+
+  it('components list by name, and their embedded actions surface as behaviors', () => {
+    const actionChip: ComponentDef = {
+      ...CHIP, id: 'action-chip', name: 'Flow chip',
+      root: { elmType: 'button', txtContent: 'Go',
+        customRowAction: { action: 'executeFlow', actionParams: '{"id":"f1"}' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('action-chip', { Due: 'Due' }));
+    const s = summarizeConfig(c, FIELDS, [actionChip]);
+    expect(s.components).toEqual(['Flow chip']);
+    expect(s.behaviors.some((b) => b.includes('Flow chip') && b.includes('runs a flow'))).toBe(true);
+  });
+
+  it('extended runtime actions phrase in maker language, never as raw internal ids', () => {
+    const copyChip: ComponentDef = {
+      ...CHIP, id: 'copy-chip', name: 'Copy chip',
+      root: { elmType: 'button', txtContent: 'Copy', customRowAction: { action: 'copyLink' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('copy-chip', { Due: 'Due' }));
+    const s = summarizeConfig(c, FIELDS, [copyChip]);
+    expect(s.behaviors.some((b) => b.includes('copies a link to the item'))).toBe(true);
+    expect(s.behaviors.some((b) => /\bcopyLink\b/.test(b))).toBe(false); // no leaked ids
+  });
+
+  it('a hyperlink inside a component counts as a click behavior', () => {
+    const linkChip: ComponentDef = {
+      ...CHIP, id: 'link-chip', name: 'Link chip',
+      root: { elmType: 'a', txtContent: '=[$Title]', attributes: { href: '=[$Link]' } },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('link-chip', { Due: 'Due' }));
+    const s = summarizeConfig(c, FIELDS, [linkChip]);
+    expect(s.behaviors.some((b) => b.includes('Link chip') && b.includes('opens a link'))).toBe(true);
+  });
+
+  it('inlineEditField and defaultHoverField count as behaviors', () => {
+    const editChip: ComponentDef = {
+      ...CHIP, id: 'edit-chip', name: 'Edit chip',
+      root: { elmType: 'div', txtContent: '=[$Title]', inlineEditField: '[$Title]',
+        defaultHoverField: '[$Owner]' },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('edit-chip', { Due: 'Due' }));
+    const b = summarizeConfig(c, FIELDS, [editChip]).behaviors;
+    expect(b.some((x) => x.includes('edits a value inline'))).toBe(true);
+    expect(b.some((x) => x.includes('shows a hover card'))).toBe(true);
+  });
+
+  it('columns sharing a display name both survive the summary (dedupe is by internal name)', () => {
+    const twins: MockField[] = [
+      { name: 'StatusA', type: 'choice', displayName: 'Status' },
+      { name: 'StatusB', type: 'choice', displayName: 'Status' },
+    ];
+    const c = defaultConfigFor('blank', twins);
+    c.zones[0].items.push(newFieldItem('StatusB', c.zones[0]));
+    const s = summarizeConfig(c, twins, []);
+    expect(s.fields).toEqual(['Status', 'Status']); // both columns, not one
+  });
+
+  it('a lost component def summarizes as (missing) instead of throwing', () => {
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('gone', {}));
+    expect(summarizeConfig(c, FIELDS, []).components).toEqual(['(missing)']);
+  });
+
+  it('behaviors carried by a COLUMN LOOK surface — the pane scans the same cell Apply embeds', () => {
+    const looks = {
+      Status: { elmType: 'button', txtContent: '=[$Status]',
+        customRowAction: { action: 'defaultClick' } } as import('../core/types').SPElement,
+    };
+    const c = defaultConfigFor('lead-detail', FIELDS); // seeds Title + Status/Due details
+    const s = summarizeConfig(c, FIELDS, [], looks);
+    expect(s.behaviors.some((b) => b.includes('“Status”') && b.includes('opens the item'))).toBe(true);
+    // no looks → no phantom behaviors (the existing every-wireframe test pins [])
+    expect(summarizeConfig(c, FIELDS, []).behaviors).toEqual([]);
   });
 });
