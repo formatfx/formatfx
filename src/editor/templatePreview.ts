@@ -277,6 +277,8 @@ export function renderLayoutSide(host: HTMLElement, ui: ModalUI, api: ModalApi):
       if (foldedGroups.has(key)) foldedGroups.delete(key);
       else foldedGroups.add(key);
       renderLayoutSide(host, ui, api);
+      // the rerender replaced the focused header — keep keyboard users on it
+      (host.querySelector(`[data-laygroup="${key}"]`) as HTMLElement | null)?.focus();
     });
     list.appendChild(head);
     if (!folded) for (const wf of wfs) list.appendChild(layoutRow(wf, ui, api, recent));
@@ -339,7 +341,9 @@ function renderLayoutDetail(host: HTMLElement, id: WireframeId, api: ModalApi): 
   const beh = sec('Behaviors');
   if (summary.behaviors.length) for (const b of summary.behaviors) beh.appendChild(el('div', 'wb-lay-detail-row', b));
   else {
-    beh.appendChild(el('div', 'wb-lay-detail-row wb-lay-detail-none', wf.target === 'tile'
+    // branch on the CONFIG's target — a resumed layout may be retargeted
+    // (Applies-as), and tile output refuses kebabs
+    beh.appendChild(el('div', 'wb-lay-detail-row wb-lay-detail-none', config.target === 'tile'
       ? 'None yet — the next step adds hover highlight and components with actions'
       : 'None yet — the next step adds a row menu (⋯), hover highlight and more'));
   }
@@ -358,7 +362,7 @@ export function renderPickPreview(host: HTMLElement, ui: ModalUI, api: ModalApi)
   if (ui.foreignRow) {
     host.appendChild(el('div', 'wb-template-foreign-note',
       'The current view layout was built or edited outside this builder, so it can\'t be reopened as zones. '
-      + 'Picking a layout starts fresh — Apply replaces it (one Ctrl+Z brings it back).'));
+      + 'Selecting here only previews; after Next, Save replaces it (one Ctrl+Z on the canvas brings it back).'));
   }
   if (!ui.pickSelected) {
     const ph = el('div', 'wb-lay-placeholder');

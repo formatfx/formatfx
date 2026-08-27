@@ -915,6 +915,9 @@ function treeBehaviors(root: SPElement, out: Set<string>): void {
   // hyperlinks are click behaviors too — a details pane that misses them
   // would claim "no behaviors" over a link-bearing component
   if (root.elmType === 'a' && root.attributes?.href !== undefined) out.add('opens a link');
+  // …as are the two field-level interactivity props Apply preserves
+  if (root.inlineEditField) out.add('edits a value inline');
+  if (root.defaultHoverField) out.add('shows a hover card');
   if (root.customCardProps) {
     out.add('shows a card on hover or click');
     const inner = (root.customCardProps as { formatter?: SPElement }).formatter;
@@ -933,6 +936,9 @@ export function summarizeConfig(
   columnLooks: Record<string, SPElement> = {},
 ): ConfigSummary {
   const fieldNames: string[] = [];
+  // dedupe by INTERNAL name — distinct columns may legally share a display
+  // name on SP, and neither may hide the other from the summary
+  const seenFields = new Set<string>();
   const compNames: string[] = [];
   const behaviors = new Set<string>();
   const walk = (z: ZoneConfig): void => {
@@ -941,7 +947,9 @@ export function summarizeConfig(
       if (it.kind === 'field') {
         const f = fields.find((x) => x.name === it.fieldName);
         const label = f?.displayName ?? it.fieldName;
-        if (label && !fieldNames.includes(label)) fieldNames.push(label);
+        const fresh = it.fieldName !== '' && !seenFields.has(it.fieldName);
+        if (fresh) seenFields.add(it.fieldName);
+        if (fresh && label) fieldNames.push(label);
         // a column LOOK can carry actions/links/hover cards — the built cell
         // embeds it (gridCellForField), so the pane must scan the same cell
         // the preview and Apply render, or it under-reports

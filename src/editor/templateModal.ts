@@ -438,8 +438,9 @@ export function openTemplateModal(
       if (!ui.pickDrilled) return;
       ui.pickDrilled = false;
       rerender();
-      // …and coming back, land on the row they came from
-      (modal.querySelector(`[data-wireframe="${ui.pickSelected}"]`) as HTMLElement | null)?.focus();
+      // …and coming back, land on the row they came from — the Recent copy
+      // counts too (the canonical row may sit in a folded group)
+      (modal.querySelector(`[data-wireframe="${ui.pickSelected}"], [data-wireframe-recent="${ui.pickSelected}"]`) as HTMLElement | null)?.focus();
     },
     confirmPick: () => {
       const id = ui.pickSelected;

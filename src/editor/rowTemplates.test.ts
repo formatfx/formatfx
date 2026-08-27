@@ -987,6 +987,30 @@ describe('summarizeConfig — the selector details pane never over-promises', ()
     expect(s.behaviors.some((b) => b.includes('Link chip') && b.includes('opens a link'))).toBe(true);
   });
 
+  it('inlineEditField and defaultHoverField count as behaviors', () => {
+    const editChip: ComponentDef = {
+      ...CHIP, id: 'edit-chip', name: 'Edit chip',
+      root: { elmType: 'div', txtContent: '=[$Title]', inlineEditField: '[$Title]',
+        defaultHoverField: '[$Owner]' },
+    };
+    const c = defaultConfigFor('blank', FIELDS);
+    c.zones[0].items.push(newComponentItem('edit-chip', { Due: 'Due' }));
+    const b = summarizeConfig(c, FIELDS, [editChip]).behaviors;
+    expect(b.some((x) => x.includes('edits a value inline'))).toBe(true);
+    expect(b.some((x) => x.includes('shows a hover card'))).toBe(true);
+  });
+
+  it('columns sharing a display name both survive the summary (dedupe is by internal name)', () => {
+    const twins: MockField[] = [
+      { name: 'StatusA', type: 'choice', displayName: 'Status' },
+      { name: 'StatusB', type: 'choice', displayName: 'Status' },
+    ];
+    const c = defaultConfigFor('blank', twins);
+    c.zones[0].items.push(newFieldItem('StatusB', c.zones[0]));
+    const s = summarizeConfig(c, twins, []);
+    expect(s.fields).toEqual(['Status', 'Status']); // both columns, not one
+  });
+
   it('a lost component def summarizes as (missing) instead of throwing', () => {
     const c = defaultConfigFor('blank', FIELDS);
     c.zones[0].items.push(newComponentItem('gone', {}));
