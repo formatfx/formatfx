@@ -38,7 +38,7 @@
  */
 
 import { state, samePath, CARD_SEGMENT } from './state';
-import { parseComponentDefJson } from './components';
+import { parseComponentDefJson, slotMockFields, componentKind } from './components';
 import { componentById } from './componentLibrary';
 import { exportJson, importJson, treeHasNames } from '../core/serializer';
 import {
@@ -71,7 +71,7 @@ import {
   type MissingColumnRow, type SeverityTally,
 } from './lintView';
 import { FIELD_TYPE_OPTIONS } from '../core/schemaImport';
-import type { FieldType, MockField } from '../core/types';
+import type { FieldType, MockField, FormatterDocument } from '../core/types';
 import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
@@ -166,11 +166,40 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
    *  divergence check compares against THIS, so register/unregister churn
    *  (tab switches) can never fake a "workshop changed" confirm. */
   let bufferBaseline = '';
+  /** parseJsonWithMap's labels for the CLEAN component buffer (crumbs). */
+  let compLabels: Record<string, string> = {};
+  /** The last revealed workshop selection — reveal only on real changes,
+   *  and never on mode entry. */
+  let lastCompSelKey = '';
+  /** Component-mode folds: a pane-local per-def set. The SHARED foldState
+   *  keeps holding the underlying surface's folds while a workshop is up
+   *  (workshop tree folding is treeView-local), so component folds must
+   *  never touch it. */
+  const compFolds = new Map<string, Set<string>>();
+  const compFoldSet = (): Set<string> => {
+    const id = bufferDefId ?? '';
+    let s = compFolds.get(id);
+    if (!s) { s = new Set(); compFolds.set(id, s); }
+    return s;
+  };
+  /** The fold-key store for the CURRENT mode. */
+  const foldKeysNow = (): string[] => (bufferDefId !== null ? [...compFoldSet()] : foldState.keys());
+  const updateFolds = (fn: (set: Set<string>) => void): void => {
+    if (bufferDefId !== null) fn(compFoldSet());
+    else foldState.update('json', fn);
+  };
   const compBarEl = host.querySelector('#wb-json-compbar') as HTMLDivElement;
   /** The workshop seam while a component tab is up — null for the frame
    *  between the tab activating and its workshop registering ('workshop'
    *  announces the registration and re-runs regenerate). */
   const activeWorkshop = () => (state.activeComponentTab !== null ? state.workshopCtx : null);
+  /** The field vocabulary the BUFFER speaks: surface columns, or the def's
+   *  slot keys in component mode (completions, hovers, lint). */
+  const fieldsForBuffer = (): MockField[] => {
+    if (bufferDefId === null) return state.fields;
+    const wctx = activeWorkshop();
+    return wctx && wctx.def().id === bufferDefId ? slotMockFields(wctx.def()) : [];
+  };
 
   const clearImportError = (): void => { importErrorEl.hidden = true; importErrorEl.textContent = ''; };
   const setDirty = () => {
@@ -256,7 +285,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const rebuildFoldView = (): void => {
     const resolved: Array<{ key: string; cut: FoldCut }> = [];
     const stale: string[] = [];
-    for (const key of foldState.keys()) {
+    for (const key of foldKeysNow()) {
       let range: { start: number; end: number } | null;
       const childrenOf = childrenPathOfKey(key);
       if (childrenOf) {
@@ -271,7 +300,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       if (cut) resolved.push({ key, cut });
       else stale.push(key); // the node no longer exists / no longer folds
     }
-    if (stale.length) foldState.update('json', (set) => stale.forEach((k) => set.delete(k)));
+    if (stale.length) updateFolds((set) => stale.forEach((k) => set.delete(k)));
     const outer = outermost(resolved.map((r) => r.cut));
     activeFoldKeys = outer.map(
       (c) => resolved.find((r) => r.cut.start === c.start && r.cut.end === c.end)!.key,
@@ -324,32 +353,37 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     if (state.activeComponentTab !== null
       && (!wctx || wctx.def().id !== state.activeComponentTab)) return;
     if (wctx) {
-      // ── component mode: the staged def, verbatim. No offset↔path map and
-      // no folds (that machinery is surface-doc-shaped — the PR after this
-      // one adapts it), and the SHARED fold set stays untouched: it still
-      // holds the UNDERLYING SURFACE's folds (workshop tree folding is
-      // treeView-local), so pruning against our empty map would wipe what
-      // the surface needs back on return.
+      // ── component mode: the staged def, verbatim — WITH a real map since
+      // PR 2: parseJsonWithMap understands the def shape (core/jsonText), so
+      // caret sync, element folds, lint rows and the scope bar work against
+      // the def tree. Paths are TREE-relative — exactly what workshop
+      // selection speaks. mapSections/mapChildren stay empty (wrapper and
+      // children-array folds are doc-serializer byproducts); component
+      // folds live in the pane-local compFolds set, because the SHARED
+      // foldState still holds the underlying surface's folds.
       const def = wctx.def();
       bufferDefId = def.id;
       delete def.builtin; // save-flow bookkeeping, not component content
-      mapRanges = [];
+      const text = JSON.stringify(def, null, 2);
+      const parsed = parseJsonWithMap(text);
+      mapRanges = parsed.ranges;
+      compLabels = parsed.labels;
       mapSections = [];
       mapChildren = [];
       liveRanges = null;
       liveErrors = [];
       liveLabels = {};
-      foldView = null;
-      activeFoldKeys = [];
-      const text = JSON.stringify(def, null, 2);
       bufferBaseline = text; // the staged snapshot this buffer forks from
+      lastCompSelKey = wctx.selection().join('/'); // entering never flashes
       const selStart = preserveCaret(fullText, text, textEl.selectionStart ?? 0);
       const selEnd = preserveCaret(fullText, text, textEl.selectionEnd ?? textEl.selectionStart ?? 0);
       fullText = text;
+      rebuildFoldView(); // pane-local comp folds re-apply; stale keys prune
       syncFoldDisplay(selStart, selEnd);
       clearImportError();
       refreshSizeMeter();
       refreshComponentChrome();
+      renderLint(lastRuntime); // def lint — the canvas only refreshes surface lint
       return;
     }
     bufferDefId = null;
@@ -424,9 +458,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // before keyup fires, so hand-edits (stale offsets) never mis-select.
   const syncSelectionFromCaret = (): void => {
     if (dirty) return; // hand-edited text: offsets are stale until Apply
-    if (bufferDefId !== null) return; // component mode: def offsets aren't surface paths (PR 2 adapts this)
     const path = pathAtOffset(mapRanges, displayedToFull(textEl.selectionStart ?? 0));
-    if (!path) return; // wrapper chrome ($schema line) selects nothing
+    if (!path) return; // wrapper chrome ($schema / the def's id+slots) selects nothing
+    if (bufferDefId !== null) {
+      // component mode: the caret drives the WORKSHOP's staged selection —
+      // paths are tree-relative on both sides. The surface never hears it.
+      const wctx = activeWorkshop();
+      if (!wctx || wctx.def().id !== bufferDefId) return;
+      if (samePath(wctx.selection(), path)) return;
+      echo.run('code', () => wctx.select(path));
+      return;
+    }
     if (state.selection && samePath(state.selection, path)) return; // already there — no churn
     echo.run('code', () => state.select(path));
   };
@@ -436,7 +478,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const idx = foldView.cutIndexAtFolded(textEl.selectionStart ?? 0);
       if (idx >= 0) {
         const caretFull = foldView.cuts[idx].start;
-        foldState.update('json', (set) => set.delete(activeFoldKeys[idx]));
+        updateFolds((set) => set.delete(activeFoldKeys[idx]));
         rebuildFoldView();
         syncFoldDisplay(caretFull, caretFull);
         return;
@@ -598,6 +640,25 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     flashRange(range);
   };
 
+  /** The component-mode twin: flash the WORKSHOP selection's lines when it
+   *  moved (staged tree clicks, the Structure tree) — never for our own
+   *  caret's echo, never on mode entry. */
+  const revealCompSelection = (): void => {
+    if (dirty || bufferDefId === null) return;
+    const wctx = activeWorkshop();
+    if (!wctx || wctx.def().id !== bufferDefId) return;
+    const key = wctx.selection().join('/');
+    if (key === lastCompSelKey) return;
+    lastCompSelKey = key;
+    ide.refreshScope();
+    if (echo.from('code')) return; // originated at our caret — no bounce
+    const range = rangeForPath(mapRanges, wctx.selection());
+    if (range) {
+      clearFlash();
+      flashRange(range);
+    }
+  };
+
   textEl.addEventListener('input', () => { setDirty(); clearImportError(); clearFlash(); scheduleLiveParse(); });
   sanitizeEl.addEventListener('change', () => {
     // regenerating re-renders the DOC — on a dirty buffer that discards the
@@ -629,29 +690,34 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // is marked dirty first, then the overlay repaints — the scope bar never
   // paints one frame of stale offsets.
   const ide = mountJsonIde(shellEl, textEl, {
-    // component mode gates: field completions, row-context hovers/eval and
-    // the surface selection's scope bar are all surface-schema affordances —
-    // PR 2 re-points them at slot keys; until then blank beats wrong
-    fields: () => (bufferDefId !== null ? [] : state.fields),
+    // component mode (PR 2): the field vocabulary is the def's SLOT KEYS —
+    // completions offer [$SlotKey], hovers explain against slot types. Row
+    // context stays surface-only (defs have no rows), so the eval chip and
+    // value previews stand down.
+    fields: () => fieldsForBuffer(),
     completionOpts: () => (bufferDefId !== null ? {} : {
       current: state.fields.find((f) => f.name === state.currentFieldName),
       ctx: state.rows.length ? ctxForRow(0) : undefined,
     }),
     selectionRange: () => {
-      if (bufferDefId !== null) return null;
-      if (!state.selection) return null;
       // #PR-D: while dirty the LIVE map takes over — hidden only for the
       // frame before the first parse lands (stale offsets must never paint)
       if (dirty && !liveRanges) return null;
+      if (bufferDefId !== null) {
+        const wctx = activeWorkshop();
+        if (!wctx || wctx.def().id !== bufferDefId) return null;
+        const r = rangeForPath(rangesNow(), wctx.selection());
+        return r ? { start: fullToDisplayed(r.start), end: fullToDisplayed(r.end) } : null;
+      }
+      if (!state.selection) return null;
       const r = rangeForPath(rangesNow(), state.selection);
       return r ? { start: fullToDisplayed(r.start), end: fullToDisplayed(r.end) } : null;
     },
     // #PR-D squiggles + hovers: decisions live in jsonDecorations/jsonHover;
     // the panel just hands them its decoration list and field/row context
     decorations: () => decorations,
-    hoverAt: (off) => (bufferDefId !== null ? null
-      : hoverInfoAt(textEl.value, off, decorations, state.fields,
-        { ctx: state.rows.length ? ctxForRow(0) : undefined })),
+    hoverAt: (off) => hoverInfoAt(textEl.value, off, decorations, fieldsForBuffer(),
+      { ctx: bufferDefId !== null ? undefined : (state.rows.length ? ctxForRow(0) : undefined) }),
     // #PR-E the eval chip: the caret's live string through the REAL engine
     // against the sample row (same ctx source as completions — row 0; swap in
     // the canvas's active row here when that notion exists)
@@ -659,11 +725,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       : evalChipAt(textEl.value, off, state.rows.length ? ctxForRow(0) : undefined)),
     // #PR-C: the fold bridge — chevrons, gapped numbers, edit guards
     folds: {
-      usable: () => !dirty && bufferDefId === null,
+      usable: () => !dirty,
       active: () => !!foldView,
       expandAll: () => expandAllFolds(),
       foldableFoldedLines: () => {
-        if (dirty || bufferDefId !== null) return [];
+        if (dirty) return [];
         const out: Array<{ line: number; folded: boolean; label: string }> = [];
         const add = (range: { start: number; end: number }, key: string, label: string): void => {
           const cut = cutForRange(fullText, range);
@@ -693,7 +759,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         return out;
       },
       toggleAtFoldedLine: (line: number) => {
-        if (dirty || bufferDefId !== null) return;
+        if (dirty) return;
         const toggle = (range: { start: number; end: number }, key: string): boolean => {
           if (!cutForRange(fullText, range)) return false;
           const foldedHere = activeFoldKeys.includes(key);
@@ -701,7 +767,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
           // into a sentinel must never swallow the visible chevron's click
           if (!foldedHere && hiddenInActiveFold(range.start)) return false;
           if (lineOfOffset(textEl.value, fullToDisplayed(range.start)) !== line) return false;
-          foldState.update('json', (set) => {
+          updateFolds((set) => {
             if (set.has(key)) set.delete(key);
             else set.add(key);
           });
@@ -770,13 +836,32 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const live = liveLabels[prefix.join('/')];
       if (live) return live;
     }
-    const node = state.nodeAt(prefix) as { _elmName?: string; elmType?: string } | null;
-    if (node) return node._elmName ?? node.elmType ?? 'element';
+    if (bufferDefId !== null) {
+      // component mode: labels come from the def buffer's own map, else the
+      // staged tree — never the surface doc
+      const fromMap = compLabels[prefix.join('/')];
+      if (fromMap) return fromMap;
+      const staged = activeWorkshop()?.nodeAt(prefix) as { _elmName?: string; elmType?: string } | null;
+      if (staged) return staged._elmName ?? staged.elmType ?? 'element';
+    } else {
+      const node = state.nodeAt(prefix) as { _elmName?: string; elmType?: string } | null;
+      if (node) return node._elmName ?? node.elmType ?? 'element';
+    }
     const last = prefix[prefix.length - 1];
     return last === CARD_SEGMENT ? 'card' : `#${last ?? 0}`;
   };
+  /** Where a crumb click lands, and whether the node exists to land on. */
+  const crumbTarget = (prefix: NodePath): { exists: boolean; select: () => void } => {
+    if (bufferDefId !== null) {
+      const wctx = activeWorkshop();
+      return {
+        exists: !!wctx && wctx.def().id === bufferDefId && !!wctx.nodeAt(prefix),
+        select: () => activeWorkshop()?.select(prefix),
+      };
+    }
+    return { exists: !!state.nodeAt(prefix), select: () => state.select(prefix) };
+  };
   const refreshCrumbs = (): void => {
-    if (bufferDefId !== null) { crumbsEl.hidden = true; return; } // def paths aren't element paths (PR 2)
     if (dirty && !liveRanges) { crumbsEl.hidden = true; return; } // pre-parse frame
     const path = pathAtOffset(rangesNow(), displayedToFull(textEl.selectionStart ?? 0));
     if (!path) { crumbsEl.hidden = true; return; } // wrapper chrome — no element here
@@ -795,12 +880,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       b.type = 'button';
       b.className = 'wb-crumb';
       b.textContent = crumbLabel(prefix);
-      if (state.nodeAt(prefix)) {
-        b.title = 'Select this element on the canvas';
-        b.addEventListener('click', () => echo.run('code', () => state.select(prefix)));
+      const target = crumbTarget(prefix);
+      if (target.exists) {
+        b.title = bufferDefId !== null
+          ? 'Select this element in the workshop'
+          : 'Select this element on the canvas';
+        b.addEventListener('click', () => echo.run('code', () => target.select()));
       } else {
         b.disabled = true; // typed by hand — becomes selectable after Apply
-        b.title = 'Not applied yet — Apply to select it on the canvas';
+        b.title = 'Not applied yet — Apply to select it';
       }
       parts.push(b);
     }
@@ -863,11 +951,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // at the caret; Ctrl+Shift+] unfolds the fold containing it
     if (e.ctrlKey && e.shiftKey && (e.key === '{' || e.key === '[')) {
       e.preventDefault();
-      if (dirty || bufferDefId !== null) return;
+      if (dirty) return;
       const off = displayedToFull(textEl.selectionStart ?? 0);
       const path = pathAtOffset(mapRanges, off);
       if (path && path.length > 0) { // the root never folds — it IS the document
-        foldState.update('json', (set) => set.add(pathKey(path)));
+        updateFolds((set) => set.add(pathKey(path)));
         applyFolds();
         return;
       }
@@ -880,7 +968,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       }
       if (sec) {
         const key = sectionKey(sec);
-        foldState.update('json', (set) => set.add(key));
+        updateFolds((set) => set.add(key));
         applyFolds();
       }
       return;
@@ -891,7 +979,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const fullCaret = foldView.toFull(textEl.selectionStart ?? 0);
       const idx = foldView.cuts.findIndex((c) => fullCaret >= c.start && fullCaret <= c.end);
       if (idx >= 0) {
-        foldState.update('json', (set) => set.delete(activeFoldKeys[idx]));
+        updateFolds((set) => set.delete(activeFoldKeys[idx]));
         applyFolds();
       }
     }
@@ -900,16 +988,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // #PR-C kebab commands: focus the selection / show everything
   const isPrefix = (p: number[], q: number[]): boolean => p.length <= q.length && p.every((v, i) => q[i] === v);
   menuHost.querySelector('#wb-json-fold-others')!.addEventListener('click', () => {
-    if (dirty || bufferDefId !== null) return;
-    const sel = state.selection;
-    foldState.update('json', (set) => {
+    if (dirty) return;
+    // component mode: the chain to keep open is the WORKSHOP's selection
+    const sel = bufferDefId !== null ? (activeWorkshop()?.selection() ?? null) : state.selection;
+    updateFolds((set) => {
       for (const r of mapRanges) {
         if (r.path.length === 0) continue; // never fold the root — that's the whole doc
         if (sel && (isPrefix(r.path, sel) || isPrefix(sel, r.path))) continue; // keep the selection's chain open
         if (cutForRange(fullText, r)) set.add(pathKey(r.path));
       }
       // wrapper sections are never in the selection's chain — fold them all
-      // (only outermost cuts survive buildFoldView, so nesting costs nothing)
+      // (empty in component mode; only outermost cuts survive buildFoldView)
       for (const s of mapSections) {
         if (cutForRange(fullText, s)) set.add(sectionKey(s));
       }
@@ -917,7 +1006,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     applyFolds();
   });
   menuHost.querySelector('#wb-json-expand-all')!.addEventListener('click', () => {
-    if (bufferDefId !== null) return; // the shared set is the workshop tree's right now
+    if (bufferDefId !== null) {
+      compFoldSet().clear(); // pane-local — the shared surface set is not ours
+      expandAllFolds();
+      return;
+    }
     foldState.clear('json'); // shared: the Structure tree expands with it
     expandAllFolds();
   });
@@ -1176,7 +1269,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const refreshComponentChrome = (): void => {
     const activeComp = state.activeComponentTab;
     const inCompBuffer = bufferDefId !== null;
-    lintEl.hidden = inCompBuffer;
+    // lint visibility is renderLint's own business since PR 2 (it shows the
+    // def's lint in component mode)
     deployBtnEl.disabled = inCompBuffer;
     deployBtnEl.title = inCompBuffer
       ? 'Deploy ships view formatting — a component ships by being used in a view'
@@ -1195,10 +1289,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // a component draft away over a setting that doesn't apply to it
     sanitizeEl.disabled = inCompBuffer;
     namesEl.disabled = inCompBuffer;
-    // fold commands are inert in the mode (no offset↔path map) — disabled,
-    // never dead buttons
-    (menuHost.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled = inCompBuffer;
-    (menuHost.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled = inCompBuffer;
+    // fold commands are live in both modes since PR 2 (element folds ride
+    // the def map; component folds live in the pane-local set)
     const compName = (id: string): string => componentById(id)?.name ?? id;
     if (inCompBuffer && activeComp === bufferDefId) {
       compBarEl.hidden = false;
@@ -1364,7 +1456,8 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // #PR-D flash symmetry: on clean buffers the selection emit reveals and
     // flashes; when it didn't (dirty — reveal bails), flash via the live map
     const jump = (): void => {
-      state.select(path);
+      if (bufferDefId !== null) activeWorkshop()?.select(path); // the workshop's tree, not the surface's
+      else state.select(path);
       if (!flashBar && (!dirty || liveRanges)) {
         const r = rangeForPath(rangesNow(), path);
         if (r) { clearFlash(); flashRange(r); }
@@ -1396,6 +1489,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       count.title = places;
       msg.after(count);
     }
+    // a def's unknown ref must never mint a column in the SURFACE's mock
+    // schema — the create flow is a surface affordance
+    if (bufferDefId !== null) return row;
     const create = document.createElement('button');
     create.type = 'button';
     create.className = 'wb-lint-create';
@@ -1456,21 +1552,35 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
 
   const renderLint = (runtime: RenderIssue[]): { errors: number; warnings: number; runtime: number } => {
     lastRuntime = runtime;
+    let issues: LintIssue[];
     if (bufferDefId !== null) {
-      // component mode: the lint pipeline reads the SURFACE doc — its rows
-      // would judge a document the pane isn't showing. Apply's shape check
-      // is the def gate; deep def linting is PR-2 territory.
-      lintEl.hidden = true;
-      lintEl.replaceChildren();
-      lintIssues = [];
-      return { errors: 0, warnings: 0, runtime: 0 };
+      // component mode (PR 2): lint the STAGED def with slot keys as the
+      // field vocabulary. Runtime issues stay out — they come from the
+      // SURFACE's render, not the def's.
+      const wctxLint = activeWorkshop();
+      if (!wctxLint || wctxLint.def().id !== bufferDefId) {
+        lintEl.hidden = true;
+        lintEl.replaceChildren();
+        lintIssues = [];
+        return { errors: 0, warnings: 0, runtime: 0 };
+      }
+      const def = wctxLint.def();
+      const sf = slotMockFields(def);
+      runtime = [];
+      lintEl.hidden = false;
+      issues = lintDocument(
+        { kind: componentKind(def) === 'row' ? 'row' : 'column', root: def.root } as FormatterDocument,
+        sf.map((f) => f.name),
+        Object.fromEntries(sf.map((f) => [f.name, f.type])),
+      );
+    } else {
+      lintEl.hidden = false;
+      issues = lintDocument(
+        state.doc,
+        state.fields.map((f) => f.name),
+        Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
+      );
     }
-    lintEl.hidden = false;
-    const issues = lintDocument(
-      state.doc,
-      state.fields.map((f) => f.name),
-      Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
-    );
     // #PR-D: the squiggle layer mirrors the footer — the missing-column
     // filter quiets the editor's underlines too (that's its whole point)
     lintIssues = lintPrefs.hideMissingColumns
@@ -1626,6 +1736,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       return;
     }
     clearDirty(); regenerate(); refreshDeployPanel();
+    // workshop emits carry staged SELECTION moves too — the component-mode
+    // twin of the surface's 'selection' reveal above
+    if (reason === 'workshop') revealCompSelection();
   });
   hostAny._unsub = () => {
     stateUnsub();

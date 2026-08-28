@@ -361,15 +361,102 @@ describe('Format document in component mode', () => {
   });
 });
 
-describe('surface machinery stands down', () => {
-  it('a caret click never drives the surface selection', () => {
+describe('component-mode IDE (PR 2): caret ⇄ workshop selection', () => {
+  /** Stage a two-node tree so caret/crumb/fold tests have a child to hit
+   *  (the deadline chip's own root is a single leaf). */
+  function stageTree(ctx: NonNullable<typeof state.workshopCtx>): void {
+    const def = ctx.def();
+    def.root = {
+      elmType: 'div', _elmName: 'Wrap',
+      children: [{ elmType: 'span', txtContent: '[$Due]' }],
+    };
+    ctx.applyDef(def); // the pane is clean — its regenerate follows the emit
+  }
+
+  it('a caret inside an element\'s JSON selects it in the WORKSHOP, never the surface', () => {
     const { textEl } = mountPanel();
-    openWorkshop();
-    const before = state.selection;
-    textEl.setSelectionRange(5, 5);
+    const ctx = openWorkshop();
+    stageTree(ctx);
+    const surfaceSel = state.selection;
+    const off = textEl.value.indexOf('"elmType"', textEl.value.indexOf('"children"'));
+    textEl.setSelectionRange(off + 2, off + 2);
     textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(state.selection).toEqual(before);
+    expect(ctx.selection()).toEqual([0]);
+    expect(state.selection).toEqual(surfaceSel); // the surface never hears it
   });
+
+  it('def wrapper chrome (the slots block) selects nothing', () => {
+    const { textEl } = mountPanel();
+    const ctx = openWorkshop();
+    stageTree(ctx);
+    ctx.select([0]);
+    const off = textEl.value.indexOf('"slots"') + 2;
+    textEl.setSelectionRange(off, off);
+    textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(ctx.selection()).toEqual([0]); // unchanged
+  });
+
+  it('crumbs follow the caret with staged labels, and a crumb click selects in the workshop', () => {
+    const { host, textEl } = mountPanel();
+    const ctx = openWorkshop();
+    stageTree(ctx);
+    const off = textEl.value.indexOf('"elmType"', textEl.value.indexOf('"children"'));
+    textEl.setSelectionRange(off + 2, off + 2);
+    textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const crumbs = host.querySelector('#wb-json-crumbs') as HTMLElement;
+    expect(crumbs.hidden).toBe(false);
+    const btns = [...crumbs.querySelectorAll<HTMLButtonElement>('.wb-crumb')];
+    expect(btns.length).toBeGreaterThanOrEqual(2);
+    expect(btns[0].textContent).toBe('Wrap'); // the staged label, not a surface name
+    btns[0].click(); // the root crumb
+    expect(ctx.selection()).toEqual([]);
+  });
+});
+
+describe('component-mode IDE (PR 2): folds on a pane-local set', () => {
+  it('element folds work in component mode and the SHARED surface fold set stays untouched', () => {
+    const { textEl } = mountPanel();
+    foldState.update('tree', (s) => s.add('0')); // a surface fold, parked
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    def.root = {
+      elmType: 'div', _elmName: 'Wrap',
+      children: [{ elmType: 'span', txtContent: '[$Due]', style: { color: 'red' } }],
+    };
+    ctx.applyDef(def);
+    const before = textEl.value;
+    const off = before.indexOf('"elmType"', before.indexOf('"children"'));
+    textEl.setSelectionRange(off, off);
+    textEl.dispatchEvent(new KeyboardEvent('keydown', {
+      key: '[', ctrlKey: true, shiftKey: true, bubbles: true,
+    }));
+    expect(textEl.value.length).toBeLessThan(before.length); // child 0 folded away
+    expect(foldState.keys()).toEqual(['0']); // the surface's set never moved
+    state.minimizeView(); // back to the surface — its folds are its own business
+    expect(textEl.value).toContain('$schema');
+  });
+});
+
+describe('component-mode IDE (PR 2): slot-aware lint', () => {
+  it('lint reads the STAGED def with slot keys as fields — unknown refs flag, slot refs resolve, no create-column', () => {
+    const { host, textEl, applyBtn } = mountPanel();
+    const ctx = openWorkshop();
+    const def = ctx.def();
+    const slotKey = def.slots[0]?.key ?? 'Due';
+    def.root = { elmType: 'div', txtContent: `=[$${slotKey}]+[$NotASlot]` };
+    typeInto(textEl, JSON.stringify(def, null, 2));
+    applyBtn.click();
+    const lintEl = host.querySelector('#wb-lint') as HTMLElement;
+    expect(lintEl.hidden).toBe(false); // lint runs against the def now
+    const text = lintEl.textContent ?? '';
+    expect(text).toContain('NotASlot'); // an unknown ref still flags
+    expect(text).not.toContain(`[$${slotKey}] —`); // the slot ref resolves
+    // never a "create column" into the surface's mock schema from a def
+    expect(lintEl.querySelector('.wb-lint-create')).toBeNull();
+  });
+});
+
+describe('surface machinery stands down', () => {
 
   it('the surface-only output toggles disable — an inert toggle must not be able to discard a draft', () => {
     const { host } = mountPanel();
@@ -381,25 +468,22 @@ describe('surface machinery stands down', () => {
     // def serialization ignores
     expect(sanitize.disabled).toBe(true);
     expect(names.disabled).toBe(true);
-    // the fold commands are inert in component mode — disabled, not dead buttons
-    expect((host.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled).toBe(true);
-    expect((host.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled).toBe(true);
+    // fold commands are LIVE in component mode since PR 2 (pane-local set)
+    expect((host.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled).toBe(false);
+    expect((host.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled).toBe(false);
     state.minimizeView();
     expect(sanitize.disabled).toBe(false);
     expect(names.disabled).toBe(false);
-    expect((host.querySelector('#wb-json-fold-others') as HTMLButtonElement).disabled).toBe(false);
-    expect((host.querySelector('#wb-json-expand-all') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('lint rows hide and the deploy action disables', () => {
+  it('the deploy action disables; lint stays VISIBLE (it lints the def since PR 2)', () => {
     const { host } = mountPanel();
     const deployBtn = document.getElementById('wb-json-deploy') as HTMLButtonElement
       ?? host.querySelector('#wb-json-deploy') as HTMLButtonElement;
     openWorkshop();
-    expect((host.querySelector('#wb-lint') as HTMLElement).hidden).toBe(true);
+    expect((host.querySelector('#wb-lint') as HTMLElement).hidden).toBe(false);
     expect(deployBtn.disabled).toBe(true);
     state.minimizeView();
-    expect((host.querySelector('#wb-lint') as HTMLElement).hidden).toBe(false);
     expect(deployBtn.disabled).toBe(false);
   });
 });
