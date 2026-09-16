@@ -55,8 +55,10 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
 
   // Round-2 probe: does stopping propagation at the shadow host keep SharePoint's
   // page-level handler from cancelling keys like plain "g"? Toggle via the checkbox.
+  // Bubble phase: runs after the textarea's own listeners, stops the event before
+  // SharePoint's document-level listeners.
   let guard = false;
-  host.host.addEventListener('keydown', (e) => { if (guard) e.stopPropagation(); }, true);
+  host.host.addEventListener('keydown', (e) => { if (guard) e.stopPropagation(); });
 
   const $ = <T extends HTMLElement>(id: string) => wrap.querySelector<T>('#' + id)!;
   const logBox = $('log');
