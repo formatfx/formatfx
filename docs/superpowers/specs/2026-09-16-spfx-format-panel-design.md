@@ -97,10 +97,13 @@ transpiler already enforces one level down.
 ## 6. The hidden list
 
 Title `FormatFX`, hidden, created on first use if missing (needs Manage
-Lists). If the person cannot create it, drafts fall back to **per-tab
-browser storage** (`sessionStorage`, a per-viewer convenience) so a view
-switch or reload never loses an unstashed edit, applied history is kept in
-that tab only, and the panel says plainly that nothing is shared or durable.
+Lists). **Whenever the journal list is unavailable to this person** — it
+cannot be created, or it exists but they cannot read or write it (Manage
+Lists on the target list does not imply access to a site-level list someone
+else created) — drafts fall back to **per-tab browser storage**
+(`sessionStorage`, a per-viewer convenience) so a view switch or reload never
+loses an unstashed edit, applied history is kept in that tab only, and the
+panel says plainly that nothing is shared or durable.
 
 One row per event:
 
@@ -135,20 +138,23 @@ One row per event:
    entity exposes one — spike question §9.4).
 2. Compare to `BasedOn`. If different, warn: someone changed this since you
    started — show both, let the person choose overwrite or reload.
-3. Write the `Pending` journal row (§6) with `Before` and `After`.
-4. `POST /_api/contextinfo` → digest; one MERGE on the field or view
-   (nometadata body `{"CustomFormatter": "…"}`) with `IF-MATCH: <etag>` from
-   step 1, so a change that lands between the read and the write is refused
-   rather than overwritten. `spClient.applyFormatters` sends `IF-MATCH: *`
-   today; the panel's client must not. If §9.4 finds no usable ETag, the
-   window is narrowed instead: re-read immediately before the MERGE and
-   return to step 2 on any difference.
-5. Re-read, verify it matches `After`, flip the journal row to `Applied`,
+3. `POST /_api/contextinfo` → digest. Every write below (journal rows
+   included) carries it; a 403 "security validation" on any of them means
+   refresh the digest and retry that one write.
+4. Write the `Pending` journal row (§6) with `Before` and `After`.
+5. One MERGE on the field or view (nometadata body
+   `{"CustomFormatter": "…"}`) with `IF-MATCH: <etag>` from step 1, so a
+   change that lands between the read and the write is refused rather than
+   overwritten. `spClient.applyFormatters` sends `IF-MATCH: *` today; the
+   panel's client must not. If §9.4 finds no usable ETag, the window is
+   narrowed instead: re-read immediately before the MERGE and return to
+   step 2 on any difference.
+6. Re-read, verify it matches `After`, flip the journal row to `Applied`,
    echo.
-6. Errors teach: 401/403 → you need Manage Lists on this list; 403 with
-   "security validation" → digest expired, rerun; **412 → someone changed
-   this since you started** (back to step 2, never "rerun"); 404 → internal
-   vs display name.
+7. Errors teach: 401/403 → you need Manage Lists on this list; 403 with
+   "security validation" → digest expired, refreshed automatically once;
+   **412 → someone changed this since you started** (back to step 2, never
+   "rerun"); 404 → internal vs display name.
 
 ## 8. Testing
 

@@ -24,13 +24,23 @@
 
 ## File structure
 
+> **Task 1 outcome (2026-09-16):** the generator nests the project one level down, at
+> `spfx/formatfx-spfx/`. Every path below that belongs to the SPFx project
+> (`package.json`, `config/`, `src/`, `node_modules/`, `lib/`, `temp/`) lives under
+> `spfx/formatfx-spfx/`, and every `cd spfx` for SPFx commands means
+> `cd spfx/formatfx-spfx`. `spfx/panel/` and `spfx/FINDINGS.md` stay where written.
+> Consequences are spelled out where they bite: the local dependency is
+> `"formatfx-panel": "file:../panel"`, and variant B's relative imports climb five
+> levels (`../../../../../src/…`).
+
 ```
-spfx/                                  # the SPFx project (scaffolded by yo, Task 1)
-  package.json                         # + "formatfx-panel": "file:panel"   (Task 2)
-  config/serve.json                    # pageUrl = the owner's test list      (Task 4)
-  src/extensions/formatFx/
-    FormatFxCommandSet.ts              # the one command + instrumentation   (Task 3)
-    FormatFxCommandSet.manifest.json   # scaffolded; id used in the debug URL
+spfx/
+  formatfx-spfx/                       # the SPFx project (scaffolded by yo, Task 1)
+    package.json                       # + "formatfx-panel": "file:../panel" (Task 2)
+    config/serve.json                  # pageUrl = the owner's test list      (Task 4)
+    src/extensions/formatFx/
+      FormatFxCommandSet.ts            # the one command + instrumentation   (Task 3)
+      FormatFxCommandSet.manifest.json # scaffolded; id used in the debug URL
   panel/                               # local package, prebuilt bundle      (Task 2)
     package.json                       # name formatfx-panel, main panel.js, type module
     build.mjs                          # esbuild: src/entry.ts → panel.js
@@ -62,8 +72,10 @@ Expected: `v22.14.0` or any `v22.x` ≥ 22.14. Anything else: stop and tell the 
 
 - [ ] **Step 3: Confirm the branch**
 
+Per CLAUDE.md's start-of-session contract, align `main` first, then branch:
 ```bash
-git checkout -b spike/spfx-command-set origin/main
+git checkout main && git pull origin main
+git checkout -b spike/spfx-command-set
 git branch --show-current
 ```
 Expected: `spike/spfx-command-set`.
@@ -82,11 +94,12 @@ Expected: `spike/spfx-command-set`.
 
 - [ ] **Step 1: Install the generator**
 
+Pinned, so the findings describe the declared toolchain (SPFx 1.23.2) and do not drift when the generator advances:
 ```bash
-npm install -g yo @microsoft/generator-sharepoint@latest
+npm install -g yo @microsoft/generator-sharepoint@1.23.2
 yo --version
 ```
-Expected: a version line. TLS error → `fix-corp-tls-cert`, retry.
+Expected: a version line. TLS error → `fix-corp-tls-cert`, retry. If `1.23.2` is not a published generator tag, use the nearest `1.23.x` and record the exact version in FINDINGS.
 
 - [ ] **Step 2: Scaffold non-interactively**
 
@@ -157,7 +170,7 @@ git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: scaffo
 - Create: `spfx/panel/build.mjs`
 - Create: `spfx/panel/panel.d.ts`
 - Create: `spfx/panel/src/entry.ts`
-- Modify: `spfx/package.json` — add dependency `"formatfx-panel": "file:panel"`
+- Modify: `spfx/formatfx-spfx/package.json` — add dependency `"formatfx-panel": "file:../panel"`
 
 **Interfaces:**
 - Produces: `mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void` exported from the `formatfx-panel` package, where
@@ -338,7 +351,9 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
       const hdr = r.headers.get('ETag');
       const j = r.ok ? await r.json() as Record<string, unknown> : {};
       const first = Array.isArray(j['value']) ? (j['value'] as Record<string, unknown>[])[0] ?? {} : j;
-      log(`GET ${u.includes('/views') ? 'view' : 'field'} → ${r.status} ETag-header=${hdr ?? 'none'} odata.etag=${String(first['odata.etag'] ?? 'none')}`);
+      // Both spellings: older payloads use "odata.etag", current minimal-metadata uses "@odata.etag".
+      const bodyEtag = first['@odata.etag'] ?? first['odata.etag'] ?? 'none';
+      log(`GET ${u.includes('/views') ? 'view' : 'field'} → ${r.status} ETag-header=${hdr ?? 'none'} body-etag=${String(bodyEtag)}`);
     }
   });
 
@@ -360,18 +375,18 @@ Expected: `panel.js` exists (tens of KB). If esbuild errors on an import path, t
 
 - [ ] **Step 6: Wire it as a local dependency and rebuild the SPFx project**
 
-In `spfx/package.json`, under `"dependencies"`, add:
+In `spfx/formatfx-spfx/package.json`, under `"dependencies"`, add:
 ```json
-"formatfx-panel": "file:panel"
+"formatfx-panel": "file:../panel"
 ```
 Then:
 ```bash
-cd spfx
+cd spfx/formatfx-spfx
 npm install
 ls -la node_modules/formatfx-panel
 npm run build
 ```
-Expected: `node_modules/formatfx-panel` is a symlink to `panel/`; `heft build` still passes (nothing imports it yet, this proves install only).
+Expected: `node_modules/formatfx-panel` is a symlink to `../panel/`; `heft build` still passes (nothing imports it yet, this proves install only).
 
 - [ ] **Step 7: Record and commit**
 
@@ -389,8 +404,8 @@ git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: panel 
 ### Task 3: The command set — one button, instrumentation, shadow-root mount
 
 **Files:**
-- Modify: `spfx/src/extensions/formatFx/FormatFxCommandSet.ts` (replace the scaffold body)
-- Modify: `spfx/src/extensions/formatFx/FormatFxCommandSet.manifest.json` (one command only)
+- Modify: `spfx/formatfx-spfx/src/extensions/formatFx/FormatFxCommandSet.ts` (replace the scaffold body)
+- Modify: `spfx/formatfx-spfx/src/extensions/formatFx/FormatFxCommandSet.manifest.json` (one command only)
 
 **Interfaces:**
 - Consumes: `mountSpikePanel`, `SpikeContext` from `formatfx-panel` (Task 2).
@@ -470,7 +485,7 @@ If `this.context.listView.view` does not exist in this SPFx version's typings, r
 - [ ] **Step 3: Build**
 
 ```bash
-cd spfx
+cd spfx/formatfx-spfx
 npm run build
 ```
 Expected: passes. Typical failures and the one-line fix for each:
@@ -489,17 +504,17 @@ git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Format
 ### Task 4: Serve against the real list; answer Q1, Q3 and Q4 (owner in the loop)
 
 **Files:**
-- Modify: `spfx/config/serve.json`
+- Modify: `spfx/formatfx-spfx/config/serve.json`
 - Modify: `spfx/FINDINGS.md`
 
 - [ ] **Step 1: Point serve.json at the test list**
 
-In `spfx/config/serve.json`, set every `pageUrl` to `TEST_LIST_URL`, and in `serveConfigurations.default.customActions` make sure the key is `EXTENSION_ID` with `"location": "ClientSideExtension.ListViewCommandSet.CommandBar"` and `"properties": {}`.
+In `spfx/formatfx-spfx/config/serve.json`, set every `pageUrl` to `TEST_LIST_URL`, and in `serveConfigurations.default.customActions` make sure the key is `EXTENSION_ID` with `"location": "ClientSideExtension.ListViewCommandSet.CommandBar"` and `"properties": {}`.
 
 - [ ] **Step 2: Trust the dev certificate, start serving**
 
 ```bash
-cd spfx
+cd spfx/formatfx-spfx
 npx heft trust-dev-cert
 ```
 (If that task is not found, run `npx heft --help` and use the certificate task it lists; record the real command in FINDINGS.) Then, in the background:
@@ -516,7 +531,7 @@ Give the owner one line to open (single line, no whitespace):
 ```
 And these instructions, verbatim:
 1. Accept **Load debug scripts**. If Edge/Chrome asks to allow access to devices on your local network, click **Allow** (Chromium 142+ Local Network Access).
-2. Open devtools → Console, filter on `ffx-spike`.
+2. Open devtools → Console, filter on `ffx-spike`, and **turn on "Preserve log"** (the gear or checkbox in the Console toolbar). Without it a hard navigation wipes the earlier lines and Q1 becomes unreadable.
 3. Click **Format (spike)** in the command bar. The panel appears on the right.
 4. In the panel textarea: type a few characters, press **Ctrl+Z**, **Escape**, **Arrow keys**, **Enter**, then paste something. Click **Render**, then **Fetch fields (GET)**.
 5. Switch to a different view using the list's own view dropdown (top right). Wait for it to load.
@@ -532,13 +547,13 @@ Q1 — instance survival. Look at the `onInit` and `listViewStateChanged` lines 
 
 Q3 — shadow panel. From the `keydown … defaultPrevented=` lines (logged after dispatch completed, so they include any page-level cancel): every key the owner pressed should show `defaultPrevented=false`, the textarea should contain what they typed, `excelToSp OK` and `render OK` should appear and the preview pill should be visible, `GET fields → 200` should list the columns. Any key that never logged, or logged `defaultPrevented=true`, is SharePoint's global handler stealing it; note which.
 
-Q4 — ETags. From the two `GET field → … / GET view → …` lines: record the `ETag-header=` and `odata.etag=` values. Either one being a non-`none` value means §7's MERGE can send `IF-MATCH: <etag>`; both `none` means the write can only be narrowed (re-read immediately before the MERGE).
+Q4 — ETags. From the two `GET field → … / GET view → …` lines: record the `ETag-header=` and `body-etag=` values. Either one being a non-`none` value means §7's MERGE can send `IF-MATCH: <etag>`; both `none` means the write can only be narrowed (re-read immediately before the MERGE).
 
 - [ ] **Step 5: Record**
 
 Fill in Q1, Q3 and Q4 in `spfx/FINDINGS.md` with the pasted console excerpt and one-line verdicts. Commit:
 ```bash
-git add spfx/config/serve.json spfx/FINDINGS.md
+git add spfx/formatfx-spfx/config/serve.json spfx/FINDINGS.md
 git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Q1/Q3/Q4 findings from the live list"
 ```
 Stop the serve process.
@@ -548,30 +563,36 @@ Stop the serve process.
 ### Task 5: Q2 variant B — direct source import through SPFx's own build (mandatory)
 
 **Files:**
-- Modify: `spfx/src/extensions/formatFx/FormatFxCommandSet.ts` (temporary imports)
+- Modify: `spfx/formatfx-spfx/src/extensions/formatFx/FormatFxCommandSet.ts` (temporary imports)
 - Modify: `spfx/FINDINGS.md`
 
 Variant A (Task 2) only proves that esbuild can bundle the parent's source and that SPFx can consume the result. This task is the other half of §9.2: can SPFx's webpack + TypeScript consume that source *directly*? It runs regardless of Task 2's outcome.
 
-- [ ] **Step 1: Import the parent's core and editor source directly**
+- [ ] **Step 1: Import the parent's core, editor and bridge source directly**
 
-Add at the top of `FormatFxCommandSet.ts`:
+Add at the top of `FormatFxCommandSet.ts` (the same three module families variant A bundles):
 ```ts
-import { importJson } from '../../../../src/core/serializer';
-import { excelToSp } from '../../../../src/editor/dialect';
-console.log('[ffx-spike] direct import OK', typeof importJson, typeof excelToSp);
+import { importJson } from '../../../../../src/core/serializer';
+import { excelToSp } from '../../../../../src/editor/dialect';
+import { readPageContext } from '../../../../../src/bridge/spClient';
+console.log('[ffx-spike] direct import OK', typeof importJson, typeof excelToSp, typeof readPageContext);
 ```
+(Five levels: `spfx/formatfx-spfx/src/extensions/formatFx/` → repo root.)
 
 - [ ] **Step 2: Build and record the outcome**
 
 ```bash
-cd spfx && npm run build
+cd spfx/formatfx-spfx && npm run build
 ```
 Expected, most likely: a TypeScript `rootDir` error or the Heft rig refusing files outside `spfx/src`. Whatever it says, paste the first error into FINDINGS under Q2 as "Variant B (direct import): …". If it *passes*, also record whether the parent's `tsconfig.json` options (`verbatimModuleSyntax`, `erasableSyntaxOnly`, `moduleResolution: bundler`) caused any diagnostics.
 
+- [ ] **Step 2b: If the build passed, observe it at runtime too**
+
+A build that passes is not yet "works". Start serving again (`npm run start -- --nobrowser`), ask the owner to reload the debug URL from Task 4 Step 3, and have them paste the `direct import OK` console line (it should show `function function function`). Record it under Q2 as variant B's runtime evidence. Stop the serve process.
+
 - [ ] **Step 3: Revert the import, commit findings**
 
-Remove the three lines added in Step 1. Then:
+Remove the four lines added in Step 1. Then:
 ```bash
 git add spfx
 git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Q2 variant B outcome"
@@ -593,7 +614,8 @@ git push -u origin spike/spfx-command-set
 - [ ] **Step 2: Docs branch off main**
 
 ```bash
-git checkout -b claude/spfx-spike-findings origin/main
+git checkout main && git pull origin main
+git checkout -b claude/spfx-spike-findings
 ```
 
 - [ ] **Step 3: Write the answers**
@@ -613,15 +635,25 @@ In the spec, after §9's numbered list, add:
 ```
 And in §4, replace the bullet "Engine and editor modules are consumed … is a spike question (§9.2)" with the decided sentence. In §7 step 4, delete whichever branch Q4 ruled out.
 
-- [ ] **Step 4: Commit, push, PR**
+- [ ] **Step 4: Verify per the pre-PR contract, then commit, push, PR**
 
+CLAUDE.md requires the root build and unit tests to pass locally before any PR, docs-only or not:
+```bash
+npm run build
+npm test
+```
+Expected: both pass; note the test count for the PR body. Then:
 ```bash
 git add docs/superpowers/specs/2026-09-16-spfx-format-panel-design.md
 git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "docs: SPFx spike answers folded into the design spec"
 git push -u origin claude/spfx-spike-findings
 gh pr create --base main --head claude/spfx-spike-findings --title "docs: SPFx spike findings" --body-file <scratchpad>/pr-body.md
 ```
-PR body: the four answers, one line each, and a link to the spike branch. Docs only; CI short-circuits. Then `git checkout main && git pull origin main` per CLAUDE.md.
+PR body: the four answers, one line each, a link to the spike branch, and the local build/test result with the test count. Docs only; CI short-circuits.
+
+- [ ] **Step 5: Watch the PR, then clean up**
+
+Per CLAUDE.md, the moment the PR is open, arm the PR watch: `subscribe_pr_activity` does not exist in this harness (memory `pr-watch-fallback`), so start a `Monitor` that polls `gh pr checks <n>` and `gh pr view <n> --json comments,reviews` every 45 seconds (put the loop in a script file under the scratchpad; this machine has no `jq`, use gh's `--jq`), and re-arm it on expiry until the PR is merged or closed. Push fixes for clear findings; ask the owner about anything architectural. Only then `git checkout main && git pull origin main`.
 
 ---
 
