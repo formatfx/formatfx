@@ -1,0 +1,10 @@
+{
+  "name": "formatfx-panel",
+  "version": "0.0.0-spike",
+  "private": true,
+  "type": "module",
+  "main": "panel.js",
+  "types": "panel.d.ts",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": { "esbuild": "^0.28.1", "typescript": "~6.0.2" }
+}

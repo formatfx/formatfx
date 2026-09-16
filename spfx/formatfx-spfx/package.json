@@ -16,7 +16,8 @@
     "@microsoft/sp-core-library": "1.23.2",
     "@microsoft/decorators": "1.23.2",
     "@microsoft/sp-listview-extensibility": "1.23.2",
-    "@microsoft/sp-dialog": "1.23.2"
+    "@microsoft/sp-dialog": "1.23.2",
+    "formatfx-panel": "file:../panel"
   },
   "devDependencies": {
     "@microsoft/eslint-plugin-spfx": "1.23.2",

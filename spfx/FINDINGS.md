@@ -106,8 +106,36 @@ transitive SPFx toolchain deps).
 ## Q1 -- does a Command Set instance survive a client-side view switch?
 (pending)
 
-## Q2 -- does the SPFx build consume the parent repo's src cleanly?
-(pending)
+## Q2 — how does the SPFx build consume the parent repo's core + editor source: prebuilt bundle (A) or direct import (B)?
+(pending — both variants run)
+
+Variant A (prebuilt esbuild bundle as a file: dependency): install OK / build OK.
+`spfx/panel`: `npm install` added 3 packages (esbuild, typescript, and one
+transitive), no TLS errors. `npm run build` (`node build.mjs`, esbuild
+0.28.x) bundled `spfx/panel/src/entry.ts` — which imports
+`src/core/serializer`, `src/core/renderer`, `src/core/theme`,
+`src/editor/dialect`, and `src/bridge/spClient` from the PARENT repo via
+`../../../src/...` relative paths — straight through on the first attempt,
+no import-path fixes needed; the paths in the brief matched the current
+`src/` layout exactly. Output: `spfx/panel/panel.js`, 78,692 bytes (~77KB),
+ESM, target es2022. No parent `tsconfig.json` was needed or added — esbuild
+strips types without reading `moduleResolution`/`verbatimModuleSyntax`/
+`erasableSyntaxOnly` from the parent config.
+
+Wiring: added `"formatfx-panel": "file:../panel"` to
+`spfx/formatfx-spfx/package.json` `dependencies`. `npm install` in
+`spfx/formatfx-spfx` reported "added 1 package" and created
+`node_modules/formatfx-panel` as a real symlink (`lrwxrwxrwx ... ->
+/c/dev/formatfx/.claude/worktrees/partitioned-squishing-reddy/spfx/panel`),
+confirming npm's `file:` handling symlinks rather than copies on this
+platform/npm version. `npm run build` in `spfx/formatfx-spfx` (heft test +
+heft package-solution --production) still passed cleanly — expected, since
+nothing imports `formatfx-panel` yet (Task 3's job); this run only proves
+the install/symlink and that adding the dependency doesn't break the
+existing build.
 
 ## Q3 -- does a shadow-root panel render and take input without interference?
+(pending)
+
+## Q4 — do SP.Field / SP.View responses carry an ETag usable in IF-MATCH?
 (pending)

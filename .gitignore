@@ -38,8 +38,8 @@ e2e/visual-compare/artifacts
 e2e/visual-compare/report
 
 # spfx spike (throwaway)
-spfx/lib
-spfx/dist
-spfx/temp
-spfx/release
+spfx/formatfx-spfx/lib
+spfx/formatfx-spfx/dist
+spfx/formatfx-spfx/temp
+spfx/formatfx-spfx/release
 spfx/panel/panel.js
