@@ -3,6 +3,7 @@
 TEST_LIST_URL: <owner fills in>
 SPFx version: 1.23.2 (`@microsoft/sp-listview-extensibility` in `spfx/formatfx-spfx/package.json`)
 Node: v22.14.0
+EXTENSION_ID: 9bb46657-c68a-4e3b-895b-ed5a36ae6fcc (matches `id` in `FormatFxCommandSet.manifest.json`; same value already recorded below as "Manifest id (guid)")
 Scaffold + first build: OK
 
 ## Deviation from the brief: nested project folder
@@ -139,3 +140,31 @@ existing build.
 
 ## Q4 — do SP.Field / SP.View responses carry an ETag usable in IF-MATCH?
 (pending)
+
+## Task 3 notes — command set implementation
+
+All base-class typings the brief hedged against (`onDispose` visibility,
+`pageContext.list`/`listItem`, `context.listView.view`) matched the
+brief's code exactly in this SPFx version (1.23.2) — no hedge paths were
+needed for those.
+
+One typing conflict the brief didn't anticipate: `BaseComponent` (an
+ancestor of `BaseListViewCommandSet` via `BaseExtension`) already declares
+a public `get instanceId(): string` getter, unique per component
+instance. The brief's `private readonly instanceId = Math.random()...`
+field shadows that inherited public member with a private one, which
+TypeScript rejects as TS2415 ("Class 'FormatFxCommandSet' incorrectly
+extends base class ... Property 'instanceId' is private in type
+'FormatFxCommandSet' but not in type 'BaseListViewCommandSet<...>'"), and
+a second, consequent TS2345 on the `.add(this, ...)` event-subscribe call.
+
+Fix: dropped the private `instanceId` field entirely and used the
+inherited `this.instanceId` (SPFx-assigned, unique per instance, set once
+at construction — same identity semantics the brief's own random field
+was going for) everywhere the brief's code referenced `this.instanceId`.
+No other line changed. Rebuilt clean: `npm run build` in
+`spfx/formatfx-spfx` exits 0, zero TypeScript errors, zero ESLint
+warnings (no `/* eslint-disable */` needed — tried it first per the
+brief's guidance, but ESLint flagged it as an *unused* eslint-disable
+directive since the file had no actual lint violations, so it was
+removed).

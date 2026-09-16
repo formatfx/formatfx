@@ -1,68 +1,53 @@
-import { Log } from '@microsoft/sp-core-library';
-import {
-  BaseListViewCommandSet,
-  type Command,
-  type IListViewCommandSetExecuteEventParameters,
-  type ListViewStateChangedEventArgs
-} from '@microsoft/sp-listview-extensibility';
-import { Dialog } from '@microsoft/sp-dialog';
+import { BaseListViewCommandSet, type IListViewCommandSetExecuteEventParameters } from '@microsoft/sp-listview-extensibility';
+import { mountSpikePanel, type SpikeContext } from 'formatfx-panel';
 
-/**
- * If your command set uses the ClientSideComponentProperties JSON input,
- * it will be deserialized into the BaseExtension.properties object.
- * You can define an interface to describe it.
- */
-export interface IFormatFxCommandSetProperties {
-  // This is an example; replace with your own properties
-  sampleTextOne: string;
-  sampleTextTwo: string;
-}
+export interface IFormatFxCommandSetProperties {}
 
-const LOG_SOURCE: string = 'FormatFxCommandSet';
+const TAG = '[ffx-spike]';
 
 export default class FormatFxCommandSet extends BaseListViewCommandSet<IFormatFxCommandSetProperties> {
+  // Note: BaseComponent already exposes a public `get instanceId(): string`
+  // (unique per component instance) -- reuse it rather than shadowing it
+  // with our own field, which TS rejects (TS2415: can't narrow an
+  // inherited public member to private). See FINDINGS.md "Task 3 notes".
+  private panelHost: HTMLElement | undefined;
 
   public onInit(): Promise<void> {
-    Log.info(LOG_SOURCE, 'Initialized FormatFxCommandSet');
-
-    // initial state of the command's visibility
-    const compareOneCommand: Command = this.tryGetCommand('COMMAND_1');
-    compareOneCommand.visible = false;
-
-    this.context.listView.listViewStateChangedEvent.add(this, this._onListViewStateChanged);
-
+    console.log(`${TAG} onInit instance=${this.instanceId} list=${this.listId()} view=${this.viewId()} url=${location.href}`);
+    // Q1: fires on every ListView state change (selection, view switch, ...).
+    this.context.listView.listViewStateChangedEvent.add(this, () => {
+      console.log(`${TAG} listViewStateChanged instance=${this.instanceId} view=${this.viewId()} url=${location.href}`);
+    });
     return Promise.resolve();
   }
 
   public onExecute(event: IListViewCommandSetExecuteEventParameters): void {
-    switch (event.itemId) {
-      case 'COMMAND_1':
-        Dialog.alert(`${this.properties.sampleTextOne}`).catch(() => {
-          /* handle error */
-        });
-        break;
-      case 'COMMAND_2':
-        Dialog.alert(`${this.properties.sampleTextTwo}`).catch(() => {
-          /* handle error */
-        });
-        break;
-      default:
-        throw new Error('Unknown command');
-    }
+    if (event.itemId !== 'FORMAT') return;
+    if (this.panelHost) { this.panelHost.remove(); }
+    this.panelHost = document.createElement('div');
+    this.panelHost.id = 'ffx-spike-host';
+    const shadow = this.panelHost.attachShadow({ mode: 'open' });
+    document.body.appendChild(this.panelHost);
+    const ctx: SpikeContext = {
+      webUrl: this.context.pageContext.web.absoluteUrl,
+      listId: this.listId(),
+      viewId: this.viewId(),
+      instanceId: this.instanceId,
+      log: (line) => console.log(`${TAG} ${line}`),
+    };
+    mountSpikePanel(shadow, ctx);
+    console.log(`${TAG} panel mounted instance=${this.instanceId}`);
   }
 
-  private _onListViewStateChanged = (args: ListViewStateChangedEventArgs): void => {
-    Log.info(LOG_SOURCE, 'List view state changed');
+  protected onDispose(): void {
+    console.log(`${TAG} onDispose instance=${this.instanceId} panelStillInDom=${!!document.getElementById('ffx-spike-host')}`);
+    super.onDispose();
+  }
 
-    const compareOneCommand: Command = this.tryGetCommand('COMMAND_1');
-    if (compareOneCommand) {
-      // This command should be hidden unless exactly one row is selected.
-      compareOneCommand.visible = this.context.listView.selectedRows?.length === 1;
-    }
-
-    // TODO: Add your logic here
-
-    // You should call this.raiseOnChage() to update the command bar
-    this.raiseOnChange();
+  private listId(): string {
+    return this.context.pageContext.list?.id.toString() ?? '(none)';
+  }
+  private viewId(): string {
+    return this.context.pageContext.listItem ? '(item)' : (this.context.listView.view?.id?.toString() ?? '(none)');
   }
 }
