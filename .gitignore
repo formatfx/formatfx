@@ -36,3 +36,10 @@ playwright-report
 e2e/visual-compare/.auth
 e2e/visual-compare/artifacts
 e2e/visual-compare/report
+
+# spfx spike (throwaway)
+spfx/lib
+spfx/dist
+spfx/temp
+spfx/release
+spfx/panel/panel.js
