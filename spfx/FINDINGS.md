@@ -104,11 +104,74 @@ transitive SPFx toolchain deps).
   `lib`/`dist`/`temp`/`release`, no `.sppkg`, no `sharepoint/solution/`
   build artifacts.
 
+## Live rounds — how Q1/Q3/Q4 were answered
+
+Q1, Q3 and Q4 were answered by **two live rounds against the real list**
+(`TEST_LIST_URL` above), served from `npm run start -- --nobrowser` in
+`spfx/formatfx-spfx` with `config/serve.json` pointed at that list.
+**The owner drove the browser in both rounds** (the tenant is reachable
+only from their signed-in session — docs/CONNECTIVITY.md §1); this
+session read the answers off the `ffx-spike` console lines they pasted
+back. Full pasted log:
+`.superpowers/sdd/2026-09-16-spfx-spike/round-logs.md`.
+
+- **Round 1 — build `269f8c3`** ("Format command mounts the shadow-root
+  panel with Q1/Q3 instrumentation"). Answered Q4 outright and Q3 except
+  for one stolen key; left Q1 ambiguous, because the view switch produced
+  *no* SPFx lifecycle lines at all.
+- **Round 2 — build `ce1f0d4`** ("guard probe in bubble phase" on top of
+  `419a005`, which added the key guard, the sample-reset button and the
+  `popstate`/`urlchange` probes). Confirmed the Q3 fix and turned Q1 from
+  "nothing happened" into a positive observation via the URL poll.
+
 ## Q1 -- does a Command Set instance survive a client-side view switch?
-(pending)
+
+**Verdict: the instance SURVIVES.** A modern list view switch is
+client-side navigation — the URL is rewritten with a `viewid=` query
+param, the `loadSPFX`/`debugManifestsFile`/`customActions` debug params
+are preserved, the console is never cleared, and no page load occurs.
+The same `instance=` ids keep logging across the switch, no `onDispose`
+or second `onInit` fires, and **"Format (spike)" is present and working
+on the other view — clicking it mounts the panel from the same
+instance**.
+
+Two facts the product has to plan for, both of which only showed up
+because round 2 polled the URL:
+
+1. **`listViewStateChangedEvent` never fired for a view switch**, and
+   `context.listView.view.id` **lags one switch behind the URL** (at the
+   moment of the change the context still reports the *previous* view).
+   So the panel cannot re-key its open target from the SPFx event or
+   from `context` — it must read the `viewid` out of `location.href`
+   (a poll, or a wrapped `history.pushState`/`replaceState`).
+2. **SharePoint creates TWO Command Set instances on page load.** Both
+   run `onInit`, both see the URL change. The panel host must therefore
+   be a singleton keyed by element id — the spike's
+   `#ffx-spike-host` remove-then-append does exactly this, which is why
+   only one panel ever appears.
+
+Evidence (round 2 unless noted):
+```
+onInit instance=13ab7316-…  view=96da35f1-…   ← TWO instances are created on page load
+onInit instance=1e1fdb96-…  view=96da35f1-…
+urlchange instance=1e1fdb96-… view=96da35f1-… url=…?viewid=f24ba2a8-…   ← switch to Spike View 2: URL changed, context.listView.view still OLD
+panel mounted instance=1e1fdb96-…                ← "Format (spike)" present and working on Spike View 2, SAME instance
+urlchange instance=1e1fdb96-… view=f24ba2a8-… url=…?viewid=96da35f1-…   ← switch back: view id now reflects the PREVIOUS switch (lags one step)
+```
+Round 1, same switch, address bar afterwards (debug params preserved,
+`viewid=` added, console not cleared):
+```
+…/AllItems.aspx?viewid=96da35f1-…&loadSPFX=true&debugManifestsFile=…&customActions=…
+```
+Never observed in either round: `onDispose`, `listViewStateChanged`,
+`popstate`.
 
 ## Q2 — how does the SPFx build consume the parent repo's core + editor source: prebuilt bundle (A) or direct import (B)?
-(pending — both variants run)
+
+**Verdict: variant A works, variant B fails — the product package uses
+A.** Caveat: the panel bundle must be rebuilt *before* the SPFx build, so
+it has to be wired in as a pre-step. Both variants were run; details
+below.
 
 Variant A (prebuilt esbuild bundle as a file: dependency): install OK / build OK.
 `spfx/panel`: `npm install` added 3 packages (esbuild, typescript, and one
@@ -186,10 +249,68 @@ worked around, a real lib/target mismatch between the parent repo's
 TypeScript config and the SPFx rig's.
 
 ## Q3 -- does a shadow-root panel render and take input without interference?
-(pending)
+
+**Verdict: it renders and takes input — with exactly one exception,
+which has a one-line fix.** Inside the shadow root the textarea accepted
+typing, paste, Ctrl+Z, arrow keys, Enter and Escape with
+`defaultPrevented=false` and a matching `input` event; `excelToSp` and
+the renderer both ran (`render OK` in round 2) and the field GET came
+back 200 with the list's columns. The exception: **SharePoint's
+document-level, bubble-phase key handler cancels the plain `g` key** (a
+page shortcut). The shadow root retargets the event, so SharePoint's
+handler never sees that the target is a textarea and treats `g` as a
+global shortcut.
+
+**Fix, verified live in round 2:** a **bubble-phase `stopPropagation()`
+on keydown at the shadow host** — with the guard on, `g` logs
+`defaultPrevented=false` and fires `input`. (Round 2's first build put
+the listener in the capture phase, which was too early to matter;
+`ce1f0d4` moved it to the bubble phase, which is what the `guard=true`
+lines below come from.)
+
+**Consequence for the product:** the panel stops `keydown`/`keyup`/
+`keypress` propagation at its shadow host, for **all** keys — cheaper and
+more predictable than an allow-list, and it keeps SharePoint's page-level
+shortcuts from ever reaching a focused editor. **No iframe is needed.**
+
+Evidence:
+```
+render OK                                        ← renderer works inside the shadow root
+keydown g defaultPrevented=true  guard=false     (×2, no input)   ← stolen without the guard
+guard=true
+keydown g defaultPrevented=false guard=true + input   (×2)        ← passes with bubble-phase stopPropagation at the host
+```
+Round 1 (guard did not exist yet) — everything else was already clean:
+```
+keydown j defaultPrevented=false / input / keyup j        (plain letters pass)
+keydown g defaultPrevented=true  (×3, never followed by an input event → SharePoint cancelled it)
+keydown Escape defaultPrevented=false; ArrowUp/ArrowLeft false; Enter false + input; paste false + input
+excelToSp OK: {"ok":true,"value":"=1 + 1"}
+```
+Round 1's `render FAILED: Invalid JSON: Bad control character …` was
+operator error (typing had put a newline inside the sample JSON), not a
+bug — round 2 added the "Reset sample" button and logged `render OK`.
 
 ## Q4 — do SP.Field / SP.View responses carry an ETag usable in IF-MATCH?
-(pending)
+
+**Verdict: no ETag — neither a response header nor an `odata.etag` in the
+body, for either entity type.** Both single-entity GETs (one `SP.Field`,
+one `SP.View`, issued from the panel against the live list in round 1)
+returned 200 with `ETag-header=none body-etag=none`.
+
+**Consequence for the product:** spec §7's write step **cannot** send
+`IF-MATCH: <etag>`. The optimistic-concurrency branch is deleted; the
+only available protection is to **narrow the window** — re-read the
+entity immediately before the MERGE, compare it to the copy read in
+step 1, and bounce back to step 2 (re-present / re-merge) on any
+difference. §7 step 1's "and its ETag …" phrasing goes away with it.
+
+Evidence (round 1):
+```
+GET fields → 200   (Title, Status (Choice), … 26 non-hidden fields listed)
+GET field → 200 ETag-header=none body-etag=none
+GET view  → 200 ETag-header=none body-etag=none
+```
 
 ## Task 3 notes — command set implementation
 
