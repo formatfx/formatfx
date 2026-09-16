@@ -41,8 +41,10 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
     <strong>FormatFX spike — instance ${ctx.instanceId}</strong>
     <div>list ${ctx.listId} · view ${ctx.viewId}</div>
     <textarea id="json"></textarea>
+    <label><input type="checkbox" id="guard"> stop keydown propagation at host (round-2 probe)</label>
     <div>
       <button id="render">Render</button>
+      <button id="reset">Reset sample</button>
       <button id="fields">Fetch fields (GET)</button>
       <button id="close">Close</button>
     </div>
@@ -50,6 +52,11 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
     <div class="log" id="log"></div>
   `;
   host.append(style, wrap);
+
+  // Round-2 probe: does stopping propagation at the shadow host keep SharePoint's
+  // page-level handler from cancelling keys like plain "g"? Toggle via the checkbox.
+  let guard = false;
+  host.host.addEventListener('keydown', (e) => { if (guard) e.stopPropagation(); }, true);
 
   const $ = <T extends HTMLElement>(id: string) => wrap.querySelector<T>('#' + id)!;
   const logBox = $('log');
@@ -59,6 +66,8 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
   };
   $<HTMLTextAreaElement>('json').value = SAMPLE;
 
+  $<HTMLInputElement>('guard').addEventListener('change', (e) => { guard = (e.target as HTMLInputElement).checked; log('guard=' + guard); });
+
   // Q3 instrumentation: does SharePoint swallow keys inside the shadow panel?
   // The flag is read in a macrotask AFTER dispatch completes, so a page-level
   // (document/window) handler that calls preventDefault() later in the bubble
@@ -67,7 +76,7 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
   for (const type of ['keydown', 'keyup', 'input', 'paste'] as const) {
     ta.addEventListener(type, (e) => {
       const k = (e as KeyboardEvent).key ?? '';
-      setTimeout(() => log(`${type} ${k} defaultPrevented=${e.defaultPrevented}`), 0);
+      setTimeout(() => log(`${type} ${k} defaultPrevented=${e.defaultPrevented} guard=${guard}`), 0);
     });
   }
 
@@ -90,6 +99,11 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
     } catch (err) {
       log('render FAILED: ' + (err as Error).message);
     }
+  });
+
+  $('reset').addEventListener('click', () => {
+    ta.value = SAMPLE;
+    log('sample reset');
   });
 
   $('fields').addEventListener('click', async () => {

@@ -1,6 +1,6 @@
 # SPFx spike findings (2026-09-16)
 
-TEST_LIST_URL: <owner fills in>
+TEST_LIST_URL: https://mympc.sharepoint.com/sites/mplxcontrols/Lists/FormatFX%20Spike/AllItems.aspx (list id e481b50b-ebf9-4cbd-804f-a5276afb23ab; second view "Spike View 2"; provisioned 2026-09-16 via PnP.PowerShell 1.12 -UseWebLogin; throwaway, deleted at the end)
 SPFx version: 1.23.2 (`@microsoft/sp-listview-extensibility` in `spfx/formatfx-spfx/package.json`)
 Node: v22.14.0
 EXTENSION_ID: 9bb46657-c68a-4e3b-895b-ed5a36ae6fcc (matches `id` in `FormatFxCommandSet.manifest.json`; same value already recorded below as "Manifest id (guid)")
@@ -135,6 +135,56 @@ nothing imports `formatfx-panel` yet (Task 3's job); this run only proves
 the install/symlink and that adding the dependency doesn't break the
 existing build.
 
+Variant B (direct import): **build failed**, first error is a TypeScript
+`rootDir` error, not a Heft-rig file-refusal or ESLint/webpack failure.
+Added the brief's three imports (`../../../../../src/core/serializer`,
+`../../../../../src/editor/dialect`, `../../../../../src/bridge/spClient`)
+plus the `console.log('[ffx-spike] direct import OK', ...)` line to the top
+of `FormatFxCommandSet.ts`, then ran `npm run build`
+(`heft test --clean --production`). The `build:typescript` sub-task
+(tsc 5.8.3, invoked by the Heft rig) failed first with:
+
+```
+[build:typescript] Error: src/extensions/formatFx/FormatFxCommandSet.ts:3:28 - (TS6059) File 'C:/dev/formatfx/.claude/worktrees/partitioned-squishing-reddy/src/core/serializer.ts' is not under 'rootDir' 'C:/dev/formatfx/.claude/worktrees/partitioned-squishing-reddy/spfx/formatfx-spfx/src'. 'rootDir' is expected to contain all source files.
+```
+
+(and the same TS6059 for `../editor/dialect` and `../bridge/spClient`,
+then cascading TS6059s for every parent-repo module transitively imported
+by those three — `core/types`, `core/linter`, `core/schema`,
+`core/expressions`, `core/contrast`, `core/refs`, `bridge/applyPayload`,
+`core/schemaImport`). Total: 46 TypeScript errors, build exit non-zero
+("Failed (5.645s)"). `eslint`/`webpack` never ran — `heft test` fails at
+the `build:typescript` step before lint or webpack in the pipeline.
+
+Cheap-fix attempt (tsconfig one-liner, per the task's ambiguity
+resolution): added `"compilerOptions": { "rootDir": "../.." }` to
+`spfx/formatfx-spfx/tsconfig.json` (repo root is two levels above that
+file) and rebuilt. Result: the rootDir class of errors disappeared (down
+from 46 to 35), confirming the diagnosis, but the build **still failed**
+— the remaining 35 errors are unrelated to rootDir: `TS2354` ("This syntax
+requires an imported helper but module 'tslib' cannot be found") wherever
+the parent source needs a TS downlevel-emit helper, plus `TS2550`/`TS2802`
+wherever the parent source uses ES2016+ library members
+(`Array.prototype.includes`, `String.prototype.padStart/padEnd/
+matchAll/trimStart`, `Object.entries`, for-of over a `Set`) that aren't in
+the `lib`/`target` the SPFx rig's `tsconfig-base.json` compiles against.
+Per the task's stop condition (one cheap fix, record and stop — the
+answer is the finding, not a working build), no further changes were
+attempted; reaching a real pass would need the rig's `lib`/`target`
+raised and `tslib` wired in as an actual dependency, which is not a
+one-liner. The `rootDir` override and the four import/log lines were then
+reverted; `git diff spfx/formatfx-spfx/tsconfig.json` is empty and
+`FormatFxCommandSet.ts`'s only remaining diff is the round-2 URL-watch
+probe (below) — confirmed with `git diff --stat`.
+
+**Conclusion for §9.2**: variant A (prebuilt esbuild bundle, Task 2) is
+the only one of the two that gets the parent source running inside the
+SPFx solution without inheriting the parent's newer TS/lib surface;
+variant B (direct import through SPFx's own tsc) fails on both the
+physical `rootDir` sandboxing the Heft rig imposes and, once that's
+worked around, a real lib/target mismatch between the parent repo's
+TypeScript config and the SPFx rig's.
+
 ## Q3 -- does a shadow-root panel render and take input without interference?
 (pending)
 
@@ -168,3 +218,34 @@ warnings (no `/* eslint-disable */` needed — tried it first per the
 brief's guidance, but ESLint flagged it as an *unused* eslint-disable
 directive since the file had no actual lint violations, so it was
 removed).
+
+## Round 2 instrumentation
+
+Added ahead of the second live round, to chase two round-1 open
+questions (SharePoint's page-level key handler cancelling plain `g` in
+the shadow textarea, and the silent client-side view switch) without
+needing a reload to recover a corrupted textarea:
+
+- `guard=` (`spfx/panel/src/entry.ts`) — a checkbox ("stop keydown
+  propagation at host (round-2 probe)") wired to a capture-phase keydown
+  listener on the shadow host element (`host.host`) that calls
+  `stopPropagation()` while checked. The existing keydown/keyup/input/
+  paste log line now always reports the guard's current state
+  (`... defaultPrevented=... guard=true|false`), so a single session can
+  compare "SharePoint sees the key" vs. "SharePoint doesn't" back to
+  back without touching code.
+- `sample reset` (`spfx/panel/src/entry.ts`) — a "Reset sample" button
+  next to Render that overwrites the textarea with the original `SAMPLE`
+  JSON and logs `sample reset`, so a textarea left in a bad state (e.g.
+  from a swallowed/partial key sequence) can be recovered without
+  reloading the page and losing the Command Set instance under test.
+- `popstate` / `urlchange` (`spfx/formatfx-spfx/.../FormatFxCommandSet.ts`,
+  `onInit`) — round 1 found a client-side view switch changes the URL
+  (`viewid=` query param) but never fires `listViewStateChangedEvent`.
+  Round 2 adds a `popstate` listener (logs
+  `popstate instance=... url=...`) and a 500ms `setInterval` poll that
+  diffs `location.href` against its last-seen value and logs
+  `urlchange instance=... view=... url=...` on any change not caught by
+  `popstate` (covers `history.pushState`/`replaceState`, which don't fire
+  `popstate`). The existing `listViewStateChangedEvent` subscription is
+  unchanged.

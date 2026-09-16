@@ -18,6 +18,11 @@ export default class FormatFxCommandSet extends BaseListViewCommandSet<IFormatFx
     this.context.listView.listViewStateChangedEvent.add(this, () => {
       console.log(`${TAG} listViewStateChanged instance=${this.instanceId} view=${this.viewId()} url=${location.href}`);
     });
+    // Round-2 probe: client-side view switches rewrite the URL (viewid=) without firing
+    // listViewStateChangedEvent in round 1. Watch for URL changes directly.
+    let lastHref = location.href;
+    window.addEventListener('popstate', () => console.log(`${TAG} popstate instance=${this.instanceId} url=${location.href}`));
+    setInterval(() => { if (location.href !== lastHref) { lastHref = location.href; console.log(`${TAG} urlchange instance=${this.instanceId} view=${this.viewId()} url=${location.href}`); } }, 500);
     return Promise.resolve();
   }
 
