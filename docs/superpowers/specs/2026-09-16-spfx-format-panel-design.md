@@ -73,8 +73,9 @@ transpiler already enforces one level down.
   `document.body`, mounts the panel, and exposes page context (site URL,
   list id, current view id) to it.
 - Engine and editor modules are consumed from the main repo's `src/` the way
-  `extension/` already consumes `src/bridge/`. Whether webpack takes that
-  cleanly or needs a workspace is a spike question (§9).
+  `extension/` already consumes `src/bridge/` — either as a prebuilt bundle
+  handed to SPFx as a local package, or by direct import through SPFx's own
+  build. Which one is a spike question (§9.2).
 - Auth and REST: same-origin `fetch` with the page's cookies and a digest
   from `POST /_api/contextinfo`, i.e. the calls `src/bridge/spClient.ts`
   already makes. `SPHttpClient` is optional sugar, not a requirement.
@@ -96,18 +97,20 @@ transpiler already enforces one level down.
 ## 6. The hidden list
 
 Title `FormatFX`, hidden, created on first use if missing (needs Manage
-Lists; if the person cannot create it, the panel still works with in-memory
-undo only and says so plainly).
+Lists). If the person cannot create it, drafts fall back to **per-tab
+browser storage** (`sessionStorage`, a per-viewer convenience) so a view
+switch or reload never loses an unstashed edit, applied history is kept in
+that tab only, and the panel says plainly that nothing is shared or durable.
 
 One row per event:
 
 | Column | Meaning |
 |---|---|
-| Kind | `Draft` or `Applied` |
+| Kind | `Draft`, `Pending`, `Applied`, or `Failed` |
 | ListId | target list GUID |
 | TargetKind | `Field` or `View` |
 | TargetId | field internal name or view GUID |
-| Before | formatter JSON before the write (Applied only) |
+| Before | formatter JSON before the write (Pending/Applied/Failed) |
 | After | formatter JSON written, or the draft document |
 | BasedOn | hash of the formatter the draft/apply was based on |
 | Author / Created | who, when (system columns) |
@@ -115,20 +118,37 @@ One row per event:
 - **Drafts are per person** (one row per person + target); two owners never
   trample each other's unfinished work. Opening a target loads your draft if
   one exists.
+- **The journal is written before the list is.** An apply first writes a
+  `Pending` row carrying `Before` and `After`, then performs the MERGE, then
+  flips the row to `Applied` after a verifying re-read. A `Pending` row that
+  never flipped (the tab died, the flip failed) shows in the History drawer
+  as *unconfirmed* with a "check" action: re-read the target; if it matches
+  `After` the row becomes `Applied`, otherwise `Failed`. So a changed
+  formatter can never exist without its `Before` on record.
 - **Rollback** = an Apply whose payload is a previous Applied row's `Before`.
-  It writes its own Applied row, so history is append-only.
+  It goes through the same Pending → Applied journal, so history is
+  append-only.
 
 ## 7. Apply
 
-1. Read the target's current `CustomFormatter`.
+1. Read the target's current `CustomFormatter` **and its ETag** (if the
+   entity exposes one — spike question §9.4).
 2. Compare to `BasedOn`. If different, warn: someone changed this since you
    started — show both, let the person choose overwrite or reload.
-3. `POST /_api/contextinfo` → digest; one MERGE on the field or view
-   (nometadata body `{"CustomFormatter": "…"}`), as `spClient.applyFormatters`
-   does today.
-4. Write the Applied row, re-read, echo.
-5. Errors teach: 401/403 → you need Manage Lists on this list; 412 → stale
-   digest, rerun; 404 → internal vs display name.
+3. Write the `Pending` journal row (§6) with `Before` and `After`.
+4. `POST /_api/contextinfo` → digest; one MERGE on the field or view
+   (nometadata body `{"CustomFormatter": "…"}`) with `IF-MATCH: <etag>` from
+   step 1, so a change that lands between the read and the write is refused
+   rather than overwritten. `spClient.applyFormatters` sends `IF-MATCH: *`
+   today; the panel's client must not. If §9.4 finds no usable ETag, the
+   window is narrowed instead: re-read immediately before the MERGE and
+   return to step 2 on any difference.
+5. Re-read, verify it matches `After`, flip the journal row to `Applied`,
+   echo.
+6. Errors teach: 401/403 → you need Manage Lists on this list; 403 with
+   "security validation" → digest expired, rerun; **412 → someone changed
+   this since you started** (back to step 2, never "rerun"); 404 → internal
+   vs display name.
 
 ## 8. Testing
 
@@ -147,11 +167,18 @@ Half a day, answers only, no code kept:
 1. Does a Command Set instance survive SharePoint's client-side view switch,
    or is it re-created? (Affects how the panel reopens after §2.4 navigation;
    server-side drafts make either answer workable.)
-2. Does the SPFx webpack build consume `src/core` and `src/editor` from the
-   parent repo cleanly, or does it need a workspace / path-alias setup?
+2. How does the SPFx build consume the parent repo's engine (`src/core`,
+   `src/bridge`) **and editor** (`src/editor`) modules: (A) as a prebuilt
+   esbuild bundle of that source handed to SPFx as a local package, or (B)
+   by importing the source directly through SPFx's own webpack/TypeScript
+   build? Both variants run; the answer names the one the product uses.
 3. Confirm: a shadow-root panel appended to `document.body` renders and
    receives input without SharePoint's global styles or key handlers
-   interfering.
+   interfering — checked after event dispatch completes, so a page-level
+   handler that cancels a key is caught.
+4. Do `SP.Field` and `SP.View` entities return an ETag (response header or
+   `odata.etag`) that a MERGE can send as `IF-MATCH`? Decides whether §7's
+   write is atomic or only narrowed.
 
 ## 10. Later (explicitly out of scope now)
 

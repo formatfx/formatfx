@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Answer the three questions in the spec's §9 with observed evidence, in about half a day, keeping no product code.
+**Goal:** Answer the four questions in the spec's §9 with observed evidence, in about half a day, keeping no product code.
 
-**Architecture:** A scaffolded SPFx 1.23 ListView Command Set (Heft toolchain) whose one command mounts a tiny vanilla-DOM panel in a shadow root on `document.body`. The panel is a prebuilt esbuild bundle (`spfx/panel/`) that imports the real `src/core` engine and `src/bridge/spClient` from the parent repo, consumed by the SPFx project as a local `file:` dependency. Instrumentation logs answer Q1 (instance survival across view switch); the bundle strategy answers Q2; typing and key handling inside the shadow panel answer Q3.
+**Architecture:** A scaffolded SPFx 1.23 ListView Command Set (Heft toolchain) whose one command mounts a tiny vanilla-DOM panel in a shadow root on `document.body`. The panel is a prebuilt esbuild bundle (`spfx/panel/`) that imports the real `src/core` engine, one `src/editor` module, and `src/bridge/spClient` from the parent repo, consumed by the SPFx project as a local `file:` dependency (Q2 variant A). A mandatory second experiment imports the same source directly through SPFx's own build (Q2 variant B). Instrumentation logs answer Q1 (instance survival across view switch); key handling inside the shadow panel, checked after dispatch completes, answers Q3; response headers on a field and a view answer Q4 (ETags).
 
 **Tech Stack:** SPFx 1.23.2 (`@microsoft/generator-sharepoint@latest`, Heft + webpack), Node 22.14.0 (installed; the 1.23 floor is `>=22.14.0 <23`), esbuild (as in `extension/build.mjs`), no React, no Fluent UI.
 
@@ -40,10 +40,11 @@ spfx/                                  # the SPFx project (scaffolded by yo, Tas
   FINDINGS.md                          # the answers, appended per task       (Tasks 1–5)
 ```
 
-`spfx/panel/src/entry.ts` is the only file that touches the parent repo's source. It imports:
+`spfx/panel/src/entry.ts` is the only file that touches the parent repo's source (until Task 5's deliberate direct import). It imports:
 - `../../../src/core/serializer` → `importJson`
 - `../../../src/core/renderer` → `renderElement`
 - `../../../src/core/theme` → `buildThemeCss`
+- `../../../src/editor/dialect` → `excelToSp` (a representative editor module: the pure transpiler)
 - `../../../src/bridge/spClient` → `readPageContext`
 
 ---
@@ -119,10 +120,13 @@ Scaffold + first build: OK / FAIL (notes)
 ## Q1 — does a Command Set instance survive a client-side view switch?
 (pending)
 
-## Q2 — does the SPFx build consume the parent repo's src cleanly?
-(pending)
+## Q2 — how does the SPFx build consume the parent repo's core + editor source: prebuilt bundle (A) or direct import (B)?
+(pending — both variants run)
 
 ## Q3 — does a shadow-root panel render and take input without interference?
+(pending)
+
+## Q4 — do SP.Field / SP.View responses carry an ETag usable in IF-MATCH?
 (pending)
 ```
 
@@ -225,6 +229,7 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void;
 import { importJson } from '../../../src/core/serializer';
 import { renderElement } from '../../../src/core/renderer';
 import { buildThemeCss } from '../../../src/core/theme';
+import { excelToSp } from '../../../src/editor/dialect';
 import { readPageContext } from '../../../src/bridge/spClient';
 import type { EvalContext } from '../../../src/core/expressions';
 
@@ -281,16 +286,22 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
   $<HTMLTextAreaElement>('json').value = SAMPLE;
 
   // Q3 instrumentation: does SharePoint swallow keys inside the shadow panel?
+  // The flag is read in a macrotask AFTER dispatch completes, so a page-level
+  // (document/window) handler that calls preventDefault() later in the bubble
+  // is still observed. Reading it synchronously at the target would miss that.
   const ta = $<HTMLTextAreaElement>('json');
   for (const type of ['keydown', 'keyup', 'input', 'paste'] as const) {
     ta.addEventListener(type, (e) => {
       const k = (e as KeyboardEvent).key ?? '';
-      log(`${type} ${k} defaultPrevented=${e.defaultPrevented}`);
+      setTimeout(() => log(`${type} ${k} defaultPrevented=${e.defaultPrevented}`), 0);
     });
   }
 
   $('render').addEventListener('click', () => {
     try {
+      // Q2: prove an editor module is in the bundle and runs.
+      const t = excelToSp('=1+1');
+      log('excelToSp OK: ' + JSON.stringify(t).slice(0, 80));
       const doc = importJson(ta.value);
       const evalCtx: EvalContext = {
         row: { Status: 'Done', Title: 'Spike row' },
@@ -316,6 +327,18 @@ export function mountSpikePanel(host: ShadowRoot, ctx: SpikeContext): void {
     if (res.ok) {
       const body = await res.json() as { value: { InternalName: string; TypeAsString: string; CustomFormatter?: string }[] };
       for (const f of body.value) log(`  ${f.InternalName} (${f.TypeAsString})${f.CustomFormatter ? ' [formatted]' : ''}`);
+    }
+    // Q4: does a single field / view entity carry an ETag? Both GETs, read-only.
+    const single = [
+      `${ctx.webUrl}/_api/web/lists(guid'${ctx.listId}')/fields/getbyinternalnameortitle('Title')`,
+      `${ctx.webUrl}/_api/web/lists(guid'${ctx.listId}')/views?$top=1`,
+    ];
+    for (const u of single) {
+      const r = await fetch(u, { headers: { Accept: 'application/json;odata=minimalmetadata' } });
+      const hdr = r.headers.get('ETag');
+      const j = r.ok ? await r.json() as Record<string, unknown> : {};
+      const first = Array.isArray(j['value']) ? (j['value'] as Record<string, unknown>[])[0] ?? {} : j;
+      log(`GET ${u.includes('/views') ? 'view' : 'field'} → ${r.status} ETag-header=${hdr ?? 'none'} odata.etag=${String(first['odata.etag'] ?? 'none')}`);
     }
   });
 
@@ -463,7 +486,7 @@ git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Format
 
 ---
 
-### Task 4: Serve against the real list; answer Q1 and Q3 (owner in the loop)
+### Task 4: Serve against the real list; answer Q1, Q3 and Q4 (owner in the loop)
 
 **Files:**
 - Modify: `spfx/config/serve.json`
@@ -507,31 +530,36 @@ Q1 — instance survival. Look at the `onInit` and `listViewStateChanged` lines 
 - A new `onInit` with a different `instance=` (with or without an `onDispose` first) → **re-created**; the panel must reopen itself from the stashed draft (spec §2.4 already assumes this is fine).
 - A full page load (the console clears) → **hard navigation**; same handling as re-created.
 
-Q3 — shadow panel. From the `keydown … defaultPrevented=` lines: every key the owner pressed should show `defaultPrevented=false`, the textarea should contain what they typed, `render OK` should appear and the preview pill should be visible, `GET fields → 200` should list the columns. Any key that never logged, or logged `defaultPrevented=true`, is SharePoint's global handler stealing it; note which.
+Q3 — shadow panel. From the `keydown … defaultPrevented=` lines (logged after dispatch completed, so they include any page-level cancel): every key the owner pressed should show `defaultPrevented=false`, the textarea should contain what they typed, `excelToSp OK` and `render OK` should appear and the preview pill should be visible, `GET fields → 200` should list the columns. Any key that never logged, or logged `defaultPrevented=true`, is SharePoint's global handler stealing it; note which.
+
+Q4 — ETags. From the two `GET field → … / GET view → …` lines: record the `ETag-header=` and `odata.etag=` values. Either one being a non-`none` value means §7's MERGE can send `IF-MATCH: <etag>`; both `none` means the write can only be narrowed (re-read immediately before the MERGE).
 
 - [ ] **Step 5: Record**
 
-Fill in Q1 and Q3 in `spfx/FINDINGS.md` with the pasted console excerpt and one-line verdicts. Commit:
+Fill in Q1, Q3 and Q4 in `spfx/FINDINGS.md` with the pasted console excerpt and one-line verdicts. Commit:
 ```bash
 git add spfx/config/serve.json spfx/FINDINGS.md
-git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Q1/Q3 findings from the live list"
+git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Q1/Q3/Q4 findings from the live list"
 ```
 Stop the serve process.
 
 ---
 
-### Task 5: Q2 variant B — direct source import (only if Task 2 failed, or if time remains)
+### Task 5: Q2 variant B — direct source import through SPFx's own build (mandatory)
 
 **Files:**
-- Modify: `spfx/src/extensions/formatFx/FormatFxCommandSet.ts` (temporary import)
+- Modify: `spfx/src/extensions/formatFx/FormatFxCommandSet.ts` (temporary imports)
 - Modify: `spfx/FINDINGS.md`
 
-- [ ] **Step 1: Try importing the parent's source directly**
+Variant A (Task 2) only proves that esbuild can bundle the parent's source and that SPFx can consume the result. This task is the other half of §9.2: can SPFx's webpack + TypeScript consume that source *directly*? It runs regardless of Task 2's outcome.
+
+- [ ] **Step 1: Import the parent's core and editor source directly**
 
 Add at the top of `FormatFxCommandSet.ts`:
 ```ts
 import { importJson } from '../../../../src/core/serializer';
-console.log('[ffx-spike] direct import OK', typeof importJson);
+import { excelToSp } from '../../../../src/editor/dialect';
+console.log('[ffx-spike] direct import OK', typeof importJson, typeof excelToSp);
 ```
 
 - [ ] **Step 2: Build and record the outcome**
@@ -543,7 +571,7 @@ Expected, most likely: a TypeScript `rootDir` error or the Heft rig refusing fil
 
 - [ ] **Step 3: Revert the import, commit findings**
 
-Remove the two lines added in Step 1. Then:
+Remove the three lines added in Step 1. Then:
 ```bash
 git add spfx
 git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "spike: Q2 variant B outcome"
@@ -576,12 +604,14 @@ In the spec, after §9's numbered list, add:
 
 1. **View switch:** <survives / re-created / hard navigation> — evidence: <one console line>.
    Consequence for the panel: <re-key from listViewStateChangedEvent | reopen from the stashed draft>.
-2. **Build:** <Variant A works: prebuilt esbuild bundle as a `file:` dependency | Variant B works: direct import>.
+2. **Build:** Variant A (prebuilt esbuild bundle as a `file:` dependency): <works | fails: …>. Variant B (direct import through SPFx's build): <works | fails: first error>.
    Decision: the product package uses <A|B>. <one line of caveats>
 3. **Shadow panel:** <renders and takes input cleanly | SharePoint steals: <keys>>.
    Consequence: <none | the panel stops propagation on <keys>>.
+4. **ETags:** field <header/odata.etag value | none>, view <…>.
+   Consequence: §7 step 4 <sends IF-MATCH: <etag> | narrows the window with a re-read before the MERGE>.
 ```
-And in §4, replace the bullet "Engine and editor modules are consumed … is a spike question (§9)" with the decided sentence.
+And in §4, replace the bullet "Engine and editor modules are consumed … is a spike question (§9.2)" with the decided sentence. In §7 step 4, delete whichever branch Q4 ruled out.
 
 - [ ] **Step 4: Commit, push, PR**
 
@@ -591,12 +621,12 @@ git -c core.hooksPath="C:/Users/FW97/.config/git/hooks" commit -m "docs: SPFx sp
 git push -u origin claude/spfx-spike-findings
 gh pr create --base main --head claude/spfx-spike-findings --title "docs: SPFx spike findings" --body-file <scratchpad>/pr-body.md
 ```
-PR body: the three answers, one line each, and a link to the spike branch. Docs only; CI short-circuits. Then `git checkout main && git pull origin main` per CLAUDE.md.
+PR body: the four answers, one line each, and a link to the spike branch. Docs only; CI short-circuits. Then `git checkout main && git pull origin main` per CLAUDE.md.
 
 ---
 
 ## Self-review
 
-- **Spec coverage:** §9.1 → Task 4 Q1; §9.2 → Tasks 2 and 5; §9.3 → Task 4 Q3; "no code kept" → Global Constraints + Task 6 branch handling; "read-only" → Global Constraints, and the only tenant call is a GET in Task 2 Step 4.
+- **Spec coverage:** §9.1 → Task 4 Q1; §9.2 → Task 2 (variant A, core + editor + bridge imports) and Task 5 (variant B, mandatory); §9.3 → Task 4 Q3 (flag read after dispatch); §9.4 → Task 2 Step 4's two single-entity GETs + Task 4 Q4; "no code kept" → Global Constraints + Task 6 branch handling; "read-only" → Global Constraints, and the only tenant calls are GETs in Task 2 Step 4.
 - **Placeholders:** the `<…>` markers in Task 4 Step 3 and Task 6 Step 3 are owner-supplied values or observed results by design, not plan gaps.
 - **Type consistency:** `SpikeContext` fields (`webUrl`, `listId`, `viewId`, `instanceId`, `log`) match between `panel.d.ts`, `entry.ts`, and the command set. `mountSpikePanel(host: ShadowRoot, ctx)` is the same signature in all three places. `EXTENSION_ID` and `TEST_LIST_URL` are defined in Task 1 Step 4 and Task 0 Step 1 before use.
