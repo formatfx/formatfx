@@ -97,3 +97,30 @@ describe('the pane API for a host without a canvas (the SPFx panel footer Apply)
     expect(state.doc.root.elmType).toBe('span'); // untouched
   });
 });
+
+describe('Problems severity chips toggle their rows (issue #321)', () => {
+  it('a chip click hides that severity, persists the choice and shows again on the next click', () => {
+    localStorage.removeItem('wb-lint-prefs.v1');
+    // web-app mode: the cfr note is an info row, and a bogus elmType an error row
+    state.loadDocument({ kind: 'column', root: { elmType: 'bogus' as 'div', children: [{ elmType: 'div', columnFormatterReference: '[$Status]' }] } });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const api = mountJsonPanel(host, () => {});
+    api.refreshLint([]);
+    const rows = () => [...host.querySelectorAll<HTMLElement>('#wb-lint .wb-lint-item')].map((r) => r.className);
+    expect(rows().some((c) => c.includes('wb-lint-info'))).toBe(true);
+    expect(rows().some((c) => c.includes('wb-lint-error'))).toBe(true);
+    const chip = host.querySelector('#wb-lint .wb-lint-chip-info') as HTMLButtonElement;
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    chip.click();
+    expect(rows().some((c) => c.includes('wb-lint-info'))).toBe(false);
+    expect(rows().some((c) => c.includes('wb-lint-error'))).toBe(true); // only info went
+    const chipOff = host.querySelector('#wb-lint .wb-lint-chip-info') as HTMLButtonElement;
+    expect(chipOff.getAttribute('aria-pressed')).toBe('false');
+    expect(chipOff.textContent).toContain('info'); // the count stays on the chip
+    expect(JSON.parse(localStorage.getItem('wb-lint-prefs.v1')!).hideSeverity.info).toBe(true);
+    chipOff.click();
+    expect(rows().some((c) => c.includes('wb-lint-info'))).toBe(true);
+    localStorage.removeItem('wb-lint-prefs.v1');
+  });
+});

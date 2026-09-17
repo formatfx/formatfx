@@ -1617,7 +1617,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ? issues.filter((i) => !(i.rule === 'unknown-field' && i.field))
       : issues;
     refreshDecorations();
-    const view = buildLintView(issues, runtime, { hideMissingColumns: lintPrefs.hideMissingColumns });
+    const view = buildLintView(issues, runtime, { hideMissingColumns: lintPrefs.hideMissingColumns, hideSeverity: lintPrefs.hideSeverity });
     if (lintCreateOpen && !view.rows.some((r) => r.kind === 'missing' && r.field === lintCreateOpen)) {
       lintCreateOpen = null; // the column got created (or filtered) — form gone
       lintCreateType = null;
@@ -1647,14 +1647,24 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     const sum = document.createElement('span');
     sum.className = 'wb-lint-sum';
     const parts: string[] = [];
-    // "2 errors (×51)" per level: 2 distinct KINDS of error, 51 occurrences
-    const chip = (sev: string, t: SeverityTally, word: string): void => {
+    // "2 errors (×51)" per level: 2 distinct KINDS of error, 51 occurrences.
+    // Each chip is also that level's filter (issue #321): a click hides or
+    // shows its rows; the count stays full-truth either way.
+    const chip = (sev: 'error' | 'warning' | 'info' | 'runtime', t: SeverityTally, word: string): void => {
       if (!t.total) return;
-      const s = document.createElement('span');
-      s.className = `wb-lint-chip wb-lint-chip-${sev}`;
+      const hidden = lintPrefs.hideSeverity[sev];
+      const s = document.createElement('button');
+      s.type = 'button';
+      s.className = `wb-lint-chip wb-lint-chip-${sev}${hidden ? ' wb-lint-chip-off' : ''}`;
+      s.setAttribute('aria-pressed', String(!hidden));
       s.textContent = `${lintBadge(sev).glyph} ${t.types} ${word}${t.types === 1 ? '' : 's'} (×${t.total})`;
       const detail = `${t.types} ${word} type${t.types === 1 ? '' : 's'}, ${t.total} occurrence${t.total === 1 ? '' : 's'}`;
-      s.title = detail;
+      s.title = `${detail} — click to ${hidden ? 'show' : 'hide'} these rows`;
+      s.addEventListener('click', () => {
+        lintPrefs = { ...lintPrefs, hideSeverity: { ...lintPrefs.hideSeverity, [sev]: !hidden } };
+        saveLintPrefs(lintPrefs);
+        renderLint(lastRuntime);
+      });
       sum.appendChild(s);
       parts.push(detail);
     };
@@ -1666,11 +1676,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // region would re-announce unchanged counts — the label alone serves
     sum.setAttribute('aria-label', parts.join(', '));
     head.appendChild(sum);
-    if (view.hiddenMissing > 0) {
+    if (view.hiddenMissing > 0 || view.hiddenBySeverity > 0) {
       const hid = document.createElement('span');
       hid.className = 'wb-lint-hiddennote';
-      hid.textContent = `${view.hiddenMissing} ignored`;
-      hid.title = `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} ignored by the filter`;
+      const n = view.hiddenMissing + view.hiddenBySeverity;
+      hid.textContent = `${n} hidden`;
+      hid.title = [
+        view.hiddenMissing > 0 ? `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} ignored by the filter` : '',
+        view.hiddenBySeverity > 0 ? `${view.hiddenBySeverity} row${view.hiddenBySeverity === 1 ? '' : 's'} hidden by the severity chips` : '',
+      ].filter(Boolean).join('; ');
       head.appendChild(hid);
     }
     const missingTotal = issues.filter((i) => i.rule === 'unknown-field' && i.field).length;
