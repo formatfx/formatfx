@@ -15,8 +15,11 @@ describe('mountShell', () => {
   it('renders the chrome inside the shadow with the app css first', () => {
     const { shell, host } = mount();
     const styles = host.shadowRoot!.querySelectorAll('style');
-    expect(styles[0].textContent).toContain(':host { all: initial; }');
-    expect(styles[0].textContent).toContain('--wb-bg: #fff');
+    const text = styles[0].textContent!;
+    expect(text).toContain(':host { all: initial; }');
+    expect(text).toContain('--wb-bg: #fff');
+    expect(text.split(':host { all: initial; }').length - 1).toBe(1);
+    expect(text.indexOf(':host { all: initial; }')).toBeLessThan(text.indexOf('--wb-bg'));
     expect(shell.app.classList.contains('ffx-app')).toBe(true);
     expect(shell.tree.isConnected && shell.editor.isConnected && shell.footer.isConnected).toBe(true);
     expect(shell.drawer.hidden).toBe(true);

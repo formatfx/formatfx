@@ -10,6 +10,8 @@
  * textarea is focused (spike answer 3). Undo/redo shortcuts are re-bound
  * here because main.ts's document listener never sees them now.
  */
+const KEY_EVENTS = ['keydown', 'keyup', 'keypress'] as const;
+
 export interface ShellHandlers { onClose(): void; onUndo(): void; onRedo(): void }
 export interface Shell {
   app: HTMLElement; title: HTMLElement; tree: HTMLElement; editor: HTMLElement; banner: HTMLElement;
@@ -21,7 +23,6 @@ export interface Shell {
 }
 
 const SHELL_CSS = `
-:host { all: initial; }
 .ffx-app { position: fixed; top: 0; right: 0; height: 100vh; width: min(760px, 100vw); z-index: 1000000;
   display: flex; flex-direction: column; background: var(--wb-bg); color: var(--wb-text);
   border-left: 1px solid var(--wb-border); box-shadow: -8px 0 24px rgba(0,0,0,.18); font-size: 13px; }
@@ -71,7 +72,7 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
 
   // spike answer 3: bubble-phase stop at the host, every key type
   const stop = (e: Event): void => e.stopPropagation();
-  for (const type of ['keydown', 'keyup', 'keypress']) host.addEventListener(type, stop);
+  for (const type of KEY_EVENTS) host.addEventListener(type, stop);
 
   const onKey = (e: KeyboardEvent): void => {
     if ((e.target as HTMLElement).matches('input, textarea, select')) return;
@@ -97,7 +98,7 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
     setExpanded,
     notice(text) { banner.textContent = text ?? ''; banner.hidden = !text; },
     destroy() {
-      for (const type of ['keydown', 'keyup', 'keypress']) host.removeEventListener(type, stop);
+      for (const type of KEY_EVENTS) host.removeEventListener(type, stop);
       app.removeEventListener('keydown', onKey);
       host.remove();
     },
