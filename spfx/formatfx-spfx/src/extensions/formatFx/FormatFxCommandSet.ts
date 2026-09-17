@@ -39,7 +39,10 @@ export default class FormatFxCommandSet extends BaseListViewCommandSet<IFormatFx
     this.stopWatch = null;
     // the panel outlives this instance only if the other instance owns it;
     // ours closes with us
-    if (this.panel) { void this.panel.close(); this.panel = null; }
+    if (this.panel) {
+      this.panel.close().catch(() => { /* best-effort teardown: a draft stash that fails here has no user left to tell */ });
+      this.panel = null;
+    }
     super.onDispose();
   }
 

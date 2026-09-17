@@ -7,7 +7,7 @@
     "componentType": "extension",
     "extensionType": "ListViewCommandSet",
     "componentName": "FormatFx",
-    "componentDescription": "FormatFX spike",
+    "componentDescription": "FormatFX Format panel",
     "plusBeta": false,
     "isCreatingSolution": true,
     "nodeVersion": "22.14.0",
