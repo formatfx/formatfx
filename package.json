@@ -36,6 +36,7 @@
     "build:single": "tsc && vite build --mode single",
     "build:lib": "tsc -p tsconfig.lib.json && node tools/fix-esm-extensions.mjs dist-lib",
     "prepublishOnly": "npm test && npm run build:lib",
+    "pretest": "node spfx/panel/tools/genAppCss.mjs",
     "test": "vitest run",
     "test:ui": "playwright test",
     "test:e2e": "node tools/pr-dashboard/tests/e2e/test_runner.js",

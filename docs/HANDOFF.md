@@ -982,6 +982,19 @@ Key structural invariants:
   `openTemplateModal` dropped `opts.target` (galleryFirst now derives
   from the reopened/doc kind alone).
 
+SPFx Format panel (`spfx/`) (2026-09-16, v1 landed): a SharePoint Framework
+ListView Command Set puts the editor straight into a list's command bar —
+`spfx/panel/` bundles the same `src/core` + `src/editor` + `src/bridge`
+engine plus its own panel-only modules, and `spfx/formatfx-spfx/` is the
+SPFx project (Heft) that consumes it as a `file:` dependency and packages
+the `.sppkg`. The panel edits ONE target at a time through the `EditorState`
+single-target seam in `src/editor/state.ts`, and every draft and history
+entry is journaled to a hidden `FormatFX` list on the site (Pending→Applied
+rows, Before/After, one-click rollback) rather than kept only in memory.
+Design: `docs/superpowers/specs/2026-09-16-spfx-format-panel-design.md`;
+plan: `docs/superpowers/plans/2026-09-16-spfx-panel-v1.md`; build/debug/
+deploy/smoke: `spfx/README.md`.
+
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
 These were validated against a **real SharePoint tenant** via the
@@ -1458,4 +1471,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 - The dark-mode "engine probe" spec exists because a capture once showed
   light pills under dark mode; it pins generation AND the reload/autosave
   path. It exonerated the engine once already — keep it.
+- The SPFx Format panel's own test files (`spfx/panel/src/*.test.ts`,
+  `spfx/panel/tools/*.test.ts`) run as part of the root `npm test` — see
+  `spfx/README.md` for the count and what each module covers.
 

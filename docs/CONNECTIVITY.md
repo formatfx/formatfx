@@ -25,6 +25,7 @@
 |---|---|---|---|
 | **0 — snippet bridge** | none | extract a list into FormatFX / deploy a formatter back, via pasted devtools snippets | **SHIPPED 2026-06-12** |
 | **1 — companion extension** | one install | same, single-click, plus a live channel later | design (§4) — **next up** (reordered ahead of all remaining Sheet stages, 2026-06-15) |
+| **1b — SPFx Format panel** | site catalog app install | the editor in the list's own command bar: JSON editor, drafts, history (v1 shipped) — tab ladder next | `spfx/README.md` |
 | **2 — lists-as-code** | Entra app (org) | generated PnP.PowerShell + CI recipe for formatting AND structure | design (§5) |
 | **npm `formatfx`** | — | core engine as a library + CLI linter | prep next (§6) |
 
@@ -307,3 +308,7 @@ pnp/List-Formatting outreach.
   `GetAllRules()` read-POSTs only), and the capture ships Rules/Quick Steps
   as additive v1 snapshot keys — version bumps stay reserved for breaking
   shape changes. See docs/QUICK-STEPS.md.
+- **2026-09-16:** Tier 1b (SPFx Format panel) v1 shipped — a ListView
+  Command Set writes through the user's own page session via its own
+  client under `spfx/panel/src`, separate from `src/bridge`'s read-only
+  extraction snippets. See `spfx/README.md`.

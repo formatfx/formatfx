@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "format-fx-command-set": {
+      "components": [
+        {
+          "entrypoint": "./lib/extensions/formatFx/FormatFxCommandSet.js",
+          "manifest": "./src/extensions/formatFx/FormatFxCommandSet.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "FormatFxCommandSetStrings": "lib/extensions/formatFx/loc/{locale}.js"
+  }
+}

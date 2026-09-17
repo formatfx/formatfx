@@ -66,7 +66,8 @@ At the start of every session:
 
 ## House rules
 
-- Vanilla TypeScript + Vite, zero runtime dependencies — keep it that way.
+- Vanilla TypeScript + Vite, zero runtime dependencies — keep it that way
+  (`extension/` and `spfx/` are separate packages and exempt).
 - One user gesture = one undoable document mutation.
 - Generated formatters must be schema-valid and definitely-work-on-real-SP.
   Refuse and teach rather than guess; generators never emit a standalone
@@ -79,12 +80,15 @@ At the start of every session:
   never wipe anyone's autosaved work.
 - Connectivity snippets (`src/bridge/`) stay self-contained, commented and
   auditable — a maker's IT must be able to read every line. `src/bridge`
-  stays dependency-free; extraction stays **read-only** (no mutation —
-  read-POSTs like `GetAllRules()` are fine; the retired "GET-only" phrasing
-  was only a proxy for "never silently changes the user's data" — owner
-  decision 2026-07-07, docs/CONNECTIVITY.md §8, landed via #214: the snippet
-  + spClient tests enforce "no mutating request"); deploys confirm first and are
-  lint-gated. The auth constraint behind all of this is closed:
+  stays dependency-free; extraction (`src/bridge`) stays **read-only** (no
+  mutation — read-POSTs like `GetAllRules()` are fine; the retired
+  "GET-only" phrasing was only a proxy for "never silently changes the
+  user's data" — owner decision 2026-07-07, docs/CONNECTIVITY.md §8, landed
+  via #214: the snippet + spClient tests enforce "no mutating request");
+  deploys confirm first and are lint-gated. The SPFx panel writes, by
+  design, through its own client under `spfx/panel/src` — that's a
+  different surface from the read-only extraction snippet, not an
+  exception to it. The auth constraint behind all of this is closed:
   docs/CONNECTIVITY.md §1.
 
 ## Live-tenant / devtools probe notes (browser is the only auth path, CONNECTIVITY §1)

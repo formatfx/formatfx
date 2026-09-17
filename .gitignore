@@ -36,3 +36,12 @@ playwright-report
 e2e/visual-compare/.auth
 e2e/visual-compare/artifacts
 e2e/visual-compare/report
+
+# spfx (panel bundle + SPFx project build outputs)
+spfx/panel/dist
+spfx/panel/src/appCss.gen.ts
+spfx/formatfx-spfx/lib
+spfx/formatfx-spfx/dist
+spfx/formatfx-spfx/temp
+spfx/formatfx-spfx/release
+spfx/formatfx-spfx/sharepoint/solution

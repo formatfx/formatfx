@@ -26,7 +26,7 @@ SharePoint lists are a real database with auth and permissions already solved. B
 
 ## Roadmap
 
-**Browser extension (in development):** Extract a list's columns and data into FormatFX in one click. Apply formatters back with a single confirm. Full workspace sync so you can share designs with teammates—one link carries schema, rows, and half-built formatters. Coming soon.
+**Browser extension (in development):** Extract a list's columns and data into FormatFX in one click. Apply formatters back with a single confirm. Full workspace sync so you can share designs with teammates—one link carries schema, rows, and half-built formatters. Coming soon. A SharePoint Framework package (spfx/) puts the editor straight into the list's command bar — see spfx/README.md.
 
 ---
 

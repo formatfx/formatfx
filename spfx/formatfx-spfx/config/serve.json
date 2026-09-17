@@ -1,0 +1,16 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/spfx-serve.schema.json",
+  "port": 4321,
+  "https": true,
+  "serveConfigurations": {
+    "default": {
+      "pageUrl": "https://YOUR-TENANT.sharepoint.com/sites/YOUR-SITE/Lists/YOUR-LIST/AllItems.aspx",
+      "customActions": {
+        "9bb46657-c68a-4e3b-895b-ed5a36ae6fcc": {
+          "location": "ClientSideExtension.ListViewCommandSet.CommandBar",
+          "properties": {}
+        }
+      }
+    }
+  }
+}

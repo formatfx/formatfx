@@ -1,0 +1,23 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "whichFolder": "subdir",
+    "solutionName": "formatfx-spfx",
+    "skipFeatureDeployment": true,
+    "useGulp": false,
+    "componentType": "extension",
+    "extensionType": "ListViewCommandSet",
+    "componentName": "FormatFx",
+    "componentDescription": "FormatFX Format panel",
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.14.0",
+    "sdksVersions": {},
+    "version": "1.23.2",
+    "libraryName": "formatfx-spfx",
+    "libraryId": "aec291ab-f323-44cb-951d-6cd1444435f1",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionShortDescription": "formatfx-spfx description",
+    "isDomainIsolated": false
+  }
+}

@@ -274,6 +274,11 @@ export class EditorState {
    *  this phase — the canvas component tabs re-target it in a later phase
    *  (COLUMNS-COMPONENTS-VIEWS §2). */
   activeDocKey = 'main';
+  /** SINGLE-TARGET MODE (the SPFx Format panel, spec 2026-09-16 §2.3): the
+   *  workspace is exactly one target document — a column's or a view's
+   *  formatter — held as the only sheet, whatever its kind. Null in the web
+   *  app, where a column is never a surface (it is a look on the floor). */
+  singleTargetKind: DocumentKind | null = null;
   /** The CANVAS TABS (§2): every surface/workshop opened from the left pane,
    *  in open order, rearrangeable. The Grid tab is always present. Tab
    *  bookkeeping only — `doc` keeps aliasing the active SURFACE; which tab
@@ -1038,6 +1043,7 @@ export class EditorState {
     this.surfaceFolds = {};
     this.navStack = [];
     this.viewIdCounter = 0;
+    this.singleTargetKind = null;
     // folds are view state SHARED between the JSON pane and the tree
     // (foldState) — a whole-workspace swap starts unfolded, old paths
     // would just resolve onto unrelated nodes
@@ -1673,6 +1679,42 @@ export class EditorState {
     return this.createView(doc, name);
   }
 
+  /** Enter single-target mode with `doc` as the only sheet. A target switch is
+   *  navigation, not an edit: undo/redo are cleared and the savepoint is now,
+   *  so isDirtySinceSave answers "has this target been edited". Fields/rows
+   *  are left alone (the panel sets them from the list). */
+  openTargetDocument(doc: FormatterDocument, name: string): void {
+    if (doc.kind === 'tile') {
+      doc.tileWidth = doc.tileWidth ?? 254;
+      doc.tileHeight = doc.tileHeight ?? 220;
+    }
+    this.singleTargetKind = doc.kind;
+    this.floorDoc = defaultFloor();
+    // no floor grid exists in this mode — carrying the showcase column looks
+    // over would leave a stale 'Status' look for loadDocument's "never a
+    // look" check to trip on
+    this.columnLooks = {};
+    const sheet: SheetDoc = { id: this.nextViewId(), name: name.trim() || 'Target', doc };
+    this.views = [sheet];
+    this.openTabs = [{ kind: 'grid' }, { kind: 'view', id: sheet.id }];
+    this.activeViewId = sheet.id;
+    this.lastOpenViewId = sheet.id;
+    this.activeComponentTab = null;
+    this.activeDocKey = 'main';
+    this.doc = sheet.doc;
+    this.selection = [];
+    this.surfaceSelections = {};
+    this.surfaceFolds = {};
+    this.navStack = [];
+    this.undoStack = [];
+    this.redoStack = [];
+    foldState.clear();
+    this.markSavepoint();
+    this.emit('load');
+    this.emit('kind');
+    this.emit('data');
+  }
+
   /**
    * "Apply to canvas": replace whatever is being edited with `doc` — the JSON
    * tab's contract. Routing per surface:
@@ -1688,6 +1730,31 @@ export class EditorState {
    *     a tile payload becomes a NEW sheet (a tile can never be a floor).
    */
   loadDocument(doc: FormatterDocument): void {
+    if (this.singleTargetKind !== null && this.activeView) {
+      // single-target mode: the payload REPLACES the open target in place,
+      // coerced to the target's kind — a column target stays a column, a view
+      // target takes tile or row. Never a look, never a new sheet.
+      this.snapshot();
+      const kind: DocumentKind = this.singleTargetKind === 'column'
+        ? 'column'
+        : (doc.kind === 'tile' ? 'tile' : 'row');
+      const next: FormatterDocument = { kind, root: doc.root };
+      if (kind !== 'column') {
+        if (doc.hideSelection) next.hideSelection = true;
+        if (doc.hideColumnHeader) next.hideColumnHeader = true;
+        if (doc.viewExtras) next.viewExtras = doc.viewExtras;
+      }
+      if (kind === 'tile') {
+        next.tileWidth = doc.tileWidth ?? 254;
+        next.tileHeight = doc.tileHeight ?? 220;
+        if (doc.fillHorizontally !== undefined) next.fillHorizontally = doc.fillHorizontally;
+      }
+      this.activeView.doc = next;
+      this.doc = next;
+      this.selection = [];
+      this.emit('load');
+      return;
+    }
     if (doc.kind === 'column') {
       const field = this.currentFieldName;
       this.registerImportedLook(field, doc.root);

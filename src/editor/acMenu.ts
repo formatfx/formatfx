@@ -65,7 +65,10 @@ export function openAcMenu(editor: HTMLElement, items: SuggestItem[], onPick: (v
     nodes[active]?.classList.add('active');
     nodes[active]?.scrollIntoView({ block: 'nearest' });
   };
-  document.body.appendChild(el);
+  // mount in the editor's own root: a shadow root (the SPFx panel) keeps the
+  // popup styled and inside the key guard; the document keeps body as before
+  const root = editor.getRootNode();
+  (root instanceof ShadowRoot ? root : document.body).appendChild(el);
   const r = editor.getBoundingClientRect();
   const a = anchor ?? { left: r.left, bottom: r.bottom };
   el.style.top = `${Math.min(a.bottom + 4, window.innerHeight - 12)}px`;
