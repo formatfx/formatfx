@@ -29,7 +29,11 @@ running in that session, so the constraint stops shaping the product.
 4. **Navigation:** a tree in the panel whose root is the list, with branches
    for its views and its columns. Badge on anything already formatted, dot
    on anything with a draft. Picking a different view navigates the page to
-   that view so the list on screen always matches the target.
+   that view so the list on screen always matches the target. Because that
+   navigation is client-side, the panel re-keys its open target from the
+   URL's `viewid` — not from the SPFx event or `context.listView` — and
+   mounts as a singleton keyed by element id, because SharePoint
+   instantiates the Command Set twice per page load (§9 answer 1).
 5. **Editor:** three tabs over one document — **Rules, Formulas,
    Structure** — plus the validated-JSON pane as the escape hatch off
    Structure. The panel opens on the tab the person used last (per-browser
@@ -46,7 +50,9 @@ running in that session, so the constraint stops shaping the product.
 10. **Build:** a separate top-level `spfx/` package like `extension/`, exempt
     from the zero-runtime-dependency rule. No React, no Fluent UI. The panel
     is FormatFX's vanilla DOM mounted in a **shadow root** appended to the
-    page body.
+    page body. That panel stops key-event propagation at its shadow host so
+    SharePoint's page-level keyboard shortcuts cannot cancel typing inside
+    the editor (§9 answer 3).
 
 ## 3. The tab ladder
 
@@ -72,10 +78,11 @@ transpiler already enforces one level down.
 - The host is thin: a Command Set that appends a shadow-root container to
   `document.body`, mounts the panel, and exposes page context (site URL,
   list id, current view id) to it.
-- Engine and editor modules are consumed from the main repo's `src/` the way
-  `extension/` already consumes `src/bridge/` — either as a prebuilt bundle
-  handed to SPFx as a local package, or by direct import through SPFx's own
-  build. Which one is a spike question (§9.2).
+- Engine and editor modules are consumed from the main repo's `src/` as a
+  **prebuilt bundle handed to SPFx as a local package** (variant A) — an
+  esbuild bundle of `src/core`, `src/editor` and `src/bridge` that the SPFx
+  project depends on by path, rebuilt as a pre-step of the SPFx build.
+  Direct import through SPFx's own build was tried and rejected (§9 answer 2).
 - Auth and REST: same-origin `fetch` with the page's cookies and a digest
   from `POST /_api/contextinfo`, i.e. the calls `src/bridge/spClient.ts`
   already makes. `SPHttpClient` is optional sugar, not a requirement.
@@ -134,8 +141,9 @@ One row per event:
 
 ## 7. Apply
 
-1. Read the target's current `CustomFormatter` **and its ETag** (if the
-   entity exposes one — spike question §9.4).
+1. Read the target's current `CustomFormatter`. (Neither `SP.Field` nor
+   `SP.View` returns a usable ETag — §9 answer 4 — so there is nothing to
+   carry into the write.)
 2. Compare to `BasedOn`. If different, warn: someone changed this since you
    started — show both, let the person choose overwrite or reload.
 3. `POST /_api/contextinfo` → digest. Every write below (journal rows
@@ -143,18 +151,17 @@ One row per event:
    refresh the digest and retry that one write.
 4. Write the `Pending` journal row (§6) with `Before` and `After`.
 5. One MERGE on the field or view (nometadata body
-   `{"CustomFormatter": "…"}`) with `IF-MATCH: <etag>` from step 1, so a
-   change that lands between the read and the write is refused rather than
-   overwritten. `spClient.applyFormatters` sends `IF-MATCH: *` today; the
-   panel's client must not. If §9.4 finds no usable ETag, the window is
-   narrowed instead: re-read immediately before the MERGE and return to
-   step 2 on any difference.
+   `{"CustomFormatter": "…"}`). There is no ETag to send, so the write
+   cannot be made atomic — the window is **narrowed** instead: re-read the
+   target immediately before the MERGE, compare it to the copy read in
+   step 1, and return to step 2 on any difference.
 6. Re-read, verify it matches `After`, flip the journal row to `Applied`,
    echo.
 7. Errors teach: 401/403 → you need Manage Lists on this list; 403 with
    "security validation" → digest expired, refreshed automatically once;
-   **412 → someone changed this since you started** (back to step 2, never
-   "rerun"); 404 → internal vs display name.
+   **step 5's re-read finding a difference → someone changed this since you
+   started** (back to step 2, never "rerun" — with no ETag there is no 412
+   to lean on); 404 → internal vs display name.
 
 ## 8. Testing
 
@@ -185,6 +192,43 @@ Half a day, answers only, no code kept:
 4. Do `SP.Field` and `SP.View` entities return an ETag (response header or
    `odata.etag`) that a MERGE can send as `IF-MATCH`? Decides whether §7's
    write is atomic or only narrowed.
+
+### Answers (spike run 2026-09-16, branch `spike/spfx-command-set`)
+
+Two live rounds against a throwaway list, owner driving the browser.
+Console evidence and the full write-up: `spfx/FINDINGS.md` on that branch.
+
+1. **View switch: the instance survives.** A modern view switch is
+   client-side navigation — the URL gains `viewid=`, the console is never
+   cleared, and no `onDispose`/second `onInit` fires; evidence:
+   `urlchange instance=1e1fdb96-… view=96da35f1-… url=…?viewid=f24ba2a8-…`
+   followed by `panel mounted instance=1e1fdb96-…` on the other view.
+   Consequence for the panel: it stays mounted, but it must **re-key the
+   open target from the URL's `viewid`** — `listViewStateChangedEvent`
+   never fired and `context.listView.view.id` lags one switch behind — and
+   it must mount as a **singleton keyed by element id**, because SharePoint
+   creates two Command Set instances per page load.
+2. **Build:** Variant A (prebuilt esbuild bundle as a `file:` dependency):
+   **works** — bundles `src/core` + `src/editor` + `src/bridge` and installs
+   into the SPFx project unchanged. Variant B (direct import through SPFx's
+   build): **fails** — first error `TS6059: … is not under 'rootDir'`, and
+   once `rootDir` is widened, 35 remaining `tslib`/ES2016-lib errors from the
+   SPFx rig's older `target`/`lib`.
+   Decision: the product package uses **A**. Caveat: the panel bundle must be
+   rebuilt before the SPFx build — wire it in as a pre-step, or a stale
+   bundle ships silently.
+3. **Shadow panel: renders and takes input** — render, paste, undo, arrows,
+   Enter and Escape are all clean inside the shadow root. One exception:
+   SharePoint's document-level, bubble-phase key handler cancels the plain
+   `g` key (a page shortcut — the shadow root retargets the event, so
+   SharePoint never sees that a textarea is focused).
+   Consequence: the panel **stops `keydown`/`keyup`/`keypress` propagation at
+   its shadow host**, for all keys; verified live
+   (`keydown g defaultPrevented=false guard=true` + `input`). No iframe needed.
+4. **ETags: none** — `ETag-header=none body-etag=none` on a single-entity GET
+   of both an `SP.Field` and an `SP.View`.
+   Consequence: §7 step 5 cannot send `IF-MATCH`; it narrows the window with
+   a re-read immediately before the MERGE instead.
 
 ## 10. Later (explicitly out of scope now)
 
