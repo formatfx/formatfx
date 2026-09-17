@@ -83,6 +83,16 @@ async function existingFieldNames(rest: SpRest): Promise<Set<string>> {
 }
 
 /**
+ * Creating a list or a field needs the entity type in the body. Under the
+ * `odata=nometadata` content type SharePoint rejects the `@odata.type`
+ * annotation outright (verified 2026-09-17: 400 "'@odata.type' is an invalid
+ * instance annotation name"), so these two POSTs — and only these — send a
+ * verbose body with `__metadata.type`. The Accept header stays nometadata,
+ * so the responses parse like every other call.
+ */
+const VERBOSE_BODY = { 'Content-Type': 'application/json;odata=verbose' } as const;
+
+/**
  * Ensure the list exists WITH every column. A half-built list (an interrupted
  * first run, or someone deleting a column) is repaired in place — only the
  * missing columns are created. Throws SpRestError when it cannot.
@@ -97,16 +107,16 @@ async function ensureJournalList(rest: SpRest): Promise<void> {
   }
   if (!exists) {
     await rest.postJson('/_api/web/lists', {
-      '@odata.type': '#SP.List', BaseTemplate: 100, Title: JOURNAL_LIST_TITLE, Hidden: true,
+      __metadata: { type: 'SP.List' }, BaseTemplate: 100, Title: JOURNAL_LIST_TITLE, Hidden: true,
       Description: 'FormatFX drafts and formatter history. Do not edit by hand.',
-    });
+    }, VERBOSE_BODY);
   }
   const have = exists ? await existingFieldNames(rest) : new Set<string>();
   for (const f of JOURNAL_FIELDS) {
     if (have.has(f.name)) continue;
     await rest.postJson(`${JOURNAL_PATH}/fields`, {
-      '@odata.type': f.kind === 3 ? '#SP.FieldMultiLineText' : '#SP.FieldText', FieldTypeKind: f.kind, Title: f.name,
-    });
+      __metadata: { type: f.kind === 3 ? 'SP.FieldMultiLineText' : 'SP.FieldText' }, FieldTypeKind: f.kind, Title: f.name,
+    }, VERBOSE_BODY);
   }
 }
 

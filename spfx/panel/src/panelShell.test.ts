@@ -26,6 +26,19 @@ describe('mountShell', () => {
     expect(shell.banner.hidden).toBe(true);
   });
 
+  it('lays the editor slot out like the web app\'s active tab and never restyles the pane\'s children', () => {
+    // The JSON pane mounts ~9 siblings (toolbar, crumb row, shell, lint row,
+    // hidden helpers) into the slot. A `.ffx-editor > *` rule stretched each
+    // to an equal flex share — and its `display: flex` overrode `[hidden]` —
+    // so the tenant showed a short editor under a tall crumb row and a bare
+    // red import-error stripe (owner report 2026-09-17).
+    const { host } = mount();
+    const text = host.shadowRoot!.querySelector('style')!.textContent!;
+    expect(text).not.toContain('.ffx-editor > *');
+    const slot = /\.ffx-editor\s*\{([^}]*)\}/.exec(text)![1];
+    for (const decl of ['flex: 1', 'min-height: 0', 'display: flex', 'flex-direction: column', 'overflow: auto']) expect(slot).toContain(decl);
+  });
+
   it('stops key events at the shadow host so SharePoint never sees them', () => {
     const { shell } = mount();
     const seen: string[] = [];

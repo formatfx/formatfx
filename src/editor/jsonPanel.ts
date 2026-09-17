@@ -1580,6 +1580,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         state.fields.map((f) => f.name),
         Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
       );
+      // Single-target mode is the SPFx panel: the formatter is edited against
+      // the real list and there is no preview, so the sandbox-only note that
+      // "the preview here renders a placeholder" for columnFormatterReference
+      // is noise there (owner call 2026-09-17). Every other rule still reports.
+      if (state.singleTargetKind !== null) issues = issues.filter((i) => i.rule !== 'cfr-not-emulated');
     }
     // #PR-D: the squiggle layer mirrors the footer — the missing-column
     // filter quiets the editor's underlines too (that's its whole point)
