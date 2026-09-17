@@ -77,7 +77,13 @@ function mount(t: ReturnType<typeof tenant>, viewId: string | null = null, extra
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     $('#wb-json-apply').click();
   };
-  return { api, host, $, $$, textarea, typeAndApply, navigate };
+  /** Choose a target in the picker: set the owning select and fire change. */
+  const pick = (key: string): void => {
+    const sel = $$('select').find((el) => el.querySelector(`option[data-key="${key}"]`)) as HTMLSelectElement;
+    sel.value = key;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  return { api, host, $, $$, textarea, typeAndApply, navigate, pick };
 }
 
 beforeEach(() => { sessionStorage.clear(); state.resetAll(); });
@@ -106,6 +112,33 @@ describe('mountFormatPanel — boot and tree', () => {
     expect(m.$('.ffx-title').textContent).toContain('Mine');
   });
 
+  it('renders the picker: views in one select, columns in the other, state on the options', async () => {
+    const m = mount(tenant());
+    await m.api.ready;
+    const views = [...m.$<HTMLSelectElement>('select.ffx-pick-view').options];
+    const cols = [...m.$<HTMLSelectElement>('select.ffx-pick-col').options];
+    expect(views.map((o) => o.value)).toEqual(['', `View:${V1}`, `View:${V2}`]);
+    expect(cols.map((o) => o.value)).toEqual(['', 'Field:Title', 'Field:Status']);
+    expect(views[1].textContent).toContain('on screen');
+    expect(cols[2].textContent).toContain('formatted');
+    // the open target owns its select; the other shows its placeholder
+    expect(m.$<HTMLSelectElement>('select.ffx-pick-view').value).toBe(`View:${V1}`);
+    expect(m.$<HTMLSelectElement>('select.ffx-pick-col').value).toBe('');
+    m.pick('Field:Status');
+    await vi.waitFor(() => expect(m.$('.ffx-title').textContent).toContain('Status'));
+    expect(m.$<HTMLSelectElement>('select.ffx-pick-col').value).toBe('Field:Status');
+    expect(m.$<HTMLSelectElement>('select.ffx-pick-view').value).toBe('');
+  });
+
+  it('stacks the completion menu above the panel (it is a sibling in the shadow root)', async () => {
+    const m = mount(tenant());
+    await m.api.ready;
+    const css = [...m.host.shadowRoot!.querySelectorAll('style')].map((s) => s.textContent).join(' ');
+    const z = /\.wb-fx-acmenu\s*\{[^}]*z-index:\s*(\d+)/g;
+    const zs = [...css.matchAll(z)].map((x) => Number(x[1]));
+    expect(Math.max(...zs)).toBeGreaterThan(1000000);
+  });
+
   it('hides the web app deploy chrome inside the pane', async () => {
     const m = mount(tenant());
     await m.api.ready;
@@ -117,7 +150,7 @@ describe('mountFormatPanel — targets and drafts', () => {
   it('opens a column as a column document and remembers it for reopen', async () => {
     const m = mount(tenant());
     await m.api.ready;
-    m.$('.ffx-node[data-key="Field:Status"]').click();
+    m.pick('Field:Status');
     await m.api.ready; // openTarget is awaited inside; flush
     await vi.waitFor(() => expect(m.$('.ffx-title').textContent).toContain('Status'));
     expect(state.singleTargetKind).toBe('column');
@@ -166,7 +199,7 @@ describe('mountFormatPanel — targets and drafts', () => {
     const m = mount(t);
     await m.api.ready;
     m.typeAndApply('{"elmType":"div","txtContent":"edited"}');
-    m.$(`.ffx-node[data-key="View:${V2}"]`).click();
+    m.pick(`View:${V2}`);
     await vi.waitFor(() => expect(m.navigate).toHaveBeenCalledWith('/sites/x/Lists/L/Mine.aspx'));
     expect(t.items.some((i) => i.Kind === 'Draft')).toBe(true);
     expect(JSON.parse(sessionStorage.getItem(REOPEN_KEY)!)).toEqual({ listId: LIST, targetKey: `View:${V2}` });
@@ -233,7 +266,7 @@ describe('mountFormatPanel — targets and drafts', () => {
         : t.fetchImpl(url, init))) as unknown as typeof fetch;
       const m = mount(t, null, { fetchImpl: failing });
       await m.api.ready;
-      m.$('.ffx-node[data-key="Field:Title"]').click();
+      m.pick('Field:Title');
       await vi.waitFor(() => expect(m.$('.ffx-status').textContent).toContain('FormatFX:'));
       await m.api.openTarget({ kind: 'Field', id: 'Status' }); // still usable
       expect(m.$('.ffx-title').textContent).toContain('Status');

@@ -21,7 +21,7 @@ describe('mountShell', () => {
     expect(text.split(':host { all: initial; }').length - 1).toBe(1);
     expect(text.indexOf(':host { all: initial; }')).toBeLessThan(text.indexOf('--wb-bg'));
     expect(shell.app.classList.contains('ffx-app')).toBe(true);
-    expect(shell.tree.isConnected && shell.editor.isConnected && shell.footer.isConnected).toBe(true);
+    expect(shell.picker.isConnected && shell.viewSelect.isConnected && shell.columnSelect.isConnected && shell.editor.isConnected && shell.footer.isConnected).toBe(true);
     expect(shell.drawer.hidden).toBe(true);
     expect(shell.banner.hidden).toBe(true);
   });
@@ -37,6 +37,17 @@ describe('mountShell', () => {
     expect(text).not.toContain('.ffx-editor > *');
     const slot = /\.ffx-editor\s*\{([^}]*)\}/.exec(text)![1];
     for (const decl of ['flex: 1', 'min-height: 0', 'display: flex', 'flex-direction: column', 'overflow: auto']) expect(slot).toContain(decl);
+  });
+
+  it('has no rail: the picker row holds a View and a Column select above the editor', () => {
+    const { shell, host } = mount();
+    expect(host.shadowRoot!.querySelector('.ffx-tree')).toBeNull();
+    expect(shell.picker.querySelector('select.ffx-pick-view')).toBe(shell.viewSelect);
+    expect(shell.picker.querySelector('select.ffx-pick-col')).toBe(shell.columnSelect);
+    // the picker sits in the main column, before the banner and the editor
+    const main = shell.picker.parentElement!;
+    expect(main.classList.contains('ffx-main')).toBe(true);
+    expect([...main.children].indexOf(shell.picker)).toBeLessThan([...main.children].indexOf(shell.editor));
   });
 
   it('stops key events at the shadow host so SharePoint never sees them', () => {
@@ -57,8 +68,8 @@ describe('mountShell', () => {
 
   it('routes Ctrl+Z / Ctrl+Y outside text fields to undo/redo', () => {
     const { shell, h } = mount();
-    shell.tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, composed: true }));
-    shell.tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, bubbles: true, composed: true }));
+    shell.picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, composed: true }));
+    shell.picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, bubbles: true, composed: true }));
     const ta = document.createElement('textarea');
     shell.editor.appendChild(ta);
     ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, composed: true }));

@@ -14,7 +14,9 @@ const KEY_EVENTS = ['keydown', 'keyup', 'keypress'] as const;
 
 export interface ShellHandlers { onClose(): void; onUndo(): void; onRedo(): void }
 export interface Shell {
-  app: HTMLElement; title: HTMLElement; tree: HTMLElement; editor: HTMLElement; banner: HTMLElement;
+  app: HTMLElement; title: HTMLElement; editor: HTMLElement; banner: HTMLElement;
+  /** The target picker row (issue #321): a View select and a Column select. */
+  picker: HTMLElement; viewSelect: HTMLSelectElement; columnSelect: HTMLSelectElement;
   footer: HTMLElement; drawer: HTMLElement; status: HTMLElement;
   undoBtn: HTMLButtonElement; redoBtn: HTMLButtonElement;
   setExpanded(on: boolean): void;
@@ -32,8 +34,12 @@ const SHELL_CSS = `
 .ffx-head button, .ffx-foot button { font: inherit; padding: 4px 10px; border: 1px solid var(--wb-border); border-radius: 4px; background: var(--wb-surface); color: inherit; cursor: pointer; }
 .ffx-head button:disabled, .ffx-foot button:disabled { opacity: .5; cursor: default; }
 .ffx-body { flex: 1; display: flex; min-height: 0; }
-.ffx-tree { width: 220px; overflow: auto; border-right: 1px solid var(--wb-border); padding: 6px 0; }
 .ffx-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+/* the target picker (issue #321): two selects instead of a rail, so the
+   editor gets the full width */
+.ffx-picker { display: flex; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--wb-border); background: var(--wb-surface); }
+.ffx-pick { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; font-size: 12px; color: var(--wb-text-2); }
+.ffx-pick select { flex: 1; min-width: 0; font: inherit; color: var(--wb-text); background: var(--wb-bg); border: 1px solid var(--wb-border); border-radius: 4px; padding: 3px 6px; }
 .ffx-banner { padding: 6px 12px; background: var(--wb-surface); border-bottom: 1px solid var(--wb-border); }
 /* The JSON pane's host, styled like the web app's active .wb-tab: a flex
    column the pane's own rules size (.wb-json-shell is the flex: 1 child).
@@ -60,8 +66,11 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
       <button class="ffx-close" title="Close the panel">✕</button>
     </div>
     <div class="ffx-body">
-      <div class="ffx-tree" role="tree"></div>
       <div class="ffx-main">
+        <div class="ffx-picker">
+          <label class="ffx-pick"><span>View</span><select class="ffx-pick-view" title="Views of this list — a view format applies to that view only"></select></label>
+          <label class="ffx-pick"><span>Column</span><select class="ffx-pick-col" title="Columns of this list — a column format applies to every view"></select></label>
+        </div>
         <div class="ffx-banner" role="status" hidden></div>
         <div class="ffx-editor"></div>
       </div>
@@ -96,7 +105,8 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
   const banner = $('.ffx-banner');
 
   return {
-    app, title: $('.ffx-title'), tree: $('.ffx-tree'), editor: $('.ffx-editor'), banner,
+    app, title: $('.ffx-title'), editor: $('.ffx-editor'), banner,
+    picker: $('.ffx-picker'), viewSelect: $<HTMLSelectElement>('.ffx-pick-view'), columnSelect: $<HTMLSelectElement>('.ffx-pick-col'),
     footer: $('.ffx-foot'), drawer: $('.ffx-drawer'), status: $('.ffx-status'), undoBtn, redoBtn,
     setExpanded,
     notice(text) { banner.textContent = text ?? ''; banner.hidden = !text; },
