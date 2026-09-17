@@ -885,7 +885,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         b.title = bufferDefId !== null
           ? 'Select this element in the workshop'
           : 'Select this element on the canvas';
-        b.addEventListener('click', () => echo.run('code', () => target.select()));
+        // Single-target mode (the SPFx panel) has no canvas: the pane is the
+        // only surface, so the click must reveal here — skip the echo guard
+        // that otherwise stops the pane flashing a selection it originated.
+        b.addEventListener('click', () => (state.singleTargetKind !== null && bufferDefId === null
+          ? target.select()
+          : echo.run('code', () => target.select())));
       } else {
         b.disabled = true; // typed by hand — becomes selectable after Apply
         b.title = 'Not applied yet — Apply to select it';
@@ -1580,6 +1585,11 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         state.fields.map((f) => f.name),
         Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
       );
+      // Single-target mode is the SPFx panel: the formatter is edited against
+      // the real list and there is no preview, so the sandbox-only note that
+      // "the preview here renders a placeholder" for columnFormatterReference
+      // is noise there (owner call 2026-09-17). Every other rule still reports.
+      if (state.singleTargetKind !== null) issues = issues.filter((i) => i.rule !== 'cfr-not-emulated');
     }
     // #PR-D: the squiggle layer mirrors the footer — the missing-column
     // filter quiets the editor's underlines too (that's its whole point)

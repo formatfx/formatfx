@@ -78,12 +78,22 @@ describe('openJournal', () => {
     const t = fakeTenant({ exists: false, canWrite: true, items: [] });
     const j = await openJournal(createSpRest('https://t/sites/x', t.fetch), LIST, sessionStorage);
     expect(j.durable).toBe(true);
+    // Verified on the tenant 2026-09-17: under `odata=nometadata` SharePoint 400s
+    // "'@odata.type' is an invalid instance annotation name" — the two creation
+    // POSTs (and only those) send verbose bodies with `__metadata.type`.
     const create = t.calls.find((c) => c.url.endsWith('/_api/web/lists') && c.init?.method === 'POST')!;
-    expect(JSON.parse(create.init!.body as string)).toEqual({ '@odata.type': '#SP.List', BaseTemplate: 100, Title: 'FormatFX', Hidden: true, Description: 'FormatFX drafts and formatter history. Do not edit by hand.' });
-    const fields = t.calls.filter((c) => c.url.endsWith('/fields') && c.init?.method === 'POST').map((c) => JSON.parse(c.init!.body as string));
+    expect(JSON.parse(create.init!.body as string)).toEqual({ __metadata: { type: 'SP.List' }, BaseTemplate: 100, Title: 'FormatFX', Hidden: true, Description: 'FormatFX drafts and formatter history. Do not edit by hand.' });
+    expect((create.init!.headers as Record<string, string>)['Content-Type']).toBe('application/json;odata=verbose');
+    expect((create.init!.headers as Record<string, string>).Accept).toBe('application/json;odata=nometadata');
+    const fieldCalls = t.calls.filter((c) => c.url.endsWith('/fields') && c.init?.method === 'POST');
+    const fields = fieldCalls.map((c) => JSON.parse(c.init!.body as string));
     expect(fields).toHaveLength(7);
-    expect(fields[4]).toEqual({ '@odata.type': '#SP.FieldMultiLineText', FieldTypeKind: 3, Title: 'Before' });
-    expect(fields[0]).toEqual({ '@odata.type': '#SP.FieldText', FieldTypeKind: 2, Title: 'Kind' });
+    expect(fields[4]).toEqual({ __metadata: { type: 'SP.FieldMultiLineText' }, FieldTypeKind: 3, Title: 'Before' });
+    expect(fields[0]).toEqual({ __metadata: { type: 'SP.FieldText' }, FieldTypeKind: 2, Title: 'Kind' });
+    for (const c of fieldCalls) expect((c.init!.headers as Record<string, string>)['Content-Type']).toBe('application/json;odata=verbose');
+    // Everything else stays nometadata (items, MERGE, DELETE never carried a type).
+    const nonCreate = t.calls.filter((c) => c.init?.method === 'POST' && !c.url.endsWith('/_api/web/lists') && !c.url.endsWith('/fields') && !c.url.endsWith('/_api/contextinfo'));
+    for (const c of nonCreate) expect((c.init!.headers as Record<string, string>)['Content-Type']).toBe('application/json;odata=nometadata');
   });
 
   it('falls back to the per-tab journal when the list cannot be created', async () => {
@@ -101,7 +111,7 @@ describe('openJournal', () => {
       .filter((c) => c.url.endsWith('/fields') && c.init?.method === 'POST')
       .map((c) => JSON.parse(c.init!.body as string) as { Title: string });
     expect(created.map((b) => b.Title)).toEqual(['TargetId', 'Before', 'After', 'BasedOn']);
-    expect(created[1]).toEqual({ '@odata.type': '#SP.FieldMultiLineText', FieldTypeKind: 3, Title: 'Before' });
+    expect(created[1]).toEqual({ __metadata: { type: 'SP.FieldMultiLineText' }, FieldTypeKind: 3, Title: 'Before' });
   });
 
   it('probes every column it reads, and falls back when that probe fails', async () => {

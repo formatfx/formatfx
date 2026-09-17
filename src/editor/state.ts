@@ -1740,8 +1740,10 @@ export class EditorState {
         : (doc.kind === 'tile' ? 'tile' : 'row');
       const next: FormatterDocument = { kind, root: doc.root };
       if (kind !== 'column') {
-        if (doc.hideSelection) next.hideSelection = true;
-        if (doc.hideColumnHeader) next.hideColumnHeader = true;
+        // explicit false round-trips too — dropping it made the line vanish
+        // on Apply to canvas in the SPFx panel (owner smoke 2026-09-17)
+        if (doc.hideSelection !== undefined) next.hideSelection = doc.hideSelection;
+        if (doc.hideColumnHeader !== undefined) next.hideColumnHeader = doc.hideColumnHeader;
         if (doc.viewExtras) next.viewExtras = doc.viewExtras;
       }
       if (kind === 'tile') {
