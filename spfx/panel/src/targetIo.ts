@@ -17,15 +17,37 @@ export interface ListShape { fields: SnapshotField[]; views: ShapeView[] }
 export function normalizeGuid(g: string): string { return g.replace(/[{}]/g, '').toLowerCase(); }
 
 /**
- * A formatter as SharePoint hands it back. Formatters authored in
- * SharePoint's own pane come back from REST with HTML entities (`&gt;`,
- * `&quot;`…) that the native editor decodes for display and the renderer
- * decodes at run time (owner smoke 2026-09-17: every comparison showed as
- * &gt; and tripped the entity lint). Decode here so the panel edits what the
- * person sees; writes go back as raw characters, which SharePoint accepts.
+ * A formatter as SharePoint hands it back. SharePoint keeps CustomFormatter
+ * inside the target's schema XML: formatters authored in its own pane come
+ * back with HTML entities (`&gt;`, `&quot;`…) that the native editor decodes
+ * for display and the renderer decodes at run time (owner smoke 2026-09-17:
+ * every comparison showed as &gt; and tripped the entity lint), and
+ * formatters this panel wrote come back with the JSON escapes xmlSafeText
+ * sent. Both are undone here so the panel edits what the person sees and
+ * the verify-after-write compares equal.
  */
 function formatterText(v: unknown): string | undefined {
-  return typeof v === 'string' && v !== '' ? decodeXmlEntities(v) : undefined;
+  return typeof v === 'string' && v !== '' ? unescapeJsonUnicode(decodeXmlEntities(v)) : undefined;
+}
+
+/**
+ * The formatter as the panel writes it. A raw `&` (`&&` in any expression)
+ * or `<` in the MERGE body fails with System.Xml.XmlException "An error
+ * occurred while parsing EntityName" (owner smoke 2026-09-17, v1.0.2.0) —
+ * the value lands in schema XML unescaped. `\u0026` / `\u003c` are the same
+ * JSON value with no XML-significant character (the serializer's csomSafe
+ * rule), so SharePoint's own JSON parse sees `&` / `<` again.
+ */
+function xmlSafeText(formatter: string): string {
+  return formatter.replace(/&/g, '\\u0026').replace(/</g, '\\u003c');
+}
+
+/** Undo xmlSafeText (and `\u003e`): a `\uXXXX` preceded by an even number of
+ *  backslashes is an escape; an odd count means a literal backslash + "uXXXX". */
+function unescapeJsonUnicode(s: string): string {
+  const CHARS: Record<string, string> = { '0026': '&', '003c': '<', '003e': '>' };
+  return s.replace(/(\\*)\\u(0026|003c|003e)/gi, (m, bs: string, code: string) =>
+    (bs.length % 2 === 0 ? bs + CHARS[code.toLowerCase()] : m));
 }
 const q = (s: string): string => s.replace(/'/g, "''");
 
@@ -72,5 +94,5 @@ export async function readFormatter(rest: SpRest, listId: string, t: TargetRef):
 }
 
 export async function writeFormatter(rest: SpRest, listId: string, t: TargetRef, formatter: string | null): Promise<void> {
-  await rest.merge(targetPath(listId, t), { CustomFormatter: formatter ?? '' });
+  await rest.merge(targetPath(listId, t), { CustomFormatter: formatter === null ? '' : xmlSafeText(formatter) });
 }
