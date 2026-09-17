@@ -1807,7 +1807,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       const hid = document.createElement('span');
       hid.className = 'wb-lint-hiddennote';
       const n = view.hiddenMissing + view.hiddenBySeverity;
-      hid.textContent = `${n} hidden`;
+      hid.textContent = `${n} ignored`;
       hid.title = [
         view.hiddenMissing > 0 ? `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} ignored by the filter` : '',
         view.hiddenBySeverity > 0 ? `${view.hiddenBySeverity} row${view.hiddenBySeverity === 1 ? '' : 's'} hidden by the severity chips` : '',
