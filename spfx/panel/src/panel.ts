@@ -51,10 +51,15 @@ export interface PanelCore {
   guard: (p: Promise<unknown>) => void;
   /** True while the open target's LIVE formatter could not be parsed. */
   parseBlocked: () => boolean;
+  /** The JSON pane: hand edits not yet parsed, and the parse itself (#321). */
+  bufferDirty: () => boolean;
+  commitBuffer: () => { ok: true } | { ok: false; error: string };
 }
 
 const PANEL_EXTRA_CSS = `
 #wb-deploy-panel, #wb-json-deploy, #wb-json-compbar { display: none !important; }
+/* no canvas here: the footer Apply parses the buffer itself (issue #321) */
+#wb-json-apply { display: none !important; }
 /* the completion popup is a SIBLING of .ffx-app in the shadow root (acMenu
    mounts in the editor's root) — the app's z-index: 56 sat under the panel's
    1000000, so the menu opened invisibly (owner smoke 2026-09-17) */
@@ -286,6 +291,7 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
     rest, listId, shell, journal: () => journal!, current: () => current, basedOn: () => basedOn,
     setBasedOn: (h) => { basedOn = h; openedFromDraft = false; }, setLiveFormatter, loadLive, toast, renderTree,
     guard, parseBlocked: () => parseError !== null,
+    bufferDirty: () => jsonApi.isDirty(), commitBuffer: () => jsonApi.commitBuffer(),
   };
   const apply = mountApply(core, { read: (t) => readFormatter(rest, listId, t), write: (t, f) => writeFormatter(rest, listId, t, f) });
 

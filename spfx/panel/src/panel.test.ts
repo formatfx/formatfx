@@ -310,15 +310,58 @@ describe('mountFormatPanel — apply, stale, history, rollback', () => {
     expect(state.isDirtySinceSave).toBe(false);
   });
 
-  it('refuses to apply a document with lint errors', async () => {
+  it('lint errors open the Apply-anyway gate: Cancel keeps the list untouched, Apply anyway writes (issue #321)', async () => {
     const t = tenant();
     const m = mount(t);
     await m.api.ready;
     await m.api.openTarget({ kind: 'Field', id: 'Title' });
     m.typeAndApply('{"elmType":"div","txtContent":"=if([$Nope] == 1, 1, 2, 3)"}');
     m.$('.ffx-apply').click();
-    await vi.waitFor(() => expect(m.$('.ffx-status').textContent).toContain('lint error'));
+    expect(m.$('.ffx-drawer').hidden).toBe(false);
+    expect(m.$('.ffx-lint-list').textContent).toContain('if(');
     expect(t.items).toHaveLength(0);
+    m.$('.ffx-cancel').click();
+    expect(m.$('.ffx-drawer').hidden).toBe(true);
+    expect(t.formatters['Field:Title']).toBe('');
+    m.$('.ffx-apply').click();
+    m.$('.ffx-lint-anyway').click();
+    await vi.waitFor(() => expect(m.$('.ffx-status').textContent).toContain('Applied'));
+    expect(t.formatters['Field:Title']).toContain('Nope');
+    expect(m.$('.ffx-drawer').hidden).toBe(true);
+  });
+
+  it('writes the hand-edited buffer even when it was never applied to canvas (issue #321)', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    const ta = m.textarea();
+    ta.value = '{"elmType":"div","txtContent":"hand"}';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(t.formatters['Field:Title']).toContain('"hand"'));
+    expect(state.isDirtySinceSave).toBe(false);
+  });
+
+  it('an unparsable buffer stops Apply with the parse error and writes nothing', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    const ta = m.textarea();
+    ta.value = '{"elmType": ';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    m.$('.ffx-apply').click();
+    expect(m.$('.ffx-status').textContent).toContain('Not applying');
+    expect(m.$('#wb-json-import-error').hidden).toBe(false);
+    expect(t.formatters['Field:Title']).toBe('');
+    expect(t.items).toHaveLength(0);
+  });
+
+  it('hides the pane-side Apply-to-canvas button — the footer Apply commits the buffer itself', async () => {
+    const m = mount(tenant());
+    await m.api.ready;
+    expect(getComputedStyle(m.$('#wb-json-apply')).display).toBe('none');
   });
 
   it('shows both versions when the target changed since you started, and overwrites on request', async () => {

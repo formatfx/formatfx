@@ -43,15 +43,15 @@ export function mountApply(core: PanelCore, io: ApplyIo): ApplyUi {
     + '<button class="ffx-apply" title="Write this formatter to the list — one MERGE, journaled first">Apply</button>');
   const applyBtn = shell.footer.querySelector<HTMLButtonElement>('.ffx-apply')!;
   const histBtn = shell.footer.querySelector<HTMLButtonElement>('.ffx-history')!;
-  let drawerMode: 'closed' | 'history' | 'stale' = 'closed';
+  let drawerMode: 'closed' | 'history' | 'stale' | 'lint' = 'closed';
 
   const depsFor = (t: TargetRef): ApplyDeps => ({
     read: () => io.read(t), write: (f) => io.write(t, f), journal: core.journal(),
   });
 
-  const lintErrors = (): number => lintDocument(
+  const lintErrors = (): string[] => lintDocument(
     state.doc, state.fields.map((f) => f.name), Object.fromEntries(state.fields.map((f) => [f.name, f.type])),
-  ).filter((i) => i.severity === 'error').length;
+  ).filter((i) => i.severity === 'error').map((i) => i.message);
 
   const finish = async (t: TargetRef, after: string | null, result: ApplyResult, yoursText: string | null): Promise<void> => {
     if (result.status === 'applied') {
@@ -86,16 +86,42 @@ export function mountApply(core: PanelCore, io: ApplyIo): ApplyUi {
   };
 
   applyBtn.addEventListener('click', () => {
-    // before the lint gate: a buffer FormatFX invented (the live formatter did
-    // not parse) must never be written over the real one
+    // Issue #321: Apply sends what is TYPED. There is no canvas to apply to
+    // first, so the footer parses the buffer itself; a buffer that does not
+    // parse stops here with its error in the pane.
+    if (core.bufferDirty()) {
+      const r = core.commitBuffer();
+      if (!r.ok) { core.toast(`Not applying — ${r.error}`); return; }
+    }
+    // a buffer FormatFX invented (the live formatter did not parse) must
+    // never be written over the real one — a hand edit above just cleared it
     if (core.parseBlocked()) { core.toast(PARSE_BLOCKED_MESSAGE); return; }
-    const n = lintErrors();
-    if (n) { core.toast(`Not applying with ${n} lint error${n === 1 ? '' : 's'} — SharePoint would accept the write and render blank. Fix the red items first.`); return; }
+    const errors = lintErrors();
+    if (errors.length) { showLintGate(errors); return; }
     core.guard(run(bufferText()));
   });
 
   // ── drawer ───────────────────────────────────────────────────────────────
   const closeDrawer = (): void => { drawerMode = 'closed'; shell.drawer.hidden = true; shell.drawer.replaceChildren(); };
+
+  /** Issue #321 ("apply anyway"): lint errors used to be a hard stop. The
+   *  formatter here is the person's own live data, so they choose — the
+   *  drawer lists every error and says what SharePoint will do with them. */
+  const showLintGate = (errors: string[]): void => {
+    drawerMode = 'lint';
+    shell.drawer.hidden = false;
+    const n = errors.length;
+    shell.drawer.innerHTML = `<div class="ffx-lintgate">
+      <p><strong>${n} lint error${n === 1 ? '' : 's'}.</strong> SharePoint accepts a broken formatter and renders the column or view blank, with no error of its own. Fix the red items, or apply anyway (History can roll it back).</p>
+      <ul class="ffx-lint-list"></ul>
+      <button class="ffx-lint-anyway">Apply anyway</button>
+      <button class="ffx-cancel">Cancel</button>
+    </div>`;
+    const list = shell.drawer.querySelector('.ffx-lint-list')!;
+    for (const m of errors) { const li = document.createElement('li'); li.textContent = m; list.appendChild(li); }
+    shell.drawer.querySelector('.ffx-lint-anyway')!.addEventListener('click', () => { closeDrawer(); core.guard(run(bufferText())); });
+    shell.drawer.querySelector('.ffx-cancel')!.addEventListener('click', closeDrawer);
+  };
 
   const showStale = (t: TargetRef, live: string | null, yours: string | null): void => {
     drawerMode = 'stale';

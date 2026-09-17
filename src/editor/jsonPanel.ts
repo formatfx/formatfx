@@ -76,6 +76,13 @@ import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
   refreshLint: (runtime: RenderIssue[]) => { errors: number; warnings: number; runtime: number };
+  /** Hand edits in the buffer that have not been parsed into the document. */
+  isDirty: () => boolean;
+  /** Parse the buffer into the document (the surface-mode "Apply to canvas"),
+   *  for hosts with no canvas whose own Apply must send what is typed (the
+   *  SPFx panel, issue #321). Never throws: a parse failure is reported and
+   *  shown in the pane's import-error box. */
+  commitBuffer: () => { ok: true } | { ok: false; error: string };
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
@@ -1215,6 +1222,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       }
       return;
     }
+    commitBuffer();
+  });
+
+  /** Surface-mode Apply: parse the buffer into the document. Shared by the
+   *  toolbar button and the JsonPanelApi (a canvas-less host's own Apply). */
+  const commitBuffer = (): { ok: true } | { ok: false; error: string } => {
     try {
       // #PR-C: folds are a view — Apply always parses the FULL text
       const doc = importJson(foldView ? fullText : textEl.value);
@@ -1223,28 +1236,33 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       // overwrites those canvas changes. Confirm at the exact moment of
       // harm; a buffer that never diverged applies without ceremony.
       if (divergedWhileDirty) {
-        if (!confirm('The canvas changed while you were editing this JSON — applying replaces the canvas version, overwriting those changes (one Ctrl+Z brings them back).\n\nApply anyway?')) return;
+        if (!confirm('The canvas changed while you were editing this JSON — applying replaces the canvas version, overwriting those changes (one Ctrl+Z brings them back).\n\nApply anyway?')) return { ok: false, error: 'cancelled' };
       }
       // soft guard: name-less JSON replacing a named design silently drops
       // every _elmName — the Structure pane falls back to type/class hints
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
-        if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
+        if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return { ok: false, error: 'cancelled' };
       }
       clearDirty();
       clearImportError();
       state.loadDocument(doc);
       // a column payload doesn't replace the surface — it becomes the current
-      // field's LOOK, rendered embedded in its grid cell
-      onToast(doc.kind === 'column'
-        ? `Imported column formatter — applied as the ${state.currentFieldName} column's look`
-        : `Imported ${doc.kind} formatter`);
+      // field's LOOK, rendered embedded in its grid cell (single-target mode
+      // replaces the lone target in place instead)
+      onToast(state.singleTargetKind !== null
+        ? `Parsed ${doc.kind} formatter`
+        : doc.kind === 'column'
+          ? `Imported column formatter — applied as the ${state.currentFieldName} column's look`
+          : `Imported ${doc.kind} formatter`);
+      return { ok: true };
     } catch (e) {
       const msg = `Import failed: ${(e as Error).message}`;
       onToast(msg);
       importErrorEl.textContent = msg;
       importErrorEl.hidden = false;
+      return { ok: false, error: msg };
     }
-  });
+  };
 
   // ── deploy: the Tier-0 bridge (docs/CONNECTIVITY.md §3.3) ──
   const deployPanel = host.querySelector('#wb-deploy-panel') as HTMLDivElement;
@@ -1765,5 +1783,5 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   regenerate();
   renderLint([]);
 
-  return { refreshLint: renderLint };
+  return { refreshLint: renderLint, isDirty: () => dirty, commitBuffer };
 }

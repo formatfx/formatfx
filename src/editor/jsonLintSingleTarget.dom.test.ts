@@ -73,3 +73,27 @@ describe('the breadcrumb in single-target mode', () => {
     expect(host.querySelector('.wb-code-flashbar')).not.toBeNull();
   });
 });
+
+describe('the pane API for a host without a canvas (the SPFx panel footer Apply)', () => {
+  it('reports dirtiness and commits the buffer into the document, or returns the parse error', () => {
+    state.openTargetDocument({ kind: 'column', root: { elmType: 'div', txtContent: 'a' } }, 'Status');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const api = mountJsonPanel(host, () => {});
+    const ta = host.querySelector('#wb-json-text') as HTMLTextAreaElement;
+    expect(api.isDirty()).toBe(false);
+    ta.value = '{"elmType":"span","txtContent":"b"}';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(api.isDirty()).toBe(true);
+    expect(api.commitBuffer()).toEqual({ ok: true });
+    expect(api.isDirty()).toBe(false);
+    expect(state.doc.root.elmType).toBe('span');
+    ta.value = '{"elmType": ';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    const r = api.commitBuffer();
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toContain('Import failed');
+    expect(api.isDirty()).toBe(true);
+    expect(state.doc.root.elmType).toBe('span'); // untouched
+  });
+});
