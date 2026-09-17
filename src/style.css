@@ -1660,6 +1660,20 @@ body.wb-dark .wb-ce-save { color: #10393b; }
   text-underline-offset: 2px;
   text-decoration-skip-ink: none;
 }
+/* find & replace (issue #321): the bar above the editor + match tints in the
+   squiggle layer (a background, never an underline — the layer's glyphs are
+   transparent, so the tint shows through the highlight text) */
+.wb-json-find { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; margin-bottom: 4px;
+  border: 1px solid var(--wb-border); border-radius: 3px; background: var(--wb-surface); font-size: 11px; }
+.wb-json-find[hidden] { display: none; }
+.wb-json-find-q { flex: 1 1 120px; min-width: 80px; font: inherit; font-size: 11px; padding: 2px 6px;
+  border: 1px solid var(--wb-border); border-radius: 3px; background: var(--wb-bg); color: var(--wb-text); }
+.wb-json-find button { font: inherit; font-size: 11px; padding: 2px 6px; border: 1px solid var(--wb-border);
+  border-radius: 3px; background: var(--wb-bg); color: var(--wb-text); cursor: pointer; }
+.wb-json-find button:hover { border-color: var(--wb-accent); color: var(--wb-accent); }
+.wb-json-find-count { color: var(--wb-text-2); white-space: nowrap; min-width: 56px; }
+.wb-sq-find { background: color-mix(in srgb, var(--wb-accent) 22%, transparent); border-radius: 2px; }
+.wb-sq-find-cur { background: color-mix(in srgb, var(--wb-accent) 45%, transparent); outline: 1px solid var(--wb-accent); border-radius: 2px; }
 .wb-sq-err { text-decoration-color: var(--wb-syn-err); }
 .wb-sq-warning { text-decoration-color: var(--wb-sq-warn); }
 .wb-sq-info { text-decoration-color: var(--wb-sq-info); }

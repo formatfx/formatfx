@@ -19,10 +19,12 @@ import { rangeForPath, type JsonRange } from '../core/jsonMap';
 import type { TextParseError } from '../core/jsonText';
 import { escapeHtml } from './jsonHighlight';
 
-export type DecorationKind = 'err' | 'warning' | 'info';
+/** 'find' / 'find-cur' (issue #321): the pane's find matches, painted through
+ *  the same layer as a background tint; they outrank the wavy underlines. */
+export type DecorationKind = 'err' | 'warning' | 'info' | 'find' | 'find-cur';
 export interface Decoration { start: number; end: number; kind: DecorationKind; message: string }
 
-const SEV_RANK: Record<DecorationKind, number> = { err: 3, warning: 2, info: 1 };
+const SEV_RANK: Record<DecorationKind, number> = { err: 3, warning: 2, info: 1, find: 4, 'find-cur': 5 };
 const LINT_KIND: Record<string, DecorationKind> = { error: 'err', warning: 'warning', info: 'info' };
 
 /** Merge parse errors (char-precise) and lint issues (opening line of the

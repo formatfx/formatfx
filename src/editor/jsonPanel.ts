@@ -112,6 +112,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
       <span id="wb-json-size" class="wb-json-size" title="Size of the JSON that Copy produces, with the current sanitize/names toggles"></span>
     </div>
+    <div id="wb-json-find" class="wb-json-find" hidden>
+      <input id="wb-json-find-q" class="wb-json-find-q" placeholder="Find" aria-label="Find" spellcheck="false">
+      <span id="wb-json-find-count" class="wb-json-find-count" aria-live="polite">0 of 0</span>
+      <button type="button" id="wb-json-find-prev" title="Previous match (Shift+Enter)">▲</button>
+      <button type="button" id="wb-json-find-next" title="Next match (Enter)">▼</button>
+      <input id="wb-json-find-r" class="wb-json-find-q" placeholder="Replace" aria-label="Replace with" spellcheck="false">
+      <button type="button" id="wb-json-find-replace" title="Replace the current match">Replace</button>
+      <button type="button" id="wb-json-find-all" title="Replace every match (one undo step)">All</button>
+      <button type="button" id="wb-json-find-close" title="Close (Esc)">✕</button>
+    </div>
     <div id="wb-json-shell" class="wb-json-shell wb-codesync">
       <textarea id="wb-json-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
     </div>
@@ -154,6 +164,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
   const revertBtn = host.querySelector('#wb-json-revert') as HTMLButtonElement;
+  // ── find & replace (issue #321): plain-text, case-insensitive, matches in
+  // DISPLAYED coordinates (folds are expanded when the bar opens) ──
+  const findEl = host.querySelector('#wb-json-find') as HTMLDivElement;
+  const findQ = host.querySelector('#wb-json-find-q') as HTMLInputElement;
+  const findR = host.querySelector('#wb-json-find-r') as HTMLInputElement;
+  const findCount = host.querySelector('#wb-json-find-count') as HTMLSpanElement;
+  let findMatches: Array<{ start: number; end: number }> = [];
+  let findCur = -1;
   let dirty = false;
   // The dirty-buffer safety trio (owner ask 2026-07-13): while the buffer is
   // dirty the DOCUMENT keeps moving (canvas edits, undo, imports) but the
@@ -831,8 +849,117 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
           .map((d) => ({ ...d, start: fullToDisplayed(d.start), end: fullToDisplayed(d.end) }))
           .filter((d) => d.end > d.start)
       : decos;
+    if (!findEl.hidden) {
+      findScan();
+      decorations = [
+        ...decorations,
+        ...findMatches.map((m, i): Decoration => ({ start: m.start, end: m.end, kind: i === findCur ? 'find-cur' : 'find', message: '' })),
+      ];
+    }
     ide.repaintSquiggles();
   };
+
+  /** Recompute the match list for the current buffer + query; keep the
+   *  current match where it was when it still exists, else pick the first
+   *  one at or after the caret (wrapping to the first). */
+  const findScan = (): void => {
+    const q = findQ.value;
+    findMatches = [];
+    if (q) {
+      const hay = textEl.value.toLowerCase();
+      const needle = q.toLowerCase();
+      let i = hay.indexOf(needle);
+      while (i >= 0) { findMatches.push({ start: i, end: i + needle.length }); i = hay.indexOf(needle, i + needle.length); }
+    }
+    if (!findMatches.length) findCur = -1;
+    else if (findCur < 0 || findCur >= findMatches.length) {
+      const caret = textEl.selectionStart ?? 0;
+      const at = findMatches.findIndex((m) => m.start >= caret);
+      findCur = at < 0 ? 0 : at;
+    }
+    findCount.textContent = findMatches.length ? `${findCur + 1} of ${findMatches.length}` : (q ? 'No matches' : '0 of 0');
+  };
+  /** Step the current match (delta 0 = re-select the current one) and show it. */
+  const findGo = (delta: number): void => {
+    if (!findMatches.length) return;
+    findCur = (findCur + delta + findMatches.length) % findMatches.length;
+    const m = findMatches[findCur];
+    textEl.setSelectionRange(m.start, m.end);
+    clearFlash();
+    flashRange(m); // folds are expanded while the bar is open: displayed == full
+    refreshDecorations();
+  };
+  const findOpen = (replace: boolean): void => {
+    if (foldView) expandAllFolds();
+    findEl.hidden = false;
+    const sel = textEl.value.slice(textEl.selectionStart ?? 0, textEl.selectionEnd ?? 0);
+    if (sel && !sel.includes('\n')) findQ.value = sel;
+    findCur = -1;
+    refreshDecorations();
+    if (findMatches.length) findGo(0);
+    (replace ? findR : findQ).focus();
+  };
+  const findClose = (): void => {
+    findEl.hidden = true;
+    findMatches = [];
+    findCur = -1;
+    refreshDecorations();
+    textEl.focus();
+  };
+  /** Splice through execCommand where the browser offers it (native undo
+   *  stack, input event); else a plain value splice plus a synthetic input. */
+  const findSplice = (start: number, end: number, value: string): void => {
+    textEl.focus();
+    textEl.setSelectionRange(start, end);
+    let ok = false;
+    try { ok = typeof document.execCommand === 'function' && document.execCommand('insertText', false, value); } catch { ok = false; }
+    if (!ok) {
+      const v = textEl.value;
+      textEl.value = v.slice(0, start) + value + v.slice(end);
+      textEl.setSelectionRange(start + value.length, start + value.length);
+      textEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+  const findReplaceOne = (): void => {
+    if (findCur < 0 || !findMatches.length) return;
+    const m = findMatches[findCur];
+    findSplice(m.start, m.end, findR.value);
+    findCur = -1; // re-pick from the caret (just after the replacement)
+    refreshDecorations();
+    if (findMatches.length) findGo(0);
+  };
+  const findReplaceAll = (): void => {
+    if (!findMatches.length) return;
+    const n = findMatches.length;
+    const q = findQ.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const v = textEl.value;
+    findSplice(0, v.length, v.replace(new RegExp(q, 'gi'), () => findR.value));
+    findCur = -1;
+    refreshDecorations();
+    onToast(`${n} replaced`);
+  };
+  findQ.addEventListener('input', () => { findCur = -1; refreshDecorations(); if (findMatches.length) findGo(0); });
+  const findKeys = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') { e.preventDefault(); findGo(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); findClose(); }
+  };
+  findQ.addEventListener('keydown', findKeys);
+  findR.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); findReplaceOne(); }
+    else if (e.key === 'Escape') { e.preventDefault(); findClose(); }
+  });
+  host.querySelector('#wb-json-find-prev')!.addEventListener('click', () => findGo(-1));
+  host.querySelector('#wb-json-find-next')!.addEventListener('click', () => findGo(1));
+  host.querySelector('#wb-json-find-replace')!.addEventListener('click', findReplaceOne);
+  host.querySelector('#wb-json-find-all')!.addEventListener('click', findReplaceAll);
+  host.querySelector('#wb-json-find-close')!.addEventListener('click', findClose);
+  textEl.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'h')) {
+      e.preventDefault();
+      findOpen(e.key === 'h');
+    }
+  });
+  textEl.addEventListener('input', () => { if (!findEl.hidden) { findCur = -1; refreshDecorations(); } });
 
   // ── #PR-D breadcrumb: the caret's element chain, labelled from the buffer
   // while dirty (jsonText labels) and from the doc while clean. A crumb click

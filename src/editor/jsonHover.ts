@@ -62,7 +62,8 @@ export function hoverAt(
   fields: MockField[],
   opts?: HoverOpts,
 ): HoverInfo | null {
-  const d = decorationAt(decorations, offset);
+  // find matches carry no message — hover looks through them
+  const d = decorationAt(decorations.filter((x) => !x.kind.startsWith('find')), offset);
   if (d) return { title: KIND_LABEL[d.kind] ?? 'Note', body: d.message };
 
   // walk with the renderer's pendingKey convention — a str VALUE's meaning
