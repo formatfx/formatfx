@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Elements xmlns="http://schemas.microsoft.com/sharepoint/">
+    <CustomAction
+        Title="FormatFX Format panel"
+        RegistrationId="100"
+        RegistrationType="List"
+        Location="ClientSideExtension.ListViewCommandSet.CommandBar"
+        ClientSideComponentId="9bb46657-c68a-4e3b-895b-ed5a36ae6fcc"
+        ClientSideComponentProperties="{}">
+    </CustomAction>
+</Elements>
