@@ -12,6 +12,8 @@ import { buildLintView, inferFieldType, parseLintPrefs, type MissingColumnRow, t
 import type { LintIssue } from '../core/linter';
 import type { SPElement } from '../core/types';
 
+const NONE_HIDDEN = { error: false, warning: false, info: false, runtime: false };
+
 const missing = (field: string, path: number[], where = 'txtContent'): LintIssue => ({
   severity: 'warning',
   rule: 'unknown-field',
@@ -156,13 +158,40 @@ describe('inferFieldType — usage evidence', () => {
 
 describe('lint prefs — strict parse of the additive blob', () => {
   it('defaults when missing, garbled, or mistyped', () => {
-    expect(parseLintPrefs(null)).toEqual({ hideMissingColumns: false });
-    expect(parseLintPrefs('{not json')).toEqual({ hideMissingColumns: false });
-    expect(parseLintPrefs('"just a string"')).toEqual({ hideMissingColumns: false });
-    expect(parseLintPrefs('{"hideMissingColumns":"yes"}')).toEqual({ hideMissingColumns: false });
+    expect(parseLintPrefs(null)).toEqual({ hideMissingColumns: false, hideSeverity: NONE_HIDDEN });
+    expect(parseLintPrefs('{not json')).toEqual({ hideMissingColumns: false, hideSeverity: NONE_HIDDEN });
+    expect(parseLintPrefs('"just a string"')).toEqual({ hideMissingColumns: false, hideSeverity: NONE_HIDDEN });
+    expect(parseLintPrefs('{"hideMissingColumns":"yes"}')).toEqual({ hideMissingColumns: false, hideSeverity: NONE_HIDDEN });
   });
 
   it('round-trips the only real value', () => {
-    expect(parseLintPrefs('{"hideMissingColumns":true}')).toEqual({ hideMissingColumns: true });
+    expect(parseLintPrefs('{"hideMissingColumns":true}')).toEqual({ hideMissingColumns: true, hideSeverity: NONE_HIDDEN });
+  });
+});
+
+describe('severity chips as filters (issue #321)', () => {
+  const issues: LintIssue[] = [
+    { severity: 'error', rule: 'no-not-function', message: 'e', path: [] },
+    { severity: 'warning', rule: 'unknown-field', message: 'w', path: [0], field: 'Nope' },
+    { severity: 'warning', rule: 'rowclass-with-rowformatter', message: 'w2', path: [] },
+    { severity: 'info', rule: 'cfr-not-emulated', message: 'i', path: [1] },
+  ];
+  const runtime = [{ message: 'boom', path: [0] }];
+
+  it('parseLintPrefs reads hideSeverity strictly, defaulting every level to shown', () => {
+    expect(parseLintPrefs('{"hideSeverity":{"info":true,"error":"yes"}}').hideSeverity)
+      .toEqual({ error: false, warning: false, info: true, runtime: false });
+    expect(parseLintPrefs('{"hideSeverity":"all"}').hideSeverity).toEqual(NONE_HIDDEN);
+  });
+
+  it('buildLintView drops hidden severities from the rows (missing-column rows are warnings), keeps the summary full-truth, counts what it hid', () => {
+    const v = buildLintView(issues, runtime, { hideSeverity: { error: false, warning: true, info: true, runtime: false } });
+    expect(v.rows.map((r) => (r.kind === 'issue' ? r.sev : 'missing'))).toEqual(['error', 'runtime']);
+    expect(v.summary.warnings.total).toBe(2);
+    expect(v.summary.infos.total).toBe(1);
+    expect(v.hiddenBySeverity).toBe(3);
+    const all = buildLintView(issues, runtime, { hideSeverity: NONE_HIDDEN });
+    expect(all.rows).toHaveLength(5);
+    expect(all.hiddenBySeverity).toBe(0);
   });
 });

@@ -17,12 +17,13 @@ import type { FormatterDocument } from '../../../src/core/types';
 import { createSpRest, type SpRest } from './rest';
 import { openJournal, type JournalBackend } from './journalStore';
 import { loadListShape, readFormatter, writeFormatter, type ListShape } from './targetIo';
-import { buildTree, currentViewOf, type TreeNode } from './tree';
+import { buildTree, currentViewOf, type TreeNode, type TreeModel } from './tree';
 import { targetKey, type TargetRef } from './journal';
 import { formatterHash } from './hash';
 import { mountShell, type Shell } from './panelShell';
 import { readReopen, writeReopen, viewIdFromUrl, watchUrl, REOPEN_KEY } from './urlState';
 import { mountApply } from './panelApply';
+import { resolveTheme, readStoredTheme, writeStoredTheme, spThemeInverted } from './panelTheme';
 
 export { viewIdFromUrl, watchUrl, readReopen, REOPEN_KEY };
 export type { TargetRef };
@@ -46,22 +47,35 @@ export interface PanelCore {
   current: () => TargetRef | null; basedOn: () => string; setBasedOn: (h: string) => void;
   setLiveFormatter: (t: TargetRef, f: string | null) => void; loadLive: (f: string | null) => void;
   toast: (m: string) => void; renderTree: () => Promise<void>;
+  /** Reload the page so the list re-renders with what was just written; the
+   *  reopen record brings the panel back on the same target (spec §2.4). */
+  reload: () => void;
   /** Run a fire-and-forget promise from a UI handler; failures toast. */
   guard: (p: Promise<unknown>) => void;
   /** True while the open target's LIVE formatter could not be parsed. */
   parseBlocked: () => boolean;
+  /** The JSON pane: hand edits not yet parsed, and the parse itself (#321). */
+  bufferDirty: () => boolean;
+  commitBuffer: () => { ok: true } | { ok: false; error: string };
 }
 
 const PANEL_EXTRA_CSS = `
 #wb-deploy-panel, #wb-json-deploy, #wb-json-compbar { display: none !important; }
-.ffx-node { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 4px 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-.ffx-node:hover, .ffx-node.ffx-open { background: var(--wb-surface); }
-.ffx-node.ffx-open { font-weight: 600; }
-.ffx-group { padding: 8px 10px 2px; color: var(--wb-text-2); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-.ffx-badge { margin-left: auto; font-size: 10px; padding: 0 5px; border-radius: 8px; background: var(--wb-accent); color: var(--wb-accent-text); }
-.ffx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wb-accent); flex: none; }
-.ffx-current .ffx-label::after { content: ' · on screen'; color: var(--wb-text-2); font-weight: 400; }
+/* the editor shell shrinks to what is left under the Problems list instead
+   of forcing the slot to scroll (a scrolling slot nudged the caret line to
+   the bottom edge on every keystroke — owner smoke, round 5) */
+.wb-json-shell { min-height: 0; resize: none; }
+/* the completion popup is a SIBLING of .ffx-app in the shadow root (acMenu
+   mounts in the editor's root) — the app's z-index: 56 sat under the panel's
+   1000000, so the menu opened invisibly (owner smoke 2026-09-17) */
+.wb-fx-acmenu { z-index: 1000001; }
+option.ffx-open { font-weight: 600; }
 `;
+
+/** localStorage on the tenant origin, or null where access itself throws. */
+function safeLocalStorage(): Storage | null {
+  try { return localStorage; } catch { return null; }
+}
 
 const emptyDoc = (kind: 'column' | 'row'): FormatterDocument => (kind === 'column'
   ? { kind: 'column', root: { elmType: 'div', txtContent: '@currentField' } }
@@ -104,7 +118,25 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
     onClose: () => { guard(close()); },
     onUndo: () => state.undo(),
     onRedo: () => state.redo(),
+    onTheme: () => {
+      const dark = !shadow.host.classList.contains('wb-dark');
+      const local = safeLocalStorage();
+      if (local) writeStoredTheme(local, dark ? 'dark' : 'light');
+      applyDark(dark);
+    },
   });
+  // Issue #321: dark mode. The host class drives the app CSS; the editor
+  // state's themeMode + 'theme' emit re-seed the JSON pane's syntax colors.
+  const applyDark = (dark: boolean): void => {
+    shell.setDark(dark);
+    state.themeMode = dark ? 'dark' : 'light';
+    state.emit('theme');
+  };
+  {
+    const local = safeLocalStorage();
+    const prefersDark = typeof matchMedia === 'function' && !!matchMedia('(prefers-color-scheme: dark)')?.matches;
+    applyDark(resolveTheme({ stored: local ? readStoredTheme(local) : null, spInverted: spThemeInverted(window), prefersDark }) === 'dark');
+  }
   let toastTimer = 0;
   const toast = (m: string): void => {
     shell.status.textContent = m;
@@ -152,30 +184,43 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   };
 
   // ── tree ─────────────────────────────────────────────────────────────────
+  // Issue #321: two selects instead of a rail. Each option carries the same
+  // state the rail's node did (data-key, ffx-* classes, a scope title) with
+  // the badge/dot folded into its label; the select that owns the open
+  // target shows it, the other its placeholder.
+  let model: TreeModel = { views: [], columns: [] };
   const renderTree = async (): Promise<void> => {
     draftKeys = journal ? await journal.listDraftKeys() : new Set();
-    const model = buildTree(shape, draftKeys, viewId);
-    shell.tree.replaceChildren();
-    const group = (title: string, nodes: TreeNode[]): void => {
-      const g = document.createElement('div');
-      g.className = 'ffx-group';
-      g.textContent = title;
-      shell.tree.appendChild(g);
+    model = buildTree(shape, draftKeys, viewId);
+    const fill = (select: HTMLSelectElement, placeholder: string, nodes: TreeNode[]): void => {
+      select.replaceChildren();
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = placeholder;
+      select.appendChild(ph);
+      let open = '';
       for (const n of nodes) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'ffx-node' + (n.formatted ? ' ffx-formatted' : '') + (n.draft ? ' ffx-draft' : '') + (n.current ? ' ffx-current' : '') + (current && targetKey(current) === n.key ? ' ffx-open' : '');
-        b.dataset.key = n.key;
-        b.title = `${n.label} — ${n.scope}`;
-        b.innerHTML = `<span class="ffx-label"></span>${n.draft ? '<span class="ffx-dot" title="you have a draft"></span>' : ''}${n.formatted ? '<span class="ffx-badge">formatted</span>' : ''}`;
-        b.querySelector('.ffx-label')!.textContent = n.label;
-        b.addEventListener('click', () => { guard(pick(n)); });
-        shell.tree.appendChild(b);
+        const o = document.createElement('option');
+        const isOpen = !!current && targetKey(current) === n.key;
+        o.value = n.key;
+        o.dataset.key = n.key;
+        o.className = 'ffx-node' + (n.formatted ? ' ffx-formatted' : '') + (n.draft ? ' ffx-draft' : '') + (n.current ? ' ffx-current' : '') + (isOpen ? ' ffx-open' : '');
+        o.title = `${n.label} — ${n.scope}`;
+        o.textContent = n.label + (n.current ? ' · on screen' : '') + (n.formatted ? ' · formatted' : '') + (n.draft ? ' · draft' : '');
+        select.appendChild(o);
+        if (isOpen) open = n.key;
       }
+      select.value = open;
     };
-    group('Views', model.views);
-    group('Columns', model.columns);
+    fill(shell.viewSelect, '— pick a view —', model.views);
+    fill(shell.columnSelect, '— pick a column —', model.columns);
   };
+  const onPick = (select: HTMLSelectElement): void => {
+    const n = [...model.views, ...model.columns].find((x) => x.key === select.value);
+    if (n) guard(pick(n));
+  };
+  shell.viewSelect.addEventListener('change', () => onPick(shell.viewSelect));
+  shell.columnSelect.addEventListener('change', () => onPick(shell.columnSelect));
 
   const pick = async (n: TreeNode): Promise<void> => {
     if (n.target.kind === 'View' && !n.current && n.url) {
@@ -250,7 +295,9 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   const core: PanelCore = {
     rest, listId, shell, journal: () => journal!, current: () => current, basedOn: () => basedOn,
     setBasedOn: (h) => { basedOn = h; openedFromDraft = false; }, setLiveFormatter, loadLive, toast, renderTree,
+    reload: () => navigate(location.href),
     guard, parseBlocked: () => parseError !== null,
+    bufferDirty: () => jsonApi.isDirty(), commitBuffer: () => jsonApi.commitBuffer(),
   };
   const apply = mountApply(core, { read: (t) => readFormatter(rest, listId, t), write: (t, f) => writeFormatter(rest, listId, t, f) });
 

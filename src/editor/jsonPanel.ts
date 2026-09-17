@@ -76,6 +76,13 @@ import type { RenderIssue } from '../core/renderer';
 
 export interface JsonPanelApi {
   refreshLint: (runtime: RenderIssue[]) => { errors: number; warnings: number; runtime: number };
+  /** Hand edits in the buffer that have not been parsed into the document. */
+  isDirty: () => boolean;
+  /** Parse the buffer into the document (the surface-mode "Apply to canvas"),
+   *  for hosts with no canvas whose own Apply must send what is typed (the
+   *  SPFx panel, issue #321). Never throws: a parse failure is reported and
+   *  shown in the pane's import-error box. */
+  commitBuffer: () => { ok: true } | { ok: false; error: string };
 }
 
 export function mountJsonPanel(host: HTMLElement, onToast: (m: string) => void): JsonPanelApi {
@@ -104,6 +111,16 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     <div class="wb-json-crumbrow">
       <div id="wb-json-crumbs" class="wb-json-crumbs" aria-label="Element path at the caret" hidden></div>
       <span id="wb-json-size" class="wb-json-size" title="Size of the JSON that Copy produces, with the current sanitize/names toggles"></span>
+    </div>
+    <div id="wb-json-find" class="wb-json-find" hidden>
+      <input id="wb-json-find-q" class="wb-json-find-q" placeholder="Find" aria-label="Find" spellcheck="false">
+      <span id="wb-json-find-count" class="wb-json-find-count" aria-live="polite">0 of 0</span>
+      <button type="button" id="wb-json-find-prev" title="Previous match (Shift+Enter)">▲</button>
+      <button type="button" id="wb-json-find-next" title="Next match (Enter)">▼</button>
+      <input id="wb-json-find-r" class="wb-json-find-q" placeholder="Replace" aria-label="Replace with" spellcheck="false">
+      <button type="button" id="wb-json-find-replace" title="Replace the current match">Replace</button>
+      <button type="button" id="wb-json-find-all" title="Replace every match (one undo step)">All</button>
+      <button type="button" id="wb-json-find-close" title="Close (Esc)">✕</button>
     </div>
     <div id="wb-json-shell" class="wb-json-shell wb-codesync">
       <textarea id="wb-json-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
@@ -147,6 +164,14 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   const importErrorEl = host.querySelector('#wb-json-import-error') as HTMLDivElement;
   const applyBtn = host.querySelector('#wb-json-apply') as HTMLButtonElement;
   const revertBtn = host.querySelector('#wb-json-revert') as HTMLButtonElement;
+  // ── find & replace (issue #321): plain-text, case-insensitive, matches in
+  // DISPLAYED coordinates (folds are expanded when the bar opens) ──
+  const findEl = host.querySelector('#wb-json-find') as HTMLDivElement;
+  const findQ = host.querySelector('#wb-json-find-q') as HTMLInputElement;
+  const findR = host.querySelector('#wb-json-find-r') as HTMLInputElement;
+  const findCount = host.querySelector('#wb-json-find-count') as HTMLSpanElement;
+  let findMatches: Array<{ start: number; end: number }> = [];
+  let findCur = -1;
   let dirty = false;
   // The dirty-buffer safety trio (owner ask 2026-07-13): while the buffer is
   // dirty the DOCUMENT keeps moving (canvas edits, undo, imports) but the
@@ -824,8 +849,117 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
           .map((d) => ({ ...d, start: fullToDisplayed(d.start), end: fullToDisplayed(d.end) }))
           .filter((d) => d.end > d.start)
       : decos;
+    if (!findEl.hidden) {
+      findScan();
+      decorations = [
+        ...decorations,
+        ...findMatches.map((m, i): Decoration => ({ start: m.start, end: m.end, kind: i === findCur ? 'find-cur' : 'find', message: '' })),
+      ];
+    }
     ide.repaintSquiggles();
   };
+
+  /** Recompute the match list for the current buffer + query; keep the
+   *  current match where it was when it still exists, else pick the first
+   *  one at or after the caret (wrapping to the first). */
+  const findScan = (): void => {
+    const q = findQ.value;
+    findMatches = [];
+    if (q) {
+      const hay = textEl.value.toLowerCase();
+      const needle = q.toLowerCase();
+      let i = hay.indexOf(needle);
+      while (i >= 0) { findMatches.push({ start: i, end: i + needle.length }); i = hay.indexOf(needle, i + needle.length); }
+    }
+    if (!findMatches.length) findCur = -1;
+    else if (findCur < 0 || findCur >= findMatches.length) {
+      const caret = textEl.selectionStart ?? 0;
+      const at = findMatches.findIndex((m) => m.start >= caret);
+      findCur = at < 0 ? 0 : at;
+    }
+    findCount.textContent = findMatches.length ? `${findCur + 1} of ${findMatches.length}` : (q ? 'No matches' : '0 of 0');
+  };
+  /** Step the current match (delta 0 = re-select the current one) and show it. */
+  const findGo = (delta: number): void => {
+    if (!findMatches.length) return;
+    findCur = (findCur + delta + findMatches.length) % findMatches.length;
+    const m = findMatches[findCur];
+    textEl.setSelectionRange(m.start, m.end);
+    clearFlash();
+    flashRange(m); // folds are expanded while the bar is open: displayed == full
+    refreshDecorations();
+  };
+  const findOpen = (replace: boolean): void => {
+    if (foldView) expandAllFolds();
+    findEl.hidden = false;
+    const sel = textEl.value.slice(textEl.selectionStart ?? 0, textEl.selectionEnd ?? 0);
+    if (sel && !sel.includes('\n')) findQ.value = sel;
+    findCur = -1;
+    refreshDecorations();
+    if (findMatches.length) findGo(0);
+    (replace ? findR : findQ).focus();
+  };
+  const findClose = (): void => {
+    findEl.hidden = true;
+    findMatches = [];
+    findCur = -1;
+    refreshDecorations();
+    textEl.focus();
+  };
+  /** Splice through execCommand where the browser offers it (native undo
+   *  stack, input event); else a plain value splice plus a synthetic input. */
+  const findSplice = (start: number, end: number, value: string): void => {
+    textEl.focus();
+    textEl.setSelectionRange(start, end);
+    let ok = false;
+    try { ok = typeof document.execCommand === 'function' && document.execCommand('insertText', false, value); } catch { ok = false; }
+    if (!ok) {
+      const v = textEl.value;
+      textEl.value = v.slice(0, start) + value + v.slice(end);
+      textEl.setSelectionRange(start + value.length, start + value.length);
+      textEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+  const findReplaceOne = (): void => {
+    if (findCur < 0 || !findMatches.length) return;
+    const m = findMatches[findCur];
+    findSplice(m.start, m.end, findR.value);
+    findCur = -1; // re-pick from the caret (just after the replacement)
+    refreshDecorations();
+    if (findMatches.length) findGo(0);
+  };
+  const findReplaceAll = (): void => {
+    if (!findMatches.length) return;
+    const n = findMatches.length;
+    const q = findQ.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const v = textEl.value;
+    findSplice(0, v.length, v.replace(new RegExp(q, 'gi'), () => findR.value));
+    findCur = -1;
+    refreshDecorations();
+    onToast(`${n} replaced`);
+  };
+  findQ.addEventListener('input', () => { findCur = -1; refreshDecorations(); if (findMatches.length) findGo(0); });
+  const findKeys = (e: KeyboardEvent): void => {
+    if (e.key === 'Enter') { e.preventDefault(); findGo(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); findClose(); }
+  };
+  findQ.addEventListener('keydown', findKeys);
+  findR.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); findReplaceOne(); }
+    else if (e.key === 'Escape') { e.preventDefault(); findClose(); }
+  });
+  host.querySelector('#wb-json-find-prev')!.addEventListener('click', () => findGo(-1));
+  host.querySelector('#wb-json-find-next')!.addEventListener('click', () => findGo(1));
+  host.querySelector('#wb-json-find-replace')!.addEventListener('click', findReplaceOne);
+  host.querySelector('#wb-json-find-all')!.addEventListener('click', findReplaceAll);
+  host.querySelector('#wb-json-find-close')!.addEventListener('click', findClose);
+  textEl.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'f' || e.key === 'h')) {
+      e.preventDefault();
+      findOpen(e.key === 'h');
+    }
+  });
+  textEl.addEventListener('input', () => { if (!findEl.hidden) { findCur = -1; refreshDecorations(); } });
 
   // ── #PR-D breadcrumb: the caret's element chain, labelled from the buffer
   // while dirty (jsonText labels) and from the doc while clean. A crumb click
@@ -1026,7 +1160,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // properties on <body>, outranking both theme blocks. synPalette.ts owns
   // the decisions; this is DOM only. ──
   const synPanel = host.querySelector('#wb-syn-panel') as HTMLDivElement;
-  const isDark = (): boolean => document.body.classList.contains('wb-dark');
+  // inside a shadow root (the SPFx panel) the theme class lives on the host
+  const shadowHost = (host.getRootNode() as ShadowRoot | Document as { host?: Element }).host;
+  const isDark = (): boolean => document.body.classList.contains('wb-dark') || !!shadowHost?.classList.contains('wb-dark');
   let synPrefs = loadSynPrefs();
   applySynPrefs(synPrefs, isDark(), document.body); // saved hues greet the session
 
@@ -1213,6 +1349,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       }
       return;
     }
+    commitBuffer();
+  });
+
+  /** Surface-mode Apply: parse the buffer into the document. Shared by the
+   *  toolbar button and the JsonPanelApi (a canvas-less host's own Apply). */
+  const commitBuffer = (): { ok: true } | { ok: false; error: string } => {
     try {
       // #PR-C: folds are a view — Apply always parses the FULL text
       const doc = importJson(foldView ? fullText : textEl.value);
@@ -1221,28 +1363,33 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       // overwrites those canvas changes. Confirm at the exact moment of
       // harm; a buffer that never diverged applies without ceremony.
       if (divergedWhileDirty) {
-        if (!confirm('The canvas changed while you were editing this JSON — applying replaces the canvas version, overwriting those changes (one Ctrl+Z brings them back).\n\nApply anyway?')) return;
+        if (!confirm('The canvas changed while you were editing this JSON — applying replaces the canvas version, overwriting those changes (one Ctrl+Z brings them back).\n\nApply anyway?')) return { ok: false, error: 'cancelled' };
       }
       // soft guard: name-less JSON replacing a named design silently drops
       // every _elmName — the Structure pane falls back to type/class hints
       if (treeHasNames(state.doc.root) && !treeHasNames(doc.root)) {
-        if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return;
+        if (!confirm('The JSON you are applying has no element names (_elmName), but your current design is named.\n\nApplying will drop those names from the Structure pane. Apply anyway?')) return { ok: false, error: 'cancelled' };
       }
       clearDirty();
       clearImportError();
       state.loadDocument(doc);
       // a column payload doesn't replace the surface — it becomes the current
-      // field's LOOK, rendered embedded in its grid cell
-      onToast(doc.kind === 'column'
-        ? `Imported column formatter — applied as the ${state.currentFieldName} column's look`
-        : `Imported ${doc.kind} formatter`);
+      // field's LOOK, rendered embedded in its grid cell (single-target mode
+      // replaces the lone target in place instead)
+      onToast(state.singleTargetKind !== null
+        ? `Parsed ${doc.kind} formatter`
+        : doc.kind === 'column'
+          ? `Imported column formatter — applied as the ${state.currentFieldName} column's look`
+          : `Imported ${doc.kind} formatter`);
+      return { ok: true };
     } catch (e) {
       const msg = `Import failed: ${(e as Error).message}`;
       onToast(msg);
       importErrorEl.textContent = msg;
       importErrorEl.hidden = false;
+      return { ok: false, error: msg };
     }
-  });
+  };
 
   // ── deploy: the Tier-0 bridge (docs/CONNECTIVITY.md §3.3) ──
   const deployPanel = host.querySelector('#wb-deploy-panel') as HTMLDivElement;
@@ -1281,11 +1428,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ? 'Deploy ships view formatting — a component ships by being used in a view'
       : deployBtnTitle;
     if (inCompBuffer) deployPanel.hidden = true;
+    // single-target mode (the SPFx panel, issue #321) has no canvas: the
+    // button is the parse it always was — folds, breadcrumb and Problems
+    // catch up — and the host's own Apply does this first anyway
+    const noCanvas = state.singleTargetKind !== null;
     applyBtn.title = inCompBuffer
       ? 'Parse the JSON below and stage it into the workshop — Save there publishes'
-      : applyBtnTitle;
+      : noCanvas
+        ? 'Parse the JSON into the document: folds, breadcrumb and Problems catch up. Nothing is written — Apply (bottom right) does this first anyway.'
+        : applyBtnTitle;
     // the visible/accessible name follows the destination, not just the tooltip
-    applyBtn.textContent = inCompBuffer ? '⬅ Apply to workshop' : '⬅ Apply to canvas';
+    applyBtn.textContent = inCompBuffer ? '⬅ Apply to workshop' : noCanvas ? '⟳ Parse' : '⬅ Apply to canvas';
     // the surface Type select acts on the surface doc — inert under a def
     const kindSel = document.getElementById('wb-kind') as HTMLSelectElement | null;
     if (kindSel) kindSel.disabled = inCompBuffer;
@@ -1597,7 +1750,7 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ? issues.filter((i) => !(i.rule === 'unknown-field' && i.field))
       : issues;
     refreshDecorations();
-    const view = buildLintView(issues, runtime, { hideMissingColumns: lintPrefs.hideMissingColumns });
+    const view = buildLintView(issues, runtime, { hideMissingColumns: lintPrefs.hideMissingColumns, hideSeverity: lintPrefs.hideSeverity });
     if (lintCreateOpen && !view.rows.some((r) => r.kind === 'missing' && r.field === lintCreateOpen)) {
       lintCreateOpen = null; // the column got created (or filtered) — form gone
       lintCreateType = null;
@@ -1627,14 +1780,24 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     const sum = document.createElement('span');
     sum.className = 'wb-lint-sum';
     const parts: string[] = [];
-    // "2 errors (×51)" per level: 2 distinct KINDS of error, 51 occurrences
-    const chip = (sev: string, t: SeverityTally, word: string): void => {
+    // "2 errors (×51)" per level: 2 distinct KINDS of error, 51 occurrences.
+    // Each chip is also that level's filter (issue #321): a click hides or
+    // shows its rows; the count stays full-truth either way.
+    const chip = (sev: 'error' | 'warning' | 'info' | 'runtime', t: SeverityTally, word: string): void => {
       if (!t.total) return;
-      const s = document.createElement('span');
-      s.className = `wb-lint-chip wb-lint-chip-${sev}`;
+      const hidden = lintPrefs.hideSeverity[sev];
+      const s = document.createElement('button');
+      s.type = 'button';
+      s.className = `wb-lint-chip wb-lint-chip-${sev}${hidden ? ' wb-lint-chip-off' : ''}`;
+      s.setAttribute('aria-pressed', String(!hidden));
       s.textContent = `${lintBadge(sev).glyph} ${t.types} ${word}${t.types === 1 ? '' : 's'} (×${t.total})`;
       const detail = `${t.types} ${word} type${t.types === 1 ? '' : 's'}, ${t.total} occurrence${t.total === 1 ? '' : 's'}`;
-      s.title = detail;
+      s.title = `${detail} — click to ${hidden ? 'show' : 'hide'} these rows`;
+      s.addEventListener('click', () => {
+        lintPrefs = { ...lintPrefs, hideSeverity: { ...lintPrefs.hideSeverity, [sev]: !hidden } };
+        saveLintPrefs(lintPrefs);
+        renderLint(lastRuntime);
+      });
       sum.appendChild(s);
       parts.push(detail);
     };
@@ -1646,11 +1809,15 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
     // region would re-announce unchanged counts — the label alone serves
     sum.setAttribute('aria-label', parts.join(', '));
     head.appendChild(sum);
-    if (view.hiddenMissing > 0) {
+    if (view.hiddenMissing > 0 || view.hiddenBySeverity > 0) {
       const hid = document.createElement('span');
       hid.className = 'wb-lint-hiddennote';
-      hid.textContent = `${view.hiddenMissing} ignored`;
-      hid.title = `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} ignored by the filter`;
+      const n = view.hiddenMissing + view.hiddenBySeverity;
+      hid.textContent = `${n} ignored`;
+      hid.title = [
+        view.hiddenMissing > 0 ? `${view.hiddenMissing} missing-column warning${view.hiddenMissing === 1 ? '' : 's'} ignored by the filter` : '',
+        view.hiddenBySeverity > 0 ? `${view.hiddenBySeverity} row${view.hiddenBySeverity === 1 ? '' : 's'} hidden by the severity chips` : '',
+      ].filter(Boolean).join('; ');
       head.appendChild(hid);
     }
     const missingTotal = issues.filter((i) => i.rule === 'unknown-field' && i.field).length;
@@ -1763,5 +1930,5 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   regenerate();
   renderLint([]);
 
-  return { refreshLint: renderLint };
+  return { refreshLint: renderLint, isDirty: () => dirty, commitBuffer };
 }

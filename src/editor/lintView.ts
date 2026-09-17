@@ -72,13 +72,17 @@ export interface LintViewModel {
   summary: LintSummary;
   /** unknown-field diagnostics suppressed by the missing-column filter. */
   hiddenMissing: number;
+  /** Rows dropped by the severity chips (issue #321) — the summary still counts them. */
+  hiddenBySeverity: number;
 }
 
 export function buildLintView(
   issues: LintIssue[],
   runtime: RenderIssue[],
-  opts: { hideMissingColumns?: boolean } = {},
+  opts: { hideMissingColumns?: boolean; hideSeverity?: SeverityHide } = {},
 ): LintViewModel {
+  const hide = opts.hideSeverity ?? NO_HIDE;
+  let hiddenBySeverity = 0;
   const tally = (sev: LintIssue['severity']): SeverityTally => {
     const at = issues.filter((i) => i.severity === sev);
     return { types: new Set(at.map((i) => i.rule)).size, total: at.length };
@@ -93,6 +97,7 @@ export function buildLintView(
   const groups = new Map<string, MissingColumnRow>();
   let hiddenMissing = 0;
   for (const issue of issues) {
+    if (hide[issue.severity]) { hiddenBySeverity++; continue; }
     if (issue.rule === 'unknown-field' && issue.field) {
       if (opts.hideMissingColumns) { hiddenMissing++; continue; }
       const existing = groups.get(issue.field);
@@ -111,9 +116,10 @@ export function buildLintView(
     rows.push({ kind: 'issue', sev: issue.severity, text: `${issue.rule}: ${issue.message}`, path: issue.path });
   }
   for (const r of runtime) {
+    if (hide.runtime) { hiddenBySeverity++; continue; }
     rows.push({ kind: 'issue', sev: 'runtime', text: r.message, path: r.path });
   }
-  return { rows, summary, hiddenMissing };
+  return { rows, summary, hiddenMissing, hiddenBySeverity };
 }
 
 // ── type inference from usage ──
@@ -184,8 +190,13 @@ export function inferFieldType(root: SPElement, field: string): FieldType {
 
 // ── the filter preference (additive storage key) ──
 
+/** Which severity levels the Problems chips have switched off (issue #321). */
+export interface SeverityHide { error: boolean; warning: boolean; info: boolean; runtime: boolean }
+export const NO_HIDE: SeverityHide = { error: false, warning: false, info: false, runtime: false };
+
 export interface LintPrefs {
   hideMissingColumns: boolean;
+  hideSeverity: SeverityHide;
 }
 
 export const LINT_PREFS_KEY = 'wb-lint-prefs.v1';
@@ -194,9 +205,14 @@ export const LINT_PREFS_KEY = 'wb-lint-prefs.v1';
 export function parseLintPrefs(raw: string | null): LintPrefs {
   try {
     const p = JSON.parse(raw ?? '{}');
-    return { hideMissingColumns: p && typeof p === 'object' && p.hideMissingColumns === true };
+    const ok = p && typeof p === 'object';
+    const h = ok && p.hideSeverity && typeof p.hideSeverity === 'object' ? p.hideSeverity : {};
+    return {
+      hideMissingColumns: ok && p.hideMissingColumns === true,
+      hideSeverity: { error: h.error === true, warning: h.warning === true, info: h.info === true, runtime: h.runtime === true },
+    };
   } catch {
-    return { hideMissingColumns: false };
+    return { hideMissingColumns: false, hideSeverity: { ...NO_HIDE } };
   }
 }
 
@@ -204,7 +220,7 @@ export function loadLintPrefs(): LintPrefs {
   try {
     return parseLintPrefs(localStorage.getItem(LINT_PREFS_KEY));
   } catch {
-    return { hideMissingColumns: false };
+    return { hideMissingColumns: false, hideSeverity: { ...NO_HIDE } };
   }
 }
 

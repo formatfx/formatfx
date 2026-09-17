@@ -173,7 +173,8 @@ describe('the hide-missing-columns filter', () => {
     expect(shell.querySelector('.wb-json-sq .wb-sq-warning')).toBeNull();
     // the summary stays the full truth
     expect(lint.querySelector('.wb-lint-chip-warning')!.textContent).toContain('1 warning (×3)');
-    expect(JSON.parse(localStorage.getItem(LINT_PREFS_KEY)!)).toEqual({ hideMissingColumns: true });
+    // issue #321 added the severity chips' flags to the same blob
+    expect(JSON.parse(localStorage.getItem(LINT_PREFS_KEY)!)).toEqual({ hideMissingColumns: true, hideSeverity: { error: false, warning: false, info: false, runtime: false } });
   });
 
   it('the persisted filter greets the next mount', () => {
