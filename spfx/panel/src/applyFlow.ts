@@ -37,7 +37,13 @@ export async function applyTarget(deps: ApplyDeps, req: ApplyRequest): Promise<A
     return { status: 'stale', live: live1, yours: req.after };
   }
   const row: JournalRow = { kind: 'Pending', listId: req.listId, target: req.target, before: live1, after: req.after, basedOn: req.basedOn };
-  const rowId = await deps.journal.append(row);
+  let rowId: number;
+  try {
+    rowId = await deps.journal.append(row);
+  } catch (e) {
+    // No row exists to flip: the Pending write itself never landed.
+    return { status: 'failed', message: e instanceof Error ? e.message : String(e) };
+  }
   const fail = async (message: string): Promise<ApplyResult> => {
     try { await deps.journal.setKind(rowId, 'Failed'); } catch { /* stays Pending → unconfirmed */ }
     return { status: 'failed', rowId, message };
@@ -48,7 +54,22 @@ export async function applyTarget(deps: ApplyDeps, req: ApplyRequest): Promise<A
       await fail('someone changed this since you started');
       return { status: 'stale', live: live2, yours: req.after };
     }
-    await deps.write(req.after);
+    try {
+      await deps.write(req.after);
+    } catch (e) {
+      // The outcome on the list is unknown (e.g. a timeout after the MERGE
+      // landed). Best-effort re-read: if the list already holds After, this
+      // actually applied — Applied, not Failed. If the re-read itself
+      // throws, fall through to the ordinary Failed path below.
+      try {
+        const check = await deps.read();
+        if (same(check, req.after)) {
+          await deps.journal.setKind(rowId, 'Applied');
+          return { status: 'applied', rowId };
+        }
+      } catch { /* re-read failed too → Failed below */ }
+      return fail(e instanceof Error ? e.message : String(e));
+    }
     const verify = await deps.read();
     if (!same(verify, req.after)) {
       return fail('The write returned OK but the list does not hold what was sent. Reload and check the target before trying again.');

@@ -83,6 +83,37 @@ describe('applyTarget', () => {
     const r = await applyTarget(deps, { listId: LIST, target: T, after: null, basedOn: formatterHash(V1) });
     expect(r.status).toBe('applied');
   });
+
+  it('a rejected journal append resolves failed instead of rejecting the promise (no rowId, no write)', async () => {
+    sessionStorage.clear();
+    const log: string[] = [];
+    const deps: ApplyDeps = {
+      async read() { log.push('read'); return V1; },
+      async write() { log.push('write'); },
+      journal: {
+        ...createSessionJournal(LIST, sessionStorage, 'test'),
+        append: async () => { throw new Error('FormatFX: you need Manage Lists on this list'); },
+      },
+    };
+    const r = await applyTarget(deps, { listId: LIST, target: T, after: V2, basedOn: formatterHash(V1) });
+    expect(r.status).toBe('failed');
+    expect((r as { message: string }).message).toContain('Manage Lists');
+    expect(log).toEqual(['read']);
+  });
+
+  it('a write that throws after landing (e.g. a timeout) is recovered by a re-read → Applied', async () => {
+    sessionStorage.clear();
+    const reads: (string | null)[] = [V1];
+    let i = 0;
+    const deps: ApplyDeps = {
+      async read() { return reads[Math.min(i++, reads.length - 1)]; },
+      async write(f) { reads.push(f); throw new Error('timeout after send'); },
+      journal: createSessionJournal(LIST, sessionStorage, 'test'),
+    };
+    const r = await applyTarget(deps, { listId: LIST, target: T, after: V2, basedOn: formatterHash(V1) });
+    expect(r.status).toBe('applied');
+    expect((await deps.journal.history(T))[0].kind).toBe('Applied');
+  });
 });
 
 describe('checkPending', () => {
