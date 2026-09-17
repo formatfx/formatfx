@@ -76,3 +76,31 @@ describe('HTML entities in a stored formatter', () => {
     expect(shape.views[0].customFormatter).toBe(DEC);
   });
 });
+
+describe('XML-safe writes', () => {
+  // Owner smoke 2026-09-17 (v1.0.2.0): MERGE of a formatter with a raw `&`
+  // (`&&`) failed with System.Xml.XmlException "An error occurred while
+  // parsing EntityName" — SharePoint embeds CustomFormatter in the target's
+  // schema XML without escaping it. `&` and `<` go out as the JSON escapes
+  // & / < (same JSON value, no XML-significant character — the
+  // serializer's csomSafe rule), and come back un-escaped on read so the pane
+  // shows `&&` and the verify-after-write compares equal.
+  const RAW = '{"elmType":"div","txtContent":"=if([$A] && [$B] < 3, \'<b>\', \'&\')"}';
+  const U = '\\u'; // the six-character JSON escape prefix, kept out of the literals
+  it('writeFormatter escapes & and < as JSON unicode escapes', async () => {
+    const { fetch, calls } = fake((url) => (url.endsWith('/_api/contextinfo') ? { FormDigestValue: 'D' } : 204));
+    await writeFormatter(createSpRest('https://t/sites/x', fetch), LIST, { kind: 'Field', id: 'A' }, RAW);
+    const sent = JSON.parse(calls[calls.length - 1].init!.body as string).CustomFormatter as string;
+    expect(sent).not.toMatch(/[&<]/);
+    expect(sent).toContain(`${U}0026${U}0026`);
+    expect(sent).toContain(`${U}003cb>`);
+    expect(JSON.parse(sent)).toEqual(JSON.parse(RAW)); // same JSON value
+  });
+  it('readFormatter un-escapes them (and leaves an escaped backslash alone)', async () => {
+    const tail = `\n{"k":"\\\\u0026"}`; // an escaped backslash, then the text u0026 — not an escape
+    const stored = RAW.replace(/&/g, `${U}0026`).replace(/</g, `${U}003c`) + tail;
+    const { fetch } = fake((url) => (url.includes('?$select=CustomFormatter') ? { CustomFormatter: stored } : 404));
+    const got = await readFormatter(createSpRest('https://t/sites/x', fetch), LIST, { kind: 'Field', id: 'A' });
+    expect(got).toBe(RAW + tail);
+  });
+});
