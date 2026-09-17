@@ -1,9 +1,8 @@
 # SPFx Format panel — design (2026-09-16)
 
 > Owner decisions from the 2026-09-16 brainstorm. Status: **approved design;
-> spike done (§9 Answers); v1 plan A written:**
-> `docs/superpowers/plans/2026-09-16-spfx-panel-v1.md` (host, tree, journal,
-> apply; the tab ladder §3 is plan B).
+> spike done (§9 Answers); v1 plan A: docs/superpowers/plans/2026-09-16-spfx-panel-v1.md.**
+> (host, tree, journal, apply; the tab ladder §3 is plan B).
 
 ## 1. What it is
 

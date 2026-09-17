@@ -41,6 +41,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             extension/package-lock.json
+            spfx/panel/package-lock.json
       - run: npm ci
         if: steps.docsonly.outputs.skip != 'true'
       - run: npm test
@@ -65,6 +66,17 @@ jobs:
       - run: npm run build
         if: steps.docsonly.outputs.skip != 'true'
         working-directory: extension
+      # the SPFx panel bundle: own package like the extension (the .sppkg
+      # build itself stays local — ~1,300 packages; see spfx/README.md)
+      - run: npm ci
+        if: steps.docsonly.outputs.skip != 'true'
+        working-directory: spfx/panel
+      - run: npm run build
+        if: steps.docsonly.outputs.skip != 'true'
+        working-directory: spfx/panel
+      - run: npm run typecheck
+        if: steps.docsonly.outputs.skip != 'true'
+        working-directory: spfx/panel
       - uses: actions/upload-pages-artifact@v5
         if: steps.docsonly.outputs.skip != 'true'
         with: { path: dist }
