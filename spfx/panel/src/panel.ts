@@ -23,6 +23,7 @@ import { formatterHash } from './hash';
 import { mountShell, type Shell } from './panelShell';
 import { readReopen, writeReopen, viewIdFromUrl, watchUrl, REOPEN_KEY } from './urlState';
 import { mountApply } from './panelApply';
+import { resolveTheme, readStoredTheme, writeStoredTheme, spThemeInverted } from './panelTheme';
 
 export { viewIdFromUrl, watchUrl, readReopen, REOPEN_KEY };
 export type { TargetRef };
@@ -60,6 +61,11 @@ const PANEL_EXTRA_CSS = `
 .wb-fx-acmenu { z-index: 1000001; }
 option.ffx-open { font-weight: 600; }
 `;
+
+/** localStorage on the tenant origin, or null where access itself throws. */
+function safeLocalStorage(): Storage | null {
+  try { return localStorage; } catch { return null; }
+}
 
 const emptyDoc = (kind: 'column' | 'row'): FormatterDocument => (kind === 'column'
   ? { kind: 'column', root: { elmType: 'div', txtContent: '@currentField' } }
@@ -102,7 +108,25 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
     onClose: () => { guard(close()); },
     onUndo: () => state.undo(),
     onRedo: () => state.redo(),
+    onTheme: () => {
+      const dark = !shadow.host.classList.contains('wb-dark');
+      const local = safeLocalStorage();
+      if (local) writeStoredTheme(local, dark ? 'dark' : 'light');
+      applyDark(dark);
+    },
   });
+  // Issue #321: dark mode. The host class drives the app CSS; the editor
+  // state's themeMode + 'theme' emit re-seed the JSON pane's syntax colors.
+  const applyDark = (dark: boolean): void => {
+    shell.setDark(dark);
+    state.themeMode = dark ? 'dark' : 'light';
+    state.emit('theme');
+  };
+  {
+    const local = safeLocalStorage();
+    const prefersDark = typeof matchMedia === 'function' && !!matchMedia('(prefers-color-scheme: dark)')?.matches;
+    applyDark(resolveTheme({ stored: local ? readStoredTheme(local) : null, spInverted: spThemeInverted(window), prefersDark }) === 'dark');
+  }
   let toastTimer = 0;
   const toast = (m: string): void => {
     shell.status.textContent = m;

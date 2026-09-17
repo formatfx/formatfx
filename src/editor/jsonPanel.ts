@@ -1026,7 +1026,9 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
   // properties on <body>, outranking both theme blocks. synPalette.ts owns
   // the decisions; this is DOM only. ──
   const synPanel = host.querySelector('#wb-syn-panel') as HTMLDivElement;
-  const isDark = (): boolean => document.body.classList.contains('wb-dark');
+  // inside a shadow root (the SPFx panel) the theme class lives on the host
+  const shadowHost = (host.getRootNode() as ShadowRoot | Document as { host?: Element }).host;
+  const isDark = (): boolean => document.body.classList.contains('wb-dark') || !!shadowHost?.classList.contains('wb-dark');
   let synPrefs = loadSynPrefs();
   applySynPrefs(synPrefs, isDark(), document.body); // saved hues greet the session
 

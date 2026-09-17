@@ -1,8 +1,8 @@
 /**
  * panelShell.ts — the panel's chrome inside its shadow root (spec §2.2, §5):
  * a right-side rail sized for the editor with an expand-to-full-page toggle;
- * left the tree, right the editor, bottom Apply + History. No preview shapes
- * the layout.
+ * a View/Column picker row over the editor (issue #321 replaced the tree
+ * rail), bottom Apply + History. No preview shapes the layout.
  *
  * The shadow host stops keydown/keyup/keypress in the BUBBLE phase for every
  * key: SharePoint's document-level handler cancels plain `g` (a page
@@ -12,7 +12,7 @@
  */
 const KEY_EVENTS = ['keydown', 'keyup', 'keypress'] as const;
 
-export interface ShellHandlers { onClose(): void; onUndo(): void; onRedo(): void }
+export interface ShellHandlers { onClose(): void; onUndo(): void; onRedo(): void; onTheme?(): void }
 export interface Shell {
   app: HTMLElement; title: HTMLElement; editor: HTMLElement; banner: HTMLElement;
   /** The target picker row (issue #321): a View select and a Column select. */
@@ -20,6 +20,9 @@ export interface Shell {
   footer: HTMLElement; drawer: HTMLElement; status: HTMLElement;
   undoBtn: HTMLButtonElement; redoBtn: HTMLButtonElement;
   setExpanded(on: boolean): void;
+  /** Issue #321: dark mode — toggles `wb-dark` on the shadow host (the app's
+   *  `body.wb-dark` rules become `:host(.wb-dark)` in cssForShadow). */
+  setDark(on: boolean): void;
   notice(text: string | null): void;
   destroy(): void;
 }
@@ -60,6 +63,7 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
   app.innerHTML = `
     <div class="ffx-head">
       <span class="ffx-title">FormatFX</span>
+      <button class="ffx-theme" title="Switch to dark mode">☾</button>
       <button class="ffx-undo" title="Undo (Ctrl+Z)" disabled>↶</button>
       <button class="ffx-redo" title="Redo (Ctrl+Y)" disabled>↷</button>
       <button class="ffx-expand" title="Expand to the full page">⤢</button>
@@ -96,6 +100,14 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
 
   let expanded = false;
   const setExpanded = (on: boolean): void => { expanded = on; app.classList.toggle('ffx-full', on); };
+  const themeBtn = $<HTMLButtonElement>('.ffx-theme');
+  const setDark = (on: boolean): void => {
+    host.classList.toggle('wb-dark', on);
+    // destination semantics, like the web app's toggle: show where it goes
+    themeBtn.textContent = on ? '☀' : '☾';
+    themeBtn.title = on ? 'Switch to light mode' : 'Switch to dark mode';
+  };
+  themeBtn.addEventListener('click', () => h.onTheme?.());
   $('.ffx-expand').addEventListener('click', () => setExpanded(!expanded));
   $('.ffx-close').addEventListener('click', () => h.onClose());
   const undoBtn = $<HTMLButtonElement>('.ffx-undo');
@@ -109,6 +121,7 @@ export function mountShell(shadow: ShadowRoot, css: string, h: ShellHandlers): S
     picker: $('.ffx-picker'), viewSelect: $<HTMLSelectElement>('.ffx-pick-view'), columnSelect: $<HTMLSelectElement>('.ffx-pick-col'),
     footer: $('.ffx-foot'), drawer: $('.ffx-drawer'), status: $('.ffx-status'), undoBtn, redoBtn,
     setExpanded,
+    setDark,
     notice(text) { banner.textContent = text ?? ''; banner.hidden = !text; },
     destroy() {
       for (const type of KEY_EVENTS) host.removeEventListener(type, stop);

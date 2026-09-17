@@ -402,3 +402,27 @@ describe('mountFormatPanel — apply, stale, history, rollback', () => {
     await vi.waitFor(() => expect(t.items.find((i) => i.Id === 99)?.Kind).toBe('Applied'));
   });
 });
+
+describe('mountFormatPanel — theme (issue #321)', () => {
+  afterEach(() => { localStorage.removeItem('ffx-theme'); delete (window as unknown as { __themeState__?: unknown }).__themeState__; });
+
+  it('opens in the stored theme; the head button flips it, persists it and tells the editor', async () => {
+    localStorage.setItem('ffx-theme', 'dark');
+    const m = mount(tenant());
+    await m.api.ready;
+    expect(m.host.classList.contains('wb-dark')).toBe(true);
+    expect(state.themeMode).toBe('dark');
+    m.$('.ffx-theme').click();
+    expect(m.host.classList.contains('wb-dark')).toBe(false);
+    expect(state.themeMode).toBe('light');
+    expect(localStorage.getItem('ffx-theme')).toBe('light');
+  });
+
+  it("follows SharePoint's page theme when nothing is stored", async () => {
+    (window as unknown as { __themeState__?: unknown }).__themeState__ = { theme: { isInverted: true } };
+    const m = mount(tenant());
+    await m.api.ready;
+    expect(m.host.classList.contains('wb-dark')).toBe(true);
+    expect(localStorage.getItem('ffx-theme')).toBeNull(); // following is not choosing
+  });
+});

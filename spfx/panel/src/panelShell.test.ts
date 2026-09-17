@@ -1,11 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mountShell, type Shell } from './panelShell';
 
-function mount(): { shell: Shell; host: HTMLElement; h: { onClose: ReturnType<typeof vi.fn>; onUndo: ReturnType<typeof vi.fn>; onRedo: ReturnType<typeof vi.fn> } } {
+function mount(): { shell: Shell; host: HTMLElement; h: { onClose: ReturnType<typeof vi.fn>; onUndo: ReturnType<typeof vi.fn>; onRedo: ReturnType<typeof vi.fn>; onTheme: ReturnType<typeof vi.fn> } } {
   const host = document.createElement('div');
   host.id = 'ffx-format-panel';
   document.body.appendChild(host);
-  const h = { onClose: vi.fn(), onUndo: vi.fn(), onRedo: vi.fn() };
+  const h = { onClose: vi.fn(), onUndo: vi.fn(), onRedo: vi.fn(), onTheme: vi.fn() };
   const shell = mountShell(host.attachShadow({ mode: 'open' }), ':host { --wb-bg: #fff; }', h);
   return { shell, host, h };
 }
@@ -48,6 +48,20 @@ describe('mountShell', () => {
     const main = shell.picker.parentElement!;
     expect(main.classList.contains('ffx-main')).toBe(true);
     expect([...main.children].indexOf(shell.picker)).toBeLessThan([...main.children].indexOf(shell.editor));
+  });
+
+  it('has a theme button; setDark toggles wb-dark on the host and the button says where it goes', () => {
+    const { shell, host, h } = mount();
+    const btn = host.shadowRoot!.querySelector('.ffx-theme') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    shell.setDark(true);
+    expect(host.classList.contains('wb-dark')).toBe(true);
+    expect(btn.title).toContain('light'); // destination semantics, like the web app
+    shell.setDark(false);
+    expect(host.classList.contains('wb-dark')).toBe(false);
+    expect(btn.title).toContain('dark');
+    btn.click();
+    expect(h.onTheme).toHaveBeenCalledTimes(1);
   });
 
   it('stops key events at the shadow host so SharePoint never sees them', () => {
