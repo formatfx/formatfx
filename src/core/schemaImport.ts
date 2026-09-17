@@ -244,7 +244,8 @@ function importSchemaCsv(text: string): ImportedSchema {
 // Line 1: ListSchema={"schemaXmlList":["<Field Type=... Name=... CustomFormatter=... />", ...]}
 // Then a normal CSV: header row of DISPLAY names, then data rows.
 
-function decodeXmlEntities(s: string): string {
+/** Decode the XML/HTML entities SharePoint stores in attribute-carried JSON. */
+export function decodeXmlEntities(s: string): string {
   return s
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))

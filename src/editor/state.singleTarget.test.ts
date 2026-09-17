@@ -52,6 +52,12 @@ describe('loadDocument in single-target mode', () => {
     expect(state.doc.kind).toBe('column');
     expect(state.doc.hideSelection).toBeUndefined();
   });
+  it('round-trips an explicit hideSelection: false on a view target (owner smoke 2026-09-17: the line vanished)', () => {
+    state.openTargetDocument(row, 'V');
+    state.loadDocument({ kind: 'row', root: { elmType: 'div' }, hideSelection: false, hideColumnHeader: false });
+    expect(state.doc.hideSelection).toBe(false);
+    expect(state.doc.hideColumnHeader).toBe(false);
+  });
   it('keeps a view target a view: row ↔ tile follow the payload, column payloads become row', () => {
     state.openTargetDocument(row, 'V');
     state.loadDocument({ kind: 'tile', root: { elmType: 'div' }, tileWidth: 300 });

@@ -51,3 +51,28 @@ describe('read/write', () => {
     expect(w.init?.body).toBe('{"CustomFormatter":""}');
   });
 });
+
+describe('HTML entities in a stored formatter', () => {
+  // Owner smoke 2026-09-17: a formatter authored in SharePoint's own pane came
+  // back from REST with &gt; where the native editor shows >. SharePoint
+  // stores the entity and decodes it at render time, so the panel decodes on
+  // read (both the tree's shape and the open target) and writes the raw
+  // character back — the linter would otherwise flag every comparison.
+  const ENC = '{"elmType":"div","txtContent":"=if([$Amount] &gt; 5 &amp;&amp; [$Flag], &quot;hi&quot;, &apos;&lt;&apos;)"}';
+  const DEC = '{"elmType":"div","txtContent":"=if([$Amount] > 5 && [$Flag], "hi", \'<\')"}';
+  it('readFormatter decodes them', async () => {
+    const { fetch } = fake((url) => (url.includes('?$select=CustomFormatter') ? { CustomFormatter: ENC } : 404));
+    const rest = createSpRest('https://t/sites/x', fetch);
+    expect(await readFormatter(rest, LIST, { kind: 'Field', id: 'Amount' })).toBe(DEC);
+  });
+  it('loadListShape decodes field and view formatters alike', async () => {
+    const { fetch } = fake((url) => {
+      if (url.includes('/fields?')) return { value: [{ InternalName: 'Amount', Title: 'Amount', TypeAsString: 'Number', CustomFormatter: ENC, ReadOnlyField: false, Hidden: false }] };
+      if (url.includes('/views?')) return { value: [{ Title: 'All Items', Id: VIEW, DefaultView: true, CustomFormatter: ENC, ServerRelativeUrl: '/sites/x/Lists/L/AllItems.aspx', ViewFields: { Items: ['Amount'] } }] };
+      return 404;
+    });
+    const shape = await loadListShape(createSpRest('https://t/sites/x', fetch), LIST);
+    expect(shape.fields[0].customFormatter).toBe(DEC);
+    expect(shape.views[0].customFormatter).toBe(DEC);
+  });
+});

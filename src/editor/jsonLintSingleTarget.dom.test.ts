@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mountJsonPanel } from './jsonPanel';
 import { state } from './state';
+import { exportJsonWithMap, rangeForPath } from '../core/jsonMap';
 import type { FormatterDocument } from '../core/types';
 
 const cfrDoc = (): FormatterDocument => ({
@@ -43,5 +44,32 @@ describe('the cfr-not-emulated note', () => {
     // only that note goes: every other rule still reports
     state.mutateDocument(() => { delete (state.doc.root as { elmType?: string }).elmType; });
     expect(mountAndLint().some((t) => t.includes('missing elmType'))).toBe(true);
+  });
+});
+
+describe('the breadcrumb in single-target mode', () => {
+  // In the web app a crumb click selects the element ON THE CANVAS and the
+  // pane deliberately does not flash itself (the echo guard). The panel has
+  // no canvas, so the same click looked like a no-op (owner smoke
+  // 2026-09-17): here the pane is the only surface, so it reveals the range.
+  it('reveals the clicked element in the pane, since there is no canvas', () => {
+    state.openTargetDocument({
+      kind: 'column',
+      root: { elmType: 'div', children: [{ elmType: 'span', txtContent: 'hi' }] },
+    }, 'Status');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    mountJsonPanel(host, () => {});
+    const textEl = host.querySelector('#wb-json-text') as HTMLTextAreaElement;
+    const crumbs = host.querySelector('#wb-json-crumbs') as HTMLElement;
+    const { ranges } = exportJsonWithMap(state.doc, { sanitizeWhitespace: true, keepMeta: true });
+    const r = rangeForPath(ranges, [0])!;
+    textEl.setSelectionRange(r.start + 1, r.start + 1);
+    textEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const parts = [...crumbs.querySelectorAll<HTMLButtonElement>('.wb-crumb')];
+    expect(parts.length).toBe(2);
+    parts[0].click(); // the root crumb
+    expect(state.selection).toEqual([]);
+    expect(host.querySelector('.wb-code-flashbar')).not.toBeNull();
   });
 });

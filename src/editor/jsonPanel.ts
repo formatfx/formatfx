@@ -885,7 +885,12 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
         b.title = bufferDefId !== null
           ? 'Select this element in the workshop'
           : 'Select this element on the canvas';
-        b.addEventListener('click', () => echo.run('code', () => target.select()));
+        // Single-target mode (the SPFx panel) has no canvas: the pane is the
+        // only surface, so the click must reveal here — skip the echo guard
+        // that otherwise stops the pane flashing a selection it originated.
+        b.addEventListener('click', () => (state.singleTargetKind !== null && bufferDefId === null
+          ? target.select()
+          : echo.run('code', () => target.select())));
       } else {
         b.disabled = true; // typed by hand — becomes selectable after Apply
         b.title = 'Not applied yet — Apply to select it';

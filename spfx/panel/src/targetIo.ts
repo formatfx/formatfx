@@ -9,11 +9,24 @@
 import type { SpRest } from './rest';
 import type { TargetRef } from './journal';
 import type { SnapshotField, SnapshotView } from '../../../src/bridge/spClient';
+import { decodeXmlEntities } from '../../../src/core/schemaImport';
 
 export interface ShapeView extends SnapshotView { id: string; url: string }
 export interface ListShape { fields: SnapshotField[]; views: ShapeView[] }
 
 export function normalizeGuid(g: string): string { return g.replace(/[{}]/g, '').toLowerCase(); }
+
+/**
+ * A formatter as SharePoint hands it back. Formatters authored in
+ * SharePoint's own pane come back from REST with HTML entities (`&gt;`,
+ * `&quot;`…) that the native editor decodes for display and the renderer
+ * decodes at run time (owner smoke 2026-09-17: every comparison showed as
+ * &gt; and tripped the entity lint). Decode here so the panel edits what the
+ * person sees; writes go back as raw characters, which SharePoint accepts.
+ */
+function formatterText(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? decodeXmlEntities(v) : undefined;
+}
 const q = (s: string): string => s.replace(/'/g, "''");
 
 export function listPath(listId: string): string { return `/_api/web/lists(guid'${normalizeGuid(listId)}')`; }
@@ -39,7 +52,7 @@ export async function loadListShape(rest: SpRest, listId: string): Promise<ListS
     lookupColumn: (f.LookupField as string) || undefined,
     readOnly: !!f.ReadOnlyField,
     hidden: !!f.Hidden,
-    customFormatter: (f.CustomFormatter as string) || undefined,
+    customFormatter: formatterText(f.CustomFormatter),
   }));
   const viewsRes = await rest.getJson(base + VIEWS_Q);
   const views: ShapeView[] = ((viewsRes.value as Record<string, unknown>[]) || []).map((v) => ({
@@ -47,7 +60,7 @@ export async function loadListShape(rest: SpRest, listId: string): Promise<ListS
     id: normalizeGuid(String(v.Id)),
     isDefault: !!v.DefaultView,
     viewFields: ((v.ViewFields as Record<string, unknown>)?.Items as string[]) || [],
-    customFormatter: (v.CustomFormatter as string) || undefined,
+    customFormatter: formatterText(v.CustomFormatter),
     url: String(v.ServerRelativeUrl ?? ''),
   }));
   return { fields, views };
@@ -55,8 +68,7 @@ export async function loadListShape(rest: SpRest, listId: string): Promise<ListS
 
 export async function readFormatter(rest: SpRest, listId: string, t: TargetRef): Promise<string | null> {
   const res = await rest.getJson(targetPath(listId, t) + '?$select=CustomFormatter');
-  const f = res.CustomFormatter;
-  return typeof f === 'string' && f !== '' ? f : null;
+  return formatterText(res.CustomFormatter) ?? null;
 }
 
 export async function writeFormatter(rest: SpRest, listId: string, t: TargetRef, formatter: string | null): Promise<void> {
