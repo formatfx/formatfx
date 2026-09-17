@@ -43,8 +43,8 @@ function fakeTenant(state: { exists: boolean; canWrite: boolean; items: Record<s
     if (url.includes('/items')) {
       const filter = decodeURIComponent(new URL(url).searchParams.get('$filter') ?? '');
       const rows = state.items.filter((i) => {
-        const eq = (col: string) => { const m = new RegExp(col + " eq '([^']*)'").exec(filter); return !m || i[col] === m[1]; };
-        const ne = (col: string) => { const m = new RegExp(col + " ne '([^']*)'").exec(filter); return !m || i[col] !== m[1]; };
+        const eq = (col: string) => { const m = new RegExp("(^|\\s)" + col + " eq '([^']*)'").exec(filter); return !m || i[col] === m[2]; };
+        const ne = (col: string) => { const m = new RegExp("(^|\\s)" + col + " ne '([^']*)'").exec(filter); return !m || i[col] !== m[2]; };
         const author = /AuthorId eq (\d+)/.exec(filter); return eq('Kind') && ne('Kind') && eq('ListId') && eq('TargetKind') && eq('TargetId') && (!author || i.AuthorId === Number(author[1]));
       });
       const desc = (new URL(url).searchParams.get('$orderby') ?? '').includes('desc');

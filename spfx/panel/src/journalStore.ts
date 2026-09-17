@@ -71,12 +71,7 @@ export function createListJournal(rest: SpRest, listId: string, userId: number):
       await rest.merge(`${JOURNAL_PATH}/items(${id})`, { Kind: kind, Title: `${kind} (row ${id})` });
     },
     async history(t) {
-      // Not "Kind ne 'Draft'": SharePoint would accept that filter fine, but
-      // it's written as three "Kind eq" queries so a `TargetKind eq '…'`
-      // clause never has to stand in for a missing `Kind eq '…'` clause.
-      const kinds: JournalKind[] = ['Pending', 'Applied', 'Failed'];
-      const rows = await Promise.all(kinds.map((k) => items(`Kind eq '${k}' and ${target(t)}`, '&$orderby=Created desc&$top=50')));
-      return rows.flat().sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''));
+      return items(`Kind ne 'Draft' and ${target(t)}`, '&$orderby=Created desc&$top=50');
     },
   };
 }
