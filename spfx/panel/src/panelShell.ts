@@ -48,7 +48,7 @@ const SHELL_CSS = `
    column the pane's own rules size (.wb-json-shell is the flex: 1 child).
    Never restyle its children — a child-selector rule once gave every sibling
    an equal share and its display: flex defeated their [hidden]. */
-.ffx-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding: 0 8px; }
+.ffx-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0 8px; }
 .ffx-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--wb-border); background: var(--wb-surface); }
 .ffx-status { flex: 1; color: var(--wb-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ffx-drawer { max-height: 40vh; overflow: auto; border-top: 1px solid var(--wb-border); padding: 8px 12px; }

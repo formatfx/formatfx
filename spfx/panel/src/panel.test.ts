@@ -308,6 +308,10 @@ describe('mountFormatPanel — apply, stale, history, rollback', () => {
     expect(t.items.some((i) => i.Kind === 'Draft')).toBe(false);
     expect(m.$('.ffx-node[data-key="Field:Title"]').classList.contains('ffx-formatted')).toBe(true);
     expect(state.isDirtySinceSave).toBe(false);
+    // the list does not re-render on its own after a REST write: the panel
+    // reloads the page and reopens on the same target (owner smoke, round 5)
+    expect(m.navigate).toHaveBeenCalledWith(location.href);
+    expect(JSON.parse(sessionStorage.getItem(REOPEN_KEY)!)).toEqual({ listId: LIST, targetKey: 'Field:Title' });
   });
 
   it('lint errors open the Apply-anyway gate: Cancel keeps the list untouched, Apply anyway writes (issue #321)', async () => {
@@ -358,10 +362,20 @@ describe('mountFormatPanel — apply, stale, history, rollback', () => {
     expect(t.items).toHaveLength(0);
   });
 
-  it('hides the pane-side Apply-to-canvas button — the footer Apply commits the buffer itself', async () => {
+  it('relabels the pane-side Apply-to-canvas as Parse: folds, crumbs and Problems catch up without a write', async () => {
     const m = mount(tenant());
     await m.api.ready;
-    expect(getComputedStyle(m.$('#wb-json-apply')).display).toBe('none');
+    const btn = m.$<HTMLButtonElement>('#wb-json-apply');
+    expect(getComputedStyle(btn).display).not.toBe('none');
+    expect(btn.textContent).toContain('Parse');
+    expect(btn.title).toContain('Apply');
+  });
+
+  it('never lets the editor slot scroll: the shell shrinks instead, so typing cannot jump the view', async () => {
+    const m = mount(tenant());
+    await m.api.ready;
+    expect(getComputedStyle(m.$('.ffx-editor')).overflow).toBe('hidden');
+    expect(getComputedStyle(m.$('#wb-json-shell')).minHeight).toMatch(/^0(px)?$/);
   });
 
   it('shows both versions when the target changed since you started, and overwrites on request', async () => {

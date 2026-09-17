@@ -1428,11 +1428,17 @@ Or, with the FormatFX companion extension installed, use "Copy for extension" an
       ? 'Deploy ships view formatting — a component ships by being used in a view'
       : deployBtnTitle;
     if (inCompBuffer) deployPanel.hidden = true;
+    // single-target mode (the SPFx panel, issue #321) has no canvas: the
+    // button is the parse it always was — folds, breadcrumb and Problems
+    // catch up — and the host's own Apply does this first anyway
+    const noCanvas = state.singleTargetKind !== null;
     applyBtn.title = inCompBuffer
       ? 'Parse the JSON below and stage it into the workshop — Save there publishes'
-      : applyBtnTitle;
+      : noCanvas
+        ? 'Parse the JSON into the document: folds, breadcrumb and Problems catch up. Nothing is written — Apply (bottom right) does this first anyway.'
+        : applyBtnTitle;
     // the visible/accessible name follows the destination, not just the tooltip
-    applyBtn.textContent = inCompBuffer ? '⬅ Apply to workshop' : '⬅ Apply to canvas';
+    applyBtn.textContent = inCompBuffer ? '⬅ Apply to workshop' : noCanvas ? '⟳ Parse' : '⬅ Apply to canvas';
     // the surface Type select acts on the surface doc — inert under a def
     const kindSel = document.getElementById('wb-kind') as HTMLSelectElement | null;
     if (kindSel) kindSel.disabled = inCompBuffer;

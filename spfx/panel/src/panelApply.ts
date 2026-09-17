@@ -63,10 +63,14 @@ export function mountApply(core: PanelCore, io: ApplyIo): ApplyUi {
       if (after !== bufferText()) core.loadLive(after);
       state.markSavepoint();
       await core.journal().deleteDraft(t);
-      core.toast(after === null ? 'Applied — formatter cleared' : 'Applied');
+      core.toast(after === null ? 'Applied — formatter cleared, reloading the list' : 'Applied — reloading the list to show it');
       await core.renderTree();
       if (drawerMode === 'history') await showHistory();
       else closeDrawer();
+      // SharePoint's list view does not re-render after a REST write (owner
+      // smoke, round 5): reload — the journal row is Applied and the draft is
+      // gone, so nothing is lost, and the panel reopens on this target.
+      core.reload();
       return;
     }
     if (result.status === 'stale') { showStale(t, result.live, yoursText); return; }

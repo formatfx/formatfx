@@ -45,7 +45,7 @@ Update-PnPApp -Identity formatfx-format-panel -Scope Site    # every later deplo
 
 Bump `solution.version` in `config/package-solution.json` before each deploy so the
 site picks up the new bundle (first tenant deploy 2026-09-17: 1.0.0.0; the journal
-`__metadata` fix is 1.0.1.0; entity decode + crumb reveal + hideSelection round-trip is 1.0.2.0; XML-safe writes are 1.0.3.0; the issue #321 round — picker selects, dark mode, Apply-anyway, severity chips, find/replace, autocomplete stacking — is 1.0.4.0).
+`__metadata` fix is 1.0.1.0; entity decode + crumb reveal + hideSelection round-trip is 1.0.2.0; XML-safe writes are 1.0.3.0; the issue #321 round — picker selects, dark mode, Apply-anyway, severity chips, find/replace, autocomplete stacking — is 1.0.4.0; its smoke fixes — reload after Apply, no slot scroll, Parse button — are 1.0.5.0).
 
 `skipFeatureDeployment: true` means the Format button appears on every generic list of the site
 once the app is installed; nothing is injected anywhere else.
@@ -59,7 +59,9 @@ once the app is installed; nothing is injected anywhere else.
 - [ ] Typing in the JSON pane opens completions ABOVE the panel (Ctrl+Space too) — they used to open underneath it.
 - [ ] Ctrl+F opens find (Enter / Shift+Enter walk matches, Esc closes); Ctrl+H focuses Replace; Replace and All splice the buffer and mark it dirty.
 - [ ] Problems: clicking a severity chip (`✕ 2 errors (×6)`) hides those rows and dims the chip; clicking again shows them; the counts never change.
-- [ ] Hand-edit the JSON and press the footer Apply WITHOUT any other step — the edit is what lands on the list (the pane's own "Apply to canvas" button is gone here). An unparsable buffer stops with the parse error in the pane.
+- [ ] Hand-edit the JSON and press the footer Apply WITHOUT any other step — the edit is what lands on the list; the page reloads and the panel reopens on the same target showing it. An unparsable buffer stops with the parse error in the pane.
+- [ ] The pane's ⟳ Parse button (the web app's "Apply to canvas") re-parses without writing: fold chevrons, breadcrumb and Problems catch up. Chevrons hide while the buffer is unparsed — that is by design (folds edit text), not a rendering bug.
+- [ ] Typing never scrolls the editor slot: the caret line stays where it was; only the textarea itself scrolls.
 - [ ] A formatter with lint errors: Apply opens the drawer listing them with **Apply anyway** / Cancel instead of refusing.
 - [ ] A formatter authored in SharePoint's own pane shows `>` / `"` in the editor, not `&gt;` / `&quot;` (REST returns the entities; the panel decodes on read, verified 2026-09-17). Applying it writes `&` and `<` as the JSON escapes `&` / `<` (a raw `&` in the MERGE body fails with `System.Xml.XmlException: An error occurred while parsing EntityName`, verified 2026-09-17), the list still renders, and reopening the target shows `&&` again.
 - [ ] Type `g` and other letters in the JSON pane — nothing is swallowed; Ctrl+Z/Y undo/redo.

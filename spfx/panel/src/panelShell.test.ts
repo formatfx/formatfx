@@ -36,7 +36,9 @@ describe('mountShell', () => {
     const text = host.shadowRoot!.querySelector('style')!.textContent!;
     expect(text).not.toContain('.ffx-editor > *');
     const slot = /\.ffx-editor\s*\{([^}]*)\}/.exec(text)![1];
-    for (const decl of ['flex: 1', 'min-height: 0', 'display: flex', 'flex-direction: column', 'overflow: auto']) expect(slot).toContain(decl);
+    // overflow: hidden, not auto — a scrolling slot let the browser nudge the
+    // caret line to the bottom edge on every keystroke (owner smoke, round 5)
+    for (const decl of ['flex: 1', 'min-height: 0', 'display: flex', 'flex-direction: column', 'overflow: hidden']) expect(slot).toContain(decl);
   });
 
   it('has no rail: the picker row holds a View and a Column select above the editor', () => {

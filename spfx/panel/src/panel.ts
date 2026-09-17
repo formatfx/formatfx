@@ -47,6 +47,9 @@ export interface PanelCore {
   current: () => TargetRef | null; basedOn: () => string; setBasedOn: (h: string) => void;
   setLiveFormatter: (t: TargetRef, f: string | null) => void; loadLive: (f: string | null) => void;
   toast: (m: string) => void; renderTree: () => Promise<void>;
+  /** Reload the page so the list re-renders with what was just written; the
+   *  reopen record brings the panel back on the same target (spec §2.4). */
+  reload: () => void;
   /** Run a fire-and-forget promise from a UI handler; failures toast. */
   guard: (p: Promise<unknown>) => void;
   /** True while the open target's LIVE formatter could not be parsed. */
@@ -58,8 +61,10 @@ export interface PanelCore {
 
 const PANEL_EXTRA_CSS = `
 #wb-deploy-panel, #wb-json-deploy, #wb-json-compbar { display: none !important; }
-/* no canvas here: the footer Apply parses the buffer itself (issue #321) */
-#wb-json-apply { display: none !important; }
+/* the editor shell shrinks to what is left under the Problems list instead
+   of forcing the slot to scroll (a scrolling slot nudged the caret line to
+   the bottom edge on every keystroke — owner smoke, round 5) */
+.wb-json-shell { min-height: 0; resize: none; }
 /* the completion popup is a SIBLING of .ffx-app in the shadow root (acMenu
    mounts in the editor's root) — the app's z-index: 56 sat under the panel's
    1000000, so the menu opened invisibly (owner smoke 2026-09-17) */
@@ -290,6 +295,7 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   const core: PanelCore = {
     rest, listId, shell, journal: () => journal!, current: () => current, basedOn: () => basedOn,
     setBasedOn: (h) => { basedOn = h; openedFromDraft = false; }, setLiveFormatter, loadLive, toast, renderTree,
+    reload: () => navigate(location.href),
     guard, parseBlocked: () => parseError !== null,
     bufferDirty: () => jsonApi.isDirty(), commitBuffer: () => jsonApi.commitBuffer(),
   };
