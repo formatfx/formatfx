@@ -3,6 +3,7 @@ import { mountFormatPanel, PANEL_HOST_ID, type PanelApi } from './panel';
 import { JOURNAL_PATH } from './journalStore';
 import { REOPEN_KEY } from './urlState';
 import { state } from '../../../src/editor/state';
+import { JOURNAL_FIELDS } from './journal';
 
 const WEB = 'https://t.sharepoint.com/sites/x';
 const LIST = 'e481b50b-ebf9-4cbd-804f-a5276afb23ab';
@@ -15,6 +16,10 @@ const COL_JSON = '{"elmType":"div","txtContent":"@currentField"}';
 const VIEW_JSON = '{"$schema":"https://developer.microsoft.com/json-schemas/sp/v2/row-formatting.schema.json","hideSelection":true,"additionalRowClass":"x","rowFormatter":{"elmType":"div","txtContent":"[$Title]"}}';
 
 interface Call { url: string; init?: RequestInit }
+/** Node's unhandledRejection — this package has no @types/node by design. */
+const proc = (globalThis as unknown as {
+  process: { on(e: string, f: (r: unknown) => void): void; off(e: string, f: (r: unknown) => void): void };
+}).process;
 /** A fake tenant: one list with two views and two columns, a FormatFX journal list, and mutable formatters. */
 function tenant() {
   const formatters: Record<string, string> = { 'Field:Status': COL_JSON, [`View:${V1}`]: VIEW_JSON, 'Field:Title': '', [`View:${V2}`]: '' };
@@ -36,6 +41,9 @@ function tenant() {
         const rows = items.filter((i) => ['Kind', 'ListId', 'TargetKind', 'TargetId'].every((c) => { const m = new RegExp("(^|\\s)" + c + " eq '([^']*)'").exec(filter); return !m || i[c] === m[2]; }) && !(/Kind ne 'Draft'/.test(filter) && i.Kind === 'Draft'));
         return json({ value: (new URL(url).searchParams.get('$orderby') ?? '').includes('desc') ? [...rows].reverse() : rows });
       }
+      // openJournal's repair + write-capability probes (spec §6)
+      if (url.includes('/fields?')) return json({ value: JOURNAL_FIELDS.map((f) => ({ InternalName: f.name })) });
+      if (url.includes('EffectiveBasePermissions')) return json({ EffectiveBasePermissions: { High: '2147483647', Low: '63' } });
       return json({ Id: 'journal' });
     }
     if (url.includes('/fields?')) return json({ value: [
@@ -187,6 +195,55 @@ describe('mountFormatPanel — targets and drafts', () => {
     expect(m.$('.ffx-banner').textContent).toContain('this browser tab only');
   });
 
+  it('a superseded openTarget never clobbers the one that won', async () => {
+    const t = tenant();
+    t.formatters['Field:Status'] = '{"elmType":"div","txtContent":"status-doc"}';
+    // the LOSING target reads slowly, so the race is real rather than an
+    // ordering fluke: its answer lands long after the winner has painted
+    const slow = (async (url: string, init?: RequestInit) => {
+      if (url.includes("getbyinternalnameortitle('Status')")) await new Promise((r) => setTimeout(r, 20));
+      return t.fetchImpl(url, init);
+    }) as unknown as typeof fetch;
+    const m = mount(t, null, { fetchImpl: slow });
+    await m.api.ready;
+    m.typeAndApply('{"elmType":"div","txtContent":"edited"}'); // V1 now has unsaved edits
+    void m.api.openTarget({ kind: 'Field', id: 'Status' });
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    await new Promise((r) => setTimeout(r, 60)); // let the superseded read land
+    expect(m.$('.ffx-title').textContent).toContain('Title');
+    expect(m.textarea().value).toContain('"@currentField"');
+    expect(m.textarea().value).not.toContain('status-doc');
+    // `current` drives the open node — and therefore what Apply would write
+    expect(m.$('.ffx-node[data-key="Field:Title"]').classList.contains('ffx-open')).toBe(true);
+    expect(m.$('.ffx-node[data-key="Field:Status"]').classList.contains('ffx-open')).toBe(false);
+    // the draft was saved under the target that was actually open, never another
+    const drafts = t.items.filter((i) => i.Kind === 'Draft');
+    expect(drafts.length).toBeGreaterThan(0);
+    expect(drafts.every((i) => i.TargetId === V1)).toBe(true);
+  });
+
+  it('a failing target read toasts instead of rejecting, and the panel stays usable', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (e: unknown): void => { rejections.push(e); };
+    proc.on('unhandledRejection', onRejection);
+    try {
+      const t = tenant();
+      const failing = (async (url: string, init?: RequestInit) => (url.includes("getbyinternalnameortitle('Title')")
+        ? new Response('', { status: 500 })
+        : t.fetchImpl(url, init))) as unknown as typeof fetch;
+      const m = mount(t, null, { fetchImpl: failing });
+      await m.api.ready;
+      m.$('.ffx-node[data-key="Field:Title"]').click();
+      await vi.waitFor(() => expect(m.$('.ffx-status').textContent).toContain('FormatFX:'));
+      await m.api.openTarget({ kind: 'Field', id: 'Status' }); // still usable
+      expect(m.$('.ffx-title').textContent).toContain('Status');
+      await new Promise((r) => setTimeout(r, 0)); // unhandledRejection is a macrotask
+      expect(rejections).toEqual([]);
+    } finally {
+      proc.off('unhandledRejection', onRejection);
+    }
+  });
+
   it('close stashes the draft, clears the reopen record and removes the host', async () => {
     const t = tenant();
     const onClose = vi.fn();
@@ -280,6 +337,23 @@ describe('mountFormatPanel — apply, stale, history, rollback', () => {
     expect(t.items.map((i) => i.Kind)).toEqual(['Applied', 'Applied', 'Applied']);
     expect(m.textarea().value).toContain('"@currentField"');
     expect(m.$('.ffx-node[data-key="Field:Title"]').classList.contains('ffx-formatted')).toBe(false);
+  });
+
+  it('refuses to apply over a formatter it could not parse, until the JSON is fixed', async () => {
+    const t = tenant();
+    t.formatters['Field:Title'] = '{"additionalRowClass":"x"}'; // no elmType/rowFormatter → unparseable
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    expect(m.$('.ffx-banner').hidden).toBe(false);
+    expect(m.$('.ffx-banner').textContent).toContain('could not be parsed');
+    m.$('.ffx-apply').click();
+    expect(m.$('.ffx-status').textContent).toContain('Not applying:');
+    expect(t.formatters['Field:Title']).toBe('{"additionalRowClass":"x"}');
+    expect(t.items).toHaveLength(0);
+    m.typeAndApply('{"elmType":"div","txtContent":"fixed"}');
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(t.formatters['Field:Title']).toContain('"fixed"'));
   });
 
   it('offers "check" on an unconfirmed Pending row and resolves it', async () => {

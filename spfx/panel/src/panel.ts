@@ -46,6 +46,10 @@ export interface PanelCore {
   current: () => TargetRef | null; basedOn: () => string; setBasedOn: (h: string) => void;
   setLiveFormatter: (t: TargetRef, f: string | null) => void; loadLive: (f: string | null) => void;
   toast: (m: string) => void; renderTree: () => Promise<void>;
+  /** Run a fire-and-forget promise from a UI handler; failures toast. */
+  guard: (p: Promise<unknown>) => void;
+  /** True while the open target's LIVE formatter could not be parsed. */
+  parseBlocked: () => boolean;
 }
 
 const PANEL_EXTRA_CSS = `
@@ -88,10 +92,16 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   let basedOn = formatterHash(null);
   let openedFromDraft = false;
   let draftKeys = new Set<string>();
+  /** Bumped by every openTarget; a call whose token is stale must touch nothing. */
+  let gen = 0;
+  /** The open target's live formatter could not be parsed — Apply must refuse. */
+  let parseError: string | null = null;
+  /** Set just before openTargetDocument so its own 'load' does not clear the flag. */
+  let openingTarget = false;
 
   state.pauseAutosave(); // never touch the frozen key on the tenant origin
   const shell = mountShell(shadow, APP_CSS + PANEL_EXTRA_CSS, {
-    onClose: () => { void close(); },
+    onClose: () => { guard(close()); },
     onUndo: () => state.undo(),
     onRedo: () => state.redo(),
   });
@@ -101,13 +111,32 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
     clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => { if (shell.status.textContent === m) shell.status.textContent = ''; }, 6000);
   };
+  /**
+   * Every async path a click starts ends here: a rejected promise must teach in
+   * the status line, never become an unhandled rejection that leaves the panel
+   * half-updated and silent. REST errors already carry the FormatFX prefix.
+   */
+  const guard = (p: Promise<unknown>): void => {
+    p.catch((e: unknown) => {
+      const m = e instanceof Error ? e.message : String(e);
+      toast(m.startsWith('FormatFX') ? m : 'FormatFX: ' + m);
+    });
+  };
   const jsonApi = mountJsonPanel(shell.editor, toast);
   const refreshChrome = (): void => {
     shell.undoBtn.disabled = !state.canUndo;
     shell.redoBtn.disabled = !state.canRedo;
     jsonApi.refreshLint([]);
   };
-  const unsub = state.subscribe((reason) => { if (reason === 'document' || reason === 'load' || reason === 'kind') refreshChrome(); });
+  const unsub = state.subscribe((reason) => {
+    // a 'load' that is NOT the target opening is an apply-to-canvas: the buffer
+    // is now the person's own parsable JSON, so Apply is no longer blocked
+    if (reason === 'load') {
+      if (openingTarget) openingTarget = false;
+      else parseError = null;
+    }
+    if (reason === 'document' || reason === 'load' || reason === 'kind') refreshChrome();
+  });
 
   const labelOf = (t: TargetRef): string => {
     if (t.kind === 'Field') {
@@ -140,7 +169,7 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
         b.title = `${n.label} — ${n.scope}`;
         b.innerHTML = `<span class="ffx-label"></span>${n.draft ? '<span class="ffx-dot" title="you have a draft"></span>' : ''}${n.formatted ? '<span class="ffx-badge">formatted</span>' : ''}`;
         b.querySelector('.ffx-label')!.textContent = n.label;
-        b.addEventListener('click', () => { void pick(n); });
+        b.addEventListener('click', () => { guard(pick(n)); });
         shell.tree.appendChild(b);
       }
     };
@@ -151,7 +180,7 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   const pick = async (n: TreeNode): Promise<void> => {
     if (n.target.kind === 'View' && !n.current && n.url) {
       // §2.4: the list on screen must match the target — navigate, reopen there
-      await stashDraft();
+      await stashDraft(draftSnapshot());
       writeReopen(storage, { listId, targetKey: n.key });
       navigate(n.url);
       return;
@@ -160,24 +189,40 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   };
 
   // ── targets and drafts ───────────────────────────────────────────────────
-  const stashDraft = async (): Promise<void> => {
-    if (!current || !journal) return;
-    if (!state.isDirtySinceSave && !openedFromDraft) return;
-    const after = exportJson(state.doc, { sanitizeWhitespace: true, keepMeta: true });
-    await journal.saveDraft(current, after, basedOn);
+  interface DraftSnapshot { target: TargetRef; after: string; basedOn: string }
+
+  /** Everything a stash needs, read SYNCHRONOUSLY: by the time the write runs,
+   *  another openTarget may already have moved `current`, `basedOn` and the
+   *  editor buffer on — and the draft would land under the wrong target. */
+  const draftSnapshot = (): DraftSnapshot | null => {
+    if (!current || !journal) return null;
+    if (!state.isDirtySinceSave && !openedFromDraft) return null;
+    return { target: current, after: exportJson(state.doc, { sanitizeWhitespace: true, keepMeta: true }), basedOn };
+  };
+
+  const stashDraft = async (snap: DraftSnapshot | null): Promise<void> => {
+    if (!snap || !journal) return;
+    await journal.saveDraft(snap.target, snap.after, snap.basedOn);
   };
 
   const openTarget = async (t: TargetRef): Promise<void> => {
-    await stashDraft();
-    current = t;
+    const snap = draftSnapshot();
+    const mine = ++gen; // two fast clicks: only the LAST one may paint
+    await stashDraft(snap);
+    if (mine !== gen) return;
     writeReopen(storage, { listId, targetKey: targetKey(t) });
     const live = await readFormatter(rest, listId, t);
-    setLiveFormatter(t, live);
+    if (mine !== gen) return;
     const draft = journal ? await journal.loadDraft(t) : null;
+    if (mine !== gen) return;
+    current = t;
+    setLiveFormatter(t, live);
     const text = draft ? draft.after : live;
     basedOn = draft ? draft.basedOn : formatterHash(live);
     openedFromDraft = !!draft;
     const { doc, error } = docFor(t, text);
+    parseError = error ?? null;
+    openingTarget = true;
     state.openTargetDocument(doc, labelOf(t));
     shell.title.textContent = labelOf(t);
     shell.notice(error
@@ -191,17 +236,21 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
 
   const loadLive = (f: string | null): void => {
     if (!current) return;
-    const { doc } = docFor(current, f);
+    const { doc, error } = docFor(current, f);
     state.loadDocument(doc);
     state.markSavepoint();
     basedOn = formatterHash(f);
     openedFromDraft = false;
-    shell.notice(null);
+    // normally this clears the block; reloading a formatter that is ITSELF
+    // unparseable (rollback, "reload theirs") must keep it
+    parseError = error ?? null;
+    shell.notice(error ?? null);
   };
 
   const core: PanelCore = {
     rest, listId, shell, journal: () => journal!, current: () => current, basedOn: () => basedOn,
     setBasedOn: (h) => { basedOn = h; openedFromDraft = false; }, setLiveFormatter, loadLive, toast, renderTree,
+    guard, parseBlocked: () => parseError !== null,
   };
   const apply = mountApply(core, { read: (t) => readFormatter(rest, listId, t), write: (t, f) => writeFormatter(rest, listId, t, f) });
 
@@ -227,14 +276,20 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
   const ready = boot().catch((e: unknown) => { shell.notice(`FormatFX could not load this list: ${e instanceof Error ? e.message : String(e)}`); });
 
   const close = async (): Promise<void> => {
-    await stashDraft();
+    // a failed stash must never strand the panel: teardown always completes
+    try {
+      await stashDraft(draftSnapshot());
+    } catch (e) {
+      toast(`FormatFX: your draft could not be saved (${e instanceof Error ? e.message : String(e)}).`);
+    }
     writeReopen(storage, null);
     unsub();
     // the JSON pane's own teardown (the repo's `_unsub` mount convention):
     // its state subscription and IDE observers must not outlive the host
     (shell.editor as unknown as { _unsub?: () => void })._unsub?.();
     shell.destroy();
-    state.resumeAutosave();
+    // autosave stays paused: nothing in the SPFx bundle may ever write the web
+    // app's frozen localStorage key from the tenant origin
     ctx.onClose?.();
   };
 
@@ -243,8 +298,8 @@ export function mountFormatPanel(shadow: ShadowRoot, ctx: PanelContext): PanelAp
     setViewId(id) {
       viewId = id;
       const now = currentViewOf(shape, id)?.id ?? null;
-      if (current?.kind === 'View' && now && current.id !== now) void openTarget({ kind: 'View', id: now });
-      else void renderTree();
+      if (current?.kind === 'View' && now && current.id !== now) guard(openTarget({ kind: 'View', id: now }));
+      else guard(renderTree());
     },
     openTarget,
     close,

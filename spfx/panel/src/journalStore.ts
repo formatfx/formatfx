@@ -76,22 +76,50 @@ export function createListJournal(rest: SpRest, listId: string, userId: number):
   };
 }
 
-/** Ensure the list exists with its columns. Throws SpRestError when it cannot. */
+/** The columns the list already has, by internal name. */
+async function existingFieldNames(rest: SpRest): Promise<Set<string>> {
+  const res = await rest.getJson(`${JOURNAL_PATH}/fields?$select=InternalName`);
+  return new Set(((res.value as Record<string, unknown>[]) ?? []).map((f) => String(f.InternalName)));
+}
+
+/**
+ * Ensure the list exists WITH every column. A half-built list (an interrupted
+ * first run, or someone deleting a column) is repaired in place — only the
+ * missing columns are created. Throws SpRestError when it cannot.
+ */
 async function ensureJournalList(rest: SpRest): Promise<void> {
+  let exists = true;
   try {
     await rest.getJson(`${JOURNAL_PATH}?$select=Id`);
-    return;
   } catch (e) {
     if (!(e instanceof SpRestError) || e.status !== 404) throw e;
+    exists = false;
   }
-  await rest.postJson('/_api/web/lists', {
-    '@odata.type': '#SP.List', BaseTemplate: 100, Title: JOURNAL_LIST_TITLE, Hidden: true,
-    Description: 'FormatFX drafts and formatter history. Do not edit by hand.',
-  });
+  if (!exists) {
+    await rest.postJson('/_api/web/lists', {
+      '@odata.type': '#SP.List', BaseTemplate: 100, Title: JOURNAL_LIST_TITLE, Hidden: true,
+      Description: 'FormatFX drafts and formatter history. Do not edit by hand.',
+    });
+  }
+  const have = exists ? await existingFieldNames(rest) : new Set<string>();
   for (const f of JOURNAL_FIELDS) {
+    if (have.has(f.name)) continue;
     await rest.postJson(`${JOURNAL_PATH}/fields`, {
       '@odata.type': f.kind === 3 ? '#SP.FieldMultiLineText' : '#SP.FieldText', FieldTypeKind: f.kind, Title: f.name,
     });
+  }
+}
+
+/**
+ * Spec §6's third case, "exists but cannot write": a reader can create no row,
+ * so the journal would silently lose every draft and every history entry.
+ * AddListItems is bit 1 of the Low word of EffectiveBasePermissions.
+ */
+async function assertCanAddItems(rest: SpRest): Promise<void> {
+  const res = await rest.getJson(`${JOURNAL_PATH}?$select=EffectiveBasePermissions`);
+  const low = (res.EffectiveBasePermissions as { Low?: unknown } | undefined)?.Low;
+  if ((Number(low) & 2) === 0) {
+    throw new Error('you can read the FormatFX journal list but not write to it — adding items needs Contribute');
   }
 }
 
@@ -148,7 +176,10 @@ export async function openJournal(rest: SpRest, listId: string, storage: Storage
   try {
     await ensureJournalList(rest);
     const me = await rest.getJson('/_api/web/currentuser?$select=Id');
-    await rest.getJson(`${JOURNAL_PATH}/items?$top=1&$select=Id`); // proves this person can read it
+    // the probe selects every column the backend reads, so a list that is
+    // missing one 400s here instead of returning half-empty rows later
+    await rest.getJson(`${JOURNAL_PATH}/items?$top=1&$select=Id,Kind,ListId,TargetKind,TargetId,Before,After,BasedOn`);
+    await assertCanAddItems(rest);
     return createListJournal(rest, listId, me.Id as number);
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e);

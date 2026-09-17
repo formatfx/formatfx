@@ -14,6 +14,11 @@ import { state } from '../../../src/editor/state';
 import { exportJson } from '../../../src/core/serializer';
 import { lintDocument } from '../../../src/core/linter';
 
+/** Spec §7: writing a document FormatFX invented over one it could not read is data loss. */
+const PARSE_BLOCKED_MESSAGE = "Not applying: this target's live formatter could not be parsed, so writing"
+  + ' would replace it with a document FormatFX invented. Roll back from History, or paste the corrected JSON and'
+  + ' Apply again.';
+
 export interface ApplyIo { read(t: TargetRef): Promise<string | null>; write(t: TargetRef, f: string | null): Promise<void> }
 export interface ApplyUi { refresh(): void }
 
@@ -81,9 +86,12 @@ export function mountApply(core: PanelCore, io: ApplyIo): ApplyUi {
   };
 
   applyBtn.addEventListener('click', () => {
+    // before the lint gate: a buffer FormatFX invented (the live formatter did
+    // not parse) must never be written over the real one
+    if (core.parseBlocked()) { core.toast(PARSE_BLOCKED_MESSAGE); return; }
     const n = lintErrors();
     if (n) { core.toast(`Not applying with ${n} lint error${n === 1 ? '' : 's'} — SharePoint would accept the write and render blank. Fix the red items first.`); return; }
-    void run(bufferText());
+    core.guard(run(bufferText()));
   });
 
   // ── drawer ───────────────────────────────────────────────────────────────
@@ -104,7 +112,7 @@ export function mountApply(core: PanelCore, io: ApplyIo): ApplyUi {
     </div>`;
     shell.drawer.querySelector('.ffx-stale-theirs')!.textContent = live ?? '(no formatter)';
     shell.drawer.querySelector('.ffx-stale-yours')!.textContent = yours ?? '(no formatter)';
-    shell.drawer.querySelector('.ffx-overwrite')!.addEventListener('click', () => { void run(yours, true); });
+    shell.drawer.querySelector('.ffx-overwrite')!.addEventListener('click', () => { core.guard(run(yours, true)); });
     shell.drawer.querySelector('.ffx-reload')!.addEventListener('click', () => { core.setLiveFormatter(t, live); core.loadLive(live); closeDrawer(); });
     shell.drawer.querySelector('.ffx-cancel')!.addEventListener('click', closeDrawer);
   };
@@ -139,22 +147,22 @@ export function mountApply(core: PanelCore, io: ApplyIo): ApplyUi {
       b.className = 'ffx-rollback';
       b.textContent = 'Roll back to before this';
       b.title = 'Apply this row\'s Before — journaled like any other apply';
-      b.addEventListener('click', () => { void run(r.before); });
+      b.addEventListener('click', () => { core.guard(run(r.before)); });
       el.appendChild(b);
     } else if (r.kind === 'Pending') {
       const b = document.createElement('button');
       b.className = 'ffx-check';
       b.textContent = 'Check';
       b.title = 'Re-read the target: Applied if it holds this row\'s After, otherwise Failed';
-      b.addEventListener('click', () => { void checkPending(depsFor(t), r).then(showHistory); });
+      b.addEventListener('click', () => { core.guard(checkPending(depsFor(t), r).then(showHistory)); });
       el.appendChild(b);
     }
     return el;
   };
 
-  histBtn.addEventListener('click', () => { if (drawerMode === 'history') closeDrawer(); else void showHistory(); });
+  histBtn.addEventListener('click', () => { if (drawerMode === 'history') closeDrawer(); else core.guard(showHistory()); });
 
   return {
-    refresh() { if (drawerMode === 'history') void showHistory(); else closeDrawer(); },
+    refresh() { if (drawerMode === 'history') core.guard(showHistory()); else closeDrawer(); },
   };
 }

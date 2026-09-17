@@ -2,14 +2,25 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createSpRest } from './rest';
 import { openJournal, createSessionJournal, JOURNAL_PATH, type JournalBackend } from './journalStore';
 import { formatterHash } from './hash';
-import type { JournalRow } from './journal';
+import { JOURNAL_FIELDS, type JournalRow } from './journal';
 
 interface Call { url: string; init?: RequestInit }
 const LIST = 'e481b50b-ebf9-4cbd-804f-a5276afb23ab';
 const T = { kind: 'Field' as const, id: 'Status' };
+const PROBE = '/items?$top=1&$select=Id,Kind,ListId,TargetKind,TargetId,Before,After,BasedOn';
+/** ViewListItems | AddListItems | … — the Low word of a full Edit permission set. */
+const FULL_LOW = 0x3f;
+
+interface TenantState {
+  exists: boolean; canWrite: boolean; items: Record<string, unknown>[];
+  /** Columns the existing list already has (default: all of them). */
+  fields?: string[];
+  /** EffectiveBasePermissions.Low (default: full). Bit 1 = AddListItems. */
+  permsLow?: number;
+}
 
 /** An in-memory FormatFX list behind a fake fetch. `state.exists=false` 404s the list. */
-function fakeTenant(state: { exists: boolean; canWrite: boolean; items: Record<string, unknown>[] }) {
+function fakeTenant(state: TenantState) {
   const calls: Call[] = [];
   let nextId = 1;
   const f = (async (url: string, init?: RequestInit) => {
@@ -25,6 +36,13 @@ function fakeTenant(state: { exists: boolean; canWrite: boolean; items: Record<s
     if (!url.includes(JOURNAL_PATH)) return new Response('', { status: 404 });
     if (!state.exists) return new Response('', { status: 404 });
     if (url.endsWith('/fields') && init?.method === 'POST') return json({}, 201);
+    if (url.includes('EffectiveBasePermissions')) {
+      return json({ EffectiveBasePermissions: { High: '2147483647', Low: String(state.permsLow ?? FULL_LOW) } });
+    }
+    if (url.includes('/fields?')) {
+      const have = state.fields ?? JOURNAL_FIELDS.map((x) => x.name);
+      return json({ value: have.map((n) => ({ InternalName: n })) });
+    }
     if (url.includes('/items(') && h['X-HTTP-Method'] === 'MERGE') {
       const id = Number(/items\((\d+)\)/.exec(url)![1]);
       Object.assign(state.items.find((i) => i.Id === id)!, JSON.parse(init!.body as string));
@@ -73,6 +91,37 @@ describe('openJournal', () => {
     const j = await openJournal(createSpRest('https://t/sites/x', t.fetch), LIST, sessionStorage);
     expect(j.durable).toBe(false);
     expect(j.reason).toContain('Manage Lists');
+  });
+
+  it('repairs an existing list by creating only the columns it is missing', async () => {
+    const t = fakeTenant({ exists: true, canWrite: true, items: [], fields: ['Kind', 'ListId', 'TargetKind'] });
+    const j = await openJournal(createSpRest('https://t/sites/x', t.fetch), LIST, sessionStorage);
+    expect(j.durable).toBe(true);
+    const created = t.calls
+      .filter((c) => c.url.endsWith('/fields') && c.init?.method === 'POST')
+      .map((c) => JSON.parse(c.init!.body as string) as { Title: string });
+    expect(created.map((b) => b.Title)).toEqual(['TargetId', 'Before', 'After', 'BasedOn']);
+    expect(created[1]).toEqual({ '@odata.type': '#SP.FieldMultiLineText', FieldTypeKind: 3, Title: 'Before' });
+  });
+
+  it('probes every column it reads, and falls back when that probe fails', async () => {
+    const ok = fakeTenant({ exists: true, canWrite: true, items: [] });
+    await openJournal(createSpRest('https://t/sites/x', ok.fetch), LIST, sessionStorage);
+    expect(ok.calls.some((c) => c.url.endsWith(JOURNAL_PATH + PROBE))).toBe(true);
+
+    const t = fakeTenant({ exists: true, canWrite: true, items: [] });
+    const missingColumn = (async (url: string, init?: RequestInit) => (url.includes('$select=Id,Kind')
+      ? new Response('column does not exist', { status: 400 })
+      : t.fetch(url, init))) as unknown as typeof fetch;
+    const j = await openJournal(createSpRest('https://t/sites/x', missingColumn), LIST, sessionStorage);
+    expect(j.durable).toBe(false);
+  });
+
+  it('falls back when the list can be read but not written', async () => {
+    const t = fakeTenant({ exists: true, canWrite: true, items: [], permsLow: 1 }); // ViewListItems only
+    const j = await openJournal(createSpRest('https://t/sites/x', t.fetch), LIST, sessionStorage);
+    expect(j.durable).toBe(false);
+    expect(j.reason).toContain('write');
   });
 });
 

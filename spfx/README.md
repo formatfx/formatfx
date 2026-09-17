@@ -18,9 +18,11 @@ The SPFx `build`/`start` scripts rebuild the panel first (`prebuild`/`prestart`)
 
 Every panel module is node-tested from the repo root: `npm test` runs all
 `spfx/panel/src/*.test.ts` and `spfx/panel/tools/*.test.ts` files with the
-rest of the suite — the root suite is now 1892 tests (was 1828 at branch
-start). The Command Set has no runner (the rig's Jest has zero suites); the
-tenant smoke below covers it.
+rest of the suite — the root suite is now 1898 tests (was 1828 at branch
+start). The root `pretest` script runs `spfx/panel/tools/genAppCss.mjs` first,
+so `panel.ts`'s gitignored `src/appCss.gen.ts` exists on a clean checkout
+without building the panel. The Command Set has no runner (the rig's Jest has
+zero suites); the tenant smoke below covers it.
 
 ## Debug on a real list (owner-driven)
 
@@ -44,10 +46,10 @@ once the app is installed; nothing is injected anywhere else.
 
 ## Smoke checklist (run by the owner after each deploy)
 
+- [ ] First use on the site creates the hidden `FormatFX` list (Site contents → hidden lists) with 7 columns; a person without Manage Lists sees the per-tab notice instead. (This is the one call the suite cannot prove: the nometadata `@odata.type` creation bodies — if SharePoint 400s, switch `journalStore.ts`'s two creation POSTs to `odata=verbose` with `__metadata: { type }`.)
 - [ ] Format button on a list's command bar; panel opens once even though SharePoint mounts the extension twice (check `document.querySelectorAll('#ffx-format-panel').length === 1`).
 - [ ] Tree: views then columns, badge on formatted ones, the on-screen view marked; opening the panel opens the current view.
 - [ ] Type `g` and other letters in the JSON pane — nothing is swallowed; Ctrl+Z/Y undo/redo.
-- [ ] First use on the site creates the hidden `FormatFX` list (Site contents → hidden lists) with 7 columns; a person without Manage Lists sees the per-tab notice instead.
 - [ ] Edit a column, pick another target → a dot appears; come back → the draft is restored.
 - [ ] Pick another view → the page navigates and the panel reopens on that view.
 - [ ] Apply → the list re-renders with the formatter; the journal has Pending→Applied with Before/After.
