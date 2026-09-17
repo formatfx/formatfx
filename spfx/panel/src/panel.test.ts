@@ -33,7 +33,7 @@ function tenant() {
       if (url.includes('/items') && init?.method === 'POST') { const it = { Id: nextId++, Created: new Date(nextId * 1000).toISOString(), AuthorId: 12, Author: { Title: 'Me' }, ...JSON.parse(init!.body as string) }; items.push(it); return json(it, 201); }
       if (url.includes('/items')) {
         const filter = decodeURIComponent(new URL(url).searchParams.get('$filter') ?? '');
-        const rows = items.filter((i) => ['Kind', 'ListId', 'TargetKind', 'TargetId'].every((c) => { const m = new RegExp(c + " eq '([^']*)'").exec(filter); return !m || i[c] === m[1]; }) && !(/Kind ne 'Draft'/.test(filter) && i.Kind === 'Draft'));
+        const rows = items.filter((i) => ['Kind', 'ListId', 'TargetKind', 'TargetId'].every((c) => { const m = new RegExp("(^|\\s)" + c + " eq '([^']*)'").exec(filter); return !m || i[c] === m[2]; }) && !(/Kind ne 'Draft'/.test(filter) && i.Kind === 'Draft'));
         return json({ value: (new URL(url).searchParams.get('$orderby') ?? '').includes('desc') ? [...rows].reverse() : rows });
       }
       return json({ Id: 'journal' });
@@ -198,5 +198,100 @@ describe('mountFormatPanel — targets and drafts', () => {
     expect(sessionStorage.getItem(REOPEN_KEY)).toBeNull();
     expect(document.getElementById(PANEL_HOST_ID)).toBeNull();
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('mountFormatPanel — apply, stale, history, rollback', () => {
+  it('applies through the journal: Pending → MERGE → verify → Applied, then refreshes badges', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    m.typeAndApply('{"elmType":"div","txtContent":"new"}');
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(m.$('.ffx-status').textContent).toContain('Applied'));
+    expect(t.formatters['Field:Title']).toContain('"txtContent": "new"');
+    const merge = t.calls.find((c) => c.url.includes("getbyinternalnameortitle('Title')") && (c.init?.headers as Record<string, string>)['X-HTTP-Method'] === 'MERGE')!;
+    const pending = t.calls.findIndex((c) => c.url.endsWith(`${JOURNAL_PATH}/items`) && c.init?.method === 'POST');
+    expect(pending).toBeLessThan(t.calls.indexOf(merge)); // journal before list
+    expect(t.items.filter((i) => i.TargetId === 'Title').map((i) => i.Kind)).toEqual(['Applied']);
+    expect(t.items.some((i) => i.Kind === 'Draft')).toBe(false);
+    expect(m.$('.ffx-node[data-key="Field:Title"]').classList.contains('ffx-formatted')).toBe(true);
+    expect(state.isDirtySinceSave).toBe(false);
+  });
+
+  it('refuses to apply a document with lint errors', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    m.typeAndApply('{"elmType":"div","txtContent":"=if([$Nope] == 1, 1, 2, 3)"}');
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(m.$('.ffx-status').textContent).toContain('lint error'));
+    expect(t.items).toHaveLength(0);
+  });
+
+  it('shows both versions when the target changed since you started, and overwrites on request', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    m.typeAndApply('{"elmType":"div","txtContent":"mine"}');
+    t.formatters[`View:${V1}`] = '{"elmType":"div","txtContent":"theirs"}';
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(m.$('.ffx-drawer').hidden).toBe(false));
+    expect(m.$('.ffx-drawer').textContent).toContain('changed this since you started');
+    expect(m.$('.ffx-stale-theirs').textContent).toContain('theirs');
+    expect(m.$('.ffx-stale-yours').textContent).toContain('mine');
+    m.$('.ffx-overwrite').click();
+    await vi.waitFor(() => expect(t.formatters[`View:${V1}`]).toContain('mine'));
+    expect(t.items.find((i) => i.Kind === 'Applied')?.Before).toContain('theirs');
+  });
+
+  it('"reload theirs" loads the live version and keeps yours one undo away', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    m.typeAndApply('{"elmType":"div","txtContent":"mine"}');
+    t.formatters[`View:${V1}`] = '{"elmType":"div","txtContent":"theirs"}';
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(m.$('.ffx-drawer').hidden).toBe(false));
+    m.$('.ffx-reload').click();
+    await vi.waitFor(() => expect(m.textarea().value).toContain('theirs'));
+    state.undo();
+    expect(state.doc.root.txtContent).toBe('mine');
+  });
+
+  it('lists history newest first and rolls back through the same journal', async () => {
+    const t = tenant();
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Title' });
+    m.typeAndApply('{"elmType":"div","txtContent":"v1"}');
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(t.formatters['Field:Title']).toContain('v1'));
+    m.typeAndApply('{"elmType":"div","txtContent":"v2"}');
+    m.$('.ffx-apply').click();
+    await vi.waitFor(() => expect(t.formatters['Field:Title']).toContain('v2'));
+    m.$('.ffx-history').click();
+    await vi.waitFor(() => expect(m.$$('.ffx-hist-row')).toHaveLength(2));
+    expect(m.$$('.ffx-hist-row').map((r) => r.dataset.kind)).toEqual(['Applied', 'Applied']);
+    m.$$('.ffx-rollback')[1].click(); // the first apply's Before = no formatter
+    await vi.waitFor(() => expect(t.formatters['Field:Title']).toBe(''));
+    expect(t.items.map((i) => i.Kind)).toEqual(['Applied', 'Applied', 'Applied']);
+    expect(m.textarea().value).toContain('"@currentField"');
+    expect(m.$('.ffx-node[data-key="Field:Title"]').classList.contains('ffx-formatted')).toBe(false);
+  });
+
+  it('offers "check" on an unconfirmed Pending row and resolves it', async () => {
+    const t = tenant();
+    t.items.push({ Id: 99, Kind: 'Pending', ListId: LIST, TargetKind: 'Field', TargetId: 'Status', Before: '', After: COL_JSON, BasedOn: 'x', Created: '2026-09-16T00:00:00Z', AuthorId: 12, Author: { Title: 'Me' } });
+    const m = mount(t);
+    await m.api.ready;
+    await m.api.openTarget({ kind: 'Field', id: 'Status' });
+    m.$('.ffx-history').click();
+    await vi.waitFor(() => expect(m.$('.ffx-hist-row[data-kind="Pending"]')).toBeTruthy());
+    expect(m.$('.ffx-hist-row[data-kind="Pending"]').textContent).toContain('unconfirmed');
+    m.$('.ffx-check').click();
+    await vi.waitFor(() => expect(t.items.find((i) => i.Id === 99)?.Kind).toBe('Applied'));
   });
 });
