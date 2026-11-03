@@ -312,6 +312,9 @@ function renderStrip(): void {
   const s = S.stripScale;
   stripRow.replaceChildren(...S.rows.map((row, i) => {
     const card = h('div', { class: 'lt-item-card' }, renderCard(S.doc.root, i, false));
+    // a picture of the card, not a live one: its links and hover cards must
+    // never act, so a click always lands on the frame and picks the sample
+    card.inert = true;
     card.style.width = `${w}px`;
     card.style.height = `${ht}px`;
     card.style.transform = `scale(${s})`;
@@ -357,8 +360,8 @@ function stepper(label: string, t: Target, prop: string, min: number, max: numbe
     'data-key': `${label}`,
   });
   input.addEventListener('change', () => set(Number(input.value)));
-  const minus = h('button', { type: 'button', 'aria-label': `Smaller ${label.toLowerCase()}`, disabled: rule }, icon('minus'));
-  const plus = h('button', { type: 'button', 'aria-label': `Larger ${label.toLowerCase()}`, disabled: rule }, icon('plus'));
+  const minus = h('button', { type: 'button', 'aria-label': `Smaller ${label.toLowerCase()}`, disabled: rule, 'data-key': `${label} -` }, icon('minus'));
+  const plus = h('button', { type: 'button', 'aria-label': `Larger ${label.toLowerCase()}`, disabled: rule, 'data-key': `${label} +` }, icon('plus'));
   minus.addEventListener('click', () => set(shown - step));
   plus.addEventListener('click', () => set(shown + step));
   return h('label', { class: 'lt-field' }, label, h('span', { class: 'lt-stepper' }, minus, input, plus));
@@ -367,7 +370,8 @@ function stepper(label: string, t: Target, prop: string, min: number, max: numbe
 function colorButton(label: string, t: Target, prop: string, allowNone: boolean, onPick?: (v: string | undefined) => Doc): HTMLElement {
   const raw = styleOf(t)[prop];
   const rule = isRule(raw);
-  const chip = h('span', { class: `lt-swatch${rule ? ' is-rule' : raw === undefined ? ' is-none' : ''}` });
+  const none = raw === undefined || raw === 'transparent';
+  const chip = h('span', { class: `lt-swatch${rule ? ' is-rule' : none ? ' is-none' : ''}` });
   if (!rule && typeof raw === 'string') chip.style.background = raw;
   const b = h('button', {
     type: 'button', class: 'lt-btn', 'data-key': label,
@@ -377,12 +381,19 @@ function colorButton(label: string, t: Target, prop: string, allowNone: boolean,
     allowNone,
     rule,
     current: typeof raw === 'string' && !rule ? raw : undefined,
-    pick: (v) => commit(onPick ? onPick(v) : setStyle(S.doc, t, prop, v)),
+    // "None" on a fill that a class may paint (ms-bgColor-*, sp-card-subContainer…)
+    // writes transparent, so the class fill can't show through
+    pick: (v) => commit(onPick ? onPick(v) : setStyle(S.doc, t, prop,
+      v === undefined && prop === 'background-color' && classed(t) ? 'transparent' : v)),
   }));
   return b;
 }
 
 function sep(): HTMLElement { return h('span', { class: 'lt-sep', 'aria-hidden': 'true' }); }
+
+function classed(t: Target): boolean {
+  return (t === 'card' ? S.doc.root : S.doc.root.children![t]).attributes?.class !== undefined;
+}
 
 /** A px number box that commits one undo step on change (Enter or blur). */
 function numberField(label: string, ariaLabel: string, value: number, min: number, apply: (n: number) => Doc): HTMLElement {
@@ -759,6 +770,11 @@ document.addEventListener('keydown', (e) => {
 // ─── paste and copy ──────────────────────────────────────────────────────────
 
 const dialog = h('dialog', { class: 'lt-dialog', 'aria-labelledby': 'lt-dialog-title' });
+// A paste can wait up to 1.5 s for pictures. If the dialog closes (Cancel,
+// Escape) meanwhile, that paste must never replace the card: closing bumps
+// the ticket, and a paste only lands with the ticket it started with.
+let pasteTicket = 0;
+dialog.addEventListener('close', () => { pasteTicket++; });
 
 function openDialog(mode: 'paste' | 'copy', json = ''): void {
   closePop();
@@ -769,9 +785,11 @@ function openDialog(mode: 'paste' | 'copy', json = ''): void {
   const actions = h('div', { class: 'lt-dialog-actions' }, close);
   if (mode === 'paste') {
     const open = button('Open card', () => {
+      const ticket = pasteTicket;
       open.disabled = true;
       error.textContent = '';
-      void openJson(area.value).then((problem) => {
+      void openJson(area.value, () => ticket === pasteTicket).then((problem) => {
+        if (ticket !== pasteTicket) return; // closed meanwhile: this dialog is gone
         open.disabled = false;
         if (problem) error.textContent = problem; else dialog.close();
       });
@@ -791,8 +809,9 @@ function openDialog(mode: 'paste' | 'copy', json = ''): void {
   if (mode === 'copy') area.select();
 }
 
-/** Open pasted JSON as the card. Resolves to a one-line reason when it can't. */
-async function openJson(text: string): Promise<string | null> {
+/** Open pasted JSON as the card. Resolves to a one-line reason when it can't.
+ *  `stillWanted` is asked right before the card is replaced. */
+async function openJson(text: string, stillWanted: () => boolean = () => true): Promise<string | null> {
   if (!text.trim()) return 'Paste some JSON first.';
   let doc: Doc;
   try {
@@ -821,6 +840,7 @@ async function openJson(text: string): Promise<string | null> {
   } catch (e) {
     return `Lite could not open this card: ${(e as Error).message}`;
   }
+  if (!stillWanted()) return null; // cancelled while it measured
   S.row = 0;
   S.sel = null;
   commit(result.doc);

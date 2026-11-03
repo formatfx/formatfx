@@ -25,7 +25,7 @@
  */
 
 import type { SPElement, SPExpr, FormatterDocument, NodePath } from '../core/types';
-import { cardSize, innerSize, isClickOverlay, isFreeCard, isRule, px, withRect, MIN_SIZE, type Rect } from './model';
+import { cardSize, innerSize, isClickOverlay, isFreeCard, isRule, px, withRect, type Rect } from './model';
 
 export interface Measured {
   rect: Rect;
@@ -132,14 +132,27 @@ export function isUnit(el: SPElement): boolean {
   return !canDissolve(el, false);
 }
 
+const propsOfClass = (c: string): string[] => CLASS_PROPS.find(([re]) => re.test(c))?.[1] ?? [];
+
+/** Hand a dissolved container's text styles down. Like CSS inheritance, the
+ *  NEAREST ancestor wins: a nearer class drops a farther inline value for the
+ *  same property, and a nearer inline value drops a farther class. */
 function inherit(from: Inherit, el: SPElement): Inherit {
   const style = { ...from.style };
+  let classes = [...from.classes];
+  const own = (classOf(el) ?? '').split(/\s+/).filter((c) => INHERITED_CLASS.test(c));
+  for (const c of own) {
+    const props = propsOfClass(c);
+    for (const p of props) delete style[p];
+    classes = classes.filter((k) => !propsOfClass(k).some((p) => props.includes(p)));
+  }
   for (const k of INHERITED) {
     const v = el.style?.[k];
-    if (v !== undefined) style[k] = v;
+    if (v === undefined) continue;
+    style[k] = v;
+    classes = classes.filter((c) => !propsOfClass(c).includes(k));
   }
-  const own = (classOf(el) ?? '').split(/\s+/).filter((c) => INHERITED_CLASS.test(c));
-  return { style, classes: [...from.classes, ...own] };
+  return { style, classes: [...classes, ...own.filter((c) => !INHERITED.some((k) => el.style?.[k] !== undefined && propsOfClass(c).includes(k)))] };
 }
 
 function asPart(el: SPElement, r: Rect, inh: Inherit, ownProps: string[] = []): SPElement {
@@ -153,7 +166,7 @@ function asPart(el: SPElement, r: Rect, inh: Inherit, ownProps: string[] = []): 
   style.margin = '0';
   const out: SPElement = { ...el, style: style as SPElement['style'] };
   const own = el.attributes?.class;
-  const handed = inh.classes.filter((c) => !(CLASS_PROPS.find(([re]) => re.test(c))?.[1] ?? []).some(owned));
+  const handed = inh.classes.filter((c) => !propsOfClass(c).some(owned));
   if (handed.length && (own === undefined || !isRule(own))) {
     out.attributes = { ...(el.attributes ?? {}), class: [...handed, ...(typeof own === 'string' ? [own] : [])].join(' ') };
   }
@@ -181,13 +194,15 @@ function asShape(el: SPElement, r: Rect): SPElement {
   }, r);
 }
 
+/** Keep an imported box inside the card. Imports keep their real size, down
+ *  to 1 px (a 1 px divider stays 1 px); MIN_SIZE is only for hand resizing. */
 function clampTo(r: Rect, inner: { w: number; h: number }): Rect {
-  const x = Math.max(0, Math.min(r.x, inner.w - MIN_SIZE));
-  const y = Math.max(0, Math.min(r.y, inner.h - MIN_SIZE));
+  const x = Math.max(0, Math.min(r.x, inner.w - 1));
+  const y = Math.max(0, Math.min(r.y, inner.h - 1));
   return {
     x, y,
-    w: Math.max(MIN_SIZE, Math.min(r.w, inner.w - x)),
-    h: Math.max(MIN_SIZE, Math.min(r.h, inner.h - y)),
+    w: Math.max(1, Math.min(r.w, inner.w - x)),
+    h: Math.max(1, Math.min(r.h, inner.h - y)),
   };
 }
 

@@ -191,6 +191,30 @@ describe('Lite flatten', () => {
     expect(out.root.children![0].elmType).toBe('span');
   });
 
+  it('lets the nearest ancestor win, as CSS inheritance does', () => {
+    const nested: FormatterDocument = { kind: 'tile', tileWidth: 254, tileHeight: 120, root: {
+      elmType: 'div',
+      children: [{
+        elmType: 'div', style: { color: '#a4262c' }, // farther: inline red
+        children: [{
+          elmType: 'div', attributes: { class: 'ms-fontColor-themePrimary' }, // nearer: theme blue
+          children: [{ elmType: 'span', txtContent: '[$Title]' }],
+        }],
+      }],
+    } };
+    const part = flattenCard(nested, fakeMeasure({ '0.0.0': at(0, 0, 100, 20) })).doc.root.children![0];
+    expect(part.style?.color).toBeUndefined(); // the farther inline red must not beat the nearer class
+    expect(part.attributes?.class).toBe('ms-fontColor-themePrimary');
+  });
+
+  it('keeps an imported 1 px divider at 1 px', () => {
+    const card: FormatterDocument = { kind: 'tile', tileWidth: 254, tileHeight: 120, root: {
+      elmType: 'div', children: [{ elmType: 'div', style: { height: '1px', 'background-color': '#edebe9' } }],
+    } };
+    const part = flattenCard(card, fakeMeasure({ '0': at(12, 40, 230, 1, true) })).doc.root.children![0];
+    expect(partRect(part)).toEqual({ x: 12, y: 40, w: 230, h: 1 });
+  });
+
   it('treats loops, behaviors and hover groups as single parts', () => {
     expect(isUnit({ elmType: 'div', style: { opacity: '0.5' }, children: [{ elmType: 'span' }] })).toBe(true);
     expect(isUnit({ elmType: 'div', children: [{ elmType: 'div', style: { width: "=[$Progress]+'%'" } }] })).toBe(true);

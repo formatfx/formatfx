@@ -146,6 +146,53 @@ test('Tab selects the card first, then each part', async ({ page }) => {
   await expect(page.locator('.lt-ctx-name')).toHaveText('Status stripe');
 });
 
+test('cancelling a slow paste never replaces the card', async ({ page }) => {
+  await freshLite(page);
+  // a picture that answers after 3 s: the paste waits for it (up to 1.5 s)
+  await page.route('**/slow-picture.png', async (route) => {
+    await new Promise((r) => setTimeout(r, 3000));
+    await route.fulfill({ status: 404 });
+  });
+  const slow = { formatter: { elmType: 'div', children: [
+    { elmType: 'img', attributes: { src: 'https://lite.test/slow-picture.png' } },
+    { elmType: 'div', txtContent: '[$Title]' },
+  ] } };
+  const parts = page.locator('.lt-card-host > .wb-sp-render > [data-sp-path]');
+  const before = await parts.count();
+  await page.getByRole('button', { name: 'Paste JSON' }).click();
+  await page.locator('dialog textarea').fill(JSON.stringify(slow));
+  await page.getByRole('button', { name: 'Open card' }).click();
+  await page.keyboard.press('Escape'); // cancel while it measures
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await page.waitForTimeout(2500); // past the 1.5 s picture wait
+  // nothing was committed: every commit autosaves, and the starter card is still up
+  expect(await page.evaluate((k) => localStorage.getItem(k), KEY)).toBeNull();
+  await expect(parts).toHaveCount(before);
+});
+
+test('Fill None beats a fill that a class gives', async ({ page }) => {
+  await freshLite(page);
+  await page.getByRole('button', { name: 'Paste JSON' }).click();
+  await page.locator('dialog textarea').fill(JSON.stringify(designerCard));
+  await page.getByRole('button', { name: 'Open card' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  // part 1 is the sp-card-subContainer background shape (its fill comes from the class)
+  await page.locator('.lt-card-host [data-sp-path="1"]').click({ position: { x: 4, y: 4 } });
+  await page.getByRole('button', { name: /^Fill/ }).click();
+  await page.locator('.lt-pop').getByRole('button', { name: 'None' }).click();
+  expect((await savedParts(page))[1].style?.['background-color']).toBe('transparent');
+});
+
+test('stepper buttons keep focus, and sample previews never act', async ({ page }) => {
+  await freshLite(page);
+  await expect(page.locator('.lt-item-card').first()).toHaveAttribute('inert', '');
+  await page.locator('.lt-card-host [data-sp-path="2"]').click();
+  await page.getByRole('button', { name: 'Larger text size' }).click();
+  await expect(page.getByRole('button', { name: 'Larger text size' })).toBeFocused();
+  await page.keyboard.press('Enter'); // a second step from the keyboard
+  expect((await savedParts(page))[2].style?.['font-size']).toBe('18px');
+});
+
 test('a part can be resized by typing its width (the keyboard way)', async ({ page }) => {
   await freshLite(page);
   await page.locator('.lt-card-host [data-sp-path="2"]').click();
