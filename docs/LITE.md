@@ -53,20 +53,27 @@ SharePoint card designer, community samples) to free layout. It renders the
 card on each sample item (off screen, with the same renderer) and measures
 where each element landed.
 
-- **Units** become one part and keep their inner tree: content (text,
-  picture, icon, button, link, column-formatter reference), loops
-  (`forEach`), behaviors (row action, hover card, inline edit), anything a
-  rule shows or hides, a container whose children a rule sizes (a progress
-  fill), and a container with `opacity`.
-- Containers that only arrange children dissolve. A painted container
-  (fill, border, shadow) leaves a shape at its own position. Text styles it
-  gave its children move down onto them, but never over a style the child
-  sets itself (by class or inline; the browser measure reports these).
+- A container is taken apart **only when it is plainly layout** (an
+  allow-list, `canDissolve`): a `div` whose styles only arrange (display,
+  flex, gap, padding, margin, size), paint (background, border, shadow) or
+  set text styles, and whose classes are SharePoint card-layout or theme
+  classes that neither clip nor hide. Everything else stays whole as one
+  **unit** with its inner tree: content (text, picture, icon, button, link,
+  column-formatter reference), loops (`forEach`), behaviors (row action,
+  hover card, inline edit), opacity, clipping (`overflow`, or a class like
+  `sp-card-imageContainer`), a hiding `display`/`visibility` (literal or a
+  rule), children a rule sizes (a progress fill), and unknown classes.
+- A dissolved container that paints leaves a shape at its own position.
+  Text styles it gave its children move down onto them, but never over a
+  style the child sets itself (by class or inline; the browser measure
+  reports these).
+- Pictures load (or time out after 1.5 s) before the measure runs.
 - Only flex-ITEM layout is stripped from a part; its own flex-container
   settings (`flex-direction` and the rest) stay.
-- The root becomes the tile exactly (`margin: 0`). It stays whole, as one
-  part, when it is content itself or when taking it apart would break a
-  loop, a rule-computed size, or a rule that shows or hides the card.
+- The root becomes the tile exactly (`margin: 0`). It follows the same
+  allow-list (plus its own overflow, position, opacity and hover-scope
+  class, which the new root keeps); otherwise it stays whole, as one part
+  inside a fresh `div` root.
 - Box: left and top come from the first item that shows the element; width
   and height grow to cover the widest and tallest item.
 - Nothing with content is dropped. A unit that never showed on a sample

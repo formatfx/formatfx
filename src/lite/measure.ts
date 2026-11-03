@@ -27,7 +27,23 @@ function paints(cs: CSSStyleDeclaration): boolean {
   return !clear || cs.backgroundImage !== 'none' || border || cs.boxShadow !== 'none';
 }
 
-export function domMeasure(doc: FormatterDocument, fields: MockField[], rows: MockRow[]): { measure: Measure; dispose: () => void } {
+/** Let pictures settle before measuring: an image that sizes itself from
+ *  its own aspect ratio has no height until it loads. A broken or slow image
+ *  stops the wait after `ms`, and is measured as it stands. */
+function settleImages(host: HTMLElement, ms: number): Promise<void> {
+  const pending = [...host.querySelectorAll('img')].filter((img) => !img.complete);
+  if (!pending.length) return Promise.resolve();
+  const loads = pending.map((img) => new Promise<void>((resolve) => {
+    img.addEventListener('load', () => resolve(), { once: true });
+    img.addEventListener('error', () => resolve(), { once: true });
+  }));
+  return Promise.race([
+    Promise.all(loads).then(() => undefined),
+    new Promise<void>((resolve) => { window.setTimeout(resolve, ms); }),
+  ]);
+}
+
+export async function domMeasure(doc: FormatterDocument, fields: MockField[], rows: MockRow[]): Promise<{ measure: Measure; dispose: () => void }> {
   const { w, h } = cardSize(doc);
   const host = document.createElement('div');
   host.className = 'lite-measure';
@@ -44,6 +60,7 @@ export function domMeasure(doc: FormatterDocument, fields: MockField[], rows: Mo
       host.appendChild(tile);
       return el;
     });
+    await settleImages(host, 1500);
   } catch (e) {
     host.remove(); // never leave the off-screen host behind
     throw e;

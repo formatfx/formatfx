@@ -167,6 +167,30 @@ describe('Lite flatten', () => {
     expect(kids).toHaveLength(3); // only the seen, empty, unpainted spacer goes
   });
 
+  it('takes a container apart only when it is plainly layout', () => {
+    const kid = [{ elmType: 'span' as const, txtContent: '[$Title]' }];
+    expect(isUnit({ elmType: 'div', style: { display: 'flex', padding: '8px', color: '#323130' }, children: kid })).toBe(false);
+    expect(isUnit({ elmType: 'div', attributes: { class: 'sp-card-displayColumnContainer ms-fontSize-14' }, children: kid })).toBe(false);
+    // anything that does something to the children keeps the container whole
+    expect(isUnit({ elmType: 'div', style: { display: 'none' }, children: kid })).toBe(true);
+    expect(isUnit({ elmType: 'div', style: { visibility: 'hidden' }, children: kid })).toBe(true);
+    expect(isUnit({ elmType: 'div', style: { overflow: 'hidden' }, children: kid })).toBe(true);
+    expect(isUnit({ elmType: 'div', attributes: { class: 'sp-card-imageContainer' }, children: kid })).toBe(true); // clips by class
+    expect(isUnit({ elmType: 'div', attributes: { class: 'my-own-class' }, children: kid })).toBe(true); // unknown: be safe
+    expect(isUnit({ elmType: 'div', style: { padding: "=if([$Status]=='Done','0','8px')" }, children: kid })).toBe(true);
+    expect(isUnit({ elmType: 'span', children: kid })).toBe(true);
+  });
+
+  it('wraps a non-div root whole, so the result is a card Lite can edit and reload', () => {
+    const spanRoot: FormatterDocument = { kind: 'tile', tileWidth: 254, tileHeight: 120, root: {
+      elmType: 'span', children: [{ elmType: 'span', txtContent: '[$Title]' }],
+    } };
+    const out = flattenCard(spanRoot, fakeMeasure({ '': at(0, 0, 120, 20) })).doc;
+    expect(out.root.elmType).toBe('div');
+    expect(isFreeCard(out)).toBe(true);
+    expect(out.root.children![0].elmType).toBe('span');
+  });
+
   it('treats loops, behaviors and hover groups as single parts', () => {
     expect(isUnit({ elmType: 'div', style: { opacity: '0.5' }, children: [{ elmType: 'span' }] })).toBe(true);
     expect(isUnit({ elmType: 'div', children: [{ elmType: 'div', style: { width: "=[$Progress]+'%'" } }] })).toBe(true);

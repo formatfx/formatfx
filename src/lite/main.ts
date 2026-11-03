@@ -189,7 +189,7 @@ const app = h('div', { class: 'lt-app' });
 const bar = h('header', { class: 'lt-bar' });
 const ctxBar = h('div', { class: 'lt-ctx', role: 'toolbar', 'aria-label': 'Selected part' });
 const canvas = h('main', { class: 'lt-canvas' });
-const stage = h('div', { class: 'lt-stage', tabindex: '0', 'aria-label': 'Card editor. Tab selects the next part; arrow keys move it.' });
+const stage = h('div', { class: 'lt-stage', tabindex: '0', 'aria-label': 'Card editor. Tab selects the card, then each part; arrow keys move a part.' });
 const host = h('div', { class: 'lt-card-host' });
 const overlay = h('div', { class: 'lt-overlay' });
 const hint = h('p', { class: 'lt-hint', text: 'Drag to move. Drag a handle to resize. Arrow keys nudge 1 px, or 10 px with Shift. Hold Alt to stop snapping.' });
@@ -330,6 +330,12 @@ function renderStrip(): void {
 
 // ─── the context bar ─────────────────────────────────────────────────────────
 
+/** The computed style of a part as the editor card renders it right now. */
+function renderedStyle(t: number): CSSStyleDeclaration | null {
+  const el = host.querySelector<HTMLElement>(`.wb-sp-render > [data-sp-path="${t}"]`);
+  return el ? getComputedStyle(el) : null;
+}
+
 function styleOf(t: Target): NonNullable<SPElement['style']> {
   return (t === 'card' ? S.doc.root : S.doc.root.children![t]).style ?? {};
 }
@@ -437,13 +443,19 @@ function ctxContent(): Node[] {
     sep(),
   ];
   if (kind === 'text') {
-    const bold = /^(bold|[6-9]00)$/.test(String(style['font-weight'] ?? ''));
-    const align = String(style['text-align'] ?? 'left');
-    const wrapped = style['white-space'] !== 'nowrap';
+    // the look a class gives counts too (a pasted sp-card-content is bold and
+    // one-line without saying so inline), so read what the part RENDERS with
+    const cs = renderedStyle(t);
+    const weight = String(style['font-weight'] ?? cs?.fontWeight ?? '400');
+    const bold = weight === 'bold' || Number(weight) >= 600;
+    const align = ({ start: 'left', end: 'right' } as Record<string, string>)[String(style['text-align'] ?? cs?.textAlign ?? 'left')]
+      ?? String(style['text-align'] ?? cs?.textAlign ?? 'left');
+    const wrapped = (style['white-space'] ?? cs?.whiteSpace) !== 'nowrap';
+    const shownSize = px(cs?.fontSize) ?? 14;
     out.push(
       fieldPicker(t, part),
       sep(),
-      stepper('Text size', t, 'font-size', 8, 72, 1, 14, (n) => setFontSize(S.doc, t, n)),
+      stepper('Text size', t, 'font-size', 8, 72, 1, shownSize, (n) => setFontSize(S.doc, t, n)),
       boldButton(bold, () => commit(setStyle(S.doc, t, 'font-weight', bold ? '400' : '600'))),
       colorButton('Text', t, 'color', false),
       colorButton('Fill', t, 'background-color', true),
@@ -706,12 +718,13 @@ stage.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation()
 
 stage.addEventListener('keydown', (e) => {
   if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
-  const parts = partIndices(S.doc);
-  const at = typeof S.sel === 'number' ? parts.indexOf(S.sel) : -1;
+  // the card first (its size, fill, border and corners), then each part
+  const stops: Target[] = ['card', ...partIndices(S.doc)];
+  const at = S.sel === null ? -1 : stops.indexOf(S.sel);
   const next = e.shiftKey ? at - 1 : at + 1;
-  if (next < 0 || next >= parts.length) return; // let focus leave the editor
+  if (next < 0 || next >= stops.length) return; // let focus leave the editor
   e.preventDefault();
-  select(parts[next]);
+  select(stops[next]);
 });
 
 document.addEventListener('keydown', (e) => {
@@ -755,10 +768,15 @@ function openDialog(mode: 'paste' | 'copy', json = ''): void {
   const close = button(mode === 'paste' ? 'Cancel' : 'Done', () => dialog.close());
   const actions = h('div', { class: 'lt-dialog-actions' }, close);
   if (mode === 'paste') {
-    actions.append(button('Open card', () => {
-      const problem = openJson(area.value);
-      if (problem) error.textContent = problem; else dialog.close();
-    }, { cls: 'lt-primary' }));
+    const open = button('Open card', () => {
+      open.disabled = true;
+      error.textContent = '';
+      void openJson(area.value).then((problem) => {
+        open.disabled = false;
+        if (problem) error.textContent = problem; else dialog.close();
+      });
+    }, { cls: 'lt-primary' });
+    actions.append(open);
   }
   dialog.replaceChildren(
     h('h2', { id: 'lt-dialog-title', text: mode === 'paste' ? 'Open a card from JSON' : 'Copy this JSON' }),
@@ -773,8 +791,8 @@ function openDialog(mode: 'paste' | 'copy', json = ''): void {
   if (mode === 'copy') area.select();
 }
 
-/** Open pasted JSON as the card. Returns a one-line reason when it can't. */
-function openJson(text: string): string | null {
+/** Open pasted JSON as the card. Resolves to a one-line reason when it can't. */
+async function openJson(text: string): Promise<string | null> {
   if (!text.trim()) return 'Paste some JSON first.';
   let doc: Doc;
   try {
@@ -794,7 +812,7 @@ function openJson(text: string): string | null {
   withExtraFields(S.fields, S.rows, referencedFields(text));
   let result: ReturnType<typeof flattenCard>;
   try {
-    const { measure, dispose } = domMeasure(doc, S.fields, S.rows);
+    const { measure, dispose } = await domMeasure(doc, S.fields, S.rows);
     try {
       result = flattenCard(doc, measure);
     } finally {

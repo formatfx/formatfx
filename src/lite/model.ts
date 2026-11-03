@@ -104,6 +104,9 @@ export function isFreeCard(doc: FormatterDocument): boolean {
   if (doc.kind !== 'tile' || root.elmType !== 'div' || root.style?.position !== 'relative') return false;
   // a root that shows content itself has no part to select: it must be wrapped
   if (root.txtContent !== undefined || root.attributes?.iconName !== undefined || root.columnFormatterReference !== undefined) return false;
+  // the root must BE the tile, or outlines and snapping would use the wrong box
+  const { w, h } = cardSize(doc);
+  if (px(root.style?.width) !== w || px(root.style?.height) !== h) return false;
   return (root.children ?? []).every((c) => isClickOverlay(c) || partRect(c) !== null);
 }
 
@@ -279,14 +282,40 @@ export function duplicatePart(doc: FormatterDocument, i: number): { doc: Formatt
   return { doc: withChildren(doc, children), index: i + 1 };
 }
 
-/** Move a part one step up (+1, toward the front) or down (-1) the stack. */
+/** A part's stacking value: its literal z-index, 0 for none, null for a rule. */
+function zOf(el: SPElement): number | null {
+  const z = el.style?.['z-index'];
+  if (z === undefined) return 0;
+  if (isRule(z)) return null;
+  const n = Number(z);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function withZ(el: SPElement, z: SPExpr | undefined): SPElement {
+  const style = { ...(el.style ?? {}) };
+  if (z === undefined) delete style['z-index']; else style['z-index'] = z;
+  return { ...el, style };
+}
+
+/**
+ * Move a part one step up (+1, toward the front) or down (-1) the stack the
+ * maker SEES: ordered by z-index, then by place in the tree. The part trades
+ * both its place and its z-index with its visible neighbor, so the pair swaps
+ * even when imported parts carry explicit z-indexes. (With a rule-driven
+ * z-index Lite can't know the order, so it falls back to tree order.)
+ */
 export function moveLayer(doc: FormatterDocument, i: number, dir: 1 | -1): { doc: FormatterDocument; index: number } {
+  const kids = doc.root.children ?? [];
   const parts = partIndices(doc);
-  const at = parts.indexOf(i);
-  const j = parts[at + dir];
+  const known = parts.every((p) => zOf(kids[p]) !== null);
+  const stack = known ? [...parts].sort((a, b) => (zOf(kids[a])! - zOf(kids[b])!) || a - b) : parts;
+  const at = stack.indexOf(i);
+  const j = stack[at + dir];
   if (at < 0 || j === undefined) return { doc, index: i };
-  const children = [...(doc.root.children ?? [])];
-  [children[i], children[j]] = [children[j], children[i]];
+  const children = [...kids];
+  const zi = kids[i].style?.['z-index'], zj = kids[j].style?.['z-index'];
+  children[i] = known ? withZ(kids[j], zi) : kids[j];
+  children[j] = known ? withZ(kids[i], zj) : kids[i];
   return { doc: withChildren(doc, children), index: j };
 }
 

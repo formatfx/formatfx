@@ -88,14 +88,48 @@ function shownByRule(el: SPElement): boolean {
   return isRule(el.style?.display) || isRule(el.style?.visibility);
 }
 
+/*
+ * When may a container be taken apart? ONLY when it is plainly layout. This
+ * is an allow-list on purpose: every container style that does something to
+ * its children (opacity, overflow clipping, a hiding display or visibility,
+ * a transform, a filter, a z-index, a class Lite doesn't know) keeps the
+ * container whole, including the ones nobody has thought of yet.
+ */
+/** Arrangement (replaced by measured boxes) and paint (kept as a shape). */
+const DISSOLVABLE_PROP = /^(display|flex-direction|flex-wrap|flex-flow|justify-content|align-items|align-content|gap|row-gap|column-gap|padding(-.+)?|margin(-.+)?|width|height|min-width|min-height|max-width|max-height|box-sizing|flex|flex-grow|flex-shrink|flex-basis|align-self|order|background(-color|-image|-size|-position|-repeat)?|border(-.+)?|box-shadow)$/;
+/** Paint may come from a rule: the shape keeps the same rule. */
+const RULE_OK_PROP = /^(background(-color|-image)?|border(-.+)?|box-shadow)$/;
+const ARRANGING_DISPLAY = new Set(['block', 'flex', 'inline-flex', 'inline-block', 'grid', 'inline-grid']);
+/** SharePoint card layout classes that neither clip nor hide, and theme
+ *  paint/text classes. (Not sp-card-imageContainer: it clips.) */
+const DISSOLVABLE_CLASS = /^(sp-card-(container|subContainer|displayColumnContainer|lastTextColumnContainer|previewColumnContainer|borderHighlight)|ms-bgColor-|sp-css-backgroundColor-|sp-css-borderColor-|ms-borderColor-|sp-field-severity--|ms-font|sp-css-color-|sp-field-fontSize)/;
+/** The root's own extras are safe: the new root clips at the tile, sits
+ *  relative, keeps its opacity and stays the hover scope. */
+const ROOT_EXTRA_PROP = /^(overflow(-x|-y)?|position|opacity)$/;
+const ROOT_EXTRA_CLASS = /^sp-card-showOnHoverParent$/;
+
+function canDissolve(el: SPElement, isRoot: boolean): boolean {
+  if (el.elmType !== 'div' || !el.children?.length || el.forEach) return false;
+  if (showsContent(el) || hasBehavior(el)) return false;
+  // loops, and children sized by a rule, only work inside their own container
+  if (el.children.some((c) => c.forEach || ruledLayout(c))) return false;
+  for (const [k, v] of Object.entries(el.style ?? {})) {
+    if (v === undefined || k === '_comment') continue;
+    const inherited = INHERITED.includes(k);
+    if (!inherited && !DISSOLVABLE_PROP.test(k) && !(isRoot && ROOT_EXTRA_PROP.test(k))) return false;
+    if (isRule(v) && !inherited && !RULE_OK_PROP.test(k)) return false;
+    if (k === 'display' && !ARRANGING_DISPLAY.has(String(v).trim())) return false;
+  }
+  const cls = el.attributes?.class;
+  if (cls === undefined) return true;
+  if (isRule(cls)) return false;
+  return String(cls).split(/\s+/).filter(Boolean)
+    .every((c) => DISSOLVABLE_CLASS.test(c) || (isRoot && ROOT_EXTRA_CLASS.test(c)));
+}
+
 /** Does this element become one part (keeping its inner tree)? */
 export function isUnit(el: SPElement): boolean {
-  if (showsContent(el) || !el.children?.length || hasBehavior(el) || shownByRule(el)) return true;
-  // loops, and children sized by a rule, only work inside their own container
-  if (el.children.some((c) => c.forEach || ruledLayout(c))) return true;
-  // opacity fades the whole group: dissolving it would un-fade the children
-  if (el.style?.opacity !== undefined || isRule(el.attributes?.class)) return true;
-  return /\bsp-card-showOnHover/.test(classOf(el) ?? '');
+  return !canDissolve(el, false);
 }
 
 function inherit(from: Inherit, el: SPElement): Inherit {
@@ -176,11 +210,10 @@ export function flattenCard(doc: FormatterDocument, measure: Measure): FlattenRe
   if (isFreeCard(doc)) return { doc, notes: [] };
   const { w, h } = cardSize(doc);
   const root = doc.root;
-  // The root stays WHOLE (one part inside a fresh root) when it is content
-  // itself (a bare column formatter), or when taking it apart would break a
-  // loop, a rule-computed size, or a rule that shows or hides the card.
-  const whole = showsContent(root) || !root.children?.length || shownByRule(root)
-    || root.children.some((c) => c.forEach || ruledLayout(c));
+  // The root stays WHOLE (one part inside a fresh div root) unless it is
+  // plainly layout: a bare column formatter, a non-div root, a loop, a
+  // rule-computed size, a rule that hides the card… all stay whole.
+  const whole = !canDissolve(root, true);
   const newRoot: SPElement = whole
     ? { elmType: 'div', style: rootStyle({ elmType: 'div' }, w, h), children: [] }
     : { ...root, style: rootStyle(root, w, h), children: [] };

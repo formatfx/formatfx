@@ -6,7 +6,7 @@ import { importJson } from '../core/serializer';
 import {
   STARTERS, exportCard, isFreeCard, partIndices, partRect, setPartRect, setCardSize,
   boundField, fieldText, duplicatePart, moveLayer, removePart, innerSize, isClickOverlay,
-  addPart, newText, centered, setStyles, setFontSize,
+  addPart, newText, newShape, centered, setStyles, setFontSize,
 } from './model';
 import { sampleFields } from './sample';
 
@@ -44,6 +44,24 @@ describe('Lite starters', () => {
     const textRoot = { kind: 'tile' as const, tileWidth: 254, tileHeight: 120,
       root: { elmType: 'div' as const, style: { position: 'relative' }, txtContent: '[$Title]' } };
     expect(isFreeCard(textRoot)).toBe(false);
+  });
+
+  it('does not call a card free when its root is not the tile size', () => {
+    const doc = STARTERS[0].build();
+    expect(isFreeCard({ ...doc, tileWidth: 300 })).toBe(false);
+  });
+
+  it('moves layers in the order the maker sees, even with imported z-indexes', () => {
+    const base = STARTERS[2].build(); // blank card: overlay + Title
+    const a = { ...newShape({ x: 0, y: 0, w: 50, h: 50 }), style: { ...newShape({ x: 0, y: 0, w: 50, h: 50 }).style, 'z-index': '2' } };
+    const { doc: one, index: ai } = addPart(base, a);
+    const { doc: two, index: bi } = addPart(one, newShape({ x: 10, y: 10, w: 50, h: 50 }));
+    // A is on top (z 2) although B comes later; bringing B forward must put B on top
+    const { doc: moved, index } = moveLayer(two, bi, 1);
+    expect(index).toBe(ai);
+    expect(moved.root.children![ai].style?.['z-index']).toBe('2'); // B now holds A's z-index
+    expect(moved.root.children![bi].style?.['z-index']).toBeUndefined();
+    expect(partRect(moved.root.children![ai])).toEqual({ x: 10, y: 10, w: 50, h: 50 }); // and B is the one at A's old place
   });
 
   it('pins the SharePoint open-item overlay as the first child, outside the parts', () => {

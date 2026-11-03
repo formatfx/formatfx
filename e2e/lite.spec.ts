@@ -124,6 +124,28 @@ test('undo after two pastes still shows the first card with its sample values', 
   await expect(page.locator('.lt-card-host')).toContainText('Sample Budget 1');
 });
 
+test('the toolbar shows the look a pasted part has from its classes', async ({ page }) => {
+  await freshLite(page);
+  await page.getByRole('button', { name: 'Paste JSON' }).click();
+  await page.locator('dialog textarea').fill(JSON.stringify(designerCard));
+  await page.getByRole('button', { name: 'Open card' }).click();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  // parts: overlay, Background, label, title (sp-card-content sp-card-highlightedContent), status
+  await page.locator('.lt-card-host [data-sp-path="3"]').click();
+  await expect(page.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Wrap text' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('spinbutton', { name: 'Text size', exact: true })).toHaveValue('15');
+});
+
+test('Tab selects the card first, then each part', async ({ page }) => {
+  await freshLite(page);
+  await page.locator('.lt-stage').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.lt-ctx-name')).toHaveText('Card');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.lt-ctx-name')).toHaveText('Status stripe');
+});
+
 test('a part can be resized by typing its width (the keyboard way)', async ({ page }) => {
   await freshLite(page);
   await page.locator('.lt-card-host [data-sp-path="2"]').click();
