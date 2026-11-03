@@ -995,6 +995,16 @@ Design: `docs/superpowers/specs/2026-09-16-spfx-format-panel-design.md`;
 plan: `docs/superpowers/plans/2026-09-16-spfx-panel-v1.md`; build/debug/
 deploy/smoke: `spfx/README.md`.
 
+FormatFX Lite (`lite.html` + `src/lite/`) (2026-11-03, test version): a
+second Vite page, cards only — drag / resize / nudge / recolor the parts of
+a gallery card and copy the JSON, the "Copilot makes it, Lite makes it look
+right" bet. It reuses `src/core` (renderer, serializer, linter, theme) and
+touches nothing in `src/editor`. A Lite card is plain tile JSON with one
+convention (root `position: relative`; every part absolutely positioned in
+literal px); `src/lite/flatten.ts` measures flow-layout cards into that
+shape on paste. Own `lt-` CSS prefix and `formatfx-lite:v1` storage key.
+Everything else: `docs/LITE.md`.
+
 ## 3. Verified SP semantics (do not "fix" these without re-verification)
 
 These were validated against a **real SharePoint tenant** via the
@@ -1354,7 +1364,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1722 vitest unit tests across 95 files (engine semantics incl.
+- `npm test` — 1954 vitest unit tests across 114 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -1384,12 +1394,24 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   STOCK_THEME↔theme.ts sync pin; the `core.test.ts` low-contrast linter
   block; `paletteContrast.test.ts`: every shipped preset, built-in
   component, condRules effect and the default workspace held to the
-  rule's own bar)). Run headlessly anywhere.
+  rule's own bar), and, 2026-11-03, FormatFX Lite's pure modules
+  (`src/lite/model.test.ts` — starters lint-clean and round-trip, edits,
+  field binding, geometry-aware contrast, text fit; `snap.test.ts`;
+  `flatten.test.ts` — the flow → free conversion rules)). Run headlessly
+  anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 142 Playwright tests across 16 spec files
+- `npm run test:ui` — 163 Playwright tests across 18 spec files
   (multi-session machines: set `PW_PORT` so reuseExistingServer can't attach
   to another session's dev server — see playwright.config.ts):
+  `lite.spec.ts` (FormatFX Lite: a drag and a run of nudges are one undo
+  step each, Copy JSON hands over free-layout tile JSON, a pasted designer
+  card opens as parts, a row layout and an element-less card are refused
+  with a reason, undo across two pastes keeps the first card's sample
+  columns, a typed width is one undoable resize, the toolbar reads a pasted
+  part's class-given look, Tab reaches the card then each part, a slow paste
+  cancelled mid-measure never lands, Fill None beats a class fill, stepper
+  buttons keep focus, sample previews are inert),
   `sandbox.spec.ts` (core smoke flows: the grid-first landing with dressed
   columns, palette insert, JSON round trip, lint teaching, hover cards,
   dark mode, the one unified surface), `canvasTabs.spec.ts` (the canvas

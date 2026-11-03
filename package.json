@@ -34,6 +34,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:single": "tsc && vite build --mode single",
+    "build:lite": "tsc && vite build --mode lite-single",
     "build:lib": "tsc -p tsconfig.lib.json && node tools/fix-esm-extensions.mjs dist-lib",
     "prepublishOnly": "npm test && npm run build:lib",
     "pretest": "node spfx/panel/tools/genAppCss.mjs",
