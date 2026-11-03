@@ -1364,7 +1364,7 @@ match. Do not resurrect the old wording without fresh tenant evidence:
 
 ## 7. Test inventory
 
-- `npm test` — 1942 vitest unit tests across 114 files (engine semantics incl.
+- `npm test` — 1948 vitest unit tests across 114 files (engine semantics incl.
   every live-verified behavior in §3, serializer round-trips, schema import
   incl. the List Snapshot edges, workspace/state incl. the looks model —
   `columnLooks`, `applyComponentToColumn`, the canvas-tab store — the
@@ -1401,12 +1401,14 @@ match. Do not resurrect the old wording without fresh tenant evidence:
   anywhere.
   (Keep this count honest when you add tests — a stale number here is how
   the docs drift out from under the code.)
-- `npm run test:ui` — 155 Playwright tests across 18 spec files
+- `npm run test:ui` — 158 Playwright tests across 18 spec files
   (multi-session machines: set `PW_PORT` so reuseExistingServer can't attach
   to another session's dev server — see playwright.config.ts):
   `lite.spec.ts` (FormatFX Lite: a drag and a run of nudges are one undo
   step each, Copy JSON hands over free-layout tile JSON, a pasted designer
-  card opens as parts, a row layout is refused),
+  card opens as parts, a row layout and an element-less card are refused
+  with a reason, undo across two pastes keeps the first card's sample
+  columns, a typed width is one undoable resize),
   `sandbox.spec.ts` (core smoke flows: the grid-first landing with dressed
   columns, palette insert, JSON round trip, lint teaching, hover cards,
   dark mode, the one unified surface), `canvasTabs.spec.ts` (the canvas

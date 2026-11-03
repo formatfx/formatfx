@@ -100,3 +100,37 @@ test('a pasted SharePoint card opens as parts; a list-row layout is refused', as
   await page.getByRole('button', { name: 'Open card' }).click();
   await expect(page.locator('.lt-dialog-error')).toContainText('list-row layout');
 });
+
+test('a card with no element is refused with a reason, and nothing is left behind', async ({ page }) => {
+  await freshLite(page);
+  await page.getByRole('button', { name: 'Paste JSON' }).click();
+  await page.locator('dialog textarea').fill('{"formatter": null}');
+  await page.getByRole('button', { name: 'Open card' }).click();
+  await expect(page.locator('.lt-dialog-error')).toContainText('no card');
+  await expect(page.locator('.lite-measure')).toHaveCount(0);
+});
+
+test('undo after two pastes still shows the first card with its sample values', async ({ page }) => {
+  await freshLite(page);
+  const card = (field: string): string =>
+    JSON.stringify({ formatter: { elmType: 'div', children: [{ elmType: 'div', txtContent: '[$' + field + ']' }] } });
+  for (const field of ['Budget', 'Department']) {
+    await page.getByRole('button', { name: 'Paste JSON' }).click();
+    await page.locator('dialog textarea').fill(card(field));
+    await page.getByRole('button', { name: 'Open card' }).click();
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+  }
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.locator('.lt-card-host')).toContainText('Sample Budget 1');
+});
+
+test('a part can be resized by typing its width (the keyboard way)', async ({ page }) => {
+  await freshLite(page);
+  await page.locator('.lt-card-host [data-sp-path="2"]').click();
+  const width = page.getByLabel('Part width');
+  await width.fill('100');
+  await width.press('Enter');
+  expect((await savedParts(page))[2].style?.width).toBe('100px');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  expect((await savedParts(page))[2].style?.width).toBe('220px');
+});

@@ -40,6 +40,12 @@ describe('Lite starters', () => {
     expect(exported.formatter.children.find((c) => c._elmName === 'Title')?.style?.['background-color']).toBeUndefined();
   });
 
+  it('does not call a root that shows text itself a free card', () => {
+    const textRoot = { kind: 'tile' as const, tileWidth: 254, tileHeight: 120,
+      root: { elmType: 'div' as const, style: { position: 'relative' }, txtContent: '[$Title]' } };
+    expect(isFreeCard(textRoot)).toBe(false);
+  });
+
   it('pins the SharePoint open-item overlay as the first child, outside the parts', () => {
     const doc = STARTERS[0].build();
     expect(isClickOverlay(doc.root.children![0])).toBe(true);

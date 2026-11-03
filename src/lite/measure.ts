@@ -16,7 +16,7 @@ import type { FormatterDocument, MockField, MockRow } from '../core/types';
 import { renderElement } from '../core/renderer';
 import { cardSize, type Rect } from './model';
 import { ctxFor } from './sample';
-import type { Measure } from './flatten';
+import { INHERITED, type Measure } from './flatten';
 
 function paints(cs: CSSStyleDeclaration): boolean {
   const clear = cs.backgroundColor === 'transparent' || /^rgba\(.*,\s*0\)$/.test(cs.backgroundColor);
@@ -34,19 +34,26 @@ export function domMeasure(doc: FormatterDocument, fields: MockField[], rows: Mo
   host.setAttribute('aria-hidden', 'true');
   document.body.appendChild(host);
 
-  const roots = rows.map((_, i) => {
-    const tile = document.createElement('div');
-    tile.style.cssText = `position:relative;width:${w}px;height:${h}px;`;
-    const el = renderElement(doc.root, ctxFor(fields, rows, i), { tagPaths: true, interactive: false }) as HTMLElement;
-    tile.appendChild(el);
-    host.appendChild(tile);
-    return el;
-  });
+  let roots: HTMLElement[];
+  try {
+    roots = rows.map((_, i) => {
+      const tile = document.createElement('div');
+      tile.style.cssText = `position:relative;width:${w}px;height:${h}px;`;
+      const el = renderElement(doc.root, ctxFor(fields, rows, i), { tagPaths: true, interactive: false }) as HTMLElement;
+      tile.appendChild(el);
+      host.appendChild(tile);
+      return el;
+    });
+  } catch (e) {
+    host.remove(); // never leave the off-screen host behind
+    throw e;
+  }
 
   const measure: Measure = (path) => {
     const key = path.join('.');
     let rect: Rect | null = null;
     let painted = false;
+    const own = new Set<string>();
     for (const root of roots) {
       const node = key === '' ? root : root.querySelector<HTMLElement>(`[data-sp-path="${key}"]`);
       if (!node) continue;
@@ -62,12 +69,22 @@ export function domMeasure(doc: FormatterDocument, fields: MockField[], rows: Mo
         rect = { x: Math.min(rect.x, x), y: rect.y, w: 0, h: Math.max(rect.h, b.height) };
         rect.w = right - rect.x;
       }
-      painted ||= paints(getComputedStyle(node));
+      const cs = getComputedStyle(node);
+      painted ||= paints(cs);
+      // a text style that differs from the parent's is the element's own
+      // (its class or inline style set it), so a dissolved ancestor's value
+      // must not be copied over it
+      const parent = node.parentElement;
+      if (parent) {
+        const ps = getComputedStyle(parent);
+        for (const p of INHERITED) if (cs.getPropertyValue(p) !== ps.getPropertyValue(p)) own.add(p);
+      }
     }
     if (!rect) return null;
     return {
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.ceil(rect.w), h: Math.ceil(rect.h) },
       paints: painted,
+      own: [...own],
     };
   };
 

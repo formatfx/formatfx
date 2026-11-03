@@ -36,7 +36,7 @@ SharePoint lists are a real database with auth and permissions already solved. B
 npm install
 npm run dev           # local dev server
 npm test              # engine test suite (vitest + happy-dom)
-npm run test:ui       # 155 Playwright e2e tests in your installed Edge
+npm run test:ui       # 158 Playwright e2e tests in your installed Edge
 npm run build         # type-check + production bundle in dist/
 npm run build:single  # everything inlined into one dist-single/index.html
 npm run build:lite    # FormatFX Lite (test page, docs/LITE.md) as one file

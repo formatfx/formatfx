@@ -136,9 +136,12 @@ function load(): void {
   } catch { /* unreadable storage: start from the default card */ }
 }
 
+const NO_NUDGE = { index: -1, at: 0 };
+
 /** Make `next` the card, with `before` as the undo step. */
 function commit(next: Doc, before: Doc = S.doc): void {
   if (next === before) return;
+  S.lastNudge = NO_NUDGE; // any other edit ends a nudge run (it gets its own undo step)
   S.past.push(before);
   if (S.past.length > 200) S.past.shift();
   S.future = [];
@@ -148,6 +151,8 @@ function commit(next: Doc, before: Doc = S.doc): void {
 
 function changed(): void {
   if (typeof S.sel === 'number' && !partIndices(S.doc).includes(S.sel)) S.sel = null;
+  // undo/redo can bring back a pasted card's columns: give them sample values
+  withExtraFields(S.fields, S.rows, referencedFields(JSON.stringify(S.doc)));
   save();
   fit();
   renderAll();
@@ -158,6 +163,7 @@ function undo(): void {
   if (!prev) return;
   S.future.push(S.doc);
   S.doc = prev;
+  S.lastNudge = NO_NUDGE;
   changed();
 }
 
@@ -166,6 +172,7 @@ function redo(): void {
   if (!next) return;
   S.past.push(S.doc);
   S.doc = next;
+  S.lastNudge = NO_NUDGE;
   changed();
 }
 
@@ -371,6 +378,17 @@ function colorButton(label: string, t: Target, prop: string, allowNone: boolean,
 
 function sep(): HTMLElement { return h('span', { class: 'lt-sep', 'aria-hidden': 'true' }); }
 
+/** A px number box that commits one undo step on change (Enter or blur). */
+function numberField(label: string, ariaLabel: string, value: number, min: number, apply: (n: number) => Doc): HTMLElement {
+  const input = h('input', { type: 'number', class: 'lt-num', min: String(min), max: '1200', value: String(value), 'aria-label': ariaLabel, 'data-key': ariaLabel });
+  input.addEventListener('change', () => {
+    const n = Math.round(Number(input.value));
+    if (Number.isFinite(n) && n >= min) commit(apply(n));
+    else input.value = String(value);
+  });
+  return h('label', { class: 'lt-field' }, label, input);
+}
+
 function boldButton(on: boolean, toggle: () => void): HTMLButtonElement {
   const b = h('button', {
     type: 'button', class: 'lt-btn lt-icon', 'aria-label': 'Bold', title: 'Bold',
@@ -393,11 +411,8 @@ function ctxContent(): Node[] {
   }
   if (t === 'card') {
     const { w, h: ht } = cardSize(S.doc);
-    const size = (label: string, value: number, apply: (n: number) => Doc): HTMLElement => {
-      const input = h('input', { type: 'number', class: 'lt-num', min: '40', max: '1200', value: String(value), 'aria-label': `Card ${label.toLowerCase()}`, 'data-key': label });
-      input.addEventListener('change', () => { const n = Number(input.value); if (Number.isFinite(n)) commit(apply(n)); });
-      return h('label', { class: 'lt-field' }, label, input);
-    };
+    const size = (label: string, value: number, apply: (n: number) => Doc): HTMLElement =>
+      numberField(label, `Card ${label.toLowerCase()}`, value, 40, apply);
     return [
       h('strong', { class: 'lt-ctx-name', text: 'Card' }),
       size('Width', w, (n) => setCardSize(S.doc, n, ht)),
@@ -413,7 +428,14 @@ function ctxContent(): Node[] {
   const part = S.doc.root.children![t];
   const kind = partKind(part);
   const style = part.style ?? {};
-  const out: Node[] = [h('strong', { class: 'lt-ctx-name', text: partName(part) })];
+  const r = partRect(part)!;
+  const out: Node[] = [
+    h('strong', { class: 'lt-ctx-name', text: partName(part) }),
+    // typed sizes: exact numbers, and the keyboard way to resize
+    numberField('W', 'Part width', r.w, 4, (n) => setPartRect(S.doc, t, { ...r, w: n })),
+    numberField('H', 'Part height', r.h, 4, (n) => setPartRect(S.doc, t, { ...r, h: n })),
+    sep(),
+  ];
   if (kind === 'text') {
     const bold = /^(bold|[6-9]00)$/.test(String(style['font-weight'] ?? ''));
     const align = String(style['text-align'] ?? 'left');
@@ -717,8 +739,8 @@ document.addEventListener('keydown', (e) => {
   const next = setPartRect(S.doc, i, moved);
   const now = performance.now();
   const merge = S.lastNudge.index === i && now - S.lastNudge.at < NUDGE_MERGE_MS && S.past.length > 0;
-  S.lastNudge = { index: i, at: now };
   if (merge) { S.doc = next; S.future = []; changed(); } else commit(next);
+  S.lastNudge = { index: i, at: now }; // after commit(), which resets it
 });
 
 // ─── paste and copy ──────────────────────────────────────────────────────────
@@ -764,18 +786,23 @@ function openJson(text: string): string | null {
     return 'This is a list-row layout. Lite only edits gallery cards. Open it in the full editor at formatfx.dev.';
   }
   if (doc.kind === 'column') doc = { kind: 'tile', root: doc.root, tileWidth: DEFAULT_W, tileHeight: DEFAULT_H };
-  const fields = sampleFields();
-  const rows = sampleRows();
-  withExtraFields(fields, rows, referencedFields(text));
-  const { measure, dispose } = domMeasure(doc, fields, rows);
+  const root = doc.root as Partial<SPElement> | null;
+  if (!root || typeof root !== 'object' || typeof root.elmType !== 'string') {
+    return 'This JSON has no card in it: "formatter" must be an element with an "elmType".';
+  }
+  // the sample list only grows, so undo can't strand the previous card's columns
+  withExtraFields(S.fields, S.rows, referencedFields(text));
   let result: ReturnType<typeof flattenCard>;
   try {
-    result = flattenCard(doc, measure);
-  } finally {
-    dispose();
+    const { measure, dispose } = domMeasure(doc, S.fields, S.rows);
+    try {
+      result = flattenCard(doc, measure);
+    } finally {
+      dispose();
+    }
+  } catch (e) {
+    return `Lite could not open this card: ${(e as Error).message}`;
   }
-  S.fields = fields;
-  S.rows = rows;
   S.row = 0;
   S.sel = null;
   commit(result.doc);

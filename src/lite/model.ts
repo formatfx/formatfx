@@ -100,8 +100,11 @@ export function partIndices(doc: FormatterDocument): number[] {
 
 /** Can Lite edit this card as-is (no flatten needed)? */
 export function isFreeCard(doc: FormatterDocument): boolean {
-  if (doc.kind !== 'tile' || doc.root.style?.position !== 'relative') return false;
-  return (doc.root.children ?? []).every((c) => isClickOverlay(c) || partRect(c) !== null);
+  const root = doc.root;
+  if (doc.kind !== 'tile' || root.elmType !== 'div' || root.style?.position !== 'relative') return false;
+  // a root that shows content itself has no part to select: it must be wrapped
+  if (root.txtContent !== undefined || root.attributes?.iconName !== undefined || root.columnFormatterReference !== undefined) return false;
+  return (root.children ?? []).every((c) => isClickOverlay(c) || partRect(c) !== null);
 }
 
 // ─── field binding (text parts) ──────────────────────────────────────────────

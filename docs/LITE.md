@@ -22,7 +22,8 @@ thesis: **Copilot makes the card. Lite makes it look right.**
    keys (1 px, or 10 px with Shift). Parts snap to the card edges, the card
    centre, the 16 px insets and the other parts. Hold Alt to stop snapping.
 3. Change text size, bold, text color, fill, alignment, wrap and corners, or
-   change which column a text part shows.
+   change which column a text part shows. Type a part's width and height
+   (W, H) for exact sizes; that is also the keyboard way to resize.
 4. See the card on every sample item at once ("Every item"): a very long
    title, an empty date, an empty project, 0 % and 100 %.
 5. Copy JSON. The linter runs first. An error blocks the copy and gives a
@@ -53,11 +54,19 @@ card on each sample item (off screen, with the same renderer) and measures
 where each element landed.
 
 - **Units** become one part and keep their inner tree: content (text,
-  picture, icon, button, link), loops (`forEach`), behaviors (row action,
-  hover card, inline edit), and anything a rule shows or hides.
+  picture, icon, button, link, column-formatter reference), loops
+  (`forEach`), behaviors (row action, hover card, inline edit), anything a
+  rule shows or hides, a container whose children a rule sizes (a progress
+  fill), and a container with `opacity`.
 - Containers that only arrange children dissolve. A painted container
   (fill, border, shadow) leaves a shape at its own position. Text styles it
-  gave its children move down onto them.
+  gave its children move down onto them, but never over a style the child
+  sets itself (by class or inline; the browser measure reports these).
+- Only flex-ITEM layout is stripped from a part; its own flex-container
+  settings (`flex-direction` and the rest) stay.
+- The root becomes the tile exactly (`margin: 0`). It stays whole, as one
+  part, when it is content itself or when taking it apart would break a
+  loop, a rule-computed size, or a rule that shows or hides the card.
 - Box: left and top come from the first item that shows the element; width
   and height grow to cover the widest and tallest item.
 - Nothing with content is dropped. A unit that never showed on a sample

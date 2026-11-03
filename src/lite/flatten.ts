@@ -25,9 +25,16 @@
  */
 
 import type { SPElement, SPExpr, FormatterDocument, NodePath } from '../core/types';
-import { cardSize, innerSize, isClickOverlay, isFreeCard, isRule, withRect, MIN_SIZE, type Rect } from './model';
+import { cardSize, innerSize, isClickOverlay, isFreeCard, isRule, px, withRect, MIN_SIZE, type Rect } from './model';
 
-export interface Measured { rect: Rect; paints: boolean }
+export interface Measured {
+  rect: Rect;
+  paints: boolean;
+  /** Inherited text styles this element sets for itself (by class or inline):
+   *  its computed value differs from its parent's on some sample item. A
+   *  dissolved ancestor's value must never override these. */
+  own?: string[];
+}
 /** Where the element at `path` landed (card px, inside the border), merged
  *  over the sample items — or null when it never showed. */
 export type Measure = (path: NodePath) => Measured | null;
@@ -37,14 +44,23 @@ export interface FlattenResult { doc: FormatterDocument; notes: string[] }
 const CONTENT_TYPES = new Set(['img', 'svg', 'path', 'filepreview', 'button', 'a']);
 
 /** Text styles CSS hands down to children. */
-const INHERITED = [
+export const INHERITED = [
   'color', 'font-size', 'font-weight', 'font-family', 'font-style', 'line-height',
   'text-align', 'letter-spacing', 'text-transform', 'white-space', 'word-break',
 ];
 const INHERITED_CLASS = /^(ms-font|sp-css-color|sp-field-fontSize)/;
+/** Which inherited text styles a handed-down class sets. */
+const CLASS_PROPS: Array<[RegExp, string[]]> = [
+  [/^(ms-fontColor-|sp-css-color-)/, ['color']],
+  [/^(ms-fontSize-|sp-field-fontSize)/, ['font-size']],
+  [/^ms-fontWeight-/, ['font-weight']],
+  [/^ms-font-/, ['font-size', 'font-weight']],
+];
 const PAINT_PROP = /^(background|border|box-shadow|opacity|outline)/;
-/** Layout that only made sense inside the old flow (the part's box replaces it). */
-const LAYOUT_PROP = /^(position|left|top|right|bottom|width|height|min-|max-|margin|transform|flex|align-self|order|justify-self)/;
+/** Layout that only made sense inside the old flow (the part's box replaces
+ *  it). Flex-ITEM props only: flex-direction/-wrap/-flow arrange the part's
+ *  own children and must stay. */
+const LAYOUT_PROP = /^(position|left|top|right|bottom|width|height|min-|max-|margin|transform|align-self|order|justify-self)|^(flex|flex-grow|flex-shrink|flex-basis)$/;
 
 interface Inherit { style: Record<string, SPExpr>; classes: string[] }
 const NOTHING: Inherit = { style: {}, classes: [] };
@@ -55,15 +71,30 @@ function classOf(el: SPElement): string | undefined {
 }
 
 function showsContent(el: SPElement): boolean {
-  return CONTENT_TYPES.has(el.elmType) || el.txtContent !== undefined || el.attributes?.iconName !== undefined;
+  return CONTENT_TYPES.has(el.elmType) || el.txtContent !== undefined
+    || el.attributes?.iconName !== undefined || el.columnFormatterReference !== undefined;
+}
+
+function hasBehavior(el: SPElement): boolean {
+  return !!(el.customRowAction || el.customCardProps || el.inlineEditField || el.defaultHoverField);
+}
+
+/** A size or position a rule computes per item (a progress fill's width). */
+function ruledLayout(el: SPElement): boolean {
+  return Object.entries(el.style ?? {}).some(([k, v]) => LAYOUT_PROP.test(k) && isRule(v));
+}
+
+function shownByRule(el: SPElement): boolean {
+  return isRule(el.style?.display) || isRule(el.style?.visibility);
 }
 
 /** Does this element become one part (keeping its inner tree)? */
 export function isUnit(el: SPElement): boolean {
-  if (showsContent(el) || !el.children?.length) return true;
-  if (el.children.some((c) => c.forEach)) return true;
-  if (el.customRowAction || el.customCardProps || el.inlineEditField || el.defaultHoverField) return true;
-  if (isRule(el.style?.display) || isRule(el.style?.visibility) || isRule(el.attributes?.class)) return true;
+  if (showsContent(el) || !el.children?.length || hasBehavior(el) || shownByRule(el)) return true;
+  // loops, and children sized by a rule, only work inside their own container
+  if (el.children.some((c) => c.forEach || ruledLayout(c))) return true;
+  // opacity fades the whole group: dissolving it would un-fade the children
+  if (el.style?.opacity !== undefined || isRule(el.attributes?.class)) return true;
   return /\bsp-card-showOnHover/.test(classOf(el) ?? '');
 }
 
@@ -77,19 +108,28 @@ function inherit(from: Inherit, el: SPElement): Inherit {
   return { style, classes: [...from.classes, ...own] };
 }
 
-function asPart(el: SPElement, r: Rect, inh: Inherit): SPElement {
+function asPart(el: SPElement, r: Rect, inh: Inherit, ownProps: string[] = []): SPElement {
+  // a handed-down style never beats one the part sets itself, by class or inline
+  const owned = (k: string): boolean => el.style?.[k] !== undefined || ownProps.includes(k);
   const style: Record<string, SPExpr> = {};
-  for (const [k, v] of Object.entries(inh.style)) if (el.style?.[k] === undefined) style[k] = v;
+  for (const [k, v] of Object.entries(inh.style)) if (!owned(k)) style[k] = v;
   for (const [k, v] of Object.entries(el.style ?? {})) if (v !== undefined && !LAYOUT_PROP.test(k)) style[k] = v;
   // the measured box is the BORDER box; this keeps padding inside it
   style['box-sizing'] = 'border-box';
   style.margin = '0';
   const out: SPElement = { ...el, style: style as SPElement['style'] };
   const own = el.attributes?.class;
-  if (inh.classes.length && (own === undefined || !isRule(own))) {
-    out.attributes = { ...(el.attributes ?? {}), class: [...inh.classes, ...(typeof own === 'string' ? [own] : [])].join(' ') };
+  const handed = inh.classes.filter((c) => !(CLASS_PROPS.find(([re]) => re.test(c))?.[1] ?? []).some(owned));
+  if (handed.length && (own === undefined || !isRule(own))) {
+    out.attributes = { ...(el.attributes ?? {}), class: [...handed, ...(typeof own === 'string' ? [own] : [])].join(' ') };
   }
   return withRect(out, r);
+}
+
+/** Where a part that never showed goes: its container's corner, at its own
+ *  literal size when it has one (a hidden 10 px dot stays a dot). */
+function fallbackRect(el: SPElement, around: Rect): Rect {
+  return { x: around.x, y: around.y, w: px(el.style?.width) ?? around.w, h: px(el.style?.height) ?? around.h };
 }
 
 function asShape(el: SPElement, r: Rect): SPElement {
@@ -127,6 +167,8 @@ function rootStyle(root: SPElement, w: number, h: number): SPElement['style'] {
   return {
     position: 'relative', width: `${w}px`, height: `${h}px`,
     overflow: 'hidden', 'box-sizing': 'border-box', ...style,
+    // the root IS the tile: no class margin (sp-card-container's 8 px) may shift it
+    margin: '0',
   } as SPElement['style'];
 }
 
@@ -134,10 +176,12 @@ export function flattenCard(doc: FormatterDocument, measure: Measure): FlattenRe
   if (isFreeCard(doc)) return { doc, notes: [] };
   const { w, h } = cardSize(doc);
   const root = doc.root;
-  // a bare column-style element (no children, or content itself) becomes the
-  // card's single part inside a fresh root
-  const bare = showsContent(root) || !root.children?.length;
-  const newRoot: SPElement = bare
+  // The root stays WHOLE (one part inside a fresh root) when it is content
+  // itself (a bare column formatter), or when taking it apart would break a
+  // loop, a rule-computed size, or a rule that shows or hides the card.
+  const whole = showsContent(root) || !root.children?.length || shownByRule(root)
+    || root.children.some((c) => c.forEach || ruledLayout(c));
+  const newRoot: SPElement = whole
     ? { elmType: 'div', style: rootStyle({ elmType: 'div' }, w, h), children: [] }
     : { ...root, style: rootStyle(root, w, h), children: [] };
   const inner = innerSize({ ...doc, root: newRoot });
@@ -152,11 +196,12 @@ export function flattenCard(doc: FormatterDocument, measure: Measure): FlattenRe
     if (isClickOverlay(el)) { overlay ??= el; return; }
     const m = measure(path);
     if (isUnit(el)) {
-      const isSpacer = !showsContent(el) && !el.children?.length && !(m?.paints);
+      // only a SEEN, unpainted, empty leaf with no behavior is a mere spacer
+      const isSpacer = m !== null && !m.paints && !showsContent(el) && !el.children?.length && !hasBehavior(el);
       if (isSpacer) return;
-      if (isRule(el.style?.display) || isRule(el.style?.visibility)) ruled++;
+      if (shownByRule(el)) ruled++;
       if (!m) unseen.push(el._elmName ?? (typeof el.txtContent === 'string' ? el.txtContent : el.elmType));
-      parts.push(asPart(el, clampTo(m?.rect ?? around, inner), inh));
+      parts.push(asPart(el, clampTo(m?.rect ?? fallbackRect(el, around), inner), inh, m?.own));
       return;
     }
     const here = m?.rect ?? around;
@@ -165,7 +210,7 @@ export function flattenCard(doc: FormatterDocument, measure: Measure): FlattenRe
     el.children!.forEach((c, i) => visit(c, [...path, i], next, here));
   };
 
-  if (bare) {
+  if (whole) {
     parts.push(asPart(root, clampTo(measure([])?.rect ?? full, inner), NOTHING));
   } else {
     root.children!.forEach((c, i) => visit(c, [i], NOTHING, full));
